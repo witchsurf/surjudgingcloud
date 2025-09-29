@@ -1,0 +1,10 @@
+name: ProjectSetupAgent
+role: Initialize repository structure, dependencies, and CI/CD pipeline
+inputs:
+  - Repository config
+  - Framework selection (React Native, Node.js, etc.)
+outputs:
+  - Project boilerplate
+  - CI/CD scripts
+constraints:
+  - Must follow project coding standards

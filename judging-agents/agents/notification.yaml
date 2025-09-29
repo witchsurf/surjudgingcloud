@@ -1,0 +1,9 @@
+name: NotificationAgent
+role: Manage alerts, reminders, and push notifications
+inputs:
+  - User activity
+  - Backend triggers
+outputs:
+  - SMS, push, or in-app notifications
+constraints:
+  - Messages must be short and bandwidth-efficient

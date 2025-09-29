@@ -33,21 +33,19 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       const url = import.meta.env.VITE_SUPABASE_URL;
       const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
       
-      if (!url || !key || url === 'undefined' || key === 'undefined') {
+      const configured = Boolean(url && key && url !== 'undefined' && key !== 'undefined');
+
+      if (!configured || !isSupabaseConfigured()) {
         console.warn('🔒 Variables Supabase non configurées - mode local uniquement');
         setIsConnected(false);
-        setError('Variables Supabase non configurées');
+        setError(null);
         return false;
       }
-      
+
       if (isSupabaseConfigured()) {
         setIsConnected(true);
         setError(null);
         return true;
-      } else {
-        setIsConnected(false);
-        setError('Supabase non configuré');
-        return false;
       }
     };
     
@@ -67,7 +65,8 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
   const publishTimerStart = useCallback(async (heatId: string, config: AppConfig, duration: number) => {
     if (!isSupabaseConfigured()) {
-      throw new Error('Supabase non configuré');
+      console.warn('⏩ Timer start ignoré (Supabase non configuré)');
+      return;
     }
 
     try {
@@ -98,7 +97,8 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
   const publishTimerPause = useCallback(async (heatId: string) => {
     if (!isSupabaseConfigured()) {
-      throw new Error('Supabase non configuré');
+      console.warn('⏩ Timer pause ignoré (Supabase non configuré)');
+      return;
     }
 
     try {
@@ -124,7 +124,8 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
   const publishTimerReset = useCallback(async (heatId: string, duration: number) => {
     if (!isSupabaseConfigured()) {
-      throw new Error('Supabase non configuré');
+      console.warn('⏩ Timer reset ignoré (Supabase non configuré)');
+      return;
     }
 
     try {
@@ -152,7 +153,8 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
   const publishConfigUpdate = useCallback(async (heatId: string, config: AppConfig) => {
     if (!isSupabaseConfigured()) {
-      throw new Error('Supabase non configuré');
+      console.warn('⏩ Publication config ignorée (Supabase non configuré)');
+      return;
     }
 
     try {

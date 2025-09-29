@@ -3,6 +3,7 @@ import { Wifi, WifiOff, Cloud, CloudOff, AlertTriangle, CheckCircle, RefreshCw }
 
 interface SyncStatusProps {
   isOnline: boolean;
+  supabaseEnabled?: boolean;
   lastSync: Date | null;
   pendingScores: number;
   syncError: string | null;
@@ -13,6 +14,7 @@ interface SyncStatusProps {
 
 function SyncStatus({ 
   isOnline, 
+  supabaseEnabled = true,
   lastSync, 
   pendingScores, 
   syncError, 
@@ -22,6 +24,7 @@ function SyncStatus({
 }: SyncStatusProps) {
   const getStatusColor = () => {
     if (syncError) return 'text-red-600 bg-red-50 border-red-200';
+    if (!supabaseEnabled) return 'text-blue-600 bg-blue-50 border-blue-200';
     if (!isOnline) return 'text-orange-600 bg-orange-50 border-orange-200';
     if (pendingScores > 0) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
     return 'text-green-600 bg-green-50 border-green-200';
@@ -29,6 +32,7 @@ function SyncStatus({
 
   const getStatusIcon = () => {
     if (syncError) return <AlertTriangle className="w-4 h-4" />;
+    if (!supabaseEnabled) return <Cloud className="w-4 h-4" />;
     if (!isOnline) return <WifiOff className="w-4 h-4" />;
     if (pendingScores > 0) return <CloudOff className="w-4 h-4" />;
     return <CheckCircle className="w-4 h-4" />;
@@ -36,6 +40,7 @@ function SyncStatus({
 
   const getStatusText = () => {
     if (syncError) return `Erreur: ${syncError}`;
+    if (!supabaseEnabled) return 'Mode local (Supabase désactivé)';
     if (!isOnline) return 'Mode hors ligne';
     if (pendingScores > 0) return `${pendingScores} score(s) en attente`;
     return realtimeConnected ? 'Synchronisé (Temps réel)' : 'Synchronisé';

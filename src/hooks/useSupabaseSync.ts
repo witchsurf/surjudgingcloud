@@ -5,14 +5,17 @@ import type { AppConfig, HeatTimer } from '../types';
 
 interface SyncStatus {
   isOnline: boolean;
+  supabaseEnabled: boolean;
   lastSync: Date | null;
   pendingScores: number;
   syncError: string | null;
 }
 
 export function useSupabaseSync() {
+  const supabaseEnabled = isSupabaseConfigured();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     isOnline: navigator.onLine,
+    supabaseEnabled,
     lastSync: null,
     pendingScores: 0,
     syncError: null
@@ -21,7 +24,7 @@ export function useSupabaseSync() {
   // Détecter les changements de connexion
   useEffect(() => {
     const handleOnline = () => {
-      setSyncStatus(prev => ({ ...prev, isOnline: true, syncError: null }));
+      setSyncStatus(prev => ({ ...prev, isOnline: true, supabaseEnabled, syncError: null }));
       syncPendingScores();
     };
 
@@ -38,9 +41,41 @@ export function useSupabaseSync() {
     };
   }, []);
 
+  const updatePendingCount = useCallback((scores: Score[]) => {
+    const pending = scores.filter(score => !score.synced).length;
+    setSyncStatus(prev => ({
+      ...prev,
+      pendingScores: pending
+    }));
+  }, []);
+
+  const persistScores = useCallback((scores: Score[]) => {
+    localStorage.setItem('surfJudgingScores', JSON.stringify(scores));
+    updatePendingCount(scores);
+  }, [updatePendingCount]);
+
+  const markAllScoresSynced = useCallback(() => {
+    const localScores = localStorage.getItem('surfJudgingScores');
+    if (!localScores) {
+      updatePendingCount([]);
+      return;
+    }
+
+    try {
+      const scores: Score[] = JSON.parse(localScores);
+      const syncedScores = scores.map(score => ({ ...score, synced: true }));
+      persistScores(syncedScores);
+    } catch (error) {
+      console.error('❌ Erreur lors du marquage local des scores synchronisés:', error);
+    }
+  }, [persistScores, updatePendingCount]);
+
   // Synchroniser les scores en attente
   const syncPendingScores = useCallback(async () => {
-    if (!navigator.onLine || !isSupabaseConfigured()) return;
+    if (!navigator.onLine || !supabaseEnabled) {
+      markAllScoresSynced();
+      return;
+    }
 
     try {
       // Récupérer les scores non synchronisés du localStorage
@@ -82,12 +117,11 @@ export function useSupabaseSync() {
         synced: true
       }));
 
-      localStorage.setItem('surfJudgingScores', JSON.stringify(syncedScores));
+      persistScores(syncedScores);
 
       setSyncStatus(prev => ({
         ...prev,
         lastSync: new Date(),
-        pendingScores: 0,
         syncError: null
       }));
 
@@ -114,18 +148,12 @@ export function useSupabaseSync() {
     };
 
     // Sauvegarder localement d'abord
-    const existingScores = JSON.parse(localStorage.getItem('surfJudgingScores') || '[]');
+    const existingScores: Score[] = JSON.parse(localStorage.getItem('surfJudgingScores') || '[]');
     const updatedScores = [...existingScores, newScore];
-    localStorage.setItem('surfJudgingScores', JSON.stringify(updatedScores));
-
-    // Mettre à jour le compteur de scores en attente
-    setSyncStatus(prev => ({
-      ...prev,
-      pendingScores: prev.pendingScores + 1
-    }));
+    persistScores(updatedScores);
 
     // Essayer de synchroniser immédiatement si en ligne
-    if (navigator.onLine && isSupabaseConfigured()) {
+    if (navigator.onLine && supabaseEnabled) {
       try {
         const { error } = await supabase!
           .from('scores')
@@ -148,21 +176,25 @@ export function useSupabaseSync() {
           // Marquer comme synchronisé
           newScore.synced = true;
           const syncedScores = updatedScores.map(s => s.id === newScore.id ? newScore : s);
-          localStorage.setItem('surfJudgingScores', JSON.stringify(syncedScores));
+          persistScores(syncedScores);
           
           setSyncStatus(prev => ({
             ...prev,
-            pendingScores: Math.max(0, prev.pendingScores - 1),
             lastSync: new Date()
           }));
         }
       } catch (error) {
         console.log('⚠️ Score sauvé localement, synchronisation différée');
       }
+    } else {
+      // Supabase non disponible : marquer immédiatement comme synchronisé pour éviter le mode "pending"
+      newScore.synced = true;
+      const syncedScores = updatedScores.map(s => s.id === newScore.id ? newScore : s);
+      persistScores(syncedScores);
     }
 
     return newScore;
-  }, []);
+  }, [persistScores, supabaseEnabled]);
 
   // Créer un heat
   const createHeat = useCallback(async (heatData: Omit<Heat, 'id' | 'created_at'>) => {
@@ -357,10 +389,9 @@ export function useSupabaseSync() {
     const localScores = localStorage.getItem('surfJudgingScores');
     if (localScores) {
       const scores: Score[] = JSON.parse(localScores);
-      const pending = scores.filter(score => !score.synced).length;
-      setSyncStatus(prev => ({ ...prev, pendingScores: pending }));
+      updatePendingCount(scores);
     }
-  }, [syncPendingScores]);
+  }, [syncPendingScores, updatePendingCount]);
 
   return {
     syncStatus,

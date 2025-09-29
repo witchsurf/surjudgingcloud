@@ -1,348 +1,205 @@
-import React, { useState, useEffect } from 'react';
-import { Trophy, Medal, Award, Waves, Clock, Users, TrendingUp, Eye, Target } from 'lucide-react';
-import { calculateSurferStats } from '../utils/scoring';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { User, Waves, Clock, AlertCircle, CheckCircle, Lock, CreditCard as Edit3 } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
-import { useSupabaseSync } from '../hooks/useSupabaseSync';
-import type { AppConfig, Score, SurferStats } from '../types';
+import type { AppConfig, Score, HeatTimer } from '../types';
 import HeatTimer from './HeatTimer';
 
-interface ScoreDisplayProps {
+interface JudgeInterfaceProps {
   config: AppConfig;
-  scores: Score[];
-  timer: any;
+  judgeId: string;
+  onScoreSubmit: (scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp'>) => Promise<Score | void>;
   configSaved: boolean;
+  timer: HeatTimer;
 }
 
-function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps) {
-  const [surferStats, setSurferStats] = useState<SurferStats[]>([]);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [realTimeScores, setRealTimeScores] = useState<Score[]>(scores);
-  const [currentHeatId, setCurrentHeatId] = useState<string>('');
-  
-  // Hook pour charger les scores depuis Supabase
-  const { loadScoresFromDatabase } = useSupabaseSync();
+interface ScoreInputState {
+  surfer: string;
+  wave: number;
+  value: string;
+}
 
-  // Générer l'ID du heat actuel
-  useEffect(() => {
-    const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
-    setCurrentHeatId(heatId);
+function JudgeInterface({ config, judgeId, onScoreSubmit, configSaved, timer }: JudgeInterfaceProps) {
+  const [submittedScores, setSubmittedScores] = useState<Score[]>([]);
+  const [activeInput, setActiveInput] = useState<ScoreInputState | null>(null);
+  const [inputValue, setInputValue] = useState('');
+
+  const currentHeatId = useMemo(() => {
+    if (!config.competition || !config.division) return '';
+    return `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
   }, [config.competition, config.division, config.round, config.heatId]);
 
-  // Écouter les changements de scores depuis localStorage en temps réel pour le heat actuel uniquement
-  useEffect(() => {
-    if (!currentHeatId) return;
-    
-    // Fonction pour mettre à jour les scores depuis localStorage
-    const handleStorageChange = () => {
-      const savedScores = localStorage.getItem('surfJudgingScores');
-      if (savedScores) {
-        try {
-          const parsedScores = JSON.parse(savedScores);
-          // Filtrer par heat ID
-          const heatScores = parsedScores.filter((s: Score) => s.heat_id === currentHeatId);
-          console.log('📊 AFFICHAGE: Scores mis à jour depuis localStorage pour heat', currentHeatId, ':', heatScores.length);
-          setRealTimeScores(heatScores);
-          setLastUpdate(new Date());
-        } catch (error) {
-          console.error('Erreur parsing scores localStorage:', error);
-        }
-      }
-    };
+  const readScoresFromStorage = useCallback((): Score[] => {
+    const savedScores = localStorage.getItem('surfJudgingScores');
+    if (!savedScores) return [];
 
-    // Fonction pour gérer les nouveaux scores
-    const handleScoreUpdate = (e: CustomEvent) => {
-      console.log('📊 AFFICHAGE: Nouveau score reçu:', e.detail);
-      handleStorageChange(); // Recharger depuis localStorage
-    };
-
-    // Écouter les changements de localStorage
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Écouter les événements personnalisés pour les mises à jour immédiates
-    window.addEventListener('scoreUpdate', handleScoreUpdate as EventListener);
-    
-    // Charger immédiatement les scores
-    handleStorageChange();
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('scoreUpdate', handleScoreUpdate as EventListener);
-    };
-  }, [currentHeatId]);
-
-  // Écouter les changements de scores en temps réel
-  useEffect(() => {
-    // Écouter les nouveaux scores depuis Supabase en temps réel
-    const handleNewScoreRealtime = (e: CustomEvent) => {
-      const newScore = e.detail;
-      console.log('📊 AFFICHAGE: Nouveau score temps réel reçu:', newScore);
-      
-      // Ajouter le nouveau score aux scores existants
-      setRealTimeScores(prev => {
-        const exists = prev.find(s => s.id === newScore.id);
-        if (exists) return prev;
-        
-        const formattedScore = {
-          id: newScore.id,
-          heat_id: newScore.heat_id,
-          competition: newScore.competition,
-          division: newScore.division,
-          round: newScore.round,
-          judge_id: newScore.judge_id,
-          judge_name: newScore.judge_name,
-          surfer: newScore.surfer,
-          wave_number: newScore.wave_number,
-          score: parseFloat(newScore.score),
-          timestamp: newScore.timestamp,
-          created_at: newScore.created_at,
-          synced: true
-        };
-        
-        return [...prev, formattedScore];
+    try {
+      const parsedScores: Score[] = JSON.parse(savedScores);
+      return parsedScores.filter((score) => {
+        const sameJudge = score.judge_id === judgeId;
+        const sameHeat = currentHeatId ? score.heat_id === currentHeatId : true;
+        return sameJudge && sameHeat;
       });
-    };
+    } catch (error) {
+      console.error('Erreur chargement scores juge:', error);
+      return [];
+    }
+  }, [judgeId, currentHeatId]);
 
+  // Charger les scores soumis depuis localStorage
+  useEffect(() => {
+    setSubmittedScores(readScoresFromStorage());
+  }, [readScoresFromStorage]);
+
+  // Écouter les changements de scores
+  useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'surfJudgingScores' && e.newValue) {
-        try {
-          const parsedScores = JSON.parse(e.newValue);
-          setRealTimeScores(parsedScores);
-          console.log('📊 Affichage: Scores mis à jour en temps réel:', parsedScores.length);
-        } catch (error) {
-          console.error('Erreur sync scores affichage:', error);
-        }
+        setSubmittedScores(readScoresFromStorage());
       }
     };
 
-    window.addEventListener('newScoreRealtime', handleNewScoreRealtime as EventListener);
     window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('newScoreRealtime', handleNewScoreRealtime as EventListener);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [readScoresFromStorage]);
 
-  // Mettre à jour les scores locaux
-  useEffect(() => {
-    setRealTimeScores(scores);
-  }, [scores]);
+  // Vérifier si le timer est actif
+  const isTimerActive = () => {
+    if (!timer.startTime) return false;
 
-  // Charger les scores depuis Supabase au démarrage
-  useEffect(() => {
-    const loadScoresFromSupabase = async () => {
-      if (configSaved && config.competition && config.division && config.round && config.heatId) {
-        const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
-        console.log('📊 AFFICHAGE: Chargement scores depuis Supabase pour heat:', heatId);
-        
-        try {
-          const dbScores = await loadScoresFromDatabase(heatId);
-          if (dbScores && dbScores.length > 0) {
-            // Convertir les scores de la DB au format local
-            const formattedScores = dbScores.map(score => ({
-              id: score.id,
-              heat_id: score.heat_id,
-              competition: score.competition,
-              division: score.division,
-              round: score.round,
-              judge_id: score.judge_id,
-              judge_name: score.judge_name,
-              surfer: score.surfer,
-              wave_number: score.wave_number,
-              score: parseFloat(score.score.toString()),
-              timestamp: score.timestamp,
-              created_at: score.created_at,
-              synced: true
-            }));
-            
-            console.log('📊 AFFICHAGE: Scores chargés depuis Supabase:', formattedScores.length);
-            setRealTimeScores(formattedScores);
-          } else {
-            console.log('📊 AFFICHAGE: Aucun score trouvé dans Supabase');
-          }
-        } catch (error) {
-          console.log('⚠️ AFFICHAGE: Erreur chargement scores Supabase, utilisation cache local');
-        }
+    const now = new Date();
+    const startTime = new Date(timer.startTime);
+    const elapsedMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
+    const remainingTime = timer.duration - elapsedMinutes;
+    
+    return remainingTime > 0;
+  };
+
+  const getScoreForWave = (surfer: string, wave: number) => {
+    return submittedScores.find(
+      s => s.surfer === surfer && s.wave_number === wave && s.judge_id === judgeId
+    );
+  };
+
+  const getNextAvailableWave = (surfer: string): number => {
+    // Trouver la première vague non notée pour ce surfeur
+    for (let wave = 1; wave <= config.waves; wave++) {
+      if (!getScoreForWave(surfer, wave)) {
+        return wave;
       }
-    };
+    }
+    return config.waves + 1; // Toutes les vagues sont notées
+  };
 
-    loadScoresFromSupabase();
-  }, [configSaved, config.competition, config.division, config.round, config.heatId, loadScoresFromDatabase]);
+  const canScoreWave = (surfer: string, wave: number): boolean => {
+    if (!isTimerActive()) return false;
+    
+    // On peut noter une vague seulement si c'est la prochaine vague disponible
+    const nextWave = getNextAvailableWave(surfer);
+    return wave === nextWave;
+  };
 
-  // Recharger les scores périodiquement
-  useEffect(() => {
-    if (!configSaved || !config.competition) return;
+  const handleCellClick = (surfer: string, wave: number) => {
+    if (!canScoreWave(surfer, wave)) return;
+    
+    const existingScore = getScoreForWave(surfer, wave);
+    setActiveInput({ surfer, wave, value: existingScore?.score.toString() || '' });
+    setInputValue(existingScore?.score.toString() || '');
+  };
 
-    const interval = setInterval(async () => {
-      const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
-      console.log('🔄 AFFICHAGE: Rechargement périodique des scores...');
+  const handleScoreSubmit = async () => {
+    if (!activeInput || !inputValue.trim()) return;
+
+    const scoreValue = parseFloat(inputValue.replace(',', '.'));
+    if (isNaN(scoreValue) || scoreValue < 0 || scoreValue > 10) {
+      alert('Le score doit être entre 0 et 10');
+      return;
+    }
+
+    try {
+      const judgeName = config.judgeNames[judgeId] || judgeId;
       
-      try {
-        const dbScores = await loadScoresFromDatabase(heatId);
-        if (dbScores && dbScores.length > 0) {
-          const formattedScores = dbScores.map(score => ({
-            id: score.id,
-            heat_id: score.heat_id,
-            competition: score.competition,
-            division: score.division,
-            round: score.round,
-            judge_id: score.judge_id,
-            judge_name: score.judge_name,
-            surfer: score.surfer,
-            wave_number: score.wave_number,
-            score: parseFloat(score.score.toString()),
-            timestamp: score.timestamp,
-            created_at: score.created_at,
-            synced: true
-          }));
-          
-          // Mettre à jour seulement si on a de nouveaux scores
-          if (formattedScores.length !== realTimeScores.length) {
-            console.log('📊 AFFICHAGE: Nouveaux scores détectés:', formattedScores.length);
-            setRealTimeScores(formattedScores);
-          }
-        }
-      } catch (error) {
-        console.log('⚠️ AFFICHAGE: Erreur rechargement périodique');
-      }
-    }, 5000); // Recharger toutes les 5 secondes
+      const savedScore = await onScoreSubmit({
+        competition: config.competition,
+        division: config.division,
+        round: config.round,
+        judge_id: judgeId,
+        judge_name: judgeName,
+        surfer: activeInput.surfer,
+        wave_number: activeInput.wave,
+        score: scoreValue
+      });
 
-    return () => clearInterval(interval);
-  }, [configSaved, config.competition, config.division, config.round, config.heatId, loadScoresFromDatabase, realTimeScores.length]);
+      if (savedScore) {
+        const sanitizedScore = {
+          ...savedScore,
+          heat_id: savedScore.heat_id || currentHeatId,
+          judge_id: savedScore.judge_id || judgeId
+        };
 
-  useEffect(() => {
-    if (!configSaved) return;
-
-    // Calculer les statistiques avec le nouveau système
-    const stats = calculateSurferStats(realTimeScores, config.surfers, config.judges.length, config.waves);
-    console.log('📊 AFFICHAGE: Stats calculées:', stats);
-    setSurferStats(stats);
-    setLastUpdate(new Date());
-  }, [realTimeScores, config, configSaved]);
-
-  // Calculer le score nécessaire pour que le 2ème devienne 1er
-  const calculateNeededScore = () => {
-    if (surferStats.length < 2) return null;
-    
-    const first = surferStats.find(s => s.rank === 1);
-    const second = surferStats.find(s => s.rank === 2);
-    
-    if (!first || !second) return null;
-    
-    // Trouver la meilleure note actuelle du 2ème
-    const secondBestScore = second.waves.filter(w => w.isComplete).length > 0 
-      ? Math.max(...second.waves.filter(w => w.isComplete).map(w => w.score))
-      : 0;
-    
-    // Calculer le score nécessaire : total du 1er - meilleure note du 2ème + 0.1
-    const neededScore = first.bestTwo - secondBestScore + 0.1;
-    
-    return {
-      surfer: second.surfer,
-      currentBest: secondBestScore,
-      neededScore: Math.min(neededScore, 10), // Max 10
-      difference: neededScore
-    };
-  };
-
-  const neededScoreInfo = calculateNeededScore();
-
-  // Calculer les scores nécessaires pour tous les surfeurs
-  const calculateAllNeededScores = () => {
-    const results: Record<string, { neededScore: number; targetPosition: number }> = {};
-    
-    // Pour chaque surfeur, calculer ce qu'il faut pour se qualifier (dépasser le 2ème)
-    surferStats.forEach((surfer, index) => {
-      if (surfer.rank > 2) {
-        // Pour les 3ème et 4ème, ils doivent dépasser le 2ème pour se qualifier
-        const targetSurfer = surferStats.find(s => s.rank === 2);
-        if (targetSurfer) {
-          // Trouver la meilleure note actuelle du surfeur
-          const currentBestScore = surfer.waves.filter(w => w.isComplete).length > 0 
-            ? Math.max(...surfer.waves.filter(w => w.isComplete).map(w => w.score))
-            : 0;
-          
-          // Score nécessaire = total du 2ème - meilleure note actuelle + 0.01
-          const neededScore = targetSurfer.bestTwo - currentBestScore + 0.01;
-          
-          results[surfer.surfer] = {
-            neededScore: Math.min(neededScore, 10), // Max 10
-            targetPosition: 2 // Viser la qualification (2ème place)
-          };
-        }
-      } else if (surfer.rank === 2) {
-        // Le 2ème veut dépasser le 1er
-        const targetSurfer = surferStats.find(s => s.rank === 1);
-        if (targetSurfer) {
-          const currentBestScore = surfer.waves.filter(w => w.isComplete).length > 0 
-            ? Math.max(...surfer.waves.filter(w => w.isComplete).map(w => w.score))
-            : 0;
-          
-          const neededScore = targetSurfer.bestTwo - currentBestScore + 0.01;
-          
-          results[surfer.surfer] = {
-            neededScore: Math.min(neededScore, 10),
-            targetPosition: 1
-          };
+        if (!currentHeatId || sanitizedScore.heat_id === currentHeatId) {
+          setSubmittedScores(prev => {
+            const withoutDuplicate = prev.filter(
+              (score) => !(score.surfer === sanitizedScore.surfer && score.wave_number === sanitizedScore.wave_number)
+            );
+            return [...withoutDuplicate, sanitizedScore];
+          });
         }
       }
-    });
-    
-    return results;
-  };
 
-  const allNeededScores = calculateAllNeededScores();
-  const getRankIcon = (rank: number) => {
-    switch (rank) {
-      case 1: return <Trophy className="w-6 h-6 text-yellow-500" />;
-      case 2: return <Medal className="w-6 h-6 text-gray-400" />;
-      case 3: return <Award className="w-6 h-6 text-amber-600" />;
-      default: return <div className="w-6 h-6 flex items-center justify-center text-gray-500 font-bold">{rank}</div>;
+      setActiveInput(null);
+      setInputValue('');
+      
+    } catch (error) {
+      console.error('❌ Erreur soumission score:', error);
+      alert('Erreur lors de la soumission du score');
     }
   };
 
-  const getRankColor = (rank: number) => {
-    switch (rank) {
-      case 1: return 'bg-gradient-to-r from-yellow-400 to-yellow-500 text-white';
-      case 2: return 'bg-gradient-to-r from-gray-300 to-gray-400 text-white';
-      case 3: return 'bg-gradient-to-r from-amber-500 to-amber-600 text-white';
-      default: return 'bg-white border border-gray-200';
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleScoreSubmit();
+    } else if (e.key === 'Escape') {
+      setActiveInput(null);
+      setInputValue('');
     }
+  };
+
+  const getSurferColor = (surfer: string) => {
+    return SURFER_COLORS[surfer] || '#6B7280';
   };
 
   if (!configSaved) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
+      <div className="max-w-4xl mx-auto p-6">
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-8 text-center">
           <Waves className="w-16 h-16 text-blue-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-blue-800 mb-2">En attente de configuration</h2>
           <p className="text-blue-700">
-            L'affichage des scores sera disponible une fois la compétition configurée.
+            L'interface de notation sera disponible une fois la compétition configurée.
           </p>
         </div>
       </div>
     );
   }
 
+  const timerActive = isTimerActive();
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
-      {/* HEADER COMPÉTITION */}
-      <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl p-6 shadow-lg">
+      {/* HEADER JUGE */}
+      <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl p-6 shadow-lg">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">{config.competition}</h1>
-            <div className="flex items-center space-x-4 text-blue-100">
+            <h1 className="text-3xl font-bold mb-2">Interface Juge</h1>
+            <div className="flex items-center space-x-4 text-green-100">
               <span className="flex items-center">
-                <Users className="w-4 h-4 mr-1" />
-                {config.division}
+                <User className="w-4 h-4 mr-1" />
+                {config.judgeNames[judgeId] || judgeId}
               </span>
-              <span>Round {config.round}</span>
-              <span>Heat {config.heatId}</span>
+              <span>{config.competition}</span>
+              <span>{config.division}</span>
+              <span>R{config.round} - H{config.heatId}</span>
             </div>
-          </div>
-          
-          <div className="text-right">
-            <div className="text-sm text-blue-100 mb-1">Dernière mise à jour</div>
-            <div className="font-mono">{lastUpdate.toLocaleTimeString('fr-FR')}</div>
           </div>
         </div>
       </div>
@@ -356,250 +213,175 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
           onReset={() => {}}
           onDurationChange={() => {}}
           showControls={false}
-          size="large"
+          size="medium"
           configSaved={configSaved}
         />
       </div>
 
-      {/* CLASSEMENT */}
-      <div className="space-y-4">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center">
-              <Trophy className="w-6 h-6 mr-2 text-yellow-500" />
-              Classement en temps réel
-            </h2>
-          </div>
-
-          <div className="divide-y divide-gray-200">
-            {surferStats
-              .sort((a, b) => a.rank - b.rank)
-              .map((surferStat, index) => (
-                <div
-                  key={surferStat.surfer}
-                  className={`p-6 transition-all duration-300 ${getRankColor(surferStat.rank)} ${
-                    index === 0 ? 'animate-pulse' : ''
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    {/* RANG ET SURFEUR */}
-                    <div className="flex items-center space-x-4">
-                      <div className="flex items-center justify-center w-12 h-12">
-                        {getRankIcon(surferStat.rank)}
-                      </div>
-                      
-                      <div className="flex items-center space-x-3">
-                        <div
-                          className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
-                          style={{ backgroundColor: surferStat.color }}
-                        />
-                        <div>
-                          <div className="text-xl font-bold">{surferStat.surfer}</div>
-                          <div className={`text-sm ${surferStat.rank <= 3 ? 'text-white/80' : 'text-gray-500'}`}>
-                            {surferStat.waves.filter(w => w.isComplete).length} vague{surferStat.waves.filter(w => w.isComplete).length > 1 ? 's' : ''} complète{surferStat.waves.filter(w => w.isComplete).length > 1 ? 's' : ''}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* SCORES */}
-                    <div className="flex items-center space-x-6">
-                      {/* SCORES INDIVIDUELS */}
-                      <div className="flex space-x-2">
-                        {surferStat.waves
-                          .filter(w => w.isComplete)
-                          .sort((a, b) => b.score - a.score)
-                          .slice(0, 5)
-                          .map((wave, idx) => (
-                            <div
-                              key={idx}
-                              className={`px-3 py-1 rounded-lg text-sm font-medium ${
-                                idx < 2 
-                                  ? surferStat.rank <= 3 
-                                    ? 'bg-white/20 text-white' 
-                                    : 'bg-blue-100 text-blue-800'
-                                  : surferStat.rank <= 3
-                                    ? 'bg-white/10 text-white/70'
-                                    : 'bg-gray-100 text-gray-600'
-                              }`}
-                            >
-                              {wave.score.toFixed(2)}
-                            </div>
-                          ))}
-                      </div>
-
-                      {/* TOTAL BEST 2 */}
-                      <div className="text-right">
-                        <div className={`text-3xl font-bold ${surferStat.rank <= 3 ? 'text-white' : 'text-gray-900'} flex items-center justify-end space-x-3`}>
-                          <span>
-                            {surferStat.bestTwo.toFixed(2)}
-                          </span>
-                          {/* Afficher WIN BY pour le 1er à côté */}
-                          {surferStat.rank === 1 && surferStats.length >= 2 && (
-                            <span className={`text-lg font-medium ${surferStat.rank <= 3 ? 'text-white/80' : 'text-green-600'}`}>
-                              WIN BY {(surferStat.bestTwo - surferStats.find(s => s.rank === 2)!.bestTwo).toFixed(2)}
-                            </span>
-                          )}
-                          {/* Afficher NEED pour tous les autres surfeurs */}
-                          {allNeededScores[surferStat.surfer] && (
-                            <span className={`text-lg font-medium ${surferStat.rank <= 3 ? 'text-white/80' : 'text-orange-600'}`}>
-                              NEED {allNeededScores[surferStat.surfer].neededScore.toFixed(2)}
-                            </span>
-                          )}
-                        </div>
-                        <div className={`text-sm ${surferStat.rank <= 3 ? 'text-white/80' : 'text-gray-500'}`}>
-                          {surferStat.waves.filter(w => w.isComplete).length} vagues
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+      {/* STATUT TIMER */}
+      {!timerActive && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
+          <Lock className="w-6 h-6 text-red-600" />
+          <div>
+            <h3 className="font-semibold text-red-800">Timer arrêté - Notation bloquée</h3>
+            <p className="text-red-700 text-sm">
+              La notation est désactivée car le timer n'est pas en cours d'exécution.
+            </p>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* STATISTIQUES */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Total Scores</p>
-              <p className="text-2xl font-bold text-gray-900">{scores.length}</p>
-            </div>
-            <Waves className="w-8 h-8 text-blue-500" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Juges Actifs</p>
-              <p className="text-2xl font-bold text-gray-900">{config.judges.length}</p>
-            </div>
-            <Users className="w-8 h-8 text-green-500" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">Surfeurs</p>
-              <p className="text-2xl font-bold text-gray-900">{config.surfers.length}</p>
-            </div>
-            <Trophy className="w-8 h-8 text-yellow-500" />
-          </div>
-        </div>
-      </div>
-
-      {/* DÉTAIL DES VAGUES PAR SURFEUR */}
+      {/* GRILLE DE NOTATION */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-900 flex items-center">
-            <TrendingUp className="w-6 h-6 mr-2 text-blue-600" />
-            Détail des vagues
+            <Waves className="w-6 h-6 mr-2 text-blue-600" />
+            Grille de notation - {config.waves} vagues maximum
           </h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Cliquez sur une case pour noter. Les vagues doivent être notées dans l'ordre.
+          </p>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">Surfeur</th>
-                {Array.from({ length: Math.max(...surferStats.map(s => s.waves.length), 1) }, (_, i) => i + 1).map(wave => (
-                  <th key={wave} className="px-3 py-3 text-center text-sm font-semibold text-gray-900">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
+                  Surfeur
+                </th>
+                {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => (
+                  <th key={wave} className="px-3 py-3 text-center text-sm font-semibold text-gray-900 min-w-[60px]">
                     V{wave}
                   </th>
                 ))}
-                <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900 bg-green-50">Best 2</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {surferStats
-                .sort((a, b) => a.rank - b.rank)
-                .map((surferStat, index) => (
-                  <tr key={surferStat.surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center space-x-3">
-                        <div className="flex items-center justify-center w-6 h-6 text-sm font-bold text-white rounded-full bg-gray-600">
-                          {surferStat.rank}
-                        </div>
-                        <div
-                          className="w-4 h-4 rounded-full"
-                          style={{ backgroundColor: surferStat.color }}
-                        />
-                        <span className="font-semibold text-gray-900">{surferStat.surfer}</span>
-                      </div>
-                    </td>
-                    {Array.from({ length: Math.max(...surferStats.map(s => s.waves.length), 1) }, (_, i) => i + 1).map(waveNum => {
-                      const wave = surferStat.waves.find(w => w.wave === waveNum);
-                      return (
-                        <td key={waveNum} className="px-3 py-3 text-center">
-                          {wave && wave.score > 0 ? (
-                            <div className="relative group">
-                              <span className={`inline-block px-2 py-1 rounded text-sm font-medium cursor-help ${
-                                wave.isComplete 
-                                  ? 'bg-blue-100 text-blue-800' 
-                                  : 'bg-orange-100 text-orange-800 border border-orange-300'
-                              }`}>
-                                {wave.score.toFixed(2)}
-                                {!wave.isComplete && (
-                                  <span className="ml-1 text-xs">*</span>
-                                )}
-                              </span>
-                              
-                              {/* Tooltip avec détail des scores par juge */}
-                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 min-w-max">
-                                {Object.entries(wave.judgeScores)
-                                  .sort(([a], [b]) => a.localeCompare(b))
-                                  .map(([judgeId, score], index, array) => (
-                                    <span key={judgeId}>
-                                      {judgeId}={score.toFixed(1)}{index < array.length - 1 ? ', ' : ''}
-                                    </span>
-                                  ))}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">—</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="px-4 py-3 text-center bg-green-50">
-                      <span className="font-bold text-green-900 text-lg">
-                        {surferStat.bestTwo.toFixed(2)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+              {config.surfers.map((surfer, index) => (
+                <tr key={surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-4 py-3 sticky left-0 bg-inherit">
+                    <div className="flex items-center space-x-3">
+                      <div
+                        className="w-4 h-4 rounded-full"
+                        style={{ backgroundColor: getSurferColor(surfer) }}
+                      />
+                      <span className="font-semibold text-gray-900">{surfer}</span>
+                    </div>
+                  </td>
+                  {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => {
+                    const scoreData = getScoreForWave(surfer, wave);
+                    const canScore = canScoreWave(surfer, wave);
+                    const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
+                    
+                    return (
+                      <td key={wave} className="px-3 py-3 text-center">
+                        {isActive ? (
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            step="0.01"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            onKeyDown={handleKeyPress}
+                            onBlur={() => {
+                              if (inputValue.trim()) {
+                                handleScoreSubmit();
+                              } else {
+                                setActiveInput(null);
+                                setInputValue('');
+                              }
+                            }}
+                            className="w-16 px-2 py-1 text-center border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="0.00"
+                            autoFocus
+                          />
+                        ) : scoreData ? (
+                          <button
+                            onClick={() => handleCellClick(surfer, wave)}
+                            className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 rounded text-sm font-medium hover:bg-green-200 transition-colors"
+                            disabled={!timerActive}
+                          >
+                            {scoreData.score.toFixed(2)}
+                            <Edit3 className="w-3 h-3 ml-1" />
+                          </button>
+                        ) : canScore ? (
+                          <button
+                            onClick={() => handleCellClick(surfer, wave)}
+                            className="w-16 h-8 border-2 border-dashed border-blue-300 rounded text-blue-600 hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center"
+                            title={`Noter la vague ${wave} pour ${surfer}`}
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-          
-        {/* Légende */}
+
+        {/* LÉGENDE */}
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
           <div className="flex items-center justify-center space-x-6 text-sm">
             <div className="flex items-center space-x-2">
-              <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">8.50</span>
-              <span className="text-gray-600">Score complet (tous les juges)</span>
+              <div className="w-4 h-4 border-2 border-dashed border-blue-300 rounded"></div>
+              <span className="text-gray-600">Prochaine vague à noter</span>
             </div>
             <div className="flex items-center space-x-2">
-              <span className="inline-block px-2 py-1 bg-orange-100 text-orange-800 border border-orange-300 rounded text-xs">7.25*</span>
-              <span className="text-gray-600">Notation en cours</span>
+              <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs">7.50</span>
+              <span className="text-gray-600">Score déjà noté (cliquez pour modifier)</span>
             </div>
             <div className="flex items-center space-x-2">
-              <span className="inline-block px-2 py-1 border-2 border-dashed border-orange-300 text-orange-700 bg-orange-50 rounded text-xs">6.50*</span>
-              <span className="text-gray-600">Score partiel affiché</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Eye className="w-4 h-4 text-gray-500" />
-              <span className="text-gray-600">Survolez pour voir le détail</span>
+              <span className="text-gray-400">—</span>
+              <span className="text-gray-600">Vague non disponible</span>
             </div>
           </div>
+          <p className="text-center text-xs text-gray-500 mt-2">
+            ⚠️ Les vagues doivent être notées dans l'ordre séquentiel pour chaque surfeur
+          </p>
+        </div>
+      </div>
+
+      {/* RÉSUMÉ DES SCORES */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Mes scores soumis ({submittedScores.length})
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {config.surfers.map(surfer => {
+            const surferScores = submittedScores.filter(s => s.surfer === surfer);
+            const nextWave = getNextAvailableWave(surfer);
+            
+            return (
+              <div key={surfer} className="p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-2 mb-2">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: getSurferColor(surfer) }}
+                  />
+                  <span className="font-medium text-gray-900">{surfer}</span>
+                </div>
+                <div className="text-sm text-gray-600">
+                  {surferScores.length} vague{surferScores.length > 1 ? 's' : ''} notée{surferScores.length > 1 ? 's' : ''}
+                </div>
+                {nextWave <= config.waves && (
+                  <div className="text-xs text-blue-600 mt-1">
+                    Prochaine: V{nextWave}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
-export default ScoreDisplay;
+export default JudgeInterface;
