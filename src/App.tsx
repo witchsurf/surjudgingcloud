@@ -557,6 +557,10 @@ function App() {
     const nextHeatKey = `${newConfig.competition}_${newConfig.division}_R${newConfig.round}_H${newConfig.heatId}`;
 
     try {
+      // Prévenir les clients abonnés à l'ancien heat pour qu'ils basculent sur le nouveau
+      await publishConfigUpdate(heatId, newConfig);
+      await publishTimerReset(heatId, resetTimer.duration);
+
       await createHeat({
         competition: newConfig.competition,
         division: newConfig.division,
