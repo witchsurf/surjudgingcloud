@@ -21,6 +21,7 @@ interface UseRealtimeSyncReturn {
   publishTimerReset: (heatId: string, duration: number) => Promise<void>;
   publishConfigUpdate: (heatId: string, config: AppConfig) => Promise<void>;
   subscribeToHeat: (heatId: string, onUpdate: (timer: HeatTimer, config: AppConfig) => void) => () => void;
+  fetchRealtimeState: (heatId: string) => Promise<RealtimeHeatConfig | null>;
 }
 
 export function useRealtimeSync(): UseRealtimeSyncReturn {
@@ -180,6 +181,24 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     }
   }, []);
 
+  const fetchRealtimeState = useCallback(async (heatId: string) => {
+    if (!isSupabaseConfigured()) return null;
+
+    try {
+      const { data, error } = await supabase!
+        .from('heat_realtime_config')
+        .select('*')
+        .eq('heat_id', heatId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data as RealtimeHeatConfig | null;
+    } catch (err) {
+      console.error('❌ Erreur fetch realtime config:', err);
+      return null;
+    }
+  }, []);
+
   const subscribeToHeat = useCallback((
     heatId: string, 
     onUpdate: (timer: HeatTimer, config: AppConfig | null) => void
@@ -324,6 +343,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     publishTimerPause,
     publishTimerReset,
     publishConfigUpdate,
-    subscribeToHeat
+    subscribeToHeat,
+    fetchRealtimeState
   };
 }

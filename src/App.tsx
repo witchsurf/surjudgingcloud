@@ -197,6 +197,46 @@ function buildTimerSnapshot(timer: HeatTimer): TimerSnapshot {
   }
 }
 
+function arraysEqual<T>(a: T[], b: T[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
+function objectsShallowEqual(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(key => a[key] === b[key]);
+}
+
+function configsAreEqual(a: AppConfig, b: AppConfig): boolean {
+  return (
+    a.competition === b.competition &&
+    a.division === b.division &&
+    a.round === b.round &&
+    a.heatId === b.heatId &&
+    a.waves === b.waves &&
+    a.tournamentType === b.tournamentType &&
+    a.totalSurfers === b.totalSurfers &&
+    a.surfersPerHeat === b.surfersPerHeat &&
+    a.totalHeats === b.totalHeats &&
+    a.totalRounds === b.totalRounds &&
+    arraysEqual(a.judges, b.judges) &&
+    arraysEqual(a.surfers, b.surfers) &&
+    objectsShallowEqual(a.judgeNames, b.judgeNames)
+  );
+}
+
+function timersAreEqual(a: HeatTimer, b: HeatTimer): boolean {
+  const startTimeA = a.startTime instanceof Date ? a.startTime.getTime() : a.startTime ? new Date(a.startTime).getTime() : null;
+  const startTimeB = b.startTime instanceof Date ? b.startTime.getTime() : b.startTime ? new Date(b.startTime).getTime() : null;
+  return (
+    a.isRunning === b.isRunning &&
+    a.duration === b.duration &&
+    startTimeA === startTimeB
+  );
+}
+
 
 function App() {
   // États principaux
@@ -234,7 +274,8 @@ function App() {
     publishTimerPause,
     publishTimerReset,
     publishConfigUpdate,
-    subscribeToHeat
+    subscribeToHeat,
+    fetchRealtimeState
   } = useRealtimeSync();
 
   // Vérifier les paramètres URL au chargement
@@ -424,6 +465,47 @@ function App() {
 
     return unsubscribe;
   }, [configSaved, config.competition, config.division, config.round, config.heatId, subscribeToHeat]);
+
+  // Polling de secours pour récupérer config/timer depuis Supabase (fiabilité mobile)
+  useEffect(() => {
+    if (!configSaved || !config.competition || !syncStatus.supabaseEnabled) return;
+
+    let cancelled = false;
+
+    const syncFromRealtime = async () => {
+      const heatKey = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+      const realtimeState = await fetchRealtimeState(heatKey);
+      if (cancelled || !realtimeState) return;
+
+      const remoteConfigRaw = realtimeState.config_data as Partial<AppConfig> | null;
+      if (remoteConfigRaw && typeof remoteConfigRaw === 'object') {
+        const nextConfig = normaliseConfig(remoteConfigRaw);
+        if (!configsAreEqual(nextConfig, config)) {
+          setConfig(nextConfig);
+          persistConfig(nextConfig);
+        }
+      }
+
+      const remoteTimer: HeatTimer = {
+        isRunning: realtimeState.status === 'running',
+        startTime: realtimeState.timer_start_time ? new Date(realtimeState.timer_start_time) : null,
+        duration: realtimeState.timer_duration_minutes ?? DEFAULT_TIMER_DURATION
+      };
+
+      if (!timersAreEqual(remoteTimer, timer)) {
+        setTimer(remoteTimer);
+        persistTimer(remoteTimer);
+      }
+    };
+
+    syncFromRealtime();
+    const interval = window.setInterval(syncFromRealtime, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [configSaved, config.competition, config.division, config.round, config.heatId, syncStatus.supabaseEnabled, fetchRealtimeState, config, timer]);
 
   // Gestionnaires d'événements
   const handleConfigChange = (newConfig: AppConfig) => {
