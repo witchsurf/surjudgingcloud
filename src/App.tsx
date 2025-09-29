@@ -207,6 +207,7 @@ function App() {
   const [scores, setScores] = useState<Score[]>([]);
   const [currentJudge, setCurrentJudge] = useState<{ id: string; name: string } | null>(null);
   const [judgeWorkCount, setJudgeWorkCount] = useState<Record<string, number>>({});
+  const [viewLock, setViewLock] = useState<'judge' | 'display' | null>(null);
   
   // Timer state
   const [timer, setTimer] = useState<HeatTimer>({ ...DEFAULT_TIMER_STATE });
@@ -243,6 +244,7 @@ function App() {
     console.log('📋 Paramètres URL détectés:', Object.fromEntries(urlParams.entries()));
 
     const viewParam = urlParams.get('view');
+    setViewLock(null);
     if (viewParam && ['admin', 'judge', 'display'].includes(viewParam)) {
       setCurrentView(viewParam as 'admin' | 'judge' | 'display');
       console.log('🎯 Vue définie depuis URL:', viewParam);
@@ -278,16 +280,28 @@ function App() {
           setCurrentJudge(judge);
           persistJudgeInSession(judge);
           setCurrentView('judge');
+          setViewLock('judge');
           console.log('🎯 Juge connecté automatiquement:', judge);
+        }
+        if (!judgeParam && viewParam === 'display') {
+          setViewLock('display');
         }
       } catch (error) {
         console.error('❌ Erreur décodage config URL:', error);
       }
     } else if (judgeParam) {
-      // Si seul le juge est fourni, basculer quand même sur la vue juge
       setCurrentView('judge');
+      setViewLock('judge');
+    } else if (viewParam === 'display') {
+      setViewLock('display');
     }
   }, []);
+
+  useEffect(() => {
+    if (viewLock && currentView !== viewLock) {
+      setCurrentView(viewLock);
+    }
+  }, [viewLock, currentView]);
 
   // Charger les données depuis localStorage au démarrage
   useEffect(() => {
@@ -509,16 +523,14 @@ function App() {
 
   const handleCloseHeat = async () => {
     const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
-    
+
     try {
-      // Fermer le heat dans Supabase
       await updateHeatStatus(heatId, 'closed', new Date().toISOString());
       console.log('✅ Heat fermé:', heatId);
     } catch (error) {
       console.log('⚠️ Heat fermé en mode local uniquement');
     }
-    
-    // Incrémenter le compteur de travail des juges
+
     const newWorkCount = { ...judgeWorkCount };
     config.judges.forEach(judgeId => {
       newWorkCount[judgeId] = (newWorkCount[judgeId] || 0) + 1;
@@ -526,13 +538,11 @@ function App() {
     setJudgeWorkCount(newWorkCount);
     localStorage.setItem(STORAGE_KEYS.judgeWorkCount, JSON.stringify(newWorkCount));
 
-    // Passer au heat suivant
     const nextHeatId = config.heatId + 1;
     const newConfig = { ...config, heatId: nextHeatId };
     setConfig(newConfig);
     persistConfig(newConfig);
 
-    // Reset du timer
     const resetTimer = {
       isRunning: false,
       startTime: null,
@@ -541,10 +551,28 @@ function App() {
     setTimer(resetTimer);
     persistTimer(resetTimer);
 
-    // Vider les scores pour le nouveau heat
     setScores([]);
     localStorage.setItem(STORAGE_KEYS.scores, JSON.stringify([]));
-    
+
+    const nextHeatKey = `${newConfig.competition}_${newConfig.division}_R${newConfig.round}_H${newConfig.heatId}`;
+
+    try {
+      await createHeat({
+        competition: newConfig.competition,
+        division: newConfig.division,
+        round: newConfig.round,
+        heat_number: newConfig.heatId,
+        status: 'open'
+      });
+
+      await saveHeatConfig(nextHeatKey, newConfig);
+      await saveTimerState(nextHeatKey, resetTimer);
+      await publishConfigUpdate(nextHeatKey, newConfig);
+      await publishTimerReset(nextHeatKey, resetTimer.duration);
+    } catch (error) {
+      console.log('⚠️ Synchronisation du nouveau heat différée:', error instanceof Error ? error.message : error);
+    }
+
     console.log(`🏁 Heat ${config.heatId} fermé, passage au heat ${nextHeatId}`);
   };
 
@@ -575,7 +603,8 @@ function App() {
 
   // Rendu conditionnel basé sur la vue
   const renderCurrentView = () => {
-    switch (currentView) {
+    const activeView = viewLock ?? currentView;
+    switch (activeView) {
       case 'admin':
         return (
           <AdminInterface
@@ -658,41 +687,47 @@ function App() {
             </div>
 
             <div className="flex space-x-1">
-              <button
-                onClick={() => openTabInNewWindow('admin')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-                  currentView === 'admin'
+              {[
+                { key: 'admin', label: 'Administration', view: 'admin' as const, icon: Settings },
+                { key: 'judge', label: 'Interface Juge', view: 'judge' as const, icon: User },
+                { key: 'display', label: 'Affichage Public', view: 'display' as const, icon: Monitor }
+              ]
+                .filter(item => !viewLock || item.view === viewLock)
+                .map(item => {
+                  const Icon = item.icon;
+                  const isActive = (viewLock ?? currentView) === item.view;
+                  const isDisabled = Boolean(viewLock && item.view !== viewLock);
+                  const handleClick = () => {
+                    if (isDisabled) return;
+                    if (item.view === 'judge') {
+                      openTabInNewWindow('judge', currentJudge?.id ?? undefined);
+                    } else {
+                      openTabInNewWindow(item.view);
+                    }
+                  };
+
+                  const activeClass = item.view === 'admin'
                     ? 'bg-blue-600 text-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-              >
-                <Settings className="w-4 h-4" />
-                <span>Administration</span>
-              </button>
+                    : item.view === 'judge'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-purple-600 text-white';
 
-              <button
-                onClick={() => openTabInNewWindow('judge', currentJudge?.id ?? undefined)}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-                  currentView === 'judge'
-                    ? 'bg-green-600 text-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-              >
-                <User className="w-4 h-4" />
-                <span>Interface Juge</span>
-              </button>
-
-              <button
-                onClick={() => openTabInNewWindow('display')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-                  currentView === 'display'
-                    ? 'bg-purple-600 text-white'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-              >
-                <Monitor className="w-4 h-4" />
-                <span>Affichage Public</span>
-              </button>
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={handleClick}
+                      disabled={isDisabled}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                        isActive
+                          ? activeClass
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                      } ${isDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
             </div>
           </div>
         </div>
