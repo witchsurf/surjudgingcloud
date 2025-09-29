@@ -36,6 +36,25 @@ export interface Score {
   synced?: boolean;
 }
 
+export type OverrideReason = 'correction' | 'omission' | 'probleme';
+
+export interface ScoreOverrideLog {
+  id: string;
+  heat_id: string;
+  score_id: string;
+  judge_id: string;
+  judge_name: string;
+  surfer: string;
+  wave_number: number;
+  previous_score: number | null;
+  new_score: number;
+  reason: OverrideReason;
+  comment?: string;
+  overridden_by: string;
+  overridden_by_name: string;
+  created_at: string;
+}
+
 export interface Heat {
   id: string;
   competition: string;

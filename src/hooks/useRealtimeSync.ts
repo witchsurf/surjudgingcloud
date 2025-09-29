@@ -255,6 +255,21 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
           }));
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'scores',
+          filter: `heat_id=eq.${heatId}`
+        },
+        (payload) => {
+          console.log('📊 Score mis à jour en temps réel:', payload);
+          window.dispatchEvent(new CustomEvent('newScoreRealtime', {
+            detail: payload.new
+          }));
+        }
+      )
       .subscribe((status) => {
         console.log('📡 Statut subscription:', status);
         if (status === 'SUBSCRIBED') {

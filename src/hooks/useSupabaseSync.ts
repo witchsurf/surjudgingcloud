@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { Score, Heat } from '../types';
+import type { Score, Heat, ScoreOverrideLog, OverrideReason } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
 
 interface SyncStatus {
@@ -13,6 +13,7 @@ interface SyncStatus {
 
 export function useSupabaseSync() {
   const supabaseEnabled = isSupabaseConfigured();
+  const OVERRIDE_LOGS_KEY = 'surfJudgingOverrideLogs';
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
     isOnline: navigator.onLine,
     supabaseEnabled,
@@ -26,6 +27,7 @@ export function useSupabaseSync() {
     const handleOnline = () => {
       setSyncStatus(prev => ({ ...prev, isOnline: true, supabaseEnabled, syncError: null }));
       syncPendingScores();
+      syncOverrideLogs();
     };
 
     const handleOffline = () => {
@@ -39,7 +41,7 @@ export function useSupabaseSync() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [supabaseEnabled, syncPendingScores, syncOverrideLogs]);
 
   const updatePendingCount = useCallback((scores: Score[]) => {
     const pending = scores.filter(score => !score.synced).length;
@@ -53,6 +55,27 @@ export function useSupabaseSync() {
     localStorage.setItem('surfJudgingScores', JSON.stringify(scores));
     updatePendingCount(scores);
   }, [updatePendingCount]);
+
+  type LocalOverrideLog = ScoreOverrideLog & { synced: boolean };
+
+  const readLocalOverrideLogs = useCallback((): LocalOverrideLog[] => {
+    try {
+      const raw = localStorage.getItem(OVERRIDE_LOGS_KEY);
+      if (!raw) return [];
+      return JSON.parse(raw) as LocalOverrideLog[];
+    } catch (error) {
+      console.error('❌ Erreur lecture override logs locaux:', error);
+      return [];
+    }
+  }, []);
+
+  const writeLocalOverrideLogs = useCallback((logs: LocalOverrideLog[]) => {
+    try {
+      localStorage.setItem(OVERRIDE_LOGS_KEY, JSON.stringify(logs));
+    } catch (error) {
+      console.error('❌ Erreur écriture override logs locaux:', error);
+    }
+  }, []);
 
   const markAllScoresSynced = useCallback(() => {
     const localScores = localStorage.getItem('surfJudgingScores');
@@ -69,6 +92,44 @@ export function useSupabaseSync() {
       console.error('❌ Erreur lors du marquage local des scores synchronisés:', error);
     }
   }, [persistScores, updatePendingCount]);
+
+  const syncOverrideLogs = useCallback(async () => {
+    if (!navigator.onLine || !supabaseEnabled) return;
+
+    const localLogs = readLocalOverrideLogs();
+    const pendingLogs = localLogs.filter(log => !log.synced);
+    if (pendingLogs.length === 0) return;
+
+    try {
+      const payload = pendingLogs.map(log => ({
+        id: log.id,
+        heat_id: log.heat_id,
+        score_id: log.score_id,
+        judge_id: log.judge_id,
+        judge_name: log.judge_name,
+        surfer: log.surfer,
+        wave_number: log.wave_number,
+        previous_score: log.previous_score,
+        new_score: log.new_score,
+        reason: log.reason,
+        comment: log.comment,
+        overridden_by: log.overridden_by,
+        overridden_by_name: log.overridden_by_name,
+        created_at: log.created_at
+      }));
+
+      const { error } = await supabase!
+        .from('score_overrides')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (error) throw error;
+
+      const merged = localLogs.map(log => ({ ...log, synced: true }));
+      writeLocalOverrideLogs(merged);
+    } catch (error) {
+      console.error('❌ Synchronisation overrides échouée:', error);
+    }
+  }, [supabaseEnabled, readLocalOverrideLogs, writeLocalOverrideLogs]);
 
   // Synchroniser les scores en attente
   const syncPendingScores = useCallback(async () => {
@@ -195,6 +256,185 @@ export function useSupabaseSync() {
 
     return newScore;
   }, [persistScores, supabaseEnabled]);
+
+  interface ScoreOverrideInput {
+    heatId: string;
+    competition: string;
+    division: string;
+    round: number;
+    judgeId: string;
+    judgeName: string;
+    surfer: string;
+    waveNumber: number;
+    newScore: number;
+    reason: OverrideReason;
+    comment?: string;
+  }
+
+  const generateId = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  };
+
+  const overrideScore = useCallback(async (input: ScoreOverrideInput) => {
+    const {
+      heatId,
+      competition,
+      division,
+      round,
+      judgeId,
+      judgeName,
+      surfer,
+      waveNumber,
+      newScore,
+      reason,
+      comment
+    } = input;
+
+    const now = new Date();
+    const localScores: Score[] = JSON.parse(localStorage.getItem('surfJudgingScores') || '[]');
+    const matchIndex = localScores.findIndex(
+      score =>
+        score.heat_id === heatId &&
+        score.judge_id === judgeId &&
+        score.wave_number === waveNumber &&
+        score.surfer === surfer
+    );
+
+    const existingScore = matchIndex >= 0 ? localScores[matchIndex] : undefined;
+    const scoreId = existingScore?.id ?? generateId();
+    const updatedScore: Score = {
+      id: scoreId,
+      heat_id: heatId,
+      competition,
+      division,
+      round,
+      judge_id: judgeId,
+      judge_name: judgeName,
+      surfer,
+      wave_number: waveNumber,
+      score: newScore,
+      timestamp: now.toISOString(),
+      created_at: existingScore?.created_at ?? now.toISOString(),
+      synced: supabaseEnabled && navigator.onLine ? existingScore?.synced ?? true : true
+    };
+
+    if (matchIndex >= 0) {
+      localScores[matchIndex] = updatedScore;
+    } else {
+      localScores.push(updatedScore);
+    }
+    persistScores(localScores);
+
+    const logBase: LocalOverrideLog = {
+      id: generateId(),
+      heat_id: heatId,
+      score_id: scoreId!,
+      judge_id: judgeId,
+      judge_name: judgeName,
+      surfer,
+      wave_number: waveNumber,
+      previous_score: existingScore ? existingScore.score : null,
+      new_score: newScore,
+      reason,
+      comment,
+      overridden_by: 'chief_judge',
+      overridden_by_name: 'Chef Judge',
+      created_at: now.toISOString(),
+      synced: false
+    };
+
+    if (navigator.onLine && supabaseEnabled) {
+      try {
+        const scorePayload = {
+          id: scoreId,
+          heat_id: heatId,
+          competition,
+          division,
+          round,
+          judge_id: judgeId,
+          judge_name: judgeName,
+          surfer,
+          wave_number: waveNumber,
+          score: newScore,
+          timestamp: updatedScore.timestamp,
+          created_at: updatedScore.created_at
+        };
+
+        const { error: scoreError } = await supabase!
+          .from('scores')
+          .upsert(scorePayload, { onConflict: 'id' });
+
+        if (scoreError) throw scoreError;
+
+        const { error: logError } = await supabase!
+          .from('score_overrides')
+          .upsert({
+            id: logBase.id,
+            heat_id: logBase.heat_id,
+            score_id: logBase.score_id,
+            judge_id: logBase.judge_id,
+            judge_name: logBase.judge_name,
+            surfer: logBase.surfer,
+            wave_number: logBase.wave_number,
+            previous_score: logBase.previous_score,
+            new_score: logBase.new_score,
+            reason: logBase.reason,
+            comment: logBase.comment,
+            overridden_by: logBase.overridden_by,
+            overridden_by_name: logBase.overridden_by_name,
+            created_at: logBase.created_at
+          }, { onConflict: 'id' });
+
+        if (logError) throw logError;
+
+        logBase.synced = true;
+      } catch (error) {
+        console.error('❌ Erreur override Supabase:', error);
+      }
+    }
+
+    const localLogs = readLocalOverrideLogs();
+    const mergedLogs = [logBase, ...localLogs.filter(log => log.id !== logBase.id)];
+    writeLocalOverrideLogs(mergedLogs);
+
+    return {
+      updatedScore,
+      previousScore: existingScore,
+      log: logBase as ScoreOverrideLog
+    };
+  }, [persistScores, supabaseEnabled, readLocalOverrideLogs, writeLocalOverrideLogs]);
+
+  const loadOverrideLogs = useCallback(async (heatId: string): Promise<ScoreOverrideLog[]> => {
+    const localLogs = readLocalOverrideLogs().filter(log => log.heat_id === heatId);
+    let remoteLogs: ScoreOverrideLog[] = [];
+
+    if (navigator.onLine && supabaseEnabled) {
+      try {
+        const { data, error } = await supabase!
+          .from('score_overrides')
+          .select('*')
+          .eq('heat_id', heatId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        remoteLogs = (data || []) as ScoreOverrideLog[];
+      } catch (error) {
+        console.error('❌ Erreur chargement override logs:', error);
+      }
+    }
+
+    const mergedById = new Map<string, ScoreOverrideLog>();
+    [...remoteLogs, ...localLogs].forEach(log => {
+      mergedById.set(log.id, { ...log });
+    });
+
+    return Array.from(mergedById.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [readLocalOverrideLogs, supabaseEnabled]);
 
   // Créer un heat
   const createHeat = useCallback(async (heatData: Omit<Heat, 'id' | 'created_at'>) => {
@@ -383,6 +623,7 @@ export function useSupabaseSync() {
   useEffect(() => {
     if (navigator.onLine && isSupabaseConfigured()) {
       syncPendingScores();
+      syncOverrideLogs();
     }
 
     // Compter les scores en attente
@@ -391,7 +632,7 @@ export function useSupabaseSync() {
       const scores: Score[] = JSON.parse(localScores);
       updatePendingCount(scores);
     }
-  }, [syncPendingScores, updatePendingCount]);
+  }, [syncPendingScores, updatePendingCount, syncOverrideLogs]);
 
   return {
     syncStatus,
@@ -403,6 +644,8 @@ export function useSupabaseSync() {
     saveHeatConfig,
     saveTimerState,
     loadHeatConfig,
-    loadTimerState
+    loadTimerState,
+    overrideScore,
+    loadOverrideLogs
   };
 }

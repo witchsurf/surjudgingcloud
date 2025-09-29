@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Settings, Clock, Users, Waves, Download, RotateCcw, Trash2, Database, Wifi, WifiOff, CheckCircle, ArrowRight } from 'lucide-react';
+import { Settings, Clock, Users, Waves, Download, RotateCcw, Trash2, Database, Wifi, WifiOff, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle } from 'lucide-react';
 import HeatTimer from './HeatTimer';
-import type { AppConfig, HeatTimer as HeatTimerType } from '../types';
+import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason } from '../types';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
+import { validateScore } from '../utils/scoring';
 
 interface AdminInterfaceProps {
   config: AppConfig;
@@ -15,6 +16,17 @@ interface AdminInterfaceProps {
   onResetAllData: () => void;
   onCloseHeat: () => void;
   judgeWorkCount: Record<string, number>;
+  scores: Score[];
+  overrideLogs: ScoreOverrideLog[];
+  onScoreOverride: (input: {
+    judgeId: string;
+    judgeName: string;
+    surfer: string;
+    waveNumber: number;
+    newScore: number;
+    reason: OverrideReason;
+    comment?: string;
+  }) => Promise<ScoreOverrideLog | undefined>;
   onRealtimeTimerStart?: (heatId: string, config: AppConfig, duration: number) => Promise<void>;
   onRealtimeTimerPause?: (heatId: string) => Promise<void>;
   onRealtimeTimerReset?: (heatId: string, duration: number) => Promise<void>;
@@ -43,12 +55,84 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   onResetAllData,
   onCloseHeat,
   judgeWorkCount,
+  scores,
+  overrideLogs,
+  onScoreOverride,
   onRealtimeTimerStart,
   onRealtimeTimerPause,
   onRealtimeTimerReset
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  const [selectedJudge, setSelectedJudge] = useState('');
+  const [selectedSurfer, setSelectedSurfer] = useState('');
+  const [selectedWave, setSelectedWave] = useState<number | ''>('');
+  const [scoreInput, setScoreInput] = useState('');
+  const [overrideReason, setOverrideReason] = useState<OverrideReason>('correction');
+  const [overrideComment, setOverrideComment] = useState('');
+  const [overrideStatus, setOverrideStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [overridePending, setOverridePending] = useState(false);
+
+  const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+
+  const reasonLabels: Record<OverrideReason, string> = {
+    correction: 'Correction',
+    omission: 'Omission',
+    probleme: 'Problème technique'
+  };
+
+  const currentScore = React.useMemo(() => {
+    if (!selectedJudge || !selectedSurfer || !selectedWave) return undefined;
+    return scores
+      .filter(score =>
+        score.heat_id === heatId &&
+        score.judge_id === selectedJudge &&
+        score.surfer === selectedSurfer &&
+        score.wave_number === Number(selectedWave)
+      )
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+  }, [scores, heatId, selectedJudge, selectedSurfer, selectedWave]);
+
+  const handleOverrideSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedJudge || !selectedSurfer || !selectedWave) {
+      setOverrideStatus({ type: 'error', message: 'Veuillez sélectionner juge, surfeur et vague.' });
+      return;
+    }
+
+    const validation = validateScore(scoreInput);
+    if (!validation.isValid || validation.value === undefined) {
+      setOverrideStatus({ type: 'error', message: validation.error || 'Score invalide.' });
+      return;
+    }
+
+    setOverridePending(true);
+    try {
+      const result = await onScoreOverride({
+        judgeId: selectedJudge,
+        judgeName: config.judgeNames[selectedJudge] || selectedJudge,
+        surfer: selectedSurfer,
+        waveNumber: Number(selectedWave),
+        newScore: validation.value,
+        reason: overrideReason,
+        comment: overrideComment.trim() || undefined
+      });
+
+      if (result) {
+        setOverrideStatus({
+          type: 'success',
+          message: `Note mise à jour à ${validation.value.toFixed(2)} (${reasonLabels[result.reason]})`
+        });
+      } else {
+        setOverrideStatus({ type: 'success', message: 'Note mise à jour.' });
+      }
+    } catch (error) {
+      console.error('❌ Override erreur:', error);
+      setOverrideStatus({ type: 'error', message: 'Impossible d’enregistrer la correction.' });
+    } finally {
+      setOverridePending(false);
+    }
+  };
 
   // Évaluer le statut de la base de données
   React.useEffect(() => {
@@ -742,3 +826,151 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 };
 
 export default AdminInterface;
+      {/* Override Chef Juge */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center"><ClipboardCheck className="w-5 h-5 mr-2 text-amber-500" /> Correction de notes</h2>
+          {!configSaved && <span className="text-sm text-red-600">Configuration non sauvegardée</span>}
+        </div>
+
+        <form className="space-y-4" onSubmit={handleOverrideSubmit}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Juge</label>
+              <select
+                value={selectedJudge}
+                onChange={(e) => { setSelectedJudge(e.target.value); setOverrideStatus(null); }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                required
+              >
+                <option value="">Sélectionner un juge</option>
+                {config.judges.map(judgeId => (
+                  <option key={judgeId} value={judgeId}>
+                    {config.judgeNames[judgeId] || judgeId}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Surfeur</label>
+              <select
+                value={selectedSurfer}
+                onChange={(e) => { setSelectedSurfer(e.target.value); setOverrideStatus(null); }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                required
+              >
+                <option value="">Sélectionner un surfeur</option>
+                {config.surfers.map(surfer => (
+                  <option key={surfer} value={surfer}>{surfer}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vague</label>
+              <select
+                value={selectedWave}
+                onChange={(e) => { setSelectedWave(e.target.value ? Number(e.target.value) : ''); setOverrideStatus(null); }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                required
+              >
+                <option value="">Sélectionner une vague</option>
+                {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => (
+                  <option key={wave} value={wave}>Vague {wave}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nouvelle note</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={scoreInput}
+                onChange={(e) => { setScoreInput(e.target.value); setOverrideStatus(null); }}
+                placeholder="0.00"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                required
+              />
+            </div>
+          </div>
+
+          {currentScore && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 text-amber-500" />
+              <span>
+                Note actuelle : <strong>{currentScore.score.toFixed(2)}</strong> donnée par {currentScore.judge_name} pour {currentScore.surfer} (Vague {currentScore.wave_number})
+              </span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Motif</label>
+              <select
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value as OverrideReason)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              >
+                {(Object.keys(reasonLabels) as OverrideReason[]).map(reason => (
+                  <option key={reason} value={reason}>{reasonLabels[reason]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+              <input
+                type="text"
+                value={overrideComment}
+                onChange={(e) => setOverrideComment(e.target.value)}
+                placeholder="Optionnel"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              />
+            </div>
+          </div>
+
+          {overrideStatus && (
+            <div className={`rounded-lg px-4 py-3 text-sm ${overrideStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+              {overrideStatus.message}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={overridePending || !configSaved}
+            className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'} ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            {overridePending ? 'Application…' : 'Appliquer la correction'}
+          </button>
+        </form>
+      </div>
+
+      {/* Historique des corrections */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-3">Historique des overrides</h3>
+        {overrideLogs.length === 0 ? (
+          <p className="text-sm text-gray-500">Aucune correction enregistrée pour ce heat.</p>
+        ) : (
+          <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+            {overrideLogs.map(log => (
+              <div key={log.id} className="border border-gray-200 rounded-lg px-4 py-3 text-sm bg-gray-50">
+                <div className="flex justify-between">
+                  <span className="font-medium text-gray-900">{config.judgeNames[log.judge_id] || log.judge_name}</span>
+                  <span className="text-xs text-gray-500">{new Date(log.created_at).toLocaleTimeString('fr-FR')}</span>
+                </div>
+                <div className="mt-1 text-gray-700">
+                  {log.surfer} · Vague {log.wave_number}
+                </div>
+                <div className="mt-1 text-gray-700">
+                  <span className="font-semibold">{reasonLabels[log.reason]}</span> — {log.previous_score !== null ? `ancien ${log.previous_score.toFixed(2)} → ` : ''}{log.new_score.toFixed(2)}
+                </div>
+                {log.comment && (
+                  <div className="mt-1 text-gray-500 italic">{log.comment}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>

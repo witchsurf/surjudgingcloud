@@ -8,7 +8,7 @@ import SyncStatus from './components/SyncStatus';
 import { useSupabaseSync } from './hooks/useSupabaseSync';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
 import { DEFAULT_TIMER_DURATION } from './utils/constants';
-import type { AppConfig, Score, HeatTimer } from './types';
+import type { AppConfig, Score, HeatTimer, OverrideReason, ScoreOverrideLog } from './types';
 
 const STORAGE_KEYS = {
   config: 'surfJudgingConfig',
@@ -26,6 +26,16 @@ type TimerSnapshot = {
   startTime: string | null;
   duration: number;
 } | null;
+
+interface OverrideRequest {
+  judgeId: string;
+  judgeName: string;
+  surfer: string;
+  waveNumber: number;
+  newScore: number;
+  reason: OverrideReason;
+  comment?: string;
+}
 
 const INITIAL_CONFIG: AppConfig = {
   competition: '',
@@ -247,6 +257,7 @@ function App() {
   const [scores, setScores] = useState<Score[]>([]);
   const [currentJudge, setCurrentJudge] = useState<{ id: string; name: string } | null>(null);
   const [judgeWorkCount, setJudgeWorkCount] = useState<Record<string, number>>({});
+  const [overrideLogs, setOverrideLogs] = useState<ScoreOverrideLog[]>([]);
   const [viewLock, setViewLock] = useState<'judge' | 'display' | null>(null);
   
   // Timer state
@@ -263,7 +274,9 @@ function App() {
     saveHeatConfig,
     saveTimerState,
     loadHeatConfig,
-    loadTimerState
+    loadTimerState,
+    overrideScore,
+    loadOverrideLogs
   } = useSupabaseSync();
 
   const {
@@ -466,6 +479,30 @@ function App() {
     return unsubscribe;
   }, [configSaved, config.competition, config.division, config.round, config.heatId, subscribeToHeat]);
 
+  // Charger les logs d'override pour le heat courant
+  useEffect(() => {
+    if (!configSaved || !config.competition) {
+      setOverrideLogs([]);
+      return;
+    }
+
+    let cancelled = false;
+    const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+
+    const loadLogs = async () => {
+      const logs = await loadOverrideLogs(heatId);
+      if (!cancelled) {
+        setOverrideLogs(logs);
+      }
+    };
+
+    loadLogs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [configSaved, config.competition, config.division, config.round, config.heatId, loadOverrideLogs]);
+
   // Polling de secours pour récupérer config/timer depuis Supabase (fiabilité mobile)
   useEffect(() => {
     if (!configSaved || !config.competition || !syncStatus.supabaseEnabled) return;
@@ -559,6 +596,67 @@ function App() {
       return newScore;
     } catch (error) {
       console.error('❌ Erreur sauvegarde score:', error);
+      return undefined;
+    }
+  };
+
+  const handleScoreOverride = async (request: OverrideRequest): Promise<ScoreOverrideLog | undefined> => {
+    if (!configSaved || !config.competition) {
+      console.warn('⚠️ Override ignoré: configuration non sauvegardée');
+      return undefined;
+    }
+
+    const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+
+    try {
+      const { updatedScore, log } = await overrideScore({
+        heatId,
+        competition: config.competition,
+        division: config.division,
+        round: config.round,
+        judgeId: request.judgeId,
+        judgeName: request.judgeName,
+        surfer: request.surfer,
+        waveNumber: request.waveNumber,
+        newScore: request.newScore,
+        reason: request.reason,
+        comment: request.comment
+      });
+
+      setScores(prev => {
+        const matchIndex = prev.findIndex(
+          score =>
+            score.heat_id === heatId &&
+            score.judge_id === request.judgeId &&
+            score.wave_number === request.waveNumber &&
+            score.surfer === request.surfer
+        );
+        if (matchIndex >= 0) {
+          const clone = [...prev];
+          clone[matchIndex] = updatedScore;
+          return clone;
+        }
+        return [...prev, updatedScore];
+      });
+
+      setOverrideLogs(prev => {
+        const merged = [log, ...prev.filter(entry => entry.id !== log.id)];
+        return merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      });
+
+      window.dispatchEvent(new CustomEvent('newScoreRealtime', { detail: updatedScore }));
+
+      console.log('✅ Override appliqué:', {
+        judge: request.judgeId,
+        surfer: request.surfer,
+        wave: request.waveNumber,
+        newScore: request.newScore,
+        reason: request.reason
+      });
+
+      return log;
+    } catch (error) {
+      console.error('❌ Erreur override score:', error);
       return undefined;
     }
   };
@@ -704,6 +802,9 @@ function App() {
             onResetAllData={handleResetAllData}
             onCloseHeat={handleCloseHeat}
             judgeWorkCount={judgeWorkCount}
+            scores={scores}
+            overrideLogs={overrideLogs}
+            onScoreOverride={handleScoreOverride}
             onRealtimeTimerStart={publishTimerStart}
             onRealtimeTimerPause={publishTimerPause}
             onRealtimeTimerReset={publishTimerReset}
