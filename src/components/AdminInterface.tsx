@@ -821,15 +821,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
         </div>
       )}
-    </div>
-  );
-};
 
-export default AdminInterface;
       {/* Override Chef Juge */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center"><ClipboardCheck className="w-5 h-5 mr-2 text-amber-500" /> Correction de notes</h2>
+          <h2 className="text-xl font-bold text-gray-900 flex items-center">
+            <ClipboardCheck className="w-5 h-5 mr-2 text-amber-500" /> Correction de notes
+          </h2>
           {!configSaved && <span className="text-sm text-red-600">Configuration non sauvegardée</span>}
         </div>
 
@@ -974,3 +972,8 @@ export default AdminInterface;
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+export default AdminInterface;

@@ -3,6 +3,11 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { Score, Heat, ScoreOverrideLog, OverrideReason } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
 
+function extractHeatNumber(heatId: string): number | null {
+  const match = /_H(\d+)$/.exec(heatId);
+  return match ? Number(match[1]) : null;
+}
+
 interface SyncStatus {
   isOnline: boolean;
   supabaseEnabled: boolean;
@@ -21,27 +26,6 @@ export function useSupabaseSync() {
     pendingScores: 0,
     syncError: null
   });
-
-  // Détecter les changements de connexion
-  useEffect(() => {
-    const handleOnline = () => {
-      setSyncStatus(prev => ({ ...prev, isOnline: true, supabaseEnabled, syncError: null }));
-      syncPendingScores();
-      syncOverrideLogs();
-    };
-
-    const handleOffline = () => {
-      setSyncStatus(prev => ({ ...prev, isOnline: false }));
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [supabaseEnabled, syncPendingScores, syncOverrideLogs]);
 
   const updatePendingCount = useCallback((scores: Score[]) => {
     const pending = scores.filter(score => !score.synced).length;
@@ -76,6 +60,54 @@ export function useSupabaseSync() {
       console.error('❌ Erreur écriture override logs locaux:', error);
     }
   }, []);
+
+  const ensureHeatRecord = useCallback(async (
+    heatId: string,
+    competition: string,
+    division: string,
+    round: number
+  ) => {
+    if (!navigator.onLine || !supabaseEnabled || !isSupabaseConfigured()) {
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase!
+        .from('heats')
+        .select('id')
+        .eq('id', heatId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (data) {
+        return;
+      }
+
+      const heatNumber = extractHeatNumber(heatId) ?? 1;
+      const payload: Heat = {
+        id: heatId,
+        competition,
+        division,
+        round,
+        heat_number: heatNumber,
+        status: 'open',
+        created_at: new Date().toISOString()
+      };
+
+      const { error: insertError } = await supabase!
+        .from('heats')
+        .insert(payload);
+
+      if (insertError && insertError.code !== '23505') {
+        throw insertError;
+      }
+    } catch (error) {
+      console.error('❌ Erreur ensureHeatRecord:', error);
+    }
+  }, [supabaseEnabled]);
 
   const markAllScoresSynced = useCallback(() => {
     const localScores = localStorage.getItem('surfJudgingScores');
@@ -148,6 +180,23 @@ export function useSupabaseSync() {
 
       if (pendingScores.length === 0) return;
 
+      const uniqueHeatMeta = Array.from(
+        new Map(
+          pendingScores.map(score => [score.heat_id, {
+            heatId: score.heat_id,
+            competition: score.competition,
+            division: score.division,
+            round: score.round
+          }])
+        ).values()
+      );
+
+      await Promise.all(
+        uniqueHeatMeta.map(meta =>
+          ensureHeatRecord(meta.heatId, meta.competition, meta.division, meta.round)
+        )
+      );
+
       console.log(`🔄 Synchronisation de ${pendingScores.length} scores...`);
 
       // Envoyer les scores à Supabase
@@ -166,7 +215,7 @@ export function useSupabaseSync() {
           score: score.score,
           timestamp: score.timestamp,
           created_at: score.created_at || score.timestamp
-        })));
+        })), { onConflict: 'id' });
 
       if (error) {
         throw error;
@@ -195,7 +244,28 @@ export function useSupabaseSync() {
         syncError: error instanceof Error ? error.message : 'Erreur inconnue'
       }));
     }
-  }, []);
+  }, [supabaseEnabled, markAllScoresSynced, persistScores, ensureHeatRecord]);
+
+  // Détecter les changements de connexion
+  useEffect(() => {
+    const handleOnline = () => {
+      setSyncStatus(prev => ({ ...prev, isOnline: true, supabaseEnabled, syncError: null }));
+      syncPendingScores();
+      syncOverrideLogs();
+    };
+
+    const handleOffline = () => {
+      setSyncStatus(prev => ({ ...prev, isOnline: false }));
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [supabaseEnabled, syncPendingScores, syncOverrideLogs]);
 
   // Sauvegarder un score (local + sync si en ligne)
   const saveScore = useCallback(async (scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp' | 'synced'>, heatId: string) => {
@@ -216,9 +286,11 @@ export function useSupabaseSync() {
     // Essayer de synchroniser immédiatement si en ligne
     if (navigator.onLine && supabaseEnabled) {
       try {
+        await ensureHeatRecord(newScore.heat_id, newScore.competition, newScore.division, newScore.round);
+
         const { error } = await supabase!
           .from('scores')
-          .insert({
+          .upsert({
             id: newScore.id,
             heat_id: newScore.heat_id,
             competition: newScore.competition,
@@ -231,7 +303,7 @@ export function useSupabaseSync() {
             score: newScore.score,
             timestamp: newScore.timestamp,
             created_at: newScore.created_at
-          });
+          }, { onConflict: 'id' });
 
         if (!error) {
           // Marquer comme synchronisé
@@ -255,7 +327,7 @@ export function useSupabaseSync() {
     }
 
     return newScore;
-  }, [persistScores, supabaseEnabled]);
+  }, [persistScores, supabaseEnabled, ensureHeatRecord]);
 
   interface ScoreOverrideInput {
     heatId: string;
@@ -348,6 +420,8 @@ export function useSupabaseSync() {
 
     if (navigator.onLine && supabaseEnabled) {
       try {
+        await ensureHeatRecord(heatId, competition, division, round);
+
         const scorePayload = {
           id: scoreId,
           heat_id: heatId,
@@ -405,7 +479,7 @@ export function useSupabaseSync() {
       previousScore: existingScore,
       log: logBase as ScoreOverrideLog
     };
-  }, [persistScores, supabaseEnabled, readLocalOverrideLogs, writeLocalOverrideLogs]);
+  }, [persistScores, supabaseEnabled, readLocalOverrideLogs, writeLocalOverrideLogs, ensureHeatRecord]);
 
   const loadOverrideLogs = useCallback(async (heatId: string): Promise<ScoreOverrideLog[]> => {
     const localLogs = readLocalOverrideLogs().filter(log => log.heat_id === heatId);
