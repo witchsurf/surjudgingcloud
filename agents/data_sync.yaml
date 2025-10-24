@@ -1,0 +1,9 @@
+name: DataSyncAgent
+role: Handle offline-first data collection and synchronization with backend
+inputs:
+  - Local storage
+  - API endpoints
+outputs:
+  - Synced data across devices and servers
+constraints:
+  - Must tolerate unstable network conditions
