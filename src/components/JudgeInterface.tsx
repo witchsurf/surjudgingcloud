@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { User, Waves, Clock, AlertCircle, CheckCircle, Lock, CreditCard as Edit3 } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { User, Waves, Lock, CreditCard as Edit3 } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
-import type { AppConfig, Score, HeatTimer } from '../types';
+import type { AppConfig, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
 
 interface JudgeInterfaceProps {
-  config: AppConfig;
-  judgeId: string;
-  onScoreSubmit: (scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp'>) => Promise<Score | void>;
-  configSaved: boolean;
-  timer: HeatTimer;
+  config?: AppConfig;
+  judgeId?: string;
+  onScoreSubmit?: (scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp'>) => Promise<Score | void>;
+  configSaved?: boolean;
+  timer?: HeatTimerType;
+  isChiefJudge?: boolean;
 }
 
 interface ScoreInputState {
@@ -18,7 +19,28 @@ interface ScoreInputState {
   value: string;
 }
 
-function JudgeInterface({ config, judgeId, onScoreSubmit, configSaved, timer }: JudgeInterfaceProps) {
+function JudgeInterface({ 
+  config = {
+    competition: '',
+    division: '',
+    round: 1,
+    heatId: 1,
+    waves: 10,
+    surfers: [],
+    judges: [],
+    judgeNames: {},
+     tournamentType: 'elimination',
+     totalSurfers: 32,
+     surfersPerHeat: 4,
+     totalHeats: 8,
+     totalRounds: 4
+  },
+  judgeId = 'CHIEF',
+  onScoreSubmit = async () => {},
+  configSaved = false,
+  timer = { startTime: null, duration: 20, isRunning: false },
+  isChiefJudge = false
+}: JudgeInterfaceProps) {
   const [submittedScores, setSubmittedScores] = useState<Score[]>([]);
   const [activeInput, setActiveInput] = useState<ScoreInputState | null>(null);
   const [inputValue, setInputValue] = useState('');
@@ -187,14 +209,21 @@ function JudgeInterface({ config, judgeId, onScoreSubmit, configSaved, timer }: 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       {/* HEADER JUGE */}
-      <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl p-6 shadow-lg">
+      <div className={`bg-gradient-to-r ${
+        isChiefJudge 
+          ? 'from-purple-600 to-indigo-600'
+          : 'from-green-600 to-emerald-600'
+      } text-white rounded-xl p-6 shadow-lg`}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Interface Juge</h1>
+            <h1 className="text-3xl font-bold mb-2">
+              {isChiefJudge ? 'Interface Chef Juge' : 'Interface Juge'}
+            </h1>
             <div className="flex items-center space-x-4 text-green-100">
               <span className="flex items-center">
                 <User className="w-4 h-4 mr-1" />
                 {config.judgeNames[judgeId] || judgeId}
+                {isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-purple-500 rounded-full text-xs">Chef Juge</span>}
               </span>
               <span>{config.competition}</span>
               <span>{config.division}</span>
@@ -212,11 +241,32 @@ function JudgeInterface({ config, judgeId, onScoreSubmit, configSaved, timer }: 
           onPause={() => {}}
           onReset={() => {}}
           onDurationChange={() => {}}
-          showControls={false}
+          showControls={isChiefJudge}
           size="medium"
           configSaved={configSaved}
         />
       </div>
+
+      {/* CONTRÔLES CHEF JUGE */}
+      {isChiefJudge && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-4">
+          <h3 className="text-lg font-semibold text-indigo-900 mb-4">Contrôles Chef Juge</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+              Clôturer la série
+            </button>
+            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+              Exporter les scores
+            </button>
+            <button className="px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 transition-colors">
+              Scores prioritaires
+            </button>
+          </div>
+          <div className="mt-4 text-sm text-indigo-700">
+            <p>👉 En tant que chef juge, vous pouvez contrôler le timer et gérer le déroulement de la série</p>
+          </div>
+        </div>
+      )}
 
       {/* STATUT TIMER */}
       {!timerActive && (

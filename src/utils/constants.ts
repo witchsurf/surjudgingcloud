@@ -13,7 +13,7 @@ export const DIVISIONS = [
   'BENJAMIN FEMMES'
 ];
 
-export const SURFER_COLORS = {
+export const SURFER_COLORS: { [key: string]: string } = {
   'ROUGE': '#ef4444',
   'BLANC': '#f8fafc',
   'JAUNE': '#eab308',

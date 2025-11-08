@@ -56,14 +56,19 @@ export interface ScoreOverrideLog {
 }
 
 export interface Heat {
-  id: string;
-  competition: string;
-  division: string;
+  id?: string;
+  competition?: string;
+  division?: string;
   round: number;
   heat_number: number;
-  status: 'open' | 'closed';
-  created_at: string;
+  status?: 'open' | 'closed';
+  created_at?: string;
   closed_at?: string;
+  surfers: Array<{
+    color: string;
+    name: string;
+    country: string;
+  }>;
 }
 
 export interface SurferScore {

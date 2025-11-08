@@ -1,12 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Settings, User, Monitor, Waves, AlertTriangle } from 'lucide-react';
+
+// Components
 import AdminInterface from './components/AdminInterface';
 import JudgeInterface from './components/JudgeInterface';
 import JudgeLogin from './components/JudgeLogin';
 import ScoreDisplay from './components/ScoreDisplay';
 import SyncStatus from './components/SyncStatus';
+import LandingPage from './components/LandingPage';
+import CreateEvent from './components/CreateEvent';
+import PaymentPage from './components/PaymentPage';
+import ParticipantsPage from './components/ParticipantsPage';
+import GenerateHeatsPage from './components/GenerateHeatsPage';
+
+// Hooks
 import { useSupabaseSync } from './hooks/useSupabaseSync';
 import { useRealtimeSync } from './hooks/useRealtimeSync';
+
+// Constants & Types
 import { DEFAULT_TIMER_DURATION } from './utils/constants';
 import type { AppConfig, Score, HeatTimer, OverrideReason, ScoreOverrideLog } from './types';
 
@@ -248,14 +260,15 @@ function timersAreEqual(a: HeatTimer, b: HeatTimer): boolean {
 }
 
 
+
+
 function App() {
-  // États principaux
-  const [currentView, setCurrentView] = useState<'admin' | 'judge' | 'display'>('admin');
-  const [config, setConfig] = useState<AppConfig>({ ...INITIAL_CONFIG });
-  
+  // State declarations
+  const [config, setConfig] = useState<AppConfig>(INITIAL_CONFIG);
   const [configSaved, setConfigSaved] = useState(false);
-  const [scores, setScores] = useState<Score[]>([]);
   const [currentJudge, setCurrentJudge] = useState<{ id: string; name: string } | null>(null);
+  const [currentView, setCurrentView] = useState<'admin' | 'judge' | 'display'>('admin');
+  const [scores, setScores] = useState<Score[]>([]);
   const [judgeWorkCount, setJudgeWorkCount] = useState<Record<string, number>>({});
   const [overrideLogs, setOverrideLogs] = useState<ScoreOverrideLog[]>([]);
   const [viewLock, setViewLock] = useState<'judge' | 'display' | null>(null);
@@ -269,12 +282,9 @@ function App() {
     saveScore, 
     createHeat, 
     updateHeatStatus,
-    loadScoresFromDatabase,
     syncPendingScores,
     saveHeatConfig,
     saveTimerState,
-    loadHeatConfig,
-    loadTimerState,
     overrideScore,
     loadOverrideLogs
   } = useSupabaseSync();
@@ -563,7 +573,12 @@ function App() {
           division: config.division,
           round: config.round,
           heat_number: config.heatId,
-          status: 'open'
+          status: 'open',
+          surfers: config.surfers.map(surfer => ({
+            color: surfer,
+            name: surfer,
+            country: 'SENEGAL'
+          }))
         });
 
         // Sauvegarder la config du heat
@@ -746,7 +761,12 @@ function App() {
         division: newConfig.division,
         round: newConfig.round,
         heat_number: newConfig.heatId,
-        status: 'open'
+        status: 'open',
+        surfers: newConfig.surfers.map(surfer => ({
+          color: surfer,
+          name: surfer,
+          country: 'SENEGAL'
+        }))
       });
 
       await saveHeatConfig(nextHeatKey, newConfig);
@@ -863,95 +883,112 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* NAVIGATION */}
-      <nav className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <Waves className="w-8 h-8 text-blue-600" />
-              <h1 className="text-xl font-bold text-gray-900">Surf Judging System</h1>
-            </div>
+    <Router>
+      <div className="min-h-screen bg-gray-50">
+        {/* Main Routes */}
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/create-event" element={<CreateEvent />} />
+          <Route path="/payment" element={<PaymentPage />} />
+          <Route path="/participants" element={<ParticipantsPage />} />
+          <Route path="/generate-heats" element={<GenerateHeatsPage />} />
+          <Route
+            path="/chief-judge"
+            element={
+              <div>
+                {/* NAVIGATION */}
+                <nav className="bg-white border-b border-gray-200 shadow-sm">
+                  <div className="max-w-7xl mx-auto px-4">
+                    <div className="flex justify-between items-center h-16">
+                      <div className="flex items-center space-x-3">
+                        <Waves className="w-8 h-8 text-blue-600" />
+                        <h1 className="text-xl font-bold text-gray-900">Surf Judging System</h1>
+                      </div>
 
-            <div className="flex space-x-1">
-              {[
-                { key: 'admin', label: 'Administration', view: 'admin' as const, icon: Settings },
-                { key: 'judge', label: 'Interface Juge', view: 'judge' as const, icon: User },
-                { key: 'display', label: 'Affichage Public', view: 'display' as const, icon: Monitor }
-              ]
-                .filter(item => !viewLock || item.view === viewLock)
-                .map(item => {
-                  const Icon = item.icon;
-                  const isActive = (viewLock ?? currentView) === item.view;
-                  const isDisabled = Boolean(viewLock && item.view !== viewLock);
-                  const handleClick = () => {
-                    if (isDisabled) return;
-                    if (item.view === 'judge') {
-                      openTabInNewWindow('judge', currentJudge?.id ?? undefined);
-                    } else {
-                      openTabInNewWindow(item.view);
-                    }
-                  };
+                      <div className="flex space-x-1">
+                        {[
+                          { key: 'admin', label: 'Administration', view: 'admin' as const, icon: Settings },
+                          { key: 'judge', label: 'Interface Juge', view: 'judge' as const, icon: User },
+                          { key: 'display', label: 'Affichage Public', view: 'display' as const, icon: Monitor }
+                        ]
+                          .map(item => {
+                            const Icon = item.icon;
+                            const isActive = (viewLock ?? currentView) === item.view;
+                            const isDisabled = Boolean(viewLock && item.view !== viewLock);
+                            const handleClick = () => {
+                              if (isDisabled) return;
+                              if (item.view === 'judge') {
+                                openTabInNewWindow('judge', currentJudge?.id ?? undefined);
+                              } else {
+                                openTabInNewWindow(item.view);
+                              }
+                            };
 
-                  const activeClass = item.view === 'admin'
-                    ? 'bg-blue-600 text-white'
-                    : item.view === 'judge'
-                      ? 'bg-green-600 text-white'
-                      : 'bg-purple-600 text-white';
+                            const activeClass = item.view === 'admin'
+                              ? 'bg-blue-600 text-white'
+                              : item.view === 'judge'
+                                ? 'bg-green-600 text-white'
+                                : 'bg-purple-600 text-white';
 
-                  return (
-                    <button
-                      key={item.key}
-                      onClick={handleClick}
-                      disabled={isDisabled}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-                        isActive
-                          ? activeClass
-                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                      } ${isDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-        </div>
-      </nav>
+                            return (
+                              <button
+                                key={item.key}
+                                onClick={handleClick}
+                                disabled={isDisabled}
+                                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                                  isActive
+                                    ? activeClass
+                                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                                } ${isDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                              >
+                                <Icon className="w-4 h-4" />
+                                <span>{item.label}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </div>
+                </nav>
 
-      {/* STATUT DE SYNCHRONISATION */}
-      <div className="max-w-7xl mx-auto px-4 py-2">
-        <SyncStatus
-          isOnline={syncStatus.isOnline}
-          supabaseEnabled={syncStatus.supabaseEnabled}
-          lastSync={syncStatus.lastSync}
-          pendingScores={syncStatus.pendingScores}
-          syncError={syncStatus.syncError}
-          onManualSync={syncPendingScores}
-          realtimeConnected={realtimeConnected}
-          realtimeLastUpdate={realtimeLastUpdate}
-        />
+                {/* STATUT DE SYNCHRONISATION */}
+                <div className="max-w-7xl mx-auto px-4 py-2">
+                  <SyncStatus
+                    isOnline={syncStatus.isOnline}
+                    supabaseEnabled={syncStatus.supabaseEnabled}
+                    lastSync={syncStatus.lastSync}
+                    pendingScores={syncStatus.pendingScores}
+                    syncError={syncStatus.syncError}
+                    onManualSync={syncPendingScores}
+                    realtimeConnected={realtimeConnected}
+                    realtimeLastUpdate={realtimeLastUpdate}
+                  />
+                </div>
+
+                {/* CONTENU PRINCIPAL */}
+                <main className="max-w-7xl mx-auto px-4 py-6">
+                  {renderCurrentView()}
+                </main>
+
+                {/* ERREURS TEMPS RÉEL */}
+                {realtimeError && (
+                  <div className="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded max-w-md">
+                    <div className="flex items-center">
+                      <AlertTriangle className="w-5 h-5 mr-2" />
+                      <div>
+                        <strong>Erreur temps réel:</strong>
+                        <p className="text-sm">{realtimeError}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            }
+          />
+          <Route path="/judging" element={renderCurrentView()} />
+        </Routes>
       </div>
-
-      {/* CONTENU PRINCIPAL */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        {renderCurrentView()}
-      </main>
-
-      {/* ERREURS TEMPS RÉEL */}
-      {realtimeError && (
-        <div className="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded max-w-md">
-          <div className="flex items-center">
-            <AlertTriangle className="w-5 h-5 mr-2" />
-            <div>
-              <strong>Erreur temps réel:</strong>
-              <p className="text-sm">{realtimeError}</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </Router>
   );
 }
 

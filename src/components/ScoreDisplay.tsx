@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Trophy, Medal, Award, Waves, Clock, Users, TrendingUp, Eye, Target } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Trophy, Medal, Award, Waves, Users, TrendingUp, Eye, User } from 'lucide-react';
 import { calculateSurferStats } from '../utils/scoring';
 import { SURFER_COLORS } from '../utils/constants';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
@@ -170,39 +170,14 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
     setLastUpdate(new Date());
   }, [realTimeScores, config, configSaved]);
 
-  // Calculer le score nécessaire pour que le 2ème devienne 1er
-  const calculateNeededScore = () => {
-    if (surferStats.length < 2) return null;
-    
-    const first = surferStats.find(s => s.rank === 1);
-    const second = surferStats.find(s => s.rank === 2);
-    
-    if (!first || !second) return null;
-    
-    // Trouver la meilleure note actuelle du 2ème
-    const secondBestScore = second.waves.filter(w => w.isComplete).length > 0 
-      ? Math.max(...second.waves.filter(w => w.isComplete).map(w => w.score))
-      : 0;
-    
-    // Calculer le score nécessaire : total du 1er - meilleure note du 2ème + 0.1
-    const neededScore = first.bestTwo - secondBestScore + 0.1;
-    
-    return {
-      surfer: second.surfer,
-      currentBest: secondBestScore,
-      neededScore: Math.min(neededScore, 10), // Max 10
-      difference: neededScore
-    };
-  };
 
-  const neededScoreInfo = calculateNeededScore();
 
   // Calculer les scores nécessaires pour tous les surfeurs
   const calculateAllNeededScores = () => {
     const results: Record<string, { neededScore: number; targetPosition: number }> = {};
     
     // Pour chaque surfeur, calculer ce qu'il faut pour se qualifier (dépasser le 2ème)
-    surferStats.forEach((surfer, index) => {
+      surferStats.forEach(surfer => {
       if (surfer.rank > 2) {
         // Pour les 3ème et 4ème, ils doivent dépasser le 2ème pour se qualifier
         const targetSurfer = surferStats.find(s => s.rank === 2);
@@ -213,7 +188,7 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
             : 0;
           
           // Score nécessaire = total du 2ème - meilleure note actuelle + 0.01
-          const neededScore = targetSurfer.bestTwo - currentBestScore + 0.01;
+          const neededScore = ((targetSurfer?.bestTwo ?? 0) - currentBestScore + 0.01);
           
           results[surfer.surfer] = {
             neededScore: Math.min(neededScore, 10), // Max 10
@@ -228,7 +203,7 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
             ? Math.max(...surfer.waves.filter(w => w.isComplete).map(w => w.score))
             : 0;
           
-          const neededScore = targetSurfer.bestTwo - currentBestScore + 0.01;
+          const neededScore = ((targetSurfer?.bestTwo ?? 0) - currentBestScore + 0.01);
           
           results[surfer.surfer] = {
             neededScore: Math.min(neededScore, 10),
@@ -251,31 +226,176 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
     }
   };
 
-  const getRankColor = (rank: number) => {
-    switch (rank) {
-      case 1: return 'bg-gradient-to-r from-yellow-400 to-yellow-500 text-white';
-      case 2: return 'bg-gradient-to-r from-gray-300 to-gray-400 text-white';
-      case 3: return 'bg-gradient-to-r from-amber-500 to-amber-600 text-white';
-      default: return 'bg-white border border-gray-200';
-    }
+  const getRankColor = (surferStat: SurferStats) => {
+    // Utiliser les couleurs de lycra standards avec contraste adapté
+    const colors: { [key: string]: { bg: string; text: string } } = {
+      'ROUGE': { bg: 'bg-red-500', text: 'text-white' },
+      'BLEU': { bg: 'bg-blue-500', text: 'text-white' },
+      'BLANC': { bg: 'bg-slate-100', text: 'text-slate-900' },
+      'JAUNE': { bg: 'bg-yellow-400', text: 'text-slate-900' },
+      'NOIR': { bg: 'bg-gray-900', text: 'text-white' },
+    };
+
+    const surferColor = colors[surferStat.surfer] || { bg: 'bg-gray-200', text: 'text-gray-900' };
+    return `${surferColor.bg} ${surferColor.text}`;
   };
 
-  if (!configSaved) {
+
+  if (!config || !config.competition) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-8 text-center">
-          <Waves className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-blue-800 mb-2">En attente de configuration</h2>
-          <p className="text-blue-700">
-            L'affichage des scores sera disponible une fois la compétition configurée.
-          </p>
+      <div className="score-display max-w-6xl mx-auto p-6 text-center text-blue-800">
+        ⚙️ En attente de configuration valide...
+      </div>
+    );
+  }
+
+  // Show competition info even without scores
+  if (realTimeScores.length === 0) {
+    return (
+      <div className="score-display max-w-6xl mx-auto p-6 space-y-6">
+        {/* HEADER COMPÉTITION */}
+        <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl p-6 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">{config.competition}</h1>
+              <div className="flex items-center space-x-4 text-blue-100">
+                <span className="flex items-center">
+                  <Users className="w-4 h-4 mr-1" />
+                  {config.division}
+                </span>
+                <span>Round {config.round}</span>
+                <span>Heat {config.heatId}</span>
+              </div>
+            </div>
+            
+            <div className="text-right">
+              <div className="text-sm text-blue-100 mb-1">Dernière mise à jour</div>
+              <div className="font-mono">{lastUpdate.toLocaleTimeString('fr-FR')}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* TIMER */}
+        <div className="flex justify-center">
+          <HeatTimer
+            timer={timer}
+            onStart={() => {}}
+            onPause={() => {}}
+            onReset={() => {}}
+            onDurationChange={() => {}}
+            showControls={false}
+            size="large"
+            configSaved={configSaved}
+          />
+        </div>
+
+        {/* Empty State with Surfer List */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center">
+              <Trophy className="w-6 h-6 mr-2 text-yellow-500" />
+              Heat en cours
+            </h2>
+          </div>
+
+          <div className="p-6">
+            <div className="grid gap-4">
+              {config.surfers.map(surfer => (
+                <div key={surfer} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div
+                      className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
+                      style={{ backgroundColor: SURFER_COLORS[surfer] || '#CBD5E0' }}
+                    />
+                    <span className="font-medium">{surfer}</span>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-sm text-gray-500">
+                      En attente de scores...
+                    </div>
+                    {/* Judge Status Indicators */}
+                    <div className="flex space-x-1">
+                      {config.judges.map(judgeId => (
+                        <div
+                          key={judgeId}
+                          className="w-2 h-2 rounded-full bg-gray-200"
+                          title={`${config.judgeNames[judgeId] || judgeId}: En attente`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* JUDGE STATUS OVERVIEW */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center">
+              <Users className="w-6 h-6 mr-2 text-blue-500" />
+              État des Juges
+            </h2>
+          </div>
+
+          <div className="p-6">
+            <div className="grid gap-4">
+              {config.judges.map(judgeId => (
+                <div key={judgeId} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <User className="w-5 h-5 text-blue-500" />
+                    <span className="font-medium">{config.judgeNames[judgeId] || judgeId}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="px-3 py-1 rounded-full text-sm bg-yellow-100 text-yellow-800">
+                      En attente
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* STATISTIQUES */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Scores</p>
+                <p className="text-2xl font-bold text-gray-900">0</p>
+              </div>
+              <Waves className="w-8 h-8 text-blue-500" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Juges Actifs</p>
+                <p className="text-2xl font-bold text-gray-900">{config.judges.length}</p>
+              </div>
+              <Users className="w-8 h-8 text-green-500" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Surfeurs</p>
+                <p className="text-2xl font-bold text-gray-900">{config.surfers.length}</p>
+              </div>
+              <Trophy className="w-8 h-8 text-yellow-500" />
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div className="score-display max-w-6xl mx-auto p-6 space-y-6">
       {/* HEADER COMPÉTITION */}
       <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl p-6 shadow-lg">
         <div className="flex items-center justify-between">
@@ -324,12 +444,13 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
 
           <div className="divide-y divide-gray-200">
             {surferStats
-              .sort((a, b) => a.rank - b.rank)
-              .map((surferStat, index) => (
+              .filter(Boolean)
+              .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+              .map(surferStat => (
                 <div
                   key={surferStat.surfer}
-                  className={`p-6 transition-all duration-300 ${getRankColor(surferStat.rank)} ${
-                    index === 0 ? 'animate-pulse' : ''
+                  className={`p-6 transition-all duration-300 ${getRankColor(surferStat)} ${
+                    surferStat.rank === 1 ? 'animate-pulse' : ''
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -341,8 +462,14 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
                       
                       <div className="flex items-center space-x-3">
                         <div
-                          className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
-                          style={{ backgroundColor: surferStat.color }}
+                          className={`w-6 h-6 rounded-full border-2 border-white shadow-sm ${
+                            surferStat.surfer === 'ROUGE' ? 'bg-red-500' :
+                            surferStat.surfer === 'BLEU' ? 'bg-blue-500' :
+                            surferStat.surfer === 'JAUNE' ? 'bg-yellow-400' :
+                            surferStat.surfer === 'BLANC' ? 'bg-white' :
+                            surferStat.surfer === 'NOIR' ? 'bg-gray-900' :
+                            'bg-gray-200'
+                          }`}
                         />
                         <div>
                           <div className="text-xl font-bold">{surferStat.surfer}</div>
@@ -383,14 +510,19 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
                       <div className="text-right">
                         <div className={`text-3xl font-bold ${surferStat.rank <= 3 ? 'text-white' : 'text-gray-900'} flex items-center justify-end space-x-3`}>
                           <span>
-                            {surferStat.bestTwo.toFixed(2)}
+                            {(surferStat?.bestTwo ?? 0).toFixed(2)}
                           </span>
                           {/* Afficher WIN BY pour le 1er à côté */}
-                          {surferStat.rank === 1 && surferStats.length >= 2 && (
-                            <span className={`text-lg font-medium ${surferStat.rank <= 3 ? 'text-white/80' : 'text-green-600'}`}>
-                              WIN BY {(surferStat.bestTwo - surferStats.find(s => s.rank === 2)!.bestTwo).toFixed(2)}
-                            </span>
-                          )}
+                          {surferStat.rank === 1 && surferStats.length >= 2 && (() => {
+                            const second = surferStats.find(s => s.rank === 2);
+                            if (!second) return null;
+                            const diff = (surferStat?.bestTwo ?? 0) - (second?.bestTwo ?? 0);
+                            return (
+                              <span className={`text-lg font-medium ${surferStat.rank <= 3 ? 'text-white/80' : 'text-green-600'}`}>
+                                WIN BY {diff.toFixed(2)}
+                              </span>
+                            );
+                          })()}
                           {/* Afficher NEED pour tous les autres surfeurs */}
                           {allNeededScores[surferStat.surfer] && (
                             <span className={`text-lg font-medium ${surferStat.rank <= 3 ? 'text-white/80' : 'text-orange-600'}`}>
@@ -467,7 +599,8 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
             </thead>
             <tbody className="divide-y divide-gray-200">
               {surferStats
-                .sort((a, b) => a.rank - b.rank)
+                .filter(Boolean)
+                .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
                 .map((surferStat, index) => (
                   <tr key={surferStat.surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className="px-4 py-3">
@@ -488,26 +621,75 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
                         <td key={waveNum} className="px-3 py-3 text-center">
                           {wave && wave.score > 0 ? (
                             <div className="relative group">
-                              <span className={`inline-block px-2 py-1 rounded text-sm font-medium cursor-help ${
-                                wave.isComplete 
-                                  ? 'bg-blue-100 text-blue-800' 
-                                  : 'bg-orange-100 text-orange-800 border border-orange-300'
-                              }`}>
-                                {wave.score.toFixed(2)}
-                                {!wave.isComplete && (
-                                  <span className="ml-1 text-xs">*</span>
-                                )}
-                              </span>
+                              <div className="flex flex-col items-center space-y-1">
+                                <span className={`inline-block px-2 py-1 rounded text-sm font-medium cursor-help ${
+                                  wave.isComplete 
+                                    ? 'bg-blue-100 text-blue-800' 
+                                    : 'bg-orange-100 text-orange-800 border border-orange-300'
+                                }`}>
+                                  {wave.score.toFixed(2)}
+                                  {!wave.isComplete && (
+                                    <span className="ml-1 text-xs">*</span>
+                                  )}
+                                </span>
+                                <div className="flex items-center space-x-0.5 mt-1">
+                                  {config.judges.map(judgeId => {
+                                    const hasScored = wave.judgeScores[judgeId] !== undefined;
+                                    return (
+                                      <div
+                                        key={judgeId}
+                                        className={`w-2 h-2 rounded-full ${
+                                          hasScored 
+                                            ? 'bg-green-500' 
+                                            : 'bg-red-500'
+                                        }`}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                                
+                                {/* Judge score indicators */}
+                                <div className="flex space-x-0.5">
+                                  {config.judges.map(judgeId => {
+                                    const hasScored = wave.judgeScores[judgeId] !== undefined;
+                                    return (
+                                      <div
+                                        key={judgeId}
+                                        className={`w-1.5 h-1.5 rounded-full ${
+                                          hasScored 
+                                            ? 'bg-green-500' 
+                                            : 'bg-gray-300'
+                                        }`}
+                                        title={`${config.judgeNames[judgeId] || judgeId}: ${
+                                          hasScored 
+                                            ? `${wave.judgeScores[judgeId].toFixed(1)} points` 
+                                            : 'En attente'
+                                        }`}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                              </div>
                               
                               {/* Tooltip avec détail des scores par juge */}
                               <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 min-w-max">
-                                {Object.entries(wave.judgeScores)
-                                  .sort(([a], [b]) => a.localeCompare(b))
-                                  .map(([judgeId, score], index, array) => (
-                                    <span key={judgeId}>
-                                      {judgeId}={score.toFixed(1)}{index < array.length - 1 ? ', ' : ''}
-                                    </span>
-                                  ))}
+                                <div className="font-bold mb-1">Vague {wave.wave}</div>
+                                {config.judges.map(judgeId => {
+                                  const score = wave.judgeScores[judgeId];
+                                  return (
+                                    <div key={judgeId} className="flex justify-between space-x-4">
+                                      <span>{config.judgeNames[judgeId] || judgeId}:</span>
+                                      <span className={score !== undefined ? 'text-green-400' : 'text-gray-500'}>
+                                        {score !== undefined ? score.toFixed(1) : '—'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                                {!wave.isComplete && (
+                                  <div className="mt-1 pt-1 border-t border-gray-700 text-yellow-400 text-xs">
+                                    Score provisoire
+                                  </div>
+                                )}
                               </div>
                             </div>
                           ) : (
@@ -518,7 +700,7 @@ function ScoreDisplay({ config, scores, timer, configSaved }: ScoreDisplayProps)
                     })}
                     <td className="px-4 py-3 text-center bg-green-50">
                       <span className="font-bold text-green-900 text-lg">
-                        {surferStat.bestTwo.toFixed(2)}
+                        {(surferStat?.bestTwo ?? 0).toFixed(2)}
                       </span>
                     </td>
                   </tr>

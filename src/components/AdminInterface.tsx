@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Settings, Clock, Users, Waves, Download, RotateCcw, Trash2, Database, Wifi, WifiOff, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle } from 'lucide-react';
 import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason } from '../types';
@@ -72,6 +72,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [overrideComment, setOverrideComment] = useState('');
   const [overrideStatus, setOverrideStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [overridePending, setOverridePending] = useState(false);
+  const [availableDivisions, setAvailableDivisions] = useState<string[]>([]);
 
   const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
 
@@ -171,6 +172,60 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       window.removeEventListener('offline', handleOffline);
     };
   }, [configSaved]);
+
+  const syncDivisionsFromParticipants = useCallback(() => {
+    try {
+      const stored = localStorage.getItem('participants');
+      if (!stored) {
+        if (availableDivisions.length) setAvailableDivisions([]);
+        return;
+      }
+      const parsed = JSON.parse(stored);
+      if (!Array.isArray(parsed)) {
+        if (availableDivisions.length) setAvailableDivisions([]);
+        return;
+      }
+      const categories = Array.from(
+        new Set(
+          parsed
+            .map((p: any) => (p?.category || '').toString().trim())
+            .filter((cat: string) => cat.length > 0)
+        )
+      ).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+      const arraysEqual =
+        categories.length === availableDivisions.length &&
+        categories.every((cat, idx) => cat === availableDivisions[idx]);
+      if (!arraysEqual) {
+        setAvailableDivisions(categories);
+      }
+
+      const matchesCategory = (value: string) =>
+        categories.some(cat => cat.toLowerCase() === value.toLowerCase());
+
+      if (categories.length === 1 && !matchesCategory(config.division)) {
+        onConfigChange({ ...config, division: categories[0] });
+      } else if (categories.length > 1 && config.division && !matchesCategory(config.division)) {
+        onConfigChange({ ...config, division: '' });
+      }
+    } catch (error) {
+      console.warn('Impossible de lire les catégories participants:', error);
+      if (availableDivisions.length) setAvailableDivisions([]);
+    }
+  }, [availableDivisions, config, onConfigChange]);
+
+  useEffect(() => {
+    syncDivisionsFromParticipants();
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'participants') {
+        syncDivisionsFromParticipants();
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [syncDivisionsFromParticipants]);
 
   const handleConfigChange = (field: keyof AppConfig, value: any) => {
     onConfigChange({ ...config, [field]: value });
@@ -344,8 +399,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const generateJudgeLinks = () => {
-    // Toujours utiliser l'URL actuelle pour éviter les redirections
-    const baseUrl = `${window.location.origin}${window.location.pathname}`;
+    const baseUrl = `${window.location.origin}/judge`;
     
     console.log('🔗 Génération des liens avec baseUrl:', baseUrl);
     
@@ -489,7 +543,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">-- Sélectionner une division --</option>
-              {DIVISIONS.map(division => (
+              {(availableDivisions.length ? availableDivisions : DIVISIONS).map(division => (
                 <option key={division} value={division}>
                   {division}
                 </option>
