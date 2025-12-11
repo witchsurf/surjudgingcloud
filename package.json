@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "body-parser": "^2.2.1",
+    "express": "^5.2.1",
+    "stripe": "^20.0.0"
+  },
+  "scripts": {
+    "webhook": "node src/stripe-webhook.js"
+  }
+}

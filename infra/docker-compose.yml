@@ -1,0 +1,83 @@
+version: "3.9"
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: always
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.le.acme.tlschallenge=true"
+      - "--certificatesresolvers.le.acme.email=${SSL_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
+
+  surfjudging:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: surfjudging
+    restart: always
+    depends_on:
+      - traefik
+    environment:
+      NODE_ENV: production
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.surfjudging.entrypoints: websecure
+      traefik.http.routers.surfjudging.rule: "Host(`${DOMAIN_NAME}`)"
+      traefik.http.routers.surfjudging.tls.certresolver: le
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: always
+    depends_on:
+      - traefik
+    environment:
+      - N8N_HOST=automation.surfjudging.cloud
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://automation.surfjudging.cloud
+      - GENERIC_TIMEZONE=Europe/Paris
+
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - N8N_STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - OM_API_URL=${OM_API_URL}
+      - OM_API_KEY=${OM_API_KEY}
+      - WAVE_API_URL=${WAVE_API_URL}
+      - WAVE_API_KEY=${WAVE_API_KEY}
+      - PAYMENT_API_KEY=${PAYMENT_API_KEY}
+
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_PROXY_HOPS=1
+      - DB_SQLITE_POOL_SIZE=5
+      - N8N_RUNNERS_ENABLED=true
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_GIT_NODE_DISABLE_BARE_REPOS=true
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`automation.surfjudging.cloud`)"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      - "traefik.http.routers.n8n.tls=true"
+      - "traefik.http.routers.n8n.tls.certresolver=le"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:

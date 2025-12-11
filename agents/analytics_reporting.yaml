@@ -1,0 +1,10 @@
+name: AnalyticsReportingAgent
+role: Aggregate usage data and generate insights
+inputs:
+  - Logs
+  - User activity data
+outputs:
+  - Dashboards
+  - CSV/PDF reports
+constraints:
+  - Must anonymize sensitive user data

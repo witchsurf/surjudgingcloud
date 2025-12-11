@@ -1,0 +1,9 @@
+name: LocalizationAgent
+role: Manage translations and context-aware UI rendering
+inputs:
+  - Translation JSON/YAML files
+outputs:
+  - Localized app (French, Wolof, English)
+constraints:
+  - Must support low-bandwidth mode
+  - Must have graceful fallback for missing translations
