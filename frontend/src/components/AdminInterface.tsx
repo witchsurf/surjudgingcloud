@@ -10,7 +10,7 @@ import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportHeatResultsPDF } from '../utils/pdfExport';
 import type { RoundSpec, HeatSlotSpec } from '../utils/bracket';
-import { fetchCategoryHeats, fetchScoresForHeats, fetchEventIdByName } from '../api/supabaseClient';
+import { fetchCategoryHeats, fetchScoresForHeats, fetchEventIdByName, fetchOrderedHeatSequence } from '../api/supabaseClient';
 import { JudgeSelectorSection } from './JudgeSelectorSection';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -544,7 +544,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       if (eventId) {
-        const { fetchOrderedHeatSequence } = await import('../api/supabaseClient');
         const sequence = await fetchOrderedHeatSequence(eventId, config.division);
 
         if (sequence && sequence.length > 0) {
@@ -1079,7 +1078,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   try {
                     const eventId = await fetchEventIdByName(config.competition);
                     if (eventId) {
-                      const { fetchOrderedHeatSequence } = await import('../api/supabaseClient');
                       const seq = await fetchOrderedHeatSequence(eventId, config.division);
                       console.log('🔥 Heat Sequence:', seq);
                       alert(`Sequence Length: ${seq.length}\nSee console for details.`);
