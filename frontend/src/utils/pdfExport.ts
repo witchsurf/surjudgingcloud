@@ -155,53 +155,6 @@ export function exportBracketToPDF(eventName: string, category: string, rounds: 
   doc.save(`${slugify(`${eventName}-${category}`)}_bracket.pdf`);
 }
 
-const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
-const width = doc.internal.pageSize.getWidth();
-const renderRound = (round: RoundSpec) => {
-  // Each round starts on a dedicated page with a centered header.
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text(`${eventName.toUpperCase()} – ${category.toUpperCase()}`, width / 2, 60, { align: 'center' });
-  doc.setFontSize(14);
-  doc.text(round.name.toUpperCase(), width / 2, 90, { align: 'center' });
-
-  let startY = 120;
-  round.heats.forEach((_, idx) => {
-    const { heat, body } = buildHeatTable(round, idx);
-    doc.setFontSize(12);
-    doc.text(`HEAT ${heat.heatNumber}`, width / 2, startY, { align: 'center' });
-    autoTable(doc, {
-      head: [['Pos', 'Couleur', 'Résultat', 'Athlète / Placeholder', 'Pays / Club']],
-      body,
-      startY: startY + 10,
-      styles: { font: 'helvetica', fontSize: 10, halign: 'center', valign: 'middle' },
-      headStyles: { fillColor: [12, 148, 236], textColor: 255, fontStyle: 'bold' },
-      tableLineWidth: 0.4,
-      tableLineColor: [30, 41, 59],
-    });
-    const lastTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
-    startY = (lastTable?.finalY ?? startY) + 24;
-    if (idx < round.heats.length - 1 && startY > doc.internal.pageSize.getHeight() - 120) {
-      doc.addPage();
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text(`${eventName.toUpperCase()} – ${category.toUpperCase()}`, width / 2, 60, { align: 'center' });
-      doc.setFontSize(14);
-      doc.text(round.name.toUpperCase(), width / 2, 90, { align: 'center' });
-      startY = 120;
-    }
-  });
-};
-
-const allRounds = [...rounds, ...(repechage ?? [])];
-allRounds.forEach((round, idx) => {
-  if (idx > 0) doc.addPage();
-  renderRound(round);
-});
-
-doc.save(`${slugify(`${eventName}-${category}`)}_bracket.pdf`);
-}
-
 export function exportBracketToCSV(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[]): string {
   const lines: string[] = [];
   lines.push('event,category,round,heat,color,athlete,country,seed,placeholder');
