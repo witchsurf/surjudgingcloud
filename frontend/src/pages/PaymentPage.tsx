@@ -142,8 +142,10 @@ export default function PaymentPage() {
     setLoadingPayment(true);
 
     try {
-      const successUrl = `${window.location.origin}/events/payment/${event.id}?status=success`;
-      const cancelUrl = `${window.location.origin}/events/payment/${event.id}?status=failed`;
+      // Always send fully qualified URLs for Stripe callbacks
+      const successUrl = `https://surfjudging.cloud/events/payment/${event.id}?status=success`;
+      const cancelUrl = `https://surfjudging.cloud/events/payment/${event.id}?status=failed`;
+      const currency = (event.currency ?? 'xof').toLowerCase();
 
       const { data, error: paymentError } = await supabase.functions.invoke('payments', {
         body: {
@@ -151,7 +153,7 @@ export default function PaymentPage() {
           eventId: Number(event.id),
           provider: paymentMethod,
           amount: price,
-          currency: event.currency ?? 'XOF',
+          currency,
           phoneNumber: paymentMethod === 'stripe' ? undefined : phoneNumber.trim(),
           successUrl,
           cancelUrl,
