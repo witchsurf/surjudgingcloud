@@ -29,3 +29,9 @@ export const getHeatIdentifiers = (
   const normalized = normalizeHeatId(legacy);
   return { legacy, normalized };
 };
+
+// Expose helper globally in the browser to avoid ReferenceError when bundled chunks
+// reference it outside the module scope (defensive guard for legacy builds).
+if (typeof window !== 'undefined') {
+  (window as any).getHeatIdentifiers = getHeatIdentifiers;
+}
