@@ -20,6 +20,23 @@ serve(async (req: Request) => {
     try {
         const { action, ...payload } = await req.json()
 
+        // Normalize and enforce eventId before forwarding to n8n
+        const eventId =
+            payload.eventId ??
+            payload.event_id ??
+            payload.eventid ??
+            payload.event ??
+            null
+
+        if (!eventId) {
+            return new Response(JSON.stringify({ error: 'Missing eventId' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            })
+        }
+
+        payload.eventId = Number(eventId)
+
         if (action === 'initiate') {
             console.log('Initiating payment via n8n:', payload)
 
