@@ -48,12 +48,10 @@ interface SlotReference {
 }
 
 const makePlaceholder = (ref: SlotReference, prefix = 'R'): string => {
-  // Generates robust format: "R1-H1-3 (P3)" which is parsed by regex and visible in PDF
+  // Generates format: "R1-H1-P3" compatible with parsePlaceholder regex in supabaseClient.ts
+  // Regex: /^(RP?)(\d+)-H(\d+)-P(\d+)$/
   const base = `${prefix}${ref.sourceRound}-H${ref.heatNumber}`;
-
-  // If it's a seed distribution/bye, handle differently? No, this is for refs.
-  // Use standard format compatible with new Regex
-  return `${base}-${ref.position} (P${ref.position})`;
+  return `${base}-P${ref.position}`;
 };
 
 function toHeatSlots(map: HeatSeedMap[], participants: ParticipantSeed[]): HeatSpec[] {

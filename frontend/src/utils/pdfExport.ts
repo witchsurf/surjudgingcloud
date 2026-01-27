@@ -66,17 +66,30 @@ const applyResultsToRounds = (
       slots: heat.slots.map((slot) => {
         if (slot.placeholder) {
           // Try multiple placeholder formats:
-          // 1. "QUALIFIÉ R1-H1 (P1)" or "Repêchage R1-H1 (P3)" or "Finaliste R5-H1 (P1)"
-          // 2. "R1-H1-P1" (legacy format)
+          // 1. "R1-H1-P1" (current format, matches supabaseClient regex)
+          // 2. "QUALIFIÉ R1-H1 (P1)" or "Repêchage R1-H1 (P3)" (display format with prefix)
+          // 3. "R1-H1 (P1)" (old format with parentheses)
 
           const placeholder = slot.placeholder.toUpperCase();
 
-          // Extract round, heat, position from formats like "QUALIFIÉ R1-H1 (P1)"
-          const match = placeholder.match(/R(\d+)-H(\d+)\s*\(P(\d+)\)/);
+          // Format 1: Direct match "R1-H1-P1" or "RP1-H1-P1"
+          let info = mapping.get(placeholder);
+          if (info) {
+            return {
+              ...slot,
+              placeholder: undefined,
+              name: info.name,
+              country: info.country,
+              result: null,
+            };
+          }
+
+          // Format 2: Extract from "QUALIFIÉ R1-H1 (P1)" or "R1-H1 (P1)"
+          const match = placeholder.match(/R(P?)(\d+)-H(\d+)\s*\(P(\d+)\)/);
           if (match) {
-            const [, round, heat, pos] = match;
-            const key = `R${round}-H${heat}-P${pos}`;
-            const info = mapping.get(key);
+            const [, prefix, round, heat, pos] = match;
+            const key = `R${prefix}${round}-H${heat}-P${pos}`;
+            info = mapping.get(key);
             if (info) {
               return {
                 ...slot,
@@ -86,18 +99,6 @@ const applyResultsToRounds = (
                 result: null,
               };
             }
-          }
-
-          // Try direct match (legacy format "R1-H1-P1")
-          const info = mapping.get(placeholder);
-          if (info) {
-            return {
-              ...slot,
-              placeholder: undefined,
-              name: info.name,
-              country: info.country,
-              result: null,
-            };
           }
         }
         return { ...slot };
