@@ -14,7 +14,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
     const { config, configSaved, setConfig } = useConfigStore();
-    const { timer, setTimer, setHeatStatus } = useJudgingStore();
+    const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { handleScoreSubmit } = useScoreManager();
     const { subscribeToHeat, markHeatFinished, syncHeatViaWebhook, isConnected } = useRealtimeSync();
     const [configLoading, setConfigLoading] = useState(true);
@@ -204,6 +204,7 @@ export default function JudgePage() {
             onScoreSubmit={(score) => handleScoreSubmit(score, currentHeatId)}
             configSaved={configSaved}
             timer={timer}
+            heatStatus={heatStatus}
             isChiefJudge={currentJudge?.id === 'CHIEF' || currentJudge?.name === 'CHIEF'}
             onHeatClose={handleHeatClose}
             isConnected={isConnected}

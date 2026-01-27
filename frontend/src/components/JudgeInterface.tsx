@@ -52,6 +52,7 @@ function JudgeInterface({
   configSaved = false,
   timer = { startTime: null, duration: 20, isRunning: false },
   isChiefJudge = false,
+  heatStatus = 'waiting',
   onHeatClose = () => { },
   isConnected = true
 }: JudgeInterfaceProps) {
@@ -298,10 +299,17 @@ function JudgeInterface({
     return () => window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
   }, [mergeRealtimeScore]);
 
-  // Vérifier si le timer est actif (assoupli : si config sauvegardée, on autorise)
+  // Vérifier si la saisie est autorisée
+  // BLOQUE : avant démarrage (waiting) et après clôture (closed)
+  // AUTORISE : pendant (running), en pause (paused), et après expiration (finished)
   const isTimerActive = () => {
     if (!configSaved) return false;
-    return timer.isRunning;
+    // Bloquer si le timer n'a pas encore démarré (évite les erreurs avant que les surfeurs surfent)
+    if (heatStatus === 'waiting') return false;
+    // Bloquer si le heat est officiellement clos par le chef juge
+    if (heatStatus === 'closed') return false;
+    // Autoriser dans tous les autres cas: running, paused, finished
+    return heatStatus !== undefined;
   };
 
   const getScoreForWave = (surfer: string, wave: number) => {
@@ -401,7 +409,11 @@ function JudgeInterface({
       console.error('❌ Erreur soumission score:', error);
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes('Saisie bloquée')) {
-        alert('Impossible de saisir un score : le heat n’est pas en cours.');
+        if (message.includes('non démarré')) {
+          alert('Impossible de saisir un score : le timer n\'a pas encore été démarré.');
+        } else {
+          alert('Impossible de saisir un score : le heat a été clôturé par le chef juge.');
+        }
       } else {
         alert('Erreur lors de la soumission du score');
       }
@@ -507,15 +519,26 @@ function JudgeInterface({
         </div>
       )}
 
-      {/* STATUT TIMER */}
+      {/* STATUT SAISIE */}
       {!timerActive && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
           <Lock className="w-6 h-6 text-red-600" />
           <div>
-            <h3 className="font-semibold text-red-800">Timer arrêté - Notation bloquée</h3>
-            <p className="text-red-700 text-sm">
-              La notation est désactivée car le timer n'est pas en cours d'exécution.
-            </p>
+            {heatStatus === 'waiting' ? (
+              <>
+                <h3 className="font-semibold text-red-800">Timer Non Démarré - Notation Bloquée</h3>
+                <p className="text-red-700 text-sm">
+                  Attendez que le chef juge démarre le timer avant de noter les vagues.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="font-semibold text-red-800">Heat Clos - Notation Bloquée</h3>
+                <p className="text-red-700 text-sm">
+                  La notation est désactivée car le heat a été clôturé par le chef juge.
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}
