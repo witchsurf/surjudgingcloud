@@ -27,7 +27,7 @@ begin
 
   -- Block if timer not started yet (waiting) - prevents errors before surfers are in water
   if v_status = 'waiting' then
-    raise exception 'Saisie bloquée : heat non démarré (attendez que le timer démarre)',
+    raise exception 'Saisie bloquée : heat non démarré (attendez que le timer démarre)'
                     using errcode = 'P0001';
   end if;
 
