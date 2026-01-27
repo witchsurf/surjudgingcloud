@@ -57,6 +57,49 @@ interface HeatSlotMappingRow {
   source_position: number | null;
 }
 
+/**
+ * Fetch the active heat pointer - used by kiosk mode to know which heat is currently active
+ */
+export interface ActiveHeatPointer {
+  event_name: string;
+  active_heat_id: string;
+  updated_at: string;
+}
+
+export async function fetchActiveHeatPointer(): Promise<ActiveHeatPointer | null> {
+  ensureSupabase();
+  const { data, error } = await supabase!
+    .from('active_heat_pointer')
+    .select('*')
+    .limit(1);
+
+  if (error) {
+    console.warn('⚠️ fetchActiveHeatPointer error:', error);
+    return null;
+  }
+  return data && data.length > 0 ? (data[0] as ActiveHeatPointer) : null;
+}
+
+/**
+ * Parse active_heat_id into components (event_division_rX_hX format)
+ */
+export function parseActiveHeatId(heatId: string): { competition: string; division: string; round: number; heatNumber: number } | null {
+  // Format: laraise_pro_cadet_r1_h1
+  const match = heatId.match(/^(.+)_([^_]+)_r(\d+)_h(\d+)$/i);
+  if (!match) return null;
+
+  // The competition is everything before the last 3 parts (_division_rX_hX)
+  const fullName = match[1];
+  const division = match[2];
+  const round = parseInt(match[3], 10);
+  const heatNumber = parseInt(match[4], 10);
+
+  // Convert underscore to space for competition name
+  const competition = fullName.replace(/_/g, ' ').toUpperCase();
+
+  return { competition, division: division.toUpperCase(), round, heatNumber };
+}
+
 export async function fetchEvents(): Promise<EventSummary[]> {
   ensureSupabase();
   const { data, error } = await supabase!
@@ -261,10 +304,10 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
           .filter((entry: any) => entry.color)
           .sort((a: any, b: any) => (a.position || 0) - (b.position || 0));
 
-        surfers = sortedEntries.map((entry: any) => {
+        surfers = Array.from(new Set(sortedEntries.map((entry: any) => {
           const color = entry.color?.toString().toUpperCase();
           return color || '';
-        }).filter(Boolean);
+        }).filter(Boolean)));
 
         // Extract participant names and countries by color
         surferNames = {};
@@ -676,8 +719,7 @@ interface SupabaseHeatRow {
 }
 
 const prettyRoundName = (roundNumber: number, maxRound: number): string => {
-  if (roundNumber === maxRound) return 'Finale';
-  if (roundNumber === maxRound - 1) return 'Round 2';
+  if (roundNumber === maxRound && maxRound > 1) return 'Finale';
   return `Round ${roundNumber}`;
 };
 
@@ -750,6 +792,74 @@ export async function fetchCategoryHeats(eventId: number, category: string): Pro
   });
 
   return Array.from(roundsMap.values()).sort((a, b) => a.roundNumber - b.roundNumber);
+}
+
+/**
+ * Fetch all distinct divisions/categories for an event
+ */
+export async function fetchAllEventCategories(eventId: number): Promise<string[]> {
+  ensureSupabase();
+  const { data, error } = await supabase!
+    .from('heats')
+    .select('division')
+    .eq('event_id', eventId);
+
+  if (error) throw error;
+  const divisions = [...new Set((data ?? []).map((h) => h.division))];
+  return divisions.sort();
+}
+
+/**
+ * Fetch all heats for all categories in an event
+ * Returns a map of category -> RoundSpec[]
+ */
+export async function fetchAllEventHeats(eventId: number): Promise<Record<string, RoundSpec[]>> {
+  const categories = await fetchAllEventCategories(eventId);
+  const result: Record<string, RoundSpec[]> = {};
+
+  for (const category of categories) {
+    result[category] = await fetchCategoryHeats(eventId, category);
+  }
+
+  return result;
+}
+
+/**
+ * Fetch all scores for all heats of an event
+ * Returns a map of heatId -> Score[]
+ */
+export async function fetchAllScoresForEvent(eventId: number): Promise<Record<string, Score[]>> {
+  ensureSupabase();
+
+  // First get all heat IDs for this event
+  const { data: heats, error: heatsError } = await supabase!
+    .from('heats')
+    .select('id')
+    .eq('event_id', eventId);
+
+  if (heatsError) throw heatsError;
+  const heatIds = (heats ?? []).map((h) => h.id);
+
+  if (!heatIds.length) return {};
+
+  // Fetch all scores for these heats
+  const { data: scores, error: scoresError } = await supabase!
+    .from('scores')
+    .select('*')
+    .in('heat_id', heatIds);
+
+  if (scoresError) throw scoresError;
+
+  // Group scores by heat_id
+  const result: Record<string, Score[]> = {};
+  (scores ?? []).forEach((score) => {
+    if (!result[score.heat_id]) {
+      result[score.heat_id] = [];
+    }
+    result[score.heat_id].push(score as Score);
+  });
+
+  return result;
 }
 
 export function subscribeToHeatUpdates(eventId: number, category: string, callback: () => void) {
@@ -1048,6 +1158,51 @@ export async function fetchScoresForHeats(heatIds: string[]): Promise<Record<str
   });
 
   return grouped;
+}
+
+/**
+ * Ensure an event exists in the database, creating it if necessary
+ * @returns The event ID
+ */
+export async function ensureEventExists(eventName: string): Promise<number> {
+  ensureSupabase();
+
+  // Try to find existing event
+  const { data: existing, error: fetchError } = await supabase!
+    .from('events')
+    .select('id')
+    .eq('name', eventName)
+    .maybeSingle();
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    throw fetchError;
+  }
+
+  if (existing) {
+    console.log(`✅ Event "${eventName}" already exists (ID: ${existing.id})`);
+    return existing.id;
+  }
+
+  // Event doesn't exist, create it with only existing columns
+  const { data: newEvent, error: createError } = await supabase!
+    .from('events')
+    .insert({
+      name: eventName,
+      organizer: 'Auto-created',
+      start_date: new Date().toISOString().split('T')[0],
+      end_date: new Date().toISOString().split('T')[0],
+      price: 0
+    })
+    .select('id')
+    .single();
+
+  if (createError) {
+    console.error('❌ Error creating event:', createError);
+    throw createError;
+  }
+
+  console.log(`🎉 Event "${eventName}" created (ID: ${newEvent.id})`);
+  return newEvent.id;
 }
 
 export async function fetchEventIdByName(name: string): Promise<number | null> {

@@ -1,9 +1,9 @@
 import { Outlet } from 'react-router-dom';
 import { User } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuthStore } from '../stores/authStore';
 
 export default function JudgeLayout() {
-    const { currentJudge, logout } = useAuth();
+    const { currentJudge, logout } = useAuthStore();
 
     if (!currentJudge) {
         return <Outlet />; // Will render JudgeLogin

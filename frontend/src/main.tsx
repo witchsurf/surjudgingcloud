@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+// Ensure heat helpers (including global getHeatIdentifiers fallback) are loaded before app bootstrap.
+import './utils/heat';
 import { initStorageCleanup } from './utils/secureStorage';
 import { processMagicLinkCallback } from './utils/magicLink';
 

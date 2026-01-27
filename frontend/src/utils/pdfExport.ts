@@ -29,6 +29,14 @@ interface ExportHeatResultsPayload {
   currentHeatKey: string;
 }
 
+interface FullCompetitionExportPayload {
+  eventName: string;
+  organizer?: string;
+  date?: string;
+  divisions: Record<string, RoundSpec[]>;
+  scores: Record<string, Score[]>;
+}
+
 const slugify = (value: string) =>
 (value
   .toLowerCase()
@@ -98,7 +106,7 @@ const applyResultsToRounds = (
   }));
 };
 
-export function exportBracketToPDF(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[], surferNames?: Record<string, string>) {
+export function exportBracketToPDF(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[], surferNames?: Record<string, string>, eventDetails?: { organizer?: string; date?: string }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   const renderRound = (round: RoundSpec) => {
@@ -106,10 +114,20 @@ export function exportBracketToPDF(eventName: string, category: string, rounds: 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
     doc.text(`${eventName.toUpperCase()} – ${category.toUpperCase()}`, width / 2, 60, { align: 'center' });
-    doc.setFontSize(14);
-    doc.text(round.name.toUpperCase(), width / 2, 90, { align: 'center' });
 
-    let startY = 120;
+    // Add organizer and date if provided
+    let headerY = 90;
+    if (eventDetails?.organizer || eventDetails?.date) {
+      doc.setFontSize(10);
+      const subHeader = [eventDetails.organizer, eventDetails.date].filter(Boolean).join(' • ');
+      doc.text(subHeader, width / 2, 78, { align: 'center' });
+      headerY = 95;
+    }
+
+    doc.setFontSize(14);
+    doc.text(round.name.toUpperCase(), width / 2, headerY, { align: 'center' });
+
+    let startY = headerY + 25;
     round.heats.forEach((_, idx) => {
       const { heat, body } = buildHeatTable(round, idx);
       // Replace missing athlete names with surferNames lookup
@@ -406,3 +424,335 @@ export function exportHeatScorecardPdf({
 
   doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
 }
+
+/**
+ * Export complete competition PDF with all categories, all heats, results, and qualifiers
+ */
+export function exportFullCompetitionPDF({
+  eventName,
+  organizer,
+  date,
+  divisions,
+  scores,
+}: FullCompetitionExportPayload) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
+  const width = doc.internal.pageSize.getWidth();
+  const height = doc.internal.pageSize.getHeight();
+
+  // === BUILD QUALIFIER MAPPINGS FROM SCORES ===
+  // Map: "DIVISION ROUND HEAT (POSITION)" → {name, country}
+  const qualifierMap = new Map<string, { name: string; country?: string }>();
+
+  Object.entries(divisions).forEach(([divisionName, rounds]) => {
+    rounds.forEach((round) => {
+      round.heats.forEach((heat) => {
+        if (!heat.heatId || !scores[heat.heatId]) return;
+
+        const heatScores = scores[heat.heatId];
+        if (heatScores.length === 0) return;
+
+        // Group scores by surfer/color
+        const surferResults: Array<{
+          color: string;
+          name: string;
+          country?: string;
+          best2: number;
+        }> = [];
+
+        heat.slots.forEach((slot) => {
+          if (!slot.name || !slot.color) return; // Skip placeholders and slots without color
+
+          const colorMatch = colorLabelMap[slot.color as keyof typeof colorLabelMap];
+          const surferScores = heatScores.filter(
+            (s) => s.surfer === colorMatch || s.surfer === slot.color
+          );
+
+          // Calculate best 2 waves
+          const waveAverages: Record<number, number[]> = {};
+          surferScores.forEach((s) => {
+            if (!waveAverages[s.wave_number]) waveAverages[s.wave_number] = [];
+            const val = Number(s.score);
+            if (!isNaN(val)) waveAverages[s.wave_number].push(val);
+          });
+
+          const waveScores = Object.values(waveAverages).map((scores) => {
+            if (scores.length === 0) return 0;
+            return scores.reduce((sum, s) => sum + s, 0) / scores.length;
+          });
+
+          waveScores.sort((a, b) => b - a);
+          const best2 = waveScores.slice(0, 2).reduce((sum, s) => sum + s, 0);
+
+          surferResults.push({
+            color: slot.color,
+            name: slot.name,
+            country: slot.country,
+            best2,
+          });
+        });
+
+        // Sort by best2 descending
+        surferResults.sort((a, b) => b.best2 - a.best2);
+
+        // Create mappings for top 4 (or however many qualified)
+        surferResults.forEach((result, index) => {
+          const position = index + 1;
+
+          // Generate multiple key formats to match different placeholder styles
+          const keys = [
+            // Format 1: "OPEN R1 H1 (P1)"
+            `${divisionName.toUpperCase()} R${round.roundNumber} H${heat.heatNumber} (P${position})`,
+            // Format 2: "QUALIFIÉ R1-H1 (P1)" (generic)
+            `QUALIFIÉ R${round.roundNumber}-H${heat.heatNumber} (P${position})`,
+            // Format 3: "R1-H1-P1" (legacy)
+            `R${round.roundNumber}-H${heat.heatNumber}-P${position}`,
+          ];
+
+          keys.forEach(key => {
+            qualifierMap.set(key, {
+              name: result.name,
+              country: result.country,
+            });
+          });
+        });
+      });
+    });
+  });
+
+  // === RESOLVE PLACEHOLDERS IN ALL ROUNDS ===
+  Object.values(divisions).forEach((rounds) => {
+    rounds.forEach((round) => {
+      round.heats.forEach((heat) => {
+        heat.slots.forEach((slot) => {
+          if (slot.placeholder && !slot.bye) {
+            const normalized = slot.placeholder.toUpperCase().trim();
+            const qualified = qualifierMap.get(normalized);
+            if (qualified) {
+              // Replace placeholder with actual participant
+              slot.name = qualified.name;
+              if (qualified.country) slot.country = qualified.country;
+              delete slot.placeholder;
+              delete slot.bye;
+            }
+          }
+        });
+      });
+    });
+  });
+
+  // === PAGE DE GARDE ===
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(28);
+  doc.text(eventName.toUpperCase(), width / 2, height / 3, { align: 'center' });
+
+  if (organizer) {
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Organisé par ${organizer}`, width / 2, height / 3 + 40, { align: 'center' });
+  }
+
+  if (date) {
+    doc.setFontSize(12);
+    doc.text(date, width / 2, height / 3 + 65, { align: 'center' });
+  }
+
+  // Liste des catégories sur la page de garde
+  const categoryNames = Object.keys(divisions);
+  if (categoryNames.length) {
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CATÉGORIES', width / 2, height / 2, { align: 'center' });
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    categoryNames.forEach((cat, idx) => {
+      doc.text(`• ${cat}`, width / 2, height / 2 + 25 + idx * 18, { align: 'center' });
+    });
+  }
+
+  // Date d'export
+  doc.setFontSize(10);
+  doc.setTextColor(128);
+  doc.text(`Exporté le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, width / 2, height - 40, { align: 'center' });
+  doc.setTextColor(0);
+
+  // === POUR CHAQUE CATÉGORIE ===
+  Object.entries(divisions).forEach(([categoryName, allRounds]) => {
+    if (!allRounds.length) return;
+
+    // Detect and Shift Repechage Rounds
+    const mainRounds: typeof allRounds = [];
+    const repRounds: typeof allRounds = [];
+
+    // Heuristic: If a round only has "REPÊCHAGE" sources, it's a rep round.
+    allRounds.forEach((r) => {
+      // Check first heat slots for clues
+      const hasRep = r.heats.some((h) =>
+        h.slots.some((s) => {
+          if (!s.placeholder) return false;
+          const txt = s.placeholder.toUpperCase();
+          // Match "REPÊCHAGE", explicit ranks (P3)/(3), or suffixes like -3, -P3
+          return txt.includes('REPÊCHAGE') ||
+            txt.includes('(P3)') || txt.includes('(P4)') ||
+            txt.includes('(3)') || txt.includes('(4)') ||
+            /[- ]P?[34]$/.test(txt);
+        })
+      );
+      if (hasRep) {
+        repRounds.push(r);
+      } else {
+        mainRounds.push(r);
+      }
+    });
+
+    const renderRoundGroup = (groupName: string, roundsToRender: typeof allRounds, isRepechage: boolean) => {
+      if (roundsToRender.length === 0) return;
+
+      // Page de titre de section (Main vs Repechage)
+      doc.addPage();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(24);
+      doc.text(`${categoryName.toUpperCase()} - ${groupName}`, width / 2, 60, { align: 'center' });
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      const totalHeats = roundsToRender.reduce((acc, r) => acc + r.heats.length, 0);
+      doc.text(`${roundsToRender.length} rounds • ${totalHeats} heats`, width / 2, 85, { align: 'center' });
+
+      let startY = 120;
+
+      roundsToRender.forEach((round, idx) => {
+        // Custom Round Name for Repechage
+        let displayRoundName = round.name.toUpperCase();
+        if (isRepechage) {
+          // Rename "Round 3" -> "REPÊCHAGE ROUND 1"
+          displayRoundName = `REPÊCHAGE ROUND ${idx + 1} (${round.name})`;
+        }
+
+        // Titre du round
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(isRepechage ? 220 : 12, isRepechage ? 38 : 148, isRepechage ? 38 : 236); // Redish for Rep, Blue for Main
+        doc.text(displayRoundName, 40, startY);
+        doc.setTextColor(0);
+        startY += 20;
+
+        round.heats.forEach((heat, heatIdx) => {
+          const heatScores = heat.heatId ? scores[heat.heatId] ?? [] : [];
+          const hasResults = heatScores.length > 0;
+
+          // Use the same calculation logic as Display
+          let surferStats: Array<{ surfer: string; bestTwo: number; rank: number }> = [];
+          if (hasResults) {
+            const heatSurfers = heat.slots
+              .filter(s => s.color !== undefined)
+              .map(s => colorLabelMap[s.color as keyof typeof colorLabelMap] || s.color!);
+
+            // Get judge count from scores (count unique judge_ids)
+            const uniqueJudges = new Set(heatScores.map(s => s.judge_id));
+            const judgeCount = uniqueJudges.size;
+
+            const stats = calculateSurferStats(
+              heatScores,
+              heatSurfers,
+              judgeCount,
+              20, // maxWaves
+              true // allowIncomplete = true for finished heats
+            );
+
+            surferStats = stats.map(s => ({
+              surfer: s.surfer,
+              bestTwo: s.bestTwo,
+              rank: s.rank
+            }));
+          }
+
+          const body = heat.slots.map((slot, sIdx) => {
+            let result = '';
+            let numericScore = 0;
+
+            if (hasResults && slot.color) {
+              const colorMatch = colorLabelMap[slot.color as keyof typeof colorLabelMap] || slot.color;
+              const stat = surferStats.find(s => s.surfer === colorMatch);
+
+              if (stat) {
+                numericScore = stat.bestTwo;
+                result = stat.bestTwo.toFixed(2);
+              }
+            }
+
+            return {
+              position: sIdx + 1,
+              lycra: slot.color ? colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color : `COULOIR ${sIdx + 1}`,
+              score: result || (slot.result != null ? slot.result.toFixed(2) : ''),
+              numericScore,
+              surfer: slot.name ?? slot.placeholder ?? '',
+              country: slot.country ?? '',
+            };
+          });
+
+          if (hasResults) body.sort((a, b) => b.numericScore - a.numericScore);
+
+          const tableBody = body.map((row, rIdx) => [
+            rIdx + 1,
+            row.lycra,
+            row.score,
+            row.surfer,
+            row.country,
+          ]);
+
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(11);
+          doc.text(`Heat ${heat.heatNumber}`, 50, startY);
+          if (hasResults) {
+            doc.setFontSize(9);
+            doc.setTextColor(34, 197, 94);
+            doc.text('✓ Résultats', 120, startY);
+            doc.setTextColor(0);
+          }
+          startY += 8;
+
+          autoTable(doc, {
+            startY,
+            head: [['#', 'Lycra', 'Score', 'Surfeur', 'Pays']],
+            body: tableBody,
+            styles: { font: 'helvetica', fontSize: 9, halign: 'center', valign: 'middle', cellPadding: 3 },
+            headStyles: { fillColor: hasResults ? [34, 197, 94] : (isRepechage ? [220, 38, 38] : [12, 148, 236]), textColor: 255, fontStyle: 'bold' },
+            columnStyles: { 3: { halign: 'left' }, 4: { halign: 'left' } },
+            tableLineWidth: 0.3,
+            tableLineColor: [200, 200, 200],
+            margin: { left: 50, right: 50 },
+          });
+
+          const lastTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
+          startY = (lastTable?.finalY ?? startY) + 20;
+
+          if (startY > height - 100 && (heatIdx !== round.heats.length - 1)) {
+            doc.addPage();
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(12);
+            doc.text(`${categoryName} - ${groupName} (suite)`, width / 2, 40, { align: 'center' });
+            startY = 70;
+          }
+        });
+        startY += 10;
+
+        // Page break between rounds if getting full
+        if (startY > height - 150 && idx !== roundsToRender.length - 1) {
+          doc.addPage();
+          startY = 70;
+        }
+      });
+    };
+
+    // Render Main Brackets
+    renderRoundGroup("TABLEAU PRINCIPAL", mainRounds, false);
+
+    // Render Repechage Brackets
+    if (repRounds.length > 0) {
+      renderRoundGroup("TABLEAU DE REPÊCHAGE", repRounds, true);
+    }
+
+  });
+  doc.save(`${slugify(eventName)}_competition_complete.pdf`);
+}
+

@@ -1,12 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import AdminInterface from '../components/AdminInterface';
-import { useConfig } from '../contexts/ConfigContext';
-import { useJudging } from '../contexts/JudgingContext';
+import { useConfigStore } from '../stores/configStore';
+import { useJudgingStore } from '../stores/judgingStore';
 import { useCompetitionTimer } from '../hooks/useCompetitionTimer';
 import { useHeatManager } from '../hooks/useHeatManager';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useScoreManager } from '../hooks/useScoreManager';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
+import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers } from '../utils/heat';
 import {
     updateEventConfiguration,
@@ -26,13 +27,13 @@ export default function AdminPage() {
         activeEventId,
         availableDivisions,
         loadedFromDb
-    } = useConfig();
+    } = useConfigStore();
 
     const {
         scores,
         judgeWorkCount,
         overrideLogs
-    } = useJudging();
+    } = useJudgingStore();
 
     const {
         timer,
@@ -58,6 +59,9 @@ export default function AdminPage() {
         config.heatId
     ).normalized;
 
+    // Load participant names for current heat
+    const { participants: heatParticipants } = useHeatParticipants(currentHeatId);
+
     const handleConfigChange = useCallback((newConfig: AppConfig) => {
         setConfig(newConfig);
 
@@ -75,6 +79,30 @@ export default function AdminPage() {
 
         persistConfig(newConfig);
     }, [config, configSaved, setConfig, setConfigSaved, persistConfig]);
+
+    // Sync heat participants into config when they load
+    useEffect(() => {
+        if (Object.keys(heatParticipants).length > 0) {
+            const SURFER_ORDER = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'NOIR', 'VERT'];
+
+            // Extract colors and sort them by standard priority
+            const surfersList = Object.keys(heatParticipants).sort((a, b) => {
+                const idxA = SURFER_ORDER.indexOf(a);
+                const idxB = SURFER_ORDER.indexOf(b);
+                // If both found, compare indices. If one not found, put it at end.
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                if (idxA !== -1) return -1;
+                if (idxB !== -1) return 1;
+                return a.localeCompare(b);
+            });
+
+            setConfig(prev => ({
+                ...prev,
+                surferNames: heatParticipants,
+                surfers: surfersList
+            }));
+        }
+    }, [heatParticipants, setConfig]);
 
     const handleConfigSaved = useCallback(async (saved: boolean) => {
         setConfigSaved(saved);
@@ -168,9 +196,26 @@ export default function AdminPage() {
         if (window.confirm('Êtes-vous sûr de vouloir tout réinitialiser ? Cette action est irréversible.')) {
             localStorage.clear();
             sessionStorage.clear();
-            window.location.reload();
+            window.location.href = '/';
         }
     };
+
+    // Subscribe to own heat timer updates (P2 fix: admin needs to see own timer start)
+    const { subscribeToHeat } = useRealtimeSync();
+    const { setTimer: setLocalTimer } = useJudgingStore();
+
+    useEffect(() => {
+        if (!configSaved || !config.competition) return;
+
+        console.log('📡 Admin: subscribing to own heat timer:', currentHeatId);
+
+        const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer) => {
+            // Update local timer state when subscription receives update
+            setLocalTimer(nextTimer);
+        });
+
+        return unsubscribe;
+    }, [configSaved, currentHeatId, subscribeToHeat, setLocalTimer, config.competition]);
 
     // Wrapper for timer change to match interface
     const handleTimerChange = (newTimer: any) => {

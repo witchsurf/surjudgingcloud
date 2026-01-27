@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { AppConfig, HeatTimer } from '../types';
+import type { AppConfig, HeatTimer, KioskConfig, HeatSyncRequest } from '../types';
 import { ensureHeatId } from '../utils/heat';
+import { DEFAULT_TIMER_DURATION, INITIAL_CONFIG } from '../utils/constants';
+import { parseActiveHeatId } from '../api/supabaseClient';
 
 interface RealtimeHeatConfig {
   heat_id: string;
@@ -27,6 +29,9 @@ interface UseRealtimeSyncReturn {
     onUpdate: (timer: HeatTimer, config: AppConfig | null, status: RealtimeHeatConfig['status']) => void
   ) => () => void;
   fetchRealtimeState: (heatId: string) => Promise<RealtimeHeatConfig | null>;
+  // New kiosk and heat sync functions
+  initializeKiosk: (input: { eventId?: number | null; heatId: string; judgeId?: string | null }) => Promise<KioskConfig>;
+  syncHeatViaWebhook: (heatId: string, updates: Partial<RealtimeHeatConfig>) => Promise<void>;
 }
 
 export function useRealtimeSync(): UseRealtimeSyncReturn {
@@ -84,6 +89,25 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     try {
       await ensureAuthenticatedSession();
+
+      // 1. Save to heat_timers table for persistence
+      const { error: timerError } = await supabase!
+        .from('heat_timers')
+        .upsert({
+          heat_id: normalizedHeatId,
+          is_running: true,
+          start_time: new Date().toISOString(),
+          duration_minutes: duration
+        }, {
+          onConflict: 'heat_id'
+        });
+
+      if (timerError) {
+        console.error('❌ Erreur sauvegarde heat_timers:', timerError);
+        throw timerError;
+      }
+
+      // 2. Update heat_realtime_config for broadcasting
       const { error } = await supabase!
         .from('heat_realtime_config')
         .upsert({
@@ -118,6 +142,21 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     try {
       await ensureAuthenticatedSession();
+
+      // 1. Update heat_timers table
+      const { error: timerError } = await supabase!
+        .from('heat_timers')
+        .update({
+          is_running: false
+        })
+        .eq('heat_id', normalizedHeatId);
+
+      if (timerError) {
+        console.error('❌ Erreur pause heat_timers:', timerError);
+        throw timerError;
+      }
+
+      // 2. Update heat_realtime_config for broadcasting
       const { error } = await supabase!
         .from('heat_realtime_config')
         .update({
@@ -147,6 +186,23 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     try {
       await ensureAuthenticatedSession();
+
+      // 1. Update heat_timers table
+      const { error: timerError } = await supabase!
+        .from('heat_timers')
+        .update({
+          is_running: false,
+          start_time: null,
+          duration_minutes: duration
+        })
+        .eq('heat_id', normalizedHeatId);
+
+      if (timerError) {
+        console.error('❌ Erreur reset heat_timers:', timerError);
+        throw timerError;
+      }
+
+      // 2. Update heat_realtime_config for broadcasting
       const { error } = await supabase!
         .from('heat_realtime_config')
         .update({
@@ -279,7 +335,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
           const timer: HeatTimer = {
             isRunning: data.status === 'running',
             startTime: data.timer_start_time ? new Date(data.timer_start_time) : null,
-            duration: data.timer_duration_minutes || 20
+            duration: data.timer_duration_minutes || DEFAULT_TIMER_DURATION
           };
 
           const config = data.config_data ?? null;
@@ -333,7 +389,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
         const defaultTimer: HeatTimer = {
           isRunning: false,
           startTime: null,
-          duration: 20
+          duration: DEFAULT_TIMER_DURATION
         };
         onUpdate(defaultTimer, null, 'waiting');
         return;
@@ -352,7 +408,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
           const defaultTimer: HeatTimer = {
             isRunning: false,
             startTime: null,
-            duration: 20
+            duration: DEFAULT_TIMER_DURATION
           };
           onUpdate(defaultTimer, null, 'waiting');
           return;
@@ -362,7 +418,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
           const timer: HeatTimer = {
             isRunning: data.status === 'running',
             startTime: data.timer_start_time ? new Date(data.timer_start_time) : null,
-            duration: data.timer_duration_minutes || 20
+            duration: data.timer_duration_minutes || DEFAULT_TIMER_DURATION
           };
 
           const config = data.config_data ?? null;
@@ -373,7 +429,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
           const defaultTimer: HeatTimer = {
             isRunning: false,
             startTime: null,
-            duration: 20
+            duration: DEFAULT_TIMER_DURATION
           };
           console.log('⚠️ Aucune config temps réel trouvée, utilisation des valeurs par défaut');
           onUpdate(defaultTimer, null, 'waiting');
@@ -384,7 +440,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
         const defaultTimer: HeatTimer = {
           isRunning: false,
           startTime: null,
-          duration: 20
+          duration: DEFAULT_TIMER_DURATION
         };
         onUpdate(defaultTimer, null, 'waiting');
       }
@@ -399,6 +455,134 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     };
   }, [setLastUpdate]); // Dependencies stabilized
 
+  const initializeKiosk = useCallback(async (input: { eventId?: number | null; heatId: string; judgeId?: string | null }): Promise<KioskConfig> => {
+    const normalizedHeatId = ensureHeatId(input.heatId);
+    const parsed = parseActiveHeatId(normalizedHeatId);
+    const eventName = parsed?.competition ?? '';
+    const division = parsed?.division ?? '';
+    const round = parsed?.round ?? 1;
+    const heatNumber = parsed?.heatNumber ?? 1;
+
+    const webhookBase = import.meta.env.VITE_N8N_BASE_URL || 'https://automation.surfjudging.cloud';
+    const webhookUrl = import.meta.env.VITE_KIOSK_BOOTSTRAP_URL || `${webhookBase.replace(/\/$/, '')}/webhook/api/kiosk-bootstrap`;
+    const secret = import.meta.env.VITE_N8N_SECRET || '';
+
+    try {
+      console.log('🎯 Initializing kiosk via webhook:', webhookUrl, normalizedHeatId);
+
+      const url = new URL(webhookUrl);
+      url.searchParams.set('event', eventName);
+      url.searchParams.set('division', division);
+      url.searchParams.set('round', String(round));
+      url.searchParams.set('heat', String(heatNumber));
+      if (input.eventId) {
+        url.searchParams.set('event_id', String(input.eventId));
+      }
+      if (input.judgeId) {
+        url.searchParams.set('kiosk', input.judgeId);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: secret ? { 'x-n8n-secret': secret } : undefined,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook kiosk-bootstrap HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data) {
+        throw new Error('Aucune configuration retournée');
+      }
+
+      const baseConfig: AppConfig = {
+        ...INITIAL_CONFIG,
+        ...(data.configData || {}),
+        competition: data.eventName || eventName || INITIAL_CONFIG.competition,
+        division: data.division || division || INITIAL_CONFIG.division,
+        round: data.round || round || INITIAL_CONFIG.round,
+        heatId: data.heat || heatNumber || INITIAL_CONFIG.heatId,
+        surferNames: data.surferNames || {},
+        surferCountries: data.surferCountries || {},
+      };
+
+      if (!baseConfig.surfers || baseConfig.surfers.length === 0) {
+        baseConfig.surfers = Object.keys(baseConfig.surferNames || {});
+      }
+
+      const timer: HeatTimer = {
+        isRunning: Boolean(data.timer?.isRunning),
+        startTime: data.timer?.startTime ? new Date(data.timer.startTime) : null,
+        duration: data.timer?.duration || DEFAULT_TIMER_DURATION,
+      };
+
+      const status: KioskConfig['status'] = timer.isRunning
+        ? 'running'
+        : timer.startTime
+          ? 'paused'
+          : 'waiting';
+
+      const judges = (baseConfig.judges || []).map((id) => ({
+        id,
+        name: baseConfig.judgeNames?.[id] || id,
+      }));
+
+      const surfers = (baseConfig.surfers || []).map((color) => ({
+        id: color,
+        name: baseConfig.surferNames?.[color] || color,
+        color,
+      }));
+
+      console.log('✅ Kiosk initialized successfully');
+      return {
+        heat_id: data.heatKey || normalizedHeatId,
+        event_id: data.eventId || input.eventId || 0,
+        judges,
+        surfers,
+        timer,
+        config: baseConfig,
+        status,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur initialisation kiosk';
+      setError(message);
+      console.error('❌ Kiosk initialization failed:', err);
+      throw err;
+    }
+  }, []);
+
+  const syncHeatViaWebhook = useCallback(async (heatId: string, updates: Partial<RealtimeHeatConfig>) => {
+    const normalizedHeatId = ensureHeatId(heatId);
+    if (!isSupabaseConfigured() || !supabase) {
+      console.warn('⏩ Heat sync ignoré (Supabase non configuré)');
+      return;
+    }
+
+    try {
+      console.log('🔄 Syncing heat via webhook:', normalizedHeatId, updates);
+
+      const payload: HeatSyncRequest = {
+        heat_id: normalizedHeatId,
+        ...updates
+      };
+
+      const { error } = await supabase.functions.invoke('heat-sync', {
+        body: payload
+      });
+
+      if (error) throw error;
+
+      setLastUpdate(new Date());
+      console.log('✅ Heat synced successfully via webhook');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erreur synchronisation heat';
+      setError(message);
+      console.error('❌ Heat sync failed:', err);
+      throw err;
+    }
+  }, []);
+
   return {
     isConnected,
     lastUpdate,
@@ -409,6 +593,8 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     markHeatFinished,
     publishConfigUpdate,
     subscribeToHeat,
-    fetchRealtimeState
+    fetchRealtimeState,
+    initializeKiosk,
+    syncHeatViaWebhook
   };
 }

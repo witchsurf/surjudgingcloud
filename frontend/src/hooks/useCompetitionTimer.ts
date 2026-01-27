@@ -1,17 +1,18 @@
 import { useEffect, useCallback } from 'react';
-import { useJudging } from '../contexts/JudgingContext';
-import { useConfig } from '../contexts/ConfigContext';
+import { useJudgingStore } from '../stores/judgingStore';
+import { useConfigStore } from '../stores/configStore';
 import { useRealtimeSync } from './useRealtimeSync';
 import type { HeatTimer } from '../types';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
+import { getHeatIdentifiers } from '../utils/heat';
 
 const STORAGE_KEYS = {
     timer: 'surfJudgingTimer'
 } as const;
 
 export function useCompetitionTimer() {
-    const { timer, setTimer, heatStatus, setHeatStatus } = useJudging();
-    const { config } = useConfig();
+    const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
+    const { config } = useConfigStore();
     const { publishTimerStart, publishTimerPause, publishTimerReset } = useRealtimeSync();
     const currentHeatId = getHeatIdentifiers(
         config.competition,

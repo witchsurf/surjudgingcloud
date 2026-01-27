@@ -5,7 +5,7 @@ import autoTable from 'jspdf-autotable';
 import { createHeatsWithEntries } from '../api/supabaseClient';
 import { generatePreviewHeats } from '../utils/heatGeneration';
 import EventStatus from './EventStatus';
-import { useConfig } from '../contexts/ConfigContext';
+import { useConfigStore } from '../stores/configStore';
 
 interface Heat {
   round: number;
@@ -36,7 +36,7 @@ interface CategoryPreview {
 
 const GenerateHeatsPage = () => {
   const navigate = useNavigate();
-  const { setActiveEventId, setConfig, setConfigSaved } = useConfig();
+  const { setActiveEventId, setConfig, setConfigSaved } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
   const [roundFormat, setRoundFormat] = useState('heats-3');
   const [seriesSize, setSeriesSize] = useState('auto');

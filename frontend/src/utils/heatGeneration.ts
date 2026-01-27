@@ -1,5 +1,6 @@
 import { Heat } from '../types';
 import { SURFER_COLORS } from './constants';
+import { distributeSeedsSnake } from './seeding';
 
 type HeatPlan = { round: number; heats: Heat[] };
 
@@ -12,7 +13,8 @@ const pickColor = (index: number) => colorPalette[index % colorPalette.length];
 const normaliseParticipant = (participant: any, colorIndex: number) => ({
   color: pickColor(colorIndex),
   name: participant?.name ?? `Surfeur ${colorIndex + 1}`,
-  country: participant?.country ?? ''
+  country: participant?.country ?? '',
+  seed: participant?.seed ?? null
 });
 
 const createHeat = (
@@ -75,31 +77,54 @@ const buildHeatsFromRefs = (
   const capacities = sizes.slice();
   const buckets: QualifierRef[][] = sizes.map(() => []);
 
-  let bucketIndex = 0;
-  let direction: 1 | -1 = 1;
-
-  const advanceIndex = () => {
-    if (sizes.length <= 1) return;
-    bucketIndex += direction;
-    if (bucketIndex >= sizes.length) {
-      bucketIndex = sizes.length - 1;
-      direction = -1;
-    } else if (bucketIndex < 0) {
-      bucketIndex = 0;
-      direction = 1;
+  // Sort refs by Position first (P1s, then P2s, then P3s...), then by Heat.
+  // This "Layered" distribution ensures we spread the top seeds widely before placing lower seeds,
+  // preventing early heats from filling up with pairs from the same source.
+  const sortedRefs = [...refs].sort((a, b) => {
+    if (a.position !== b.position) {
+      return a.position - b.position;
     }
-  };
+    return a.heatNumber - b.heatNumber;
+  });
 
-  refs.forEach((ref) => {
-    let attempts = 0;
-    while (capacities[bucketIndex] === 0 && attempts < sizes.length) {
-      advanceIndex();
-      attempts += 1;
+  sortedRefs.forEach((ref) => {
+    // Strategy: Greedy Load Balancing with Collision Avoidance.
+    // 1. Identify all buckets with Capacity > 0.
+    // 2. Filter out buckets that already contain a surfer from the same Source Heat (Collision).
+    // 3. Sort candidates by Remaining Capacity (Descending).
+    //    Using the bucket with MOST space preserves options for later surfers in smaller buckets.
+    // 4. Tie-breaking: Random or Sequential? Sequential (index) to keep it stable.
+
+    // Helper to check collision
+    const checkCollision = (bIndex: number) => {
+      return buckets[bIndex].some(r => r.round === ref.round && r.heatNumber === ref.heatNumber);
+    };
+
+    let candidates = sizes.map((_, idx) => idx).filter(idx => capacities[idx] > 0);
+
+    // Filter non-colliding
+    const safeCandidates = candidates.filter(idx => !checkCollision(idx));
+
+    // If we have safe options, use them. Otherwise fallback to any open bucket (forced collision).
+    const finalCandidates = safeCandidates.length > 0 ? safeCandidates : candidates;
+
+    if (finalCandidates.length === 0) {
+      console.warn("No space left for ref:", ref);
+      return;
     }
 
-    buckets[bucketIndex].push(ref);
-    capacities[bucketIndex] = Math.max(0, capacities[bucketIndex] - 1);
-    advanceIndex();
+    // Sort by Capacity Descending (primary), then Index (secondary)
+    finalCandidates.sort((a, b) => {
+      if (capacities[b] !== capacities[a]) {
+        return capacities[b] - capacities[a];
+      }
+      return a - b;
+    });
+
+    const chosenIndex = finalCandidates[0];
+
+    buckets[chosenIndex].push(ref);
+    capacities[chosenIndex] = Math.max(0, capacities[chosenIndex] - 1);
   });
 
   return buckets
@@ -256,37 +281,93 @@ export const generatePreviewHeats = (
 ): HeatPlan[] => {
   const totalParticipants = participants.length;
 
+  // Prepare for Snake Seeding (Universal)
+  // Map seeds (or fallback to index) to participants found in order
+  const seedToParticipant = new Map<number, any>();
+  const seeds: number[] = [];
+
+  participants.forEach((p, idx) => {
+    // If input is sorted by rank/seed, we can trust the index as the "seed for distribution"
+    // Use explicit seed if available and unique, otherwise use index+1
+    const seedVal = (typeof p.seed === 'number' && p.seed > 0 && !seedToParticipant.has(p.seed))
+      ? p.seed
+      : idx + 1;
+
+    seeds.push(seedVal);
+    seedToParticipant.set(seedVal, p);
+  });
+
   if (seriesSize === 2) {
     return buildManOnManBracket(participants);
   }
 
+  // Calculate Standard Round 1 Heat Sizes
+  const round1Sizes = distributeHeatSizes(totalParticipants, seriesSize);
+
+  // Distribute using Snake Logic
+  const seedMap = distributeSeedsSnake(seeds, {
+    heatSize: seriesSize,
+    heatCount: round1Sizes.length,
+    heatSizes: round1Sizes
+  });
+
+  // Re-construct the "participants" array in Heat-Order (H1 Surfers, then H2 Surfers...)
+  // This allows the "Sequential" builders (buildSix, buildEight) to naturally produce Snake heats
+  // because they take the first N items for H1, next N for H2, etc.
+
+  const participantsInHeatOrder: any[] = [];
+
+  // seedMap is an array of { heatNumber, seeds[] }
+  // Sort by heatNumber just to be safe (though usually sorted)
+  const sortedHeats = [...seedMap].sort((a, b) => a.heatNumber - b.heatNumber);
+
+  sortedHeats.forEach((hm) => {
+    hm.seeds.forEach((seed: number | null) => {
+      if (seed !== null) {
+        participantsInHeatOrder.push(seedToParticipant.get(seed));
+      }
+    });
+  });
+
   if (totalParticipants === 6 && seriesSize >= 3) {
-    return buildSixPersonBracket(participants);
+    return buildSixPersonBracket(participantsInHeatOrder);
+  }
+
+  // New rule for 5 participants
+  if (totalParticipants === 5 && seriesSize >= 3) {
+    const final = createHeat(1, 1, participants.map((p, i) => normaliseParticipant(p, i)));
+    return [{ round: 1, heats: [final] }];
   }
 
   if (totalParticipants === 8 && seriesSize >= 4) {
-    return buildEightPersonBracket(participants);
-  }
-
-  if (totalParticipants === 0) {
-    return [];
+    return buildEightPersonBracket(participantsInHeatOrder);
   }
 
   const rounds: HeatPlan[] = [];
   const round1Heats: Heat[] = [];
 
-  const round1Sizes = distributeHeatSizes(totalParticipants, seriesSize);
-  let participantIndex = 0;
-  round1Sizes.forEach((targetSize) => {
+  // General Logic: now we can just use the seedMap we already calculated!
+  seedMap.forEach((hm) => {
     const surfers: Array<{ color: string; name: string; country: string }> = [];
-    for (let slotIdx = 0; slotIdx < targetSize; slotIdx += 1) {
-      const participant = participants[participantIndex];
-      if (!participant) break;
-      surfers.push(normaliseParticipant(participant, slotIdx));
-      participantIndex += 1;
-    }
+
+    hm.seeds.forEach((seed, slotIdx) => {
+      if (seed === null) return; // Empty slot (Bye)
+
+      const p = seedToParticipant.get(seed);
+      if (p) {
+        surfers.push(normaliseParticipant(p, slotIdx));
+      } else {
+        surfers.push({
+          color: pickColor(slotIdx),
+          name: `Semence ${seed}`,
+          country: ''
+        });
+      }
+    });
+
+    // Only add heat if it has surfers (or byes only? no, normally has seeds)
     if (surfers.length) {
-      round1Heats.push(createHeat(1, round1Heats.length + 1, surfers));
+      round1Heats.push(createHeat(1, hm.heatNumber, surfers));
     }
   });
 

@@ -38,7 +38,29 @@ serve(async (req: Request) => {
         payload.eventId = Number(eventId)
 
         if (action === 'initiate') {
-            console.log('Initiating payment via n8n:', payload)
+
+            // Construct robust payload for n8n
+            console.log('Sending payload to n8n. EventID:', eventId);
+
+            // Structure to match potential n8n expectations (nested body vs flat)
+            const n8nPayload = {
+                ...payload,
+                eventId: Number(eventId),
+                event_id: Number(eventId),
+                action,
+                timestamp: new Date().toISOString(),
+                // NESTED BODY: Many n8n workflows expect this structure if they parsed raw JSON
+                body: {
+                    ...payload,
+                    eventId: Number(eventId),
+                    event_id: Number(eventId),
+                    amount: payload.amount,
+                    currency: payload.currency,
+                    phoneNumber: payload.phoneNumber
+                }
+            }
+
+            console.log('Initiating payment via n8n:', n8nPayload)
 
             // Call n8n webhook
             const response = await fetch(N8N_WEBHOOK_URL, {
@@ -47,7 +69,7 @@ serve(async (req: Request) => {
                     'Content-Type': 'application/json',
                     'X-api-key': N8N_API_KEY || '',
                 },
-                body: JSON.stringify(payload),
+                body: JSON.stringify(n8nPayload),
             })
 
             if (!response.ok) {

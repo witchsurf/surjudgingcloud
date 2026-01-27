@@ -3,9 +3,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { useConfig } from '../contexts/ConfigContext';
+import { useConfigStore } from '../stores/configStore';
 import type { AppConfig } from '../types';
-import { fetchEventConfigSnapshot, type EventConfigSnapshot } from '../api/supabaseClient';
+import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/supabaseClient';
+import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
 
 
 
@@ -134,7 +135,7 @@ export default function MyEvents() {
   const [searchParams] = useSearchParams();
   const redirectIntent = searchParams.get('redirect');
 
-  const { setActiveEventId, setConfig, setConfigSaved } = useConfig();
+  const { setActiveEventId, setConfig, setConfigSaved, setLoadedFromDb } = useConfigStore();
 
   const baseUrl = useMemo(() => {
     const base = new URL(import.meta.env.BASE_URL || '/', window.location.origin);
@@ -303,19 +304,90 @@ export default function MyEvents() {
     setContinuingId(event.id);
     try {
       const snapshot = await fetchEventConfigSnapshot(event.id);
-      const config = buildConfigFromSnapshot(event.name, snapshot);
 
-      // Update global context state immediately
-      setConfig(config);
-      setConfigSaved(!!snapshot);
-      setActiveEventId(event.id);
+      // If no snapshot exists, auto-save config with first category
+      if (!snapshot) {
+        console.log('📝 No config snapshot found, auto-creating with first category...');
 
-      // Backup to localStorage (redundant but safe)
-      localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
-      localStorage.setItem('surfJudgingConfigSaved', snapshot ? 'true' : 'false');
+        // Get first category from participants
+        const firstCategory = await getFirstCategoryFromParticipants(event.id);
+        const division = firstCategory || 'OPEN';
+
+        console.log(`  → First category: ${division}`);
+
+        // Build config with this division
+        const config = buildConfigFromSnapshot(event.name, {
+          event_id: event.id,
+          event_name: event.name,
+          division,
+          round: 1,
+          heat_number: 1,
+          judges: [
+            { id: 'J1', name: 'J1' },
+            { id: 'J2', name: 'J2' },
+            { id: 'J3', name: 'J3' }
+          ],
+          surfers: ['ROUGE', 'BLANC', 'JAUNE', 'BLEU'],
+          surferNames: {},
+          surferCountries: {},
+          updated_at: new Date().toISOString()
+        });
+
+        // Auto-save to event_last_config
+        try {
+          await saveEventConfigSnapshot({
+            eventId: event.id,
+            eventName: event.name,
+            division,
+            round: 1,
+            heatNumber: 1,
+            judges: config.judges.map(id => ({
+              id,
+              name: config.judgeNames[id] || id
+            }))
+          });
+          console.log('✅ Config auto-saved to event_last_config');
+
+          // Update global state
+          setConfig(config);
+          setConfigSaved(true); // NOW config is saved!
+          setLoadedFromDb(true); // Mark as loaded from DB
+          setActiveEventId(event.id);
+
+          // Backup to localStorage
+          localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
+          localStorage.setItem('surfJudgingConfigSaved', 'true');
+          localStorage.setItem('surfJudgingActiveEventId', event.id.toString());
+
+        } catch (saveError) {
+          console.warn('⚠️ Failed to auto-save config, continuing in offline mode:', saveError);
+
+          // Still set config but mark as unsaved
+          setConfig(config);
+          setConfigSaved(false);
+          setActiveEventId(event.id);
+
+          localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
+          localStorage.setItem('surfJudgingConfigSaved', 'false');
+          localStorage.setItem('surfJudgingActiveEventId', event.id.toString());
+        }
+      } else {
+        // Snapshot exists, use it normally
+        console.log('✅ Config snapshot found, loading from DB');
+        const config = buildConfigFromSnapshot(event.name, snapshot);
+
+        setConfig(config);
+        setConfigSaved(true);
+        setLoadedFromDb(true); // Mark as loaded from DB
+        setActiveEventId(event.id);
+
+        localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
+        localStorage.setItem('surfJudgingConfigSaved', 'true');
+        localStorage.setItem('surfJudgingActiveEventId', event.id.toString());
+      }
 
       // Reset other state
-      localStorage.setItem('surfJudgingTimer', JSON.stringify({ isRunning: false, startTime: null, duration: config.waves }));
+      localStorage.setItem('surfJudgingTimer', JSON.stringify({ isRunning: false, startTime: null, duration: 15 }));
       localStorage.setItem('surfJudgingScores', JSON.stringify([]));
       localStorage.setItem('surfJudgingJudgeWorkCount', JSON.stringify({}));
 

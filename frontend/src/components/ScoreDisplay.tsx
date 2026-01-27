@@ -143,7 +143,8 @@ export default function ScoreDisplay({
       scores,
       config.surfers,
       judgeCount,
-      config.waves
+      config.waves,
+      heatStatus === 'finished' // allowIncomplete if heat is finished
     );
     setSurferStats(stats);
   }, [scores, configSaved, config]);
@@ -369,9 +370,32 @@ export default function ScoreDisplay({
                         return (
                           <td key={i} className="p-2 sm:p-3 text-center">
                             {wave && wave.score > 0 ? (
-                              <span className="font-semibold">
-                                {wave.score.toFixed(2)}
-                              </span>
+                              <div className="group relative cursor-help inline-block">
+                                <span className="font-semibold">
+                                  {wave.score.toFixed(2)}
+                                </span>
+                                {/* Tooltip notes juges */}
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center bg-gray-900 text-white text-xs p-2 rounded z-50 shadow-lg min-w-max">
+                                  <div className="flex gap-3">
+                                    {config.judges.map((jId, idx) => {
+                                      const s = wave.judgeScores[jId];
+                                      if (s === undefined) return null;
+                                      return (
+                                        <div key={jId} className="flex flex-col items-center">
+                                          <span className="text-[0.6rem] text-gray-400 uppercase tracking-wider font-semibold">
+                                            J{idx + 1}
+                                          </span>
+                                          <span className="font-mono font-bold text-sm">
+                                            {s.toFixed(1)}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {/* Flèche du tooltip */}
+                                  <div className="w-2 h-2 bg-gray-900 rotate-45 absolute -bottom-1"></div>
+                                </div>
+                              </div>
                             ) : (
                               <span className="text-gray-300">—</span>
                             )}

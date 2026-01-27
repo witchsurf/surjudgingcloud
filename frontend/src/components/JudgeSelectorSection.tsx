@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { fetchActiveJudges } from '../api/supabaseClient';
 import type { Judge } from '../api/supabaseClient';
 
@@ -16,6 +17,7 @@ export const JudgeSelectorSection = ({
     const [availableJudges, setAvailableJudges] = useState<Judge[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [isExpanded, setIsExpanded] = useState(false); // Collapsed by default
 
     useEffect(() => {
         loadJudges();
@@ -37,94 +39,70 @@ export const JudgeSelectorSection = ({
 
     const handleToggleJudge = (judgeId: string) => {
         if (selectedJudgeIds.includes(judgeId)) {
-            // Remove judge
             onSelectJudges(selectedJudgeIds.filter(id => id !== judgeId));
         } else {
-            // Add judge (if under limit)
             if (selectedJudgeIds.length < maxJudges) {
                 onSelectJudges([...selectedJudgeIds, judgeId]);
             }
         }
     };
 
-    if (loading) {
-        return (
-            <div className="bg-gray-800 rounded-lg p-6">
-                <p className="text-gray-400">Chargement des juges...</p>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="bg-red-900/20 border border-red-500 rounded-lg p-6">
-                <p className="text-red-400">{error}</p>
-                <button
-                    onClick={loadJudges}
-                    className="mt-2 text-sm text-red-300 underline"
-                >
-                    Réessayer
-                </button>
-            </div>
-        );
-    }
-
     return (
-        <div className="bg-gray-800 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Sélection des Juges FSS</h3>
-                <span className="text-sm text-gray-400">
-                    {selectedJudgeIds.length} / {maxJudges} sélectionné{selectedJudgeIds.length > 1 ? 's' : ''}
+        <div className="border border-gray-200 rounded-lg mb-4">
+            {/* Collapsible Header */}
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-t-lg transition-colors"
+            >
+                <div className="flex items-center space-x-2">
+                    {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+                    <span className="font-medium text-gray-700 text-sm">Juges FSS officiels</span>
+                </div>
+                <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
+                    {selectedJudgeIds.length}/{maxJudges}
                 </span>
-            </div>
+            </button>
 
-            {availableJudges.length === 0 ? (
-                <p className="text-gray-400 text-sm">
-                    Aucun juge disponible. Contactez l'administrateur pour ajouter des juges FSS.
-                </p>
-            ) : (
-                <div className="space-y-2">
-                    {availableJudges.map((judge) => {
-                        const isSelected = selectedJudgeIds.includes(judge.id);
-                        const canSelect = isSelected || selectedJudgeIds.length < maxJudges;
+            {/* Collapsible Content */}
+            {isExpanded && (
+                <div className="p-4 bg-white">
+                    {loading ? (
+                        <p className="text-gray-400 text-sm">Chargement...</p>
+                    ) : error ? (
+                        <div className="text-red-500 text-sm">
+                            {error}
+                            <button onClick={loadJudges} className="ml-2 underline">Réessayer</button>
+                        </div>
+                    ) : availableJudges.length === 0 ? (
+                        <p className="text-gray-400 text-sm">Aucun juge FSS disponible</p>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {availableJudges.map((judge) => {
+                                const isSelected = selectedJudgeIds.includes(judge.id);
+                                const canSelect = isSelected || selectedJudgeIds.length < maxJudges;
 
-                        return (
-                            <button
-                                key={judge.id}
-                                onClick={() => handleToggleJudge(judge.id)}
-                                disabled={!canSelect}
-                                className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${isSelected
-                                        ? 'border-blue-500 bg-blue-500/20 text-white'
-                                        : canSelect
-                                            ? 'border-gray-600 hover:border-gray-500 text-gray-300 hover:bg-gray-700/50'
-                                            : 'border-gray-700 text-gray-600 cursor-not-allowed'
-                                    }`}
-                            >
-                                <div className="flex items-center justify-between">
-                                    <div>
+                                return (
+                                    <button
+                                        key={judge.id}
+                                        onClick={() => handleToggleJudge(judge.id)}
+                                        disabled={!canSelect}
+                                        className={`text-left px-3 py-2 rounded-lg border transition-all text-sm ${isSelected
+                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                            : canSelect
+                                                ? 'border-gray-200 hover:border-gray-300 text-gray-700 hover:bg-gray-50'
+                                                : 'border-gray-100 text-gray-400 cursor-not-allowed'
+                                            }`}
+                                    >
                                         <div className="font-medium">{judge.name}</div>
                                         {judge.certification_level && (
-                                            <div className="text-xs text-gray-400 mt-1">
-                                                {judge.certification_level} · {judge.federation}
-                                            </div>
+                                            <div className="text-xs text-gray-400">{judge.certification_level}</div>
                                         )}
-                                    </div>
-                                    {isSelected && (
-                                        <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                        </svg>
-                                    )}
-                                </div>
-                            </button>
-                        );
-                    })}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
-            )}
-
-            {selectedJudgeIds.length >= maxJudges && (
-                <p className="mt-3 text-sm text-yellow-400">
-                    ℹ️ Limite de {maxJudges} juges atteinte
-                </p>
             )}
         </div>
     );

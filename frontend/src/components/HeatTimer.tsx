@@ -28,36 +28,14 @@ function HeatTimer({
   const [showSettings, setShowSettings] = useState(false);
   const [fiveMinuteAlarmPlayed, setFiveMinuteAlarmPlayed] = useState(false);
   const [lastCountdownSecond, setLastCountdownSecond] = useState(-1);
+  const [finalBeepPlayed, setFinalBeepPlayed] = useState(false);
   const timerAudio = TimerAudio.getInstance();
 
   // Écouter les événements de synchronisation du timer
   useEffect(() => {
     // Fonction pour synchroniser le timer depuis localStorage
-    const syncTimerFromStorage = () => {
-      const savedTimer = localStorage.getItem('surfJudgingTimer');
-      if (savedTimer) {
-        try {
-          const parsedTimer = JSON.parse(savedTimer);
-          if (parsedTimer.startTime && typeof parsedTimer.startTime === 'string') {
-            parsedTimer.startTime = new Date(parsedTimer.startTime);
-          }
-
-          if (parsedTimer.startTime && parsedTimer.isRunning) {
-            const elapsed = Math.floor((Date.now() - parsedTimer.startTime.getTime()) / 1000);
-            const remaining = Math.max(0, parsedTimer.duration * 60 - elapsed);
-            setTimeLeft(remaining);
-            console.log('🔄 Timer synchronisé depuis localStorage:', { remaining, elapsed, isRunning: parsedTimer.isRunning });
-          } else {
-            setTimeLeft(parsedTimer.duration * 60);
-            setFiveMinuteAlarmPlayed(false);
-            setLastCountdownSecond(-1);
-            console.log('🔄 Timer reset depuis localStorage:', { duration: parsedTimer.duration });
-          }
-        } catch (error) {
-          console.error('Erreur sync timer depuis storage:', error);
-        }
-      }
-    };
+    // localStorage sync REMOVED - using Supabase realtime only
+    // This fixes infinite loop issue
 
     const handleTimerSync = (e: CustomEvent) => {
       const syncedTimer = e.detail;
@@ -79,38 +57,30 @@ function HeatTimer({
       }
     };
 
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'surfJudgingTimer' && e.newValue) {
-        console.log('📡 Storage change détecté pour timer');
-        syncTimerFromStorage();
-      }
-    };
+    // Storage event listener REMOVED - no longer using localStorage for timer
 
-    // Synchroniser immédiatement
-    syncTimerFromStorage();
-
-    // Synchroniser toutes les 500ms pour une meilleure réactivité
-    const syncInterval = setInterval(() => {
-      syncTimerFromStorage();
-    }, 500);
+    // Initial sync from Supabase realtime only (see handleTimerSync)
 
     window.addEventListener('timerSync', handleTimerSync as EventListener);
-    window.addEventListener('storage', handleStorageChange);
 
     return () => {
-      clearInterval(syncInterval);
       window.removeEventListener('timerSync', handleTimerSync as EventListener);
-      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
 
-    if (timer.isRunning && timer.startTime) {
+    if (timer.isRunning) {
       interval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - timer.startTime!.getTime()) / 1000);
-        const remaining = Math.max(0, timer.duration * 60 - elapsed);
+        let remaining = timeLeft;
+        if (timer.startTime) {
+          const elapsed = Math.floor((Date.now() - new Date(timer.startTime).getTime()) / 1000);
+          remaining = Math.max(0, timer.duration * 60 - elapsed);
+        } else {
+          // Fallback: décrémente localement si pas de startTime
+          remaining = Math.max(0, remaining - 1);
+        }
         setTimeLeft(remaining);
 
         // Alarme 5 minutes (300 secondes)
@@ -125,9 +95,10 @@ function HeatTimer({
           setLastCountdownSecond(remaining);
         }
 
-        // Son final quand le temps est écoulé
-        if (remaining === 0) {
+        // Son final quand le temps est écoulé (play only once!)
+        if (remaining === 0 && !finalBeepPlayed) {
           timerAudio.playFinalBeep();
+          setFinalBeepPlayed(true);
           onPause();
         }
       }, 1000);
@@ -136,15 +107,17 @@ function HeatTimer({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [timer.isRunning, timer.startTime, timer.duration, onPause, fiveMinuteAlarmPlayed, lastCountdownSecond, timerAudio]);
+  }, [timer.isRunning, timer.startTime, timer.duration, onPause, timeLeft, fiveMinuteAlarmPlayed, lastCountdownSecond, finalBeepPlayed, timerAudio]);
 
   useEffect(() => {
     if (!timer.isRunning && !timer.startTime) {
       setTimeLeft(timer.duration * 60);
       setFiveMinuteAlarmPlayed(false);
       setLastCountdownSecond(-1);
+      setFinalBeepPlayed(false);
+      timerAudio.stopAll?.();
     }
-  }, [timer.duration, timer.isRunning, timer.startTime]);
+  }, [timer.duration, timer.isRunning, timer.startTime, timerAudio]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);

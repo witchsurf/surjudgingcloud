@@ -48,7 +48,12 @@ interface SlotReference {
 }
 
 const makePlaceholder = (ref: SlotReference, prefix = 'R'): string => {
-  return `${prefix}${ref.sourceRound}-H${ref.heatNumber}-P${ref.position}`;
+  // Generates robust format: "R1-H1-3 (P3)" which is parsed by regex and visible in PDF
+  const base = `${prefix}${ref.sourceRound}-H${ref.heatNumber}`;
+
+  // If it's a seed distribution/bye, handle differently? No, this is for refs.
+  // Use standard format compatible with new Regex
+  return `${base}-${ref.position} (P${ref.position})`;
 };
 
 function toHeatSlots(map: HeatSeedMap[], participants: ParticipantSeed[]): HeatSpec[] {
@@ -271,7 +276,7 @@ export function buildRepechageFlows(round1: HeatSpec[], mainRounds: RoundSpec[])
 
   if (mainRounds.length === 0) return repechage;
 
-  let previousRefs = repechage[0].heats.flatMap((heat) => heat.slots.map((slot, slotIdx) => ({
+  let previousRefs = repechage[0].heats.flatMap((heat) => heat.slots.map((_, slotIdx) => ({
     sourceRound: 101,
     heatNumber: heat.heatNumber,
     position: slotIdx + 1,
@@ -338,12 +343,12 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
   const variableHeatSizes =
     heatCount > 0
       ? Array.from({ length: heatCount }, (_, idx) => {
-          const sizeCandidate = baseSize + (idx < remainder ? 1 : 0);
-          if (sizeCandidate <= 0) {
-            return heatSize;
-          }
-          return Math.min(heatSize, sizeCandidate);
-        })
+        const sizeCandidate = baseSize + (idx < remainder ? 1 : 0);
+        if (sizeCandidate <= 0) {
+          return heatSize;
+        }
+        return Math.min(heatSize, sizeCandidate);
+      })
       : [];
 
   const seedMap = distributeSeedsSnake(

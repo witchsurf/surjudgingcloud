@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Score } from '../types';
-import { calculateSurferStats } from '../utils/scoring';
+import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { fetchHeatEntriesWithParticipants } from '../api/supabaseClient';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
@@ -183,7 +183,8 @@ export default function HeatResults({
   const rows = useMemo(() => {
     if (!scoresState.length) return [];
 
-    const stats = calculateSurferStats(scoresState, surfers, judgeIds.length, maxWaves);
+    const judgeCount = getEffectiveJudgeCount(scoresState, judgeIds.length);
+    const stats = calculateSurferStats(scoresState, surfers, judgeCount, maxWaves);
     const aggregates = stats.map((stat) => {
       const entryInfo = entryMap.get(stat.surfer) ?? { jersey: stat.surfer, name: stat.surfer };
 

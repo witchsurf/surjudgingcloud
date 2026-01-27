@@ -17,12 +17,16 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+._*
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 .env
+*.env.local
+infra/.env.production
+n8n_key*
 
 # Additional build ignores
 build/

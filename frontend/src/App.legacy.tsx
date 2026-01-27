@@ -35,7 +35,7 @@ import {
 } from './api/supabaseClient';
 import { isSupabaseConfigured } from './lib/supabase';
 import { colorLabelMap, type HeatColor } from './utils/colorUtils';
-import { calculateSurferStats } from './utils/scoring';
+import { calculateSurferStats, getEffectiveJudgeCount } from './utils/scoring';
 import { getHeatIdentifiers, ensureHeatId } from './utils/heat';
 
 const STORAGE_KEYS = {
@@ -1358,7 +1358,8 @@ function App() {
             });
           });
 
-          const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves)
+          const judgeCount = getEffectiveJudgeCount(scores, config.judges.length);
+          const stats = calculateSurferStats(scores, config.surfers, judgeCount, config.waves)
             .sort((a, b) => a.rank - b.rank);
 
           const entryByRank = new Map<number, {

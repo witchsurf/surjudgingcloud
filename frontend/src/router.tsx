@@ -157,10 +157,20 @@ function ChiefJudgeWrapper() {
     } catch (e) { }
 
     try {
-      const rawWork = localStorage.getItem('surfJudgingJudgeWorkCount');
+      const rawWork = localStorage.getItem('surfJudging JudgeWorkCount');
       if (rawWork) setJudgeWorkCount(JSON.parse(rawWork));
     } catch (e) { }
   }, []);
+
+  // Heat change detection via config props only (no localStorage)
+  useEffect(() => {
+    const currentHeatKey = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+
+    // Reset timer when heat changes (detected by config change)
+    console.log(`🔄 Heat is: ${currentHeatKey}. Timer ready.`);
+    const resetTimer = { isRunning: false, startTime: null, duration: config.waves || 20 };
+    setTimer(resetTimer);
+  }, [config.competition, config.division, config.round, config.heatId, config.waves]);
 
   // Subscribe to realtime for the current heat when configSaved
   useEffect(() => {
@@ -416,6 +426,21 @@ function JudgeWrapper() {
       }
     });
   }, [config.competition, config.division, config.round, config.heatId, loadScoresFromDatabase]);
+
+  // Reset timer when heat changes to prevent blinking (JUDGE)
+  useEffect(() => {
+    const currentHeatKey = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+    const savedHeatKey = localStorage.getItem('activeHeatKey');
+
+    if (savedHeatKey && savedHeatKey !== currentHeatKey) {
+      console.log(`🔄 [Judge] Heat changed: ${savedHeatKey} → ${currentHeatKey}. Resetting timer.`);
+      const resetTimer = { isRunning: false, startTime: null, duration: config.waves || 20 };
+      setTimer(resetTimer);
+      try { localStorage.setItem('surfJudgingTimer', JSON.stringify(resetTimer)); } catch { }
+    }
+
+    localStorage.setItem('activeHeatKey', currentHeatKey);
+  }, [config.competition, config.division, config.round, config.heatId, config.waves, setTimer]);
 
   useEffect(() => {
     if (!judgeId) {

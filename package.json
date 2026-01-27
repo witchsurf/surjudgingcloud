@@ -6,5 +6,10 @@
   },
   "scripts": {
     "webhook": "node src/stripe-webhook.js"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "vitest": "^4.0.16"
   }
 }

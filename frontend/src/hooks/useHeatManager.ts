@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { useConfig } from '../contexts/ConfigContext';
-import { useJudging } from '../contexts/JudgingContext';
+import { useConfigStore } from '../stores/configStore';
+import { useJudgingStore } from '../stores/judgingStore';
 import { useSupabaseSync } from './useSupabaseSync';
 import { useRealtimeSync } from './useRealtimeSync';
 import { useCompetitionTimer } from './useCompetitionTimer';
@@ -15,6 +15,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { calculateSurferStats } from '../utils/scoring';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
+import { eventRepository } from '../repositories';
 import { HEAT_COLOR_CACHE_KEY, DEFAULT_TIMER_DURATION } from '../utils/constants';
 import type { AppConfig } from '../types';
 
@@ -27,14 +28,14 @@ const normalizeHeatEntries = (entries: unknown): any[] => {
 };
 
 export function useHeatManager() {
-    const { config, setConfig, persistConfig, activeEventId } = useConfig();
+    const { config, setConfig, persistConfig, activeEventId } = useConfigStore();
     const {
         scores,
         setScores,
         setHeatStatus,
         judgeWorkCount,
         setJudgeWorkCount
-    } = useJudging();
+    } = useJudgingStore();
 
     const {
         updateHeatStatus,
@@ -228,7 +229,7 @@ export function useHeatManager() {
         let nextDivision = config.division;
         if (!nextCandidate && activeEventId) {
             try {
-                const divisions = await fetchDistinctDivisions(parseInt(activeEventId, 10) || 0);
+                const divisions = await fetchDistinctDivisions(activeEventId);
                 // Sort divisions to ensure consistent order (e.g., alphabetical or custom logic)
                 // Actually fetchDistinctDivisions sorts alphabetically or by creation.
 
@@ -238,7 +239,7 @@ export function useHeatManager() {
                     console.log(`🔄 Fin de la division ${config.division}, passage à ${nextDivision}`);
 
                     // Fetch sequence for next division
-                    const nextDivSequence = await fetchOrderedHeatSequence(parseInt(activeEventId, 10) || 0, nextDivision);
+                    const nextDivSequence = await fetchOrderedHeatSequence(activeEventId, nextDivision);
                     if (nextDivSequence && nextDivSequence.length > 0) {
                         nextCandidate = nextDivSequence.find((item: any) => item.status !== 'closed') ?? nextDivSequence[0];
                         if (nextCandidate) {
@@ -248,6 +249,17 @@ export function useHeatManager() {
                     }
                 } else {
                     console.log(`✅ Fin de la division ${config.division} - Dernière division de l'événement`);
+
+                    // Show friendly alert to guide user
+                    setTimeout(() => {
+                        alert(
+                            `✅ Division ${config.division.toUpperCase()} terminée!\n\n` +
+                            `Tous les heats de cette division ont été notés.\n\n` +
+                            `Pour continuer:\n` +
+                            `→ Sélectionnez une autre division dans le menu déroulant\n\n` +
+                            `Ou cliquez OK pour terminer l'événement.`
+                        );
+                    }, 500); // Small delay to ensure UI is ready
                 }
             } catch (error) {
                 console.warn('Impossible de déterminer la prochaine division', error);
@@ -303,9 +315,34 @@ export function useHeatManager() {
             }
             : { ...config };
 
+
         setConfig(newConfig);
         persistConfig(newConfig);
         setHeatStatus(advanced ? 'waiting' : 'finished');
+
+        // Save config to database for realtime sync to Display/Judge
+        if (activeEventId) {
+            try {
+                await eventRepository.saveEventConfigSnapshot({
+                    eventId: Number(activeEventId),
+                    eventName: newConfig.competition,
+                    division: newConfig.division,
+                    round: newConfig.round,
+                    heatNumber: newConfig.heatId,
+                    judges: (newConfig.judges || []).map(id => ({
+                        id,
+                        name: newConfig.judgeNames?.[id] || id
+                    })),
+                    surfers: newConfig.surfers || [],
+                    surferNames: newConfig.surferNames || {},
+                    surferCountries: newConfig.surferCountries || {}
+                });
+                console.log('✅ Config synced to DB for realtime updates');
+            } catch (error) {
+                console.warn('⚠️ Failed to sync config to DB:', error);
+            }
+        }
+
 
         resetTimer(); // This resets timer state and publishes reset
         setScores([]);

@@ -6,11 +6,11 @@ const LandingPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-900 to-black text-white">
       {/* Background image overlay */}
-      <div 
+      <div
         className="absolute inset-0 z-0 bg-cover bg-center opacity-30"
-        style={{ 
+        style={{
           backgroundImage: 'url(/surf-background.jpg)',
-          backgroundBlendMode: 'overlay' 
+          backgroundBlendMode: 'overlay'
         }}
       />
 

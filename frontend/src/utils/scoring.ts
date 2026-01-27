@@ -14,7 +14,7 @@ export function validateScore(input: string): ScoreValidation {
   }
 
   const score = parseFloat(input.replace(',', '.'));
-  
+
   if (isNaN(score)) {
     return { isValid: false, error: 'Score invalide' };
   }
@@ -25,7 +25,7 @@ export function validateScore(input: string): ScoreValidation {
 
   // Arrondir à 2 décimales
   const roundedScore = roundScore(score);
-  
+
   return { isValid: true, value: roundedScore };
 }
 
@@ -72,7 +72,7 @@ import { SURFER_COLORS } from './constants';
 
 function calculateScoreAverage(scores: number[], judgeCount: number): number {
   if (scores.length === 0) return 0;
-  
+
   const availableScores = [...scores];
 
   // Lorsque tous les juges ont noté et qu'il y en a 5 ou plus,
@@ -91,15 +91,16 @@ function calculateScoreAverage(scores: number[], judgeCount: number): number {
 }
 
 export function calculateSurferStats(
-  scores: Score[], 
-  surfers: string[], 
+  scores: Score[],
+  surfers: string[],
   judgeCount: number,
-  maxWaves: number = 12
+  maxWaves: number = 12,
+  allowIncomplete: boolean = false
 ): SurferStats[] {
   const surferStats = surfers.map(surfer => {
     // Grouper les scores par vague
     const waveScores: Record<number, Record<string, number>> = {};
-    
+
     scores
       .filter(score => score.surfer === surfer)
       .forEach(score => {
@@ -117,7 +118,13 @@ export function calculateSurferStats(
       const waveNumber = index + 1;
       const judgeScores = waveScores[waveNumber] ?? {};
       const judgeScoreValues = Object.values(judgeScores);
-      const isComplete = judgeScoreValues.length === judgeCount;
+
+      // Si allowIncomplete est vrai (ex: heat terminé), on accepte n'importe quel score > 0
+      // Sinon, on exige que tous les juges aient noté
+      const isComplete = allowIncomplete
+        ? judgeScoreValues.length > 0
+        : judgeScoreValues.length === judgeCount;
+
       const average = judgeScoreValues.length > 0 ? calculateScoreAverage(judgeScoreValues, judgeCount) : 0;
 
       return {
@@ -170,4 +177,19 @@ export function calculateSurferStats(
   });
 
   return withRanks;
+}
+
+export function getEffectiveJudgeCount(scores: Score[], configuredCount?: number): number {
+  const uniqueJudges = new Set(
+    scores
+      .map((score) => score.judge_id)
+      .filter((judgeId): judgeId is string => Boolean(judgeId))
+  ).size;
+
+  if (configuredCount && configuredCount > 0) {
+    if (uniqueJudges === 0) return configuredCount;
+    return Math.min(uniqueJudges, configuredCount);
+  }
+
+  return Math.max(uniqueJudges, 1);
 }

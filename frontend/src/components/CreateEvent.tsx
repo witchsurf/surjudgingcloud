@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { useConfig } from '../contexts/ConfigContext';
+import { useConfigStore } from '../stores/configStore';
 import EventStatus from './EventStatus';
 
 interface EventFormData {
@@ -21,7 +21,7 @@ const INITIAL_FORM: EventFormData = {
 const CreateEvent = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { setActiveEventId } = useConfig();
+  const { setActiveEventId } = useConfigStore();
   const [formData, setFormData] = useState<EventFormData>(INITIAL_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);

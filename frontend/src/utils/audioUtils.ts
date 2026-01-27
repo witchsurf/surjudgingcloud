@@ -9,12 +9,10 @@ type ExtendedWindow = Window & typeof globalThis & {
 
 export class TimerAudio {
   private static instance: TimerAudio;
-  private fiveMinuteAlarm: BeepAudioElement | null = null;
-  private countdownBeep: BeepAudioElement | null = null;
-  private finalBeep: BeepAudioElement | null = null;
+  private audioContext: AudioContext | null = null;
 
   private constructor() {
-    this.initializeAudio();
+    // Don't initialize audio here - wait for user gesture
   }
 
   static getInstance(): TimerAudio {
@@ -24,87 +22,74 @@ export class TimerAudio {
     return TimerAudio.instance;
   }
 
-  private initializeAudio() {
-    try {
-      // Créer les sons avec des fréquences différentes
-      this.fiveMinuteAlarm = this.createBeep(800, 0.3, 1000); // Son grave pour 5 minutes
-      this.countdownBeep = this.createBeep(1000, 0.2, 200); // Son aigu pour countdown
-      this.finalBeep = this.createBeep(1200, 0.5, 2000); // Son final
-    } catch (error) {
-      console.warn('Impossible de créer les sons audio:', error);
+  private ensureAudioContext() {
+    if (!this.audioContext) {
+      try {
+        const extendedWindow = window as ExtendedWindow;
+        const AudioContextConstructor = window.AudioContext ?? extendedWindow.webkitAudioContext;
+        if (!AudioContextConstructor) {
+          throw new Error('AudioContext non supporté par ce navigateur');
+        }
+        this.audioContext = new AudioContextConstructor();
+
+        // Resume context if suspended (Chrome autoplay policy)
+        if (this.audioContext.state === 'suspended') {
+          this.audioContext.resume().catch(err => {
+            console.warn('Could not resume AudioContext:', err);
+          });
+        }
+      } catch (error) {
+        console.warn('Impossible de créer AudioContext:', error);
+      }
     }
+    return this.audioContext;
   }
 
-  private createBeep(frequency: number, volume: number, duration: number): BeepAudioElement {
-    // Créer un contexte audio pour générer des bips
-    const extendedWindow = window as ExtendedWindow;
-    const AudioContextConstructor = window.AudioContext ?? extendedWindow.webkitAudioContext;
-    if (!AudioContextConstructor) {
-      throw new Error('AudioContext non supporté par ce navigateur');
-    }
+  private playBeep(frequency: number, volume: number, duration: number) {
+    const audioContext = this.ensureAudioContext();
+    if (!audioContext) return;
 
-    const audioContext = new AudioContextConstructor();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.frequency.value = frequency;
-    oscillator.type = 'sine';
-    
-    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-    gainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
-    
-    // Créer un élément audio factice pour l'interface
-    const audio = new Audio() as BeepAudioElement;
-    audio.volume = volume;
-    
-    // Fonction personnalisée pour jouer le son
-    audio.playBeep = () => {
-      try {
-        const newOscillator = audioContext.createOscillator();
-        const newGainNode = audioContext.createGain();
-        
-        newOscillator.connect(newGainNode);
-        newGainNode.connect(audioContext.destination);
-        
-        newOscillator.frequency.value = frequency;
-        newOscillator.type = 'sine';
-        
-        newGainNode.gain.setValueAtTime(0, audioContext.currentTime);
-        newGainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.01);
-        newGainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
-        
-        newOscillator.start(audioContext.currentTime);
-        newOscillator.stop(audioContext.currentTime + duration / 1000);
-      } catch (error) {
-        console.warn('Erreur lors de la lecture du son:', error);
-      }
-    };
-    
-    return audio;
+    try {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'sine';
+
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + duration / 1000);
+    } catch (error) {
+      console.warn('Erreur lors de la lecture du son:', error);
+    }
   }
 
   playFiveMinuteAlarm() {
-    if (this.fiveMinuteAlarm?.playBeep) {
-      this.fiveMinuteAlarm.playBeep();
-      console.log('🔔 Alarme 5 minutes !');
-    }
+    console.log('🔔 Alarme 5 minutes !');
+    this.playBeep(800, 0.3, 1000);
   }
 
   playCountdownBeep() {
-    if (this.countdownBeep?.playBeep) {
-      this.countdownBeep.playBeep();
-      console.log('⏰ Bip countdown !');
-    }
+    console.log('⏰ Bip countdown !');
+    this.playBeep(1000, 0.2, 200);
   }
 
   playFinalBeep() {
-    if (this.finalBeep?.playBeep) {
-      this.finalBeep.playBeep();
-      console.log('🏁 Bip final !');
+    console.log('🏁 Bip final !');
+    this.playBeep(1200, 0.5, 2000);
+  }
+
+  stopAll() {
+    // Stop all sounds by closing and recreating context
+    if (this.audioContext) {
+      this.audioContext.close().catch(err => console.warn('Error closing AudioContext:', err));
+      this.audioContext = null;
     }
   }
 }

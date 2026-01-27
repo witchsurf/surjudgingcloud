@@ -38,6 +38,7 @@ export interface Score {
   timestamp: string;
   created_at?: string;
   synced?: boolean;
+  event_id?: number;
 }
 
 export type OverrideReason = 'correction' | 'omission' | 'probleme';
@@ -72,6 +73,7 @@ export interface Heat {
     color: string;
     name: string;
     country: string;
+    seed?: number | null;  // ✅ ADD SEED for participant matching
   }>;
 }
 
@@ -131,3 +133,6 @@ export interface PaymentRecord {
   paid_at: string | null;
   created_at: string;
 }
+
+// Export kiosk-related types
+export * from './kiosk';

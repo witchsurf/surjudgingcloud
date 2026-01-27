@@ -9,11 +9,18 @@ function extractHeatNumber(heatId: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
-const normalizeScores = (scores: Score[]): Score[] =>
+const normalizeScores = (scores: Score[], idGenerator?: () => string): Score[] =>
   scores.map((score) => ({
     ...score,
+    id: isValidUuid(score.id) ? score.id : (idGenerator ? idGenerator() : score.id),
     heat_id: ensureHeatId(score.heat_id),
   }));
+
+const isValidUuid = (value: string | undefined): boolean => {
+  if (!value) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(value);
+};
 
 interface SyncStatus {
   isOnline: boolean;
@@ -43,7 +50,7 @@ export function useSupabaseSync() {
   }, []);
 
   const persistScores = useCallback((scores: Score[]) => {
-    const normalizedScores = normalizeScores(scores);
+    const normalizedScores = normalizeScores(scores, generateId);
     localStorage.setItem('surfJudgingScores', JSON.stringify(normalizedScores));
     updatePendingCount(normalizedScores);
   }, [updatePendingCount]);
@@ -149,7 +156,7 @@ export function useSupabaseSync() {
     }
 
     try {
-      const scores: Score[] = normalizeScores(JSON.parse(localScores));
+      const scores: Score[] = normalizeScores(JSON.parse(localScores), generateId);
       const syncedScores = scores.map(score => ({ ...score, synced: true }));
       persistScores(syncedScores);
     } catch (error) {
@@ -304,12 +311,19 @@ export function useSupabaseSync() {
     const normalizedHeatId = ensureHeatId(heatId);
     const newScore: Score = {
       ...scoreData,
-      id: Date.now().toString(),
+      competition: scoreData.competition || '',
+      division: scoreData.division || '',
+      round: scoreData.round ?? 0,
+      id: generateId(),
       heat_id: normalizedHeatId,
       timestamp: new Date().toISOString(),
       created_at: new Date().toISOString(),
       synced: false
     };
+
+    // Get event_id from localStorage for the score
+    const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+    const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
 
     // Sauvegarder localement d'abord
     const rawScores = localStorage.getItem('surfJudgingScores');
@@ -327,6 +341,7 @@ export function useSupabaseSync() {
           .upsert({
             id: newScore.id,
             heat_id: newScore.heat_id,
+            event_id: eventId, // ✅ CRITICAL FIX: Link score to event for RLS/Admin visibility
             competition: newScore.competition,
             division: newScore.division,
             round: newScore.round,
@@ -381,7 +396,12 @@ export function useSupabaseSync() {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
       return crypto.randomUUID();
     }
-    return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // Fallback UUID-ish (not perfect but avoids non-UUID errors server-side)
+    const ts = Date.now().toString(16).padStart(12, '0');
+    const rand = Math.floor(Math.random() * 0xffff)
+      .toString(16)
+      .padStart(4, '0');
+    return `00000000-0000-4000-${rand}-${ts}`;
   };
 
   const overrideScore = useCallback(async (input: ScoreOverrideInput) => {
@@ -553,8 +573,8 @@ export function useSupabaseSync() {
   // Créer un heat
   const createHeat = useCallback(async (heatData: Omit<Heat, 'id' | 'created_at'>) => {
     const normalizedHeatId = buildHeatId(
-      heatData.competition,
-      heatData.division,
+      heatData.competition || '',
+      heatData.division || '',
       heatData.round,
       heatData.heat_number
     );
@@ -564,36 +584,39 @@ export function useSupabaseSync() {
       created_at: new Date().toISOString()
     };
 
-    if (!navigator.onLine || !isSupabaseConfigured()) {
+    const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+    const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : null;
+
+    if (navigator.onLine && isSupabaseConfigured()) {
+      try {
+        const { error } = await supabase!
+          .from('heats')
+          .upsert({
+            id: newHeat.id,
+            event_id: eventId, // ✅ Injected event_id
+            competition: newHeat.competition,
+            division: newHeat.division,
+            round: newHeat.round,
+            heat_number: newHeat.heat_number,
+            status: newHeat.status,
+            created_at: newHeat.created_at
+          });
+
+        if (error) throw error;
+
+        const { error: realtimeError } = await supabase!
+          .from('heat_realtime_config')
+          .upsert({ heat_id: newHeat.id }, { onConflict: 'heat_id', ignoreDuplicates: true });
+
+        if (realtimeError) throw realtimeError;
+
+        console.log('✅ Heat créé dans Supabase:', newHeat.id);
+      } catch (error) {
+        console.error('❌ Erreur création heat:', error);
+        console.log('⚠️ Heat créé localement, synchronisation différée');
+      }
+    } else {
       console.log('⚠️ Heat créé localement uniquement (hors ligne ou Supabase non configuré)');
-      return newHeat;
-    }
-
-    try {
-      const { error } = await supabase!
-        .from('heats')
-        .upsert({
-          id: newHeat.id,
-          competition: newHeat.competition,
-          division: newHeat.division,
-          round: newHeat.round,
-          heat_number: newHeat.heat_number,
-          status: newHeat.status,
-          created_at: newHeat.created_at
-        });
-
-      if (error) throw error;
-
-      const { error: realtimeError } = await supabase!
-        .from('heat_realtime_config')
-        .upsert({ heat_id: newHeat.id }, { onConflict: 'heat_id', ignoreDuplicates: true });
-
-      if (realtimeError) throw realtimeError;
-
-      console.log('✅ Heat créé dans Supabase:', newHeat.id);
-    } catch (error) {
-      console.error('❌ Erreur création heat:', error);
-      console.log('⚠️ Heat créé localement, synchronisation différée');
     }
 
     return newHeat;
@@ -642,6 +665,13 @@ export function useSupabaseSync() {
     }
 
     try {
+      console.log('💾 Tentative sauvegarde timer:', {
+        heat_id: normalizedHeatId,
+        is_running: timer.isRunning,
+        start_time: timer.startTime?.toISOString(),
+        duration: timer.duration
+      });
+
       const { error } = await supabase!
         .from('heat_timers')
         .upsert({
@@ -653,9 +683,18 @@ export function useSupabaseSync() {
           onConflict: 'heat_id'
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ ERREUR SUPABASE heat_timers:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        throw error;
+      }
       console.log('✅ Timer sauvé dans Supabase:', normalizedHeatId);
     } catch (error) {
+      console.error('❌ EXCEPTION saveTimerState:', error);
       console.log('⚠️ Timer non sauvé dans Supabase (mode local):', error instanceof Error ? error.message : error);
     }
   }, []);
@@ -751,7 +790,7 @@ export function useSupabaseSync() {
 
       if (error) throw error;
 
-      return normalizeScores((data || []) as Score[]);
+      return normalizeScores((data || []) as Score[], generateId);
     } catch (error) {
       console.log('⚠️ Scores non chargés depuis Supabase (mode local):', error instanceof Error ? error.message : error);
       return [];
@@ -768,7 +807,7 @@ export function useSupabaseSync() {
     // Compter les scores en attente
     const localScores = localStorage.getItem('surfJudgingScores');
     if (localScores) {
-      const scores: Score[] = normalizeScores(JSON.parse(localScores));
+      const scores: Score[] = normalizeScores(JSON.parse(localScores), generateId);
       updatePendingCount(scores);
     }
   }, [syncPendingScores, updatePendingCount, syncOverrideLogs]);

@@ -17,7 +17,11 @@ interface JudgeInterfaceProps {
   isChiefJudge?: boolean;
   scores?: Score[];
   heatStatus?: 'waiting' | 'running' | 'paused' | 'finished';
+  onHeatClose?: () => void;
+  isConnected?: boolean;
 }
+
+
 
 interface ScoreInputState {
   surfer: string;
@@ -47,7 +51,9 @@ function JudgeInterface({
   onScoreSubmit = async () => { },
   configSaved = false,
   timer = { startTime: null, duration: 20, isRunning: false },
-  isChiefJudge = false
+  isChiefJudge = false,
+  onHeatClose = () => { },
+  isConnected = true
 }: JudgeInterfaceProps) {
   const [submittedScores, setSubmittedScores] = useState<Score[]>([]);
   const [activeInput, setActiveInput] = useState<ScoreInputState | null>(null);
@@ -76,10 +82,14 @@ function JudgeInterface({
     try {
       console.log('📝 Submitting judge name:', judgeNameInput, 'for', judgeId);
 
-      // Get event ID first
+      // Get event ID first - gracefully handle if not found
       const eventId = await fetchEventIdByName(config.competition);
       if (!eventId) {
-        throw new Error(`Event not found: ${config.competition}`);
+        console.warn('⚠️ Event not found, skipping name update in events table');
+        // Still allow judge to proceed - name update is optional
+        setShowNameModal(false);
+        setIsSubmittingName(false);
+        return;
       }
 
       await updateJudgeName(eventId, judgeId, judgeNameInput.trim());
@@ -87,8 +97,9 @@ function JudgeInterface({
 
       setShowNameModal(false);
     } catch (error) {
-      console.error('❌ Error updating judge name:', error);
-      alert('Erreur lors de la sauvegarde du nom.');
+      console.warn('⚠️ Could not update judge name:', error);
+      // Don't block the judge - just log and proceed
+      setShowNameModal(false);
     } finally {
       setIsSubmittingName(false);
     }
@@ -113,7 +124,7 @@ function JudgeInterface({
       const parsedScores: Score[] = JSON.parse(savedScores);
       return parsedScores.filter((score) => {
         const sameJudge = score.judge_id === judgeId;
-        const sameHeat = currentHeatId ? ensureHeatId(score.heat_id) === currentHeatId : true;
+        const sameHeat = currentHeatId ? ensureHeatId(score.heat_id) === currentHeatId : false;
         return sameJudge && sameHeat;
       });
     } catch (error) {
@@ -155,6 +166,7 @@ function JudgeInterface({
     const existing = readAllScoresFromStorage().filter(score => !(
       ensureHeatId(score.heat_id) === incomingId &&
       score.judge_id === normalised.judge_id &&
+      score.surfer === normalised.surfer &&
       score.wave_number === normalised.wave_number
     ));
     const merged = [...existing, normalised];
@@ -183,29 +195,90 @@ function JudgeInterface({
     const hydrateHeatScores = async () => {
       if (!currentHeatId) return;
 
-      const purgeLocalHeat = () => {
-        const all = readAllScoresFromStorage();
-        const filtered = all.filter((score) => score.heat_id !== currentHeatId);
-        if (filtered.length !== all.length) {
-          persistScoresToStorage(filtered);
-        }
-        setSubmittedScores(readScoresFromStorage());
-      };
+
 
       if (!isSupabaseConfigured()) {
-        purgeLocalHeat();
+        console.log('Mode local uniquement - conservation des scores locaux');
         return;
       }
 
       try {
         const remoteScores = await fetchHeatScores(currentHeatId);
-        const all = readAllScoresFromStorage().filter((score) => score.heat_id !== currentHeatId);
-        const merged = [...all, ...remoteScores];
-        persistScoresToStorage(merged);
-        setSubmittedScores(remoteScores.filter((score) => score.judge_id === judgeId));
+
+        // UNIVERSAL MERGE STRATEGY (Map-based)
+        // Source of Truth: ID-based Map. 
+        // 1. Start with ALL local scores
+        const scoreMap = new Map<string, Score>();
+        const allLocalScores = readAllScoresFromStorage();
+
+        allLocalScores.forEach(s => {
+          if (s.id) scoreMap.set(s.id, s);
+        });
+
+        console.log('🔍 Hydration Start:', {
+          localCount: scoreMap.size,
+          remoteCount: remoteScores.length
+        });
+
+        // 2. Merge Remote Scores
+        let updatedCount = 0;
+        let conflictCount = 0;
+        let newRemoteCount = 0;
+
+        remoteScores.forEach(remote => {
+          if (!remote.id) return;
+
+          const local = scoreMap.get(remote.id);
+          if (!local) {
+            // New score from server
+            scoreMap.set(remote.id, remote);
+            newRemoteCount++;
+          } else {
+            // Conflict Resolution via Timestamp
+            const remoteTime = new Date(remote.timestamp).getTime();
+            const localTime = new Date(local.timestamp).getTime();
+
+            // If remote is newer or equal, we accept it. 
+            // If local is strictly newer, we KEEP local (pending sync).
+            if (remoteTime >= localTime) {
+              scoreMap.set(remote.id, remote);
+              updatedCount++;
+            } else {
+              conflictCount++;
+              console.log('⚠️ Keeping newer local score:', {
+                id: local.id,
+                localTime: local.timestamp,
+                remoteTime: remote.timestamp
+              });
+            }
+          }
+        });
+
+        console.log('✅ Hydration Merge Complete:', {
+          total: scoreMap.size,
+          newFromRemote: newRemoteCount,
+          updatedFromRemote: updatedCount,
+          keptLocalOverrides: conflictCount
+        });
+
+        // 3. Persist Merged State
+        const finalScores = Array.from(scoreMap.values());
+        persistScoresToStorage(finalScores);
+
+        // 4. Update UI
+        // Filter for current heat & judge (Case Insensitive)
+        const displayScores = finalScores.filter((score) =>
+          ensureHeatId(score.heat_id) === currentHeatId &&
+          score.judge_id?.toLowerCase() === judgeId?.toLowerCase()
+        );
+
+        setSubmittedScores(displayScores);
+
+
+
       } catch (error) {
-        console.warn('Impossible de synchroniser les scores du heat', error);
-        purgeLocalHeat();
+        console.warn('Impossible de synchroniser les scores du heat - conservation des données locales', error);
+        // Ne PAS purger les données locales en cas d'erreur de connexion
       }
     };
 
@@ -225,16 +298,10 @@ function JudgeInterface({
     return () => window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
   }, [mergeRealtimeScore]);
 
-  // Vérifier si le timer est actif
+  // Vérifier si le timer est actif (assoupli : si config sauvegardée, on autorise)
   const isTimerActive = () => {
-    if (!timer.startTime) return false;
-
-    const now = new Date();
-    const startTime = new Date(timer.startTime);
-    const elapsedMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
-    const remainingTime = timer.duration - elapsedMinutes;
-
-    return remainingTime > 0;
+    if (!configSaved) return false;
+    return timer.isRunning;
   };
 
   const getScoreForWave = (surfer: string, wave: number) => {
@@ -254,14 +321,13 @@ function JudgeInterface({
   };
 
   const canScoreWave = (surfer: string, wave: number): boolean => {
-    if (!isTimerActive()) return false;
-
     // On peut noter une vague seulement si c'est la prochaine vague disponible
     const nextWave = getNextAvailableWave(surfer);
     return wave === nextWave;
   };
 
   const handleCellClick = (surfer: string, wave: number) => {
+    if (!timerActive) return;
     if (!canScoreWave(surfer, wave)) return;
 
     const existingScore = getScoreForWave(surfer, wave);
@@ -271,6 +337,11 @@ function JudgeInterface({
 
   const handleScoreSubmit = async () => {
     if (!activeInput || !inputValue.trim()) return;
+    if (!timerActive) {
+      setActiveInput(null);
+      setInputValue('');
+      return;
+    }
 
     const scoreValue = parseFloat(inputValue.replace(',', '.'));
     if (isNaN(scoreValue) || scoreValue < 0 || scoreValue > 10) {
@@ -300,6 +371,20 @@ function JudgeInterface({
         };
 
         if (!currentHeatId || sanitizedScore.heat_id === currentHeatId) {
+          // CRITICAL FIX: Persist to localStorage FIRST
+          const allScores = readAllScoresFromStorage();
+          const withoutDuplicate = allScores.filter(
+            (score) => !(
+              ensureHeatId(score.heat_id) === ensureHeatId(sanitizedScore.heat_id) &&
+              score.judge_id === sanitizedScore.judge_id &&
+              score.surfer === sanitizedScore.surfer &&
+              score.wave_number === sanitizedScore.wave_number
+            )
+          );
+          const updatedScores = [...withoutDuplicate, sanitizedScore];
+          persistScoresToStorage(updatedScores);
+
+          // THEN update state
           setSubmittedScores(prev => {
             const withoutDuplicate = prev.filter(
               (score) => !(score.surfer === sanitizedScore.surfer && score.wave_number === sanitizedScore.wave_number)
@@ -363,6 +448,12 @@ function JudgeInterface({
           <div>
             <h1 className="text-3xl font-bold mb-2">
               {isChiefJudge ? 'Interface Chef Juge' : 'Interface Juge'}
+              {!isConnected && (
+                <span className="ml-4 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                  <span className="w-2 h-2 mr-1.5 bg-red-500 rounded-full animate-pulse"></span>
+                  Hors Ligne
+                </span>
+              )}
             </h1>
             <div className="flex items-center space-x-4 text-green-100">
               <span className="flex items-center">
@@ -397,7 +488,10 @@ function JudgeInterface({
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-4">
           <h3 className="text-lg font-semibold text-indigo-900 mb-4">Contrôles Chef Juge</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+            <button
+              onClick={onHeatClose}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
               Clôturer la série
             </button>
             <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
@@ -466,7 +560,7 @@ function JudgeInterface({
                   </td>
                   {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => {
                     const scoreData = getScoreForWave(surfer, wave);
-                    const canScore = canScoreWave(surfer, wave);
+                    const canScore = timerActive && canScoreWave(surfer, wave);
                     const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
 
                     return (

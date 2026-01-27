@@ -4,85 +4,17 @@ import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, Wifi, Wi
 import { useNavigate } from 'react-router-dom';
 import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason } from '../types';
-import { calculateSurferStats, validateScore } from '../utils/scoring';
+import { validateScore } from '../utils/scoring';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
-import { colorLabelMap } from '../utils/colorUtils';
-import { exportHeatScorecardPdf, exportHeatResultsPDF } from '../utils/pdfExport';
-import type { RoundSpec, HeatSlotSpec } from '../utils/bracket';
-import { fetchCategoryHeats, fetchScoresForHeats, fetchEventIdByName, fetchOrderedHeatSequence } from '../api/supabaseClient';
+import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllScoresForEvent, ensureEventExists } from '../api/supabaseClient';
 import { JudgeSelectorSection } from './JudgeSelectorSection';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const DEFAULT_DIVISIONS: string[] = [];
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
-type HeatResultHistoryPayload = Parameters<typeof exportHeatResultsPDF>[0]['history'];
 
-const getSlotLabel = (slot: HeatSlotSpec): string => {
-  if (slot.color) {
-    return colorLabelMap[slot.color] ?? slot.color;
-  }
-  if (slot.placeholder) {
-    return slot.placeholder;
-  }
-  return slot.name ?? '';
-};
-
-const buildEventHistory = (
-  rounds: RoundSpec[],
-  scoresByHeat: Record<string, Score[]>,
-  config: AppConfig
-): HeatResultHistoryPayload => {
-  const history: HeatResultHistoryPayload = {};
-
-  rounds.forEach((round) => {
-    round.heats.forEach((heat) => {
-      if (!heat.heatId) return;
-      const normalizedHeatId = ensureHeatId(heat.heatId);
-      const heatScores = scoresByHeat[normalizedHeatId];
-      if (!heatScores || heatScores.length === 0) return;
-
-      const slotMeta = heat.slots.map((slot) => {
-        const label = getSlotLabel(slot).toUpperCase();
-        return {
-          label,
-          name: slot.name ?? null,
-          country: slot.country ?? undefined,
-        };
-      });
-
-      const surferOrder = slotMeta.map((slot) => slot.label).filter((label) => label.length > 0);
-      if (!surferOrder.length) return;
-
-      const stats = calculateSurferStats(
-        heatScores,
-        surferOrder,
-        config.judges.length,
-        config.waves
-      ).filter((stat) => typeof stat.rank === 'number');
-
-      if (!stats.length) return;
-
-      history[normalizedHeatId] = stats
-        .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
-        .map((stat) => {
-          const slotInfo = slotMeta.find((slot) => slot.label === stat.surfer);
-          return {
-            heatKey: normalizedHeatId,
-            round: round.roundNumber,
-            heatNumber: heat.heatNumber,
-            rank: stat.rank ?? 0,
-            color: stat.surfer,
-            total: stat.bestTwo ?? 0,
-            name: slotInfo?.name ?? stat.surfer,
-            country: slotInfo?.country ?? undefined,
-          };
-        });
-    });
-  });
-
-  return history;
-};
 
 interface AdminInterfaceProps {
   config: AppConfig;
@@ -157,26 +89,23 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
-  const [magicLinkStatus, setMagicLinkStatus] = useState<Record<string, { status: 'idle' | 'pending' | 'success' | 'error'; message?: string }>>({});
-
-  // Local state for judge emails to prevent config updates while typing
-  const [localJudgeEmails, setLocalJudgeEmails] = useState<Record<string, string>>(config.judgeEmails || {});
-  const [judgeCodes, setJudgeCodes] = useState<Record<string, string>>({});
   const [allJudgeNames, setAllJudgeNames] = useState<Record<string, string>>({});
 
   // Fetch all active judges (codes + names)
   useEffect(() => {
     const fetchJudges = async () => {
       if (!supabase) return;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('judges')
-        .select('id, name, personal_code')
-        .eq('active', true);
+        .select('id, name, personal_code');
+
+      if (error) {
+        console.error('Error fetching judges:', error);
+        return;
+      }
 
       if (data) {
-        const codes = data.reduce((acc, j) => ({ ...acc, [j.id]: j.personal_code }), {} as Record<string, string>);
         const names = data.reduce((acc, j) => ({ ...acc, [j.id]: j.name }), {} as Record<string, string>);
-        setJudgeCodes(codes);
         setAllJudgeNames(names);
       }
     };
@@ -343,7 +272,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         return;
       }
 
-      setDbStatus(configSaved ? 'connected' : 'disconnected');
+      // Check if Supabase is actually accessible
+      if (supabaseConfigured) {
+        setDbStatus('connected');
+      } else {
+        setDbStatus('disconnected');
+      }
     };
 
     setDbStatus('checking');
@@ -424,7 +358,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
 
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
+    // Ensure event exists in Supabase if competition is set
+    if (config.competition && isSupabaseConfigured()) {
+      try {
+        // ensureEventExists is now imported statically
+        const eventId = await ensureEventExists(config.competition);
+        // Store event ID for future use
+        localStorage.setItem('surfJudgingActiveEventId', String(eventId));
+        console.log(`✅ Event ensured: ${config.competition} (ID: ${eventId})`);
+      } catch (error) {
+        console.warn('⚠️ Could not ensure event exists:', error);
+        // Continue anyway - event creation is optional
+      }
+    }
+
     onConfigSaved(true);
     // Sauvegarder immédiatement dans localStorage
     localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
@@ -530,9 +478,73 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     localStorage.setItem('surfJudgingTimer', JSON.stringify(newTimer));
   };
 
+  const canCloseHeat = () => {
+    // Check if at least ONE wave has been scored by MINIMUM 3 judges
+    // Rules: 3 judges = avg of 3, 5 judges = drop min/max + avg of 3
+    if (!scores || scores.length === 0) return false;
+
+    const judgeCount = config.judges?.length || 0;
+    // Fix: Adapt minimum requirement to the number of judges (min 3 usually, but 1 or 2 if fewer judges)
+    const MIN_JUDGES_PER_WAVE = judgeCount === 0 ? 1 : Math.min(3, judgeCount);
+
+    if (judgeCount < 3 && judgeCount > 0) {
+      // Info log instead of warning when running with few judges
+      console.log(`ℹ️ Mode effectif réduit (${judgeCount} juges). Seuil validité: ${MIN_JUDGES_PER_WAVE} notes.`);
+    } else if (judgeCount === 0) {
+      console.warn(`⚠️ Pas assez de juges configurés (${judgeCount}).`);
+      return false;
+    }
+
+    // Group scores by surfer and wave
+    const waveScores = new Map<string, Set<string>>();
+
+    scores.forEach(score => {
+      const key = `${score.surfer}-W${score.wave_number}`;
+      if (!waveScores.has(key)) {
+        waveScores.set(key, new Set());
+      }
+      waveScores.get(key)!.add(score.judge_id);
+    });
+
+    // Check if at least one wave has been scored by A MAJORITY of judges
+    // If 3 judges, require 2. If 5 judges, require 3.
+    const effectiveMinJudges = judgeCount >= 3 ? Math.ceil(judgeCount / 2) : Math.max(1, judgeCount);
+
+    for (const [waveKey, judges] of waveScores.entries()) {
+      if (judges.size >= effectiveMinJudges) {
+        console.log(`✅ Vague complète trouvée: ${waveKey} (${judges.size}/${judgeCount} juges)`);
+        return true;
+      }
+    }
+
+    // Fallback: If we have ANY scores but didn't meet the strict criteria,
+    // we return false to trigger the WARNING (checking is good), BUT
+    // we should make sure the warning is clear.
+    // Actually, if there are scores but not enough judges, it IS a valid warning.
+    // The user's issue might be that they HAVE all scores but it still fails.
+    // This could happen if `judge_id` mismatch.
+    // Let's debug by logging the `judges` set content.
+    console.warn(`⚠️ Pas assez de juges sur une même vague (Requis: ${effectiveMinJudges}). Détail:`, Object.fromEntries(waveScores));
+    return false;
+  };
+
   const handleCloseHeat = async () => {
-    if (!confirm(`Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
-      return;
+    // Warning if no scores, but allow to proceed with confirmation
+    if (!canCloseHeat()) {
+      const forceClose = confirm(
+        '⚠️ ATTENTION: Aucune vague complète enregistrée!\n\n' +
+        'Ce heat sera fermé SANS RÉSULTATS.\n' +
+        '(En compétition réelle, ce heat devrait être rejoué.)\n\n' +
+        'Voulez-vous quand même passer au heat suivant?'
+      );
+      if (!forceClose) {
+        return;
+      }
+    } else {
+      // Normal confirmation
+      if (!confirm(`Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
+        return;
+      }
     }
 
     // Failsafe validation
@@ -544,17 +556,42 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       if (eventId) {
+        // Call N8N heat-sync workflow to finalize scores and advance qualifiers
+        try {
+          const currentHeatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+          console.log('🔄 Calling heat-sync for:', currentHeatId);
+
+          // Use static import for supabase instead of dynamic
+          if (!supabase) throw new Error("Supabase client not initialized");
+
+          const { data: syncData, error: syncError } = await supabase.functions.invoke('heat-sync', {
+            body: {
+              heat_id: currentHeatId,
+              event_id: eventId,
+              action: 'finalize'
+            }
+          });
+
+          if (syncError) {
+            console.warn('⚠️ Heat sync failed, continuing anyway:', syncError);
+          } else {
+            console.log('✅ Heat sync successful:', syncData);
+          }
+        } catch (syncErr) {
+          console.warn('⚠️ Heat sync error, continuing anyway:', syncErr);
+        }
+
         const sequence = await fetchOrderedHeatSequence(eventId, config.division);
 
+        // Check if it was the last heat AFTER syncing
         if (sequence && sequence.length > 0) {
           const currentIndex = sequence.findIndex(h =>
             h.round === config.round && h.heat_number === config.heatId
           );
 
           if (currentIndex !== -1 && currentIndex === sequence.length - 1) {
-            // Last heat - Stop here
             alert('🏁 Fin de l\'événement (ou de la division) ! Tous les heats ont été notés.');
-            return;
+            // We still proceed to onCloseHeat to update UI state
           }
         }
       }
@@ -576,121 +613,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     onCloseHeat();
   };
 
+  const surferScoredWaves = React.useMemo(() => {
+    if (!selectedSurfer) return [];
+    // Récupérer toutes les vagues notées pour ce surfeur (tous juges confondus)
+    const waves = new Set(scores
+      .filter(s => s.surfer === selectedSurfer && ensureHeatId(s.heat_id) === heatId)
+      .map(s => s.wave_number)
+    );
+    return Array.from(waves).sort((a, b) => a - b);
+  }, [scores, selectedSurfer, heatId]);
+
   const handleResetAllData = () => {
     console.log('🗑️ RESET COMPLET DEPUIS ADMIN...');
     onResetAllData();
   };
 
-  const handleJudgeEmailChange = useCallback((judgeId: string, email: string) => {
-    // Update local state only - no config update while typing
-    setLocalJudgeEmails(prev => ({
-      ...prev,
-      [judgeId]: email
-    }));
-  }, []);
 
-  const handleJudgeEmailBlur = useCallback((judgeId: string) => {
-    // Save to parent config when user finishes typing (onBlur)
-    const email = localJudgeEmails[judgeId];
-    if (email !== undefined) {
-      onConfigChange({
-        ...config,
-        judgeEmails: {
-          ...(config.judgeEmails ?? {}),
-          [judgeId]: email
-        }
-      });
-    }
-  }, [localJudgeEmails, onConfigChange, config]);
-
-  const handleSendMagicLink = useCallback(async (judgeId: string, redirectUrl: string) => {
-    if (!isSupabaseConfigured() || !supabase) {
-      setMagicLinkStatus((prev) => ({
-        ...prev,
-        [judgeId]: { status: 'error', message: 'Supabase non configuré' }
-      }));
-      return;
-    }
-
-    const email = (localJudgeEmails[judgeId] || '').trim();
-    if (!email) {
-      setMagicLinkStatus((prev) => ({
-        ...prev,
-        [judgeId]: { status: 'error', message: 'Email requis' }
-      }));
-      return;
-    }
-
-    // Force save config before sending if needed
-    if (!configSaved) {
-      onConfigSaved(true);
-      localStorage.setItem('surfJudgingConfig', JSON.stringify({
-        ...config,
-        judgeEmails: { ...config.judgeEmails, [judgeId]: email }
-      }));
-      localStorage.setItem('surfJudgingConfigSaved', 'true');
-    }
-
-    setMagicLinkStatus((prev) => ({
-      ...prev,
-      [judgeId]: { status: 'pending' }
-    }));
-
-    try {
-      // Ensure the redirect URL points to the judge interface
-      const finalRedirectUrl = new URL(redirectUrl);
-      // If the redirectUrl is just the base origin, append the judge path
-      if (finalRedirectUrl.pathname === '/' || finalRedirectUrl.pathname === '') {
-        finalRedirectUrl.pathname = '/judge';
-      }
-
-      console.log('📧 Sending magic link to:', email, 'Redirecting to:', finalRedirectUrl.toString());
-
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: finalRedirectUrl.toString(),
-          shouldCreateUser: true
-        }
-      });
-      if (error) throw error;
-      setMagicLinkStatus((prev) => ({
-        ...prev,
-        [judgeId]: { status: 'success', message: 'Email envoyé ✅' }
-      }));
-    } catch (error) {
-      console.error('❌ Magic Link Error:', error);
-      setMagicLinkStatus((prev) => ({
-        ...prev,
-        [judgeId]: {
-          status: 'error',
-          message: error instanceof Error ? error.message : 'Erreur lors de l’envoi'
-        }
-      }));
-    }
-  }, [localJudgeEmails, configSaved, onConfigSaved, config]);
-
-  const generateJudgeLinks = () => {
-    const baseUrl = `${window.location.origin}/judge`;
-
-    console.log('🔗 Génération des liens avec baseUrl:', baseUrl);
-    console.log('🔗 Config judges:', config.judges);
-
-    // Use config.judges (UUIDs from judges table)
-    return config.judges.map((judgeId) => {
-      // Use judge_id parameter for FSS authentication
-      const url = `${baseUrl}?judge_id=${judgeId}&event_id=${config.competition}`;
-
-      console.log('🔗 URL générée pour juge FSS:', { judgeId, url });
-
-      return {
-        judgeId,
-        judgeName: config.judgeNames[judgeId] || allJudgeNames[judgeId] || `Juge ${judgeId.substring(0, 8)}`,
-        url,
-        email: localJudgeEmails[judgeId] || ''
-      };
-    });
-  };
 
   const exportData = () => {
     const data = {
@@ -711,12 +649,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleExportEventPdf = async () => {
-    if (!config.division) {
-      alert('Veuillez sélectionner une division avant d’exporter la compétition.');
-      return;
-    }
     if (!isSupabaseConfigured()) {
-      alert('Supabase n’est pas configuré pour exporter l’événement.');
+      alert('Supabase n\'est pas configuré pour exporter l\'événement.');
       return;
     }
     const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem(ACTIVE_EVENT_STORAGE_KEY) : null;
@@ -728,26 +662,51 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     setEventPdfPending(true);
     try {
-      const rounds = await fetchCategoryHeats(eventId, config.division);
-      if (!rounds.length) {
-        alert('Aucune structure de heats trouvée pour cette division.');
+      // Fetch ALL categories and ALL heats for the event
+      const allDivisions = await fetchAllEventHeats(eventId);
+
+      if (!Object.keys(allDivisions).length) {
+        alert('Aucune structure de heats trouvée pour cet événement.');
         return;
       }
-      const heatIds = rounds
-        .flatMap((round) => round.heats.map((heat) => heat.heatId).filter((value): value is string => Boolean(value)));
-      const scoresByHeat = heatIds.length ? await fetchScoresForHeats(heatIds) : {};
-      if (scores.length) {
-        scoresByHeat[heatId] = scores;
+
+      // Fetch ALL scores for ALL heats
+      const allScores = await fetchAllScoresForEvent(eventId);
+
+      // Get event details (organizer, date) if available
+      let organizer: string | undefined;
+      let eventDate: string | undefined;
+
+      if (supabase) {
+        const { data: eventData } = await supabase
+          .from('events')
+          .select('organizer, start_date')
+          .eq('id', eventId)
+          .single();
+
+        if (eventData) {
+          organizer = eventData.organizer ?? undefined;
+          eventDate = eventData.start_date
+            ? new Date(eventData.start_date).toLocaleDateString('fr-FR', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            })
+            : undefined;
+        }
       }
-      const history = buildEventHistory(rounds, scoresByHeat, config);
-      exportHeatResultsPDF({
+
+      // Export complete competition PDF
+      exportFullCompetitionPDF({
         eventName: config.competition || 'Compétition',
-        category: config.division,
-        config,
-        rounds,
-        history,
-        currentHeatKey: heatId,
+        organizer,
+        date: eventDate,
+        divisions: allDivisions,
+        scores: allScores,
       });
+
+      console.log('✅ PDF complet généré avec', Object.keys(allDivisions).length, 'catégories');
     } catch (error) {
       console.error('Impossible de générer le PDF complet', error);
       alert('Impossible de générer le PDF complet pour le moment.');
@@ -989,6 +948,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         >
           {configSaved ? '✅ Configuration sauvegardée' : 'Sauvegarder la configuration'}
         </button>
+
       </div>
 
       {/* Timer */}
@@ -998,6 +958,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           <h2 className="text-xl font-semibold text-gray-900">Timer du Heat</h2>
         </div>
         <HeatTimer
+          key={`timer-${config.competition}-${config.division}-R${config.round}-H${config.heatId}`}
           timer={timer}
           onStart={handleTimerStart}
           onPause={handleTimerPause}
@@ -1200,101 +1161,34 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         )}
       </div>
 
-      {/* Liens pour les juges */}
+      {/* Mode Kiosque - Liens Tablettes */}
       {configSaved && (
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center space-x-3 mb-4">
             <Users className="w-6 h-6 text-purple-600" />
-            <h2 className="text-xl font-semibold text-gray-900">Liens pour les Juges</h2>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Mode Kiosque - Tablettes</h2>
+              <p className="text-sm text-gray-600">Liens directs pour tablettes J1 à J5</p>
+            </div>
           </div>
-
-          <div className="space-y-3">
-            {generateJudgeLinks().map(({ judgeId, judgeName, url, email }) => {
-              const status = magicLinkStatus[judgeId];
+          <div className="space-y-2">
+            {["J1", "J2", "J3", "J4", "J5"].map(position => {
+              const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem('surfJudgingActiveEventId') : null;
+              const eventId = eventIdRaw ? Number(eventIdRaw) : null;
+              const kioskUrl = eventId
+                ? `${window.location.origin}/judge?position=${position}&eventId=${eventId}`
+                : `${window.location.origin}/judge?position=${position}`;
               return (
-                <div key={judgeId} className="p-3 bg-gray-50 rounded-lg space-y-2">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div>
-                      <span className="font-medium text-gray-900">{judgeName}</span>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Code: <span className="font-mono font-bold bg-gray-200 px-1 rounded">{judgeCodes[judgeId] || '...'}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-1 md:flex-none items-center space-x-2">
-                      <input
-                        type="text"
-                        value={url}
-                        readOnly
-                        className="w-full md:w-96 px-2 py-1 text-xs bg-white border border-gray-300 rounded font-mono"
-                      />
-                      <button
-                        onClick={() => navigator.clipboard.writeText(url)}
-                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Copier
-                      </button>
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-                      >
-                        Tester
-                      </a>
-                    </div>
-                  </div>
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(event) => handleJudgeEmailChange(judgeId, event.target.value)}
-                      onBlur={() => handleJudgeEmailBlur(judgeId)}
-                      placeholder="Email Supabase du juge"
-                      className="w-full lg:w-80 px-3 py-2 rounded border border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-400 text-sm"
-                    />
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleSendMagicLink(judgeId, url)}
-                        disabled={
-                          !email ||
-                          magicLinkStatus[judgeId]?.status === 'pending' ||
-                          !isSupabaseConfigured()
-                        }
-                        className="px-4 py-2 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed"
-                      >
-                        {magicLinkStatus[judgeId]?.status === 'pending'
-                          ? 'Envoi…'
-                          : 'Envoyer le lien sécurisé'}
-                      </button>
-                      {status?.message && (
-                        <span
-                          className={`text-xs ${status.status === 'error' ? 'text-red-600' : 'text-green-600'
-                            }`}
-                        >
-                          {status.message}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                <div key={position} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                  <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">{position.replace("J", "")}</div>
+                  <input value={kioskUrl} readOnly className="flex-1 px-2 py-1 text-xs font-mono border rounded" />
+                  <button onClick={() => navigator.clipboard.writeText(kioskUrl)} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded">Copier</button>
                 </div>
               );
             })}
-
-            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>📱 Instructions WhatsApp :</strong><br />
-                1. Renseignez l’email Supabase de chaque juge puis cliquez sur « Envoyer le lien sécurisé ».<br />
-                2. Chaque juge reçoit un email avec un lien d’authentification vers son interface.<br />
-                3. Vous pouvez toujours copier le lien brut pour WhatsApp si besoin (le juge doit alors être déjà connecté).<br />
-                <strong>🔒 Sécurité :</strong> Chaque lien est unique à ce heat spécifique.<br />
-                <strong>⚠️ Important :</strong> Les liens changent à chaque nouveau heat.<br />
-                <strong>✅ Continuité :</strong> Les juges restent connectés lors du passage au heat suivant.
-              </p>
-            </div>
           </div>
         </div>
-      )
-      }
+      )}
 
       {/* Override Chef Juge */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
@@ -1355,10 +1249,20 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   required
                 >
                   <option value="">Sélectionner une vague</option>
-                  {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => (
-                    <option key={wave} value={wave}>Vague {wave}</option>
-                  ))}
+                  {surferScoredWaves.length > 0 ? (
+                    surferScoredWaves.map((wave) => (
+                      <option key={wave} value={wave}>Vague {wave}</option>
+                    ))
+                  ) : (
+                    // Fallback to all waves if no scored waves found (covers Omission case for 1st wave)
+                    Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => (
+                      <option key={wave} value={wave}>Vague {wave}</option>
+                    ))
+                  )}
                 </select>
+                {surferScoredWaves.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">Seules les vagues notées sont affichées.</p>
+                )}
               </div>
 
               {/* Score input */}

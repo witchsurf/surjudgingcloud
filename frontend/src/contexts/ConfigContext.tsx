@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { AppConfig } from '../types';
 import { INITIAL_CONFIG } from '../utils/constants';
-import { fetchEventConfigSnapshot, fetchHeatEntriesWithParticipants, type EventConfigSnapshot } from '../api/supabaseClient';
+import { fetchEventConfigSnapshot, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, parseActiveHeatId, fetchEventIdByName, type EventConfigSnapshot } from '../api/supabaseClient';
 import { ensureHeatId } from '../utils/heat';
 
 const STORAGE_KEYS = {
@@ -20,6 +20,7 @@ interface ConfigContextType {
     availableDivisions: string[];
     setAvailableDivisions: (divisions: string[]) => void;
     loadedFromDb: boolean;
+    isKioskMode: boolean;
     resetConfig: () => void;
     persistConfig: (config: AppConfig) => void;
 }
@@ -38,6 +39,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     const [activeEventId, setActiveEventId] = useState<number | null>(null);
     const [availableDivisions, setAvailableDivisions] = useState<string[]>([]);
     const [loadedFromDb, setLoadedFromDb] = useState(false);
+    const [isKioskMode, setIsKioskMode] = useState(false);
 
     // 1. Initial Load: Check URL and LocalStorage
     useEffect(() => {
@@ -46,6 +48,51 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         // Check URL first
         const urlParams = new URLSearchParams(window.location.search);
         const urlEventId = urlParams.get('eventId');
+        const positionFromUrl = urlParams.get('position'); // Kiosk mode
+
+        // KIOSK MODE: If position=JX is in URL, fetch from active_heat_pointer
+        if (positionFromUrl && /^J[1-5]$/i.test(positionFromUrl)) {
+            console.log('📟 ConfigContext: Kiosk mode detected, position:', positionFromUrl);
+            setIsKioskMode(true);
+
+            // Fetch active heat from database
+            const loadKioskConfig = async () => {
+                try {
+                    const activeHeat = await fetchActiveHeatPointer();
+                    if (activeHeat) {
+                        console.log('✅ ConfigContext: Active heat pointer found:', activeHeat);
+                        const parsed = parseActiveHeatId(activeHeat.active_heat_id);
+                        if (parsed) {
+                            console.log('📦 ConfigContext: Parsed heat config:', parsed);
+
+                            // Get event ID from event name
+                            const eventId = await fetchEventIdByName(parsed.competition);
+                            if (eventId) {
+                                setActiveEventId(eventId);
+                                localStorage.setItem(STORAGE_KEYS.activeEvent, String(eventId));
+                            }
+
+                            // Set basic config from active heat pointer
+                            setConfig(prev => ({
+                                ...prev,
+                                competition: parsed.competition,
+                                division: parsed.division,
+                                round: parsed.round,
+                                heatId: parsed.heatNumber
+                            }));
+                            setConfigSaved(true);
+                            setLoadedFromDb(true);
+                        }
+                    } else {
+                        console.warn('⚠️ ConfigContext: No active heat pointer found');
+                    }
+                } catch (err) {
+                    console.error('❌ ConfigContext: Kiosk config load error:', err);
+                }
+            };
+            loadKioskConfig();
+            return;
+        }
 
         const urlEventIdNumber = parseNumericId(urlEventId);
         if (urlEventIdNumber) {
@@ -210,6 +257,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
                 availableDivisions,
                 setAvailableDivisions,
                 loadedFromDb,
+                isKioskMode,
                 resetConfig,
                 persistConfig
             }}

@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "lib": [
+            "deno.window"
+        ],
+        "types": [
+            "jsr:@supabase/functions-js/edge-runtime"
+        ]
+    },
+    "imports": {
+        "@supabase/supabase-js": "jsr:@supabase/supabase-js@2"
+    },
+    "tasks": {
+        "serve": "deno serve --watch"
+    }
+}
