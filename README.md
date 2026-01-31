@@ -169,3 +169,4 @@ Les meilleurs seeds héritent automatiquement des byes lorsque le nombre de part
 - `participants` : `event_id`, `category`, `seed`, `name`, `country`, `license`.
 - `heat_entries` : `heat_id` (texte, aligné sur `heats.id`), `participant_id`, `position`, `seed`.
 - `heats` reçoit une colonne `heat_size` (ajoutée via migration) et conserve `status='planned'` tant que la série n’est pas lancée.
+
