@@ -33,3 +33,4 @@ build/
 .next/
 out/
 coverage/
+mcp_config.json

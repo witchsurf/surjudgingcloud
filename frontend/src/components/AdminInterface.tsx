@@ -9,7 +9,6 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
 import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllScoresForEvent, ensureEventExists } from '../api/supabaseClient';
-import { JudgeSelectorSection } from './JudgeSelectorSection';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const DEFAULT_DIVISIONS: string[] = [];
@@ -89,41 +88,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
-  const [allJudgeNames, setAllJudgeNames] = useState<Record<string, string>>({});
-
-  // Fetch all active judges (codes + names)
-  useEffect(() => {
-    const fetchJudges = async () => {
-      if (!supabase) return;
-      const { data, error } = await supabase
-        .from('judges')
-        .select('id, name, personal_code');
-
-      if (error) {
-        console.error('Error fetching judges:', error);
-        return;
-      }
-
-      if (data) {
-        const names = data.reduce((acc, j) => ({ ...acc, [j.id]: j.name }), {} as Record<string, string>);
-        setAllJudgeNames(names);
-      }
-    };
-    fetchJudges();
-  }, []);
-
-  const handleJudgesSelection = (ids: string[]) => {
-    const newNames = ids.reduce((acc, id) => ({
-      ...acc,
-      [id]: allJudgeNames[id] || config.judgeNames[id] || id
-    }), {} as Record<string, string>);
-
-    onConfigChange({
-      ...config,
-      judges: ids,
-      judgeNames: newNames
-    });
-  };
 
   const { normalized: heatId } = React.useMemo(
     () =>
@@ -898,12 +862,31 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
         </div>
 
-        {/* Sélection des Juges FSS */}
-        <JudgeSelectorSection
-          selectedJudgeIds={config.judges}
-          onSelectJudges={handleJudgesSelection}
-          maxJudges={5}
-        />
+        {/* Nombre de Juges (Mode Kiosk) */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Juges</label>
+          <select
+            value={config.judges.length}
+            onChange={(e) => {
+              const numJudges = parseInt(e.target.value);
+              const judgeIds = Array.from({ length: numJudges }, (_, i) => `J${i + 1}`);
+              const judgeNames = judgeIds.reduce((acc, id) => ({ ...acc, [id]: id }), {} as Record<string, string>);
+              onConfigChange({
+                ...config,
+                judges: judgeIds,
+                judgeNames: judgeNames
+              });
+            }}
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="3">3 Juges (J1, J2, J3)</option>
+            <option value="4">4 Juges (J1, J2, J3, J4)</option>
+            <option value="5">5 Juges (J1, J2, J3, J4, J5)</option>
+          </select>
+          <p className="mt-2 text-xs text-gray-500">
+            Les juges utiliseront le mode kiosque avec leurs positions (J1, J2, etc.)
+          </p>
+        </div>
 
         {/* Surfeurs (lecture seule depuis Supabase) */}
         <div className="mb-6">

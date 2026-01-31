@@ -383,7 +383,7 @@ export default function ScoreDisplay({
                                       return (
                                         <div key={jId} className="flex flex-col items-center">
                                           <span className="text-[0.6rem] text-gray-400 uppercase tracking-wider font-semibold">
-                                            J{idx + 1}
+                                            {config.judgeNames[jId] || `J${idx + 1}`}
                                           </span>
                                           <span className="font-mono font-bold text-sm">
                                             {s.toFixed(1)}
