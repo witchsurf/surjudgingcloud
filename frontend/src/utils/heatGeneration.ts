@@ -1,14 +1,12 @@
 import { Heat } from '../types';
-import { SURFER_COLORS } from './constants';
 import { distributeSeedsSnake } from './seeding';
 
 type HeatPlan = { round: number; heats: Heat[] };
 
-const colorKeys = Object.keys(SURFER_COLORS);
-const fallbackColors = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU'];
-const colorPalette = colorKeys.length ? colorKeys : fallbackColors;
+// Palette de couleurs fixe pour garantir l'ordre standard quoi qu'il arrive
+const FIXED_COLOR_PALETTE = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'];
 
-const pickColor = (index: number) => colorPalette[index % colorPalette.length];
+const pickColor = (index: number) => FIXED_COLOR_PALETTE[index % FIXED_COLOR_PALETTE.length];
 
 const normaliseParticipant = (participant: any, colorIndex: number) => ({
   color: pickColor(colorIndex),
