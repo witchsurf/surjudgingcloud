@@ -114,6 +114,19 @@ function getWinByDiff(stats: SurferStats[]): number | null {
   return diff > 0 ? diff : null;
 }
 
+const SEED_ORDER = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'];
+
+const getSeedPriority = (color: string) => {
+  const index = SEED_ORDER.indexOf(color.toUpperCase());
+  return index === -1 ? 99 : index;
+};
+
+const sortStats = (a: SurferStats, b: SurferStats) => {
+  const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
+  if (rankDiff !== 0) return rankDiff;
+  return getSeedPriority(a.surfer) - getSeedPriority(b.surfer);
+};
+
 export default function ScoreDisplay({
   config,
   scores,
@@ -243,7 +256,7 @@ export default function ScoreDisplay({
           <div className="divide-y">
             {surferStats
               .slice()
-              .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+              .sort(sortStats)
               .map((stat) => {
                 const style = lycraStyle(stat.surfer);
                 const completedWaves = stat.waves.filter(
@@ -343,7 +356,7 @@ export default function ScoreDisplay({
             <tbody className="divide-y">
               {surferStats
                 .slice()
-                .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+                .sort(sortStats)
                 .map((stat, idx) => {
                   const displayName = surferNames?.[stat.surfer] ?? stat.surfer;
                   const country = surferCountries?.[stat.surfer];
