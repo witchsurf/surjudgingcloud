@@ -359,7 +359,7 @@ const GenerateHeatsPage = () => {
       doc.setTextColor(107, 114, 128); // Gris moyen
       centerText(`Organisé par : ${organizer}`, 33);
       centerText(`Dates : ${dateRange}`, 38);
-      
+
       // Ligne de séparation décorative
       doc.setDrawColor(26, 86, 219);
       doc.setLineWidth(0.5);
@@ -371,7 +371,7 @@ const GenerateHeatsPage = () => {
     // Dessiner le header sur la première page
     drawHeader();
 
-    previewData.forEach((category, catIndex) => {
+    previewData.forEach((category) => {
       // Saut de page si pas assez de place pour le titre de catégorie
       if (cursorY > pageHeight - 40) {
         doc.addPage();
@@ -384,13 +384,13 @@ const GenerateHeatsPage = () => {
       doc.setTextColor(26, 86, 219);
       doc.setFont('helvetica', 'bold');
       doc.text(`CATÉGORIE : ${category.category.toUpperCase()}`, 14, cursorY);
-      
+
       cursorY += 8;
       doc.setFontSize(10);
       doc.setTextColor(100);
       doc.setFont('helvetica', 'normal');
       doc.text(`${category.participants.length} participants • Séries de ${category.seriesSize}`, 14, cursorY);
-      
+
       cursorY += 10;
 
       category.rounds.forEach(round => {
@@ -402,7 +402,7 @@ const GenerateHeatsPage = () => {
 
         doc.setFillColor(240, 240, 240);
         doc.rect(14, cursorY - 5, pageWidth - 28, 8, 'F');
-        
+
         doc.setFontSize(11);
         doc.setTextColor(0);
         doc.setFont('helvetica', 'bold');
@@ -435,15 +435,15 @@ const GenerateHeatsPage = () => {
               surfer.country
             ]),
             theme: 'grid',
-            headStyles: { 
-              fillColor: [55, 65, 81], 
+            headStyles: {
+              fillColor: [55, 65, 81],
               textColor: 255,
               fontSize: 9,
               fontStyle: 'bold'
             },
-            bodyStyles: { 
-              fontSize: 9, 
-              textColor: 50 
+            bodyStyles: {
+              fontSize: 9,
+              textColor: 50
             },
             alternateRowStyles: {
               fillColor: [249, 250, 251]
@@ -454,25 +454,25 @@ const GenerateHeatsPage = () => {
               2: { cellWidth: 40 }
             },
             margin: { left: 14, right: 14 },
-            didParseCell: function(data) {
-                // Coloration du texte de la couleur (optionnel)
-                if (data.section === 'body' && data.column.index === 0) {
-                    const colorMap: Record<string, [number, number, number]> = {
-                        'ROUGE': [220, 38, 38],
-                        'BLANC': [100, 100, 100], // Gris foncé pour lisibilité
-                        'JAUNE': [202, 138, 4],
-                        'BLEU': [37, 99, 235],
-                        'VERT': [22, 163, 74], 
-                        'NOIR': [0, 0, 0]
-                    };
-                    const colorName = (data.cell.raw as string).toUpperCase();
-                    if (colorMap[colorName]) {
-                        data.cell.styles.textColor = colorMap[colorName];
-                    }
+            didParseCell: function (data) {
+              // Coloration du texte de la couleur (optionnel)
+              if (data.section === 'body' && data.column.index === 0) {
+                const colorMap: Record<string, [number, number, number]> = {
+                  'ROUGE': [220, 38, 38],
+                  'BLANC': [100, 100, 100], // Gris foncé pour lisibilité
+                  'JAUNE': [202, 138, 4],
+                  'BLEU': [37, 99, 235],
+                  'VERT': [22, 163, 74],
+                  'NOIR': [0, 0, 0]
+                };
+                const colorName = (data.cell.raw as string).toUpperCase();
+                if (colorMap[colorName]) {
+                  data.cell.styles.textColor = colorMap[colorName];
                 }
+              }
             }
           });
-          
+
           const lastY = (doc as any).lastAutoTable?.finalY ?? cursorY;
           cursorY = lastY + 10;
         });
@@ -483,12 +483,12 @@ const GenerateHeatsPage = () => {
 
     // --- PIED DE PAGE (Footer) ---
     const pageCount = (doc as any).internal.getNumberOfPages();
-    for(let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(156, 163, 175); // Gris clair
-        const footerText = `Généré par KIOSK Surf Judging le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')} - Page ${i}/${pageCount}`;
-        doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(156, 163, 175); // Gris clair
+      const footerText = `Généré par KIOSK Surf Judging le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')} - Page ${i}/${pageCount}`;
+      doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
     }
 
     const filename = `Heats_${(eventName || 'Event').replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
