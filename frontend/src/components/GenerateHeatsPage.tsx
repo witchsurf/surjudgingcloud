@@ -321,32 +321,110 @@ const GenerateHeatsPage = () => {
   const handleExportPDF = () => {
     if (previewData.length === 0) return;
 
+    // Récupération des données de l'événement
+    const eventData = JSON.parse(localStorage.getItem('eventData') || '{}');
+    const eventName = eventData.name || 'Compétition de Surf';
+    const organizer = eventData.organizer || 'Organisateur non spécifié';
+    const startDate = eventData.start_date ? new Date(eventData.start_date).toLocaleDateString('fr-FR') : '';
+    const endDate = eventData.end_date ? new Date(eventData.end_date).toLocaleDateString('fr-FR') : '';
+    const dateRange = startDate ? (endDate && startDate !== endDate ? `${startDate} au ${endDate}` : startDate) : 'Date non définie';
+
     const doc = new jsPDF();
-    let cursorY = 20;
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
 
-    doc.setFontSize(18);
-    doc.text('Plan des heats', 14, 15);
-    doc.setFontSize(12);
+    // Helper pour centrer le texte
+    const centerText = (text: string, y: number) => {
+      const textWidth = doc.getTextWidth(text);
+      doc.text(text, (pageWidth - textWidth) / 2, y);
+    };
 
-    previewData.forEach(category => {
+    // --- EN-TÊTE (Header) ---
+    const drawHeader = () => {
+      doc.setFillColor(245, 247, 250); // Gris très clair / bleuté
+      doc.rect(0, 0, pageWidth, 45, 'F');
+
+      doc.setFontSize(20);
+      doc.setTextColor(26, 86, 219); // Bleu primaire
       doc.setFont('helvetica', 'bold');
-      doc.text(`Catégorie ${category.category}`, 14, cursorY);
-      cursorY += 6;
+      centerText(eventName.toUpperCase(), 18);
+
+      doc.setFontSize(12);
+      doc.setTextColor(75, 85, 99); // Gris foncé
+      doc.setFont('helvetica', 'bold');
+      centerText('PLAN DES SÉRIES (HEATS)', 26);
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(107, 114, 128); // Gris moyen
+      centerText(`Organisé par : ${organizer}`, 33);
+      centerText(`Dates : ${dateRange}`, 38);
+      
+      // Ligne de séparation décorative
+      doc.setDrawColor(26, 86, 219);
+      doc.setLineWidth(0.5);
+      doc.line(20, 45, pageWidth - 20, 45);
+    };
+
+    let cursorY = 55; // Démarrage sous le header
+
+    // Dessiner le header sur la première page
+    drawHeader();
+
+    previewData.forEach((category, catIndex) => {
+      // Saut de page si pas assez de place pour le titre de catégorie
+      if (cursorY > pageHeight - 40) {
+        doc.addPage();
+        drawHeader(); // Optionnel : remettre le header ou juste le titre
+        cursorY = 55;
+      }
+
+      // Titre Catégorie
+      doc.setFontSize(16);
+      doc.setTextColor(26, 86, 219);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`CATÉGORIE : ${category.category.toUpperCase()}`, 14, cursorY);
+      
+      cursorY += 8;
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${category.participants.length} participants • Séries de ${category.seriesSize}`, 14, cursorY);
+      
+      cursorY += 10;
 
       category.rounds.forEach(round => {
+        // Vérification espace pour le titre du round
+        if (cursorY > pageHeight - 30) {
+          doc.addPage();
+          cursorY = 20;
+        }
+
+        doc.setFillColor(240, 240, 240);
+        doc.rect(14, cursorY - 5, pageWidth - 28, 8, 'F');
+        
+        doc.setFontSize(11);
+        doc.setTextColor(0);
         doc.setFont('helvetica', 'bold');
-        doc.text(`Round ${round.round}`, 14, cursorY);
-        cursorY += 4;
+        doc.text(`ROUND ${round.round}`, 18, cursorY);
+        cursorY += 10;
 
         round.heats.forEach(heat => {
+          // Vérification espace pour le heat + un peu du tableau
+          if (cursorY > pageHeight - 40) {
+            doc.addPage();
+            cursorY = 20;
+          }
+
+          doc.setFontSize(10);
+          doc.setTextColor(50);
           doc.setFont('helvetica', 'bold');
           doc.text(
             `Heat ${heat.heat_number} (${heat.surfers.length} surfeurs)`,
             14,
             cursorY
           );
-          doc.setFont('helvetica', 'normal');
-          cursorY += 4;
+          cursorY += 2;
 
           autoTable(doc, {
             startY: cursorY,
@@ -357,20 +435,63 @@ const GenerateHeatsPage = () => {
               surfer.country
             ]),
             theme: 'grid',
-            styles: { fontSize: 10 }
+            headStyles: { 
+              fillColor: [55, 65, 81], 
+              textColor: 255,
+              fontSize: 9,
+              fontStyle: 'bold'
+            },
+            bodyStyles: { 
+              fontSize: 9, 
+              textColor: 50 
+            },
+            alternateRowStyles: {
+              fillColor: [249, 250, 251]
+            },
+            columnStyles: {
+              0: { cellWidth: 30, fontStyle: 'bold' },
+              1: { cellWidth: 'auto' },
+              2: { cellWidth: 40 }
+            },
+            margin: { left: 14, right: 14 },
+            didParseCell: function(data) {
+                // Coloration du texte de la couleur (optionnel)
+                if (data.section === 'body' && data.column.index === 0) {
+                    const colorMap: Record<string, [number, number, number]> = {
+                        'ROUGE': [220, 38, 38],
+                        'BLANC': [100, 100, 100], // Gris foncé pour lisibilité
+                        'JAUNE': [202, 138, 4],
+                        'BLEU': [37, 99, 235],
+                        'VERT': [22, 163, 74], 
+                        'NOIR': [0, 0, 0]
+                    };
+                    const colorName = (data.cell.raw as string).toUpperCase();
+                    if (colorMap[colorName]) {
+                        data.cell.styles.textColor = colorMap[colorName];
+                    }
+                }
+            }
           });
+          
           const lastY = (doc as any).lastAutoTable?.finalY ?? cursorY;
           cursorY = lastY + 10;
-
-          if (cursorY > 270) {
-            doc.addPage();
-            cursorY = 20;
-          }
         });
+        cursorY += 5;
       });
+      cursorY += 10;
     });
 
-    const filename = `heats_${eventId || 'competition'}.pdf`;
+    // --- PIED DE PAGE (Footer) ---
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for(let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(156, 163, 175); // Gris clair
+        const footerText = `Généré par KIOSK Surf Judging le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')} - Page ${i}/${pageCount}`;
+        doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
+    }
+
+    const filename = `Heats_${(eventName || 'Event').replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
     doc.save(filename);
   };
 
