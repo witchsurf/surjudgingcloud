@@ -9,6 +9,7 @@ on:
       - 'infra/**'
       - 'backend/**'
       - 'deploy.sh'
+      - '.github/workflows/**'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
@@ -24,6 +25,8 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
+          script_stop: false
+          command_timeout: 30m
           script: |
             cd /opt/judging
             chmod +x deploy.sh
