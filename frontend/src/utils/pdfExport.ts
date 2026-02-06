@@ -361,7 +361,8 @@ export function exportHeatScorecardPdf({
     throw new Error('Configuration de heat invalide pour export PDF');
   }
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
+  // Create landscape document for better width availability
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   const namesMap = surferNames ?? config.surferNames ?? {};
   const countriesMap = surferCountries ?? config.surferCountries ?? {};
@@ -387,9 +388,8 @@ export function exportHeatScorecardPdf({
   doc.text(`${organizer}${dateStr}`, width / 2, 60, { align: 'center' });
 
   // Heat Info Badge
-  // Round & Heat info
   doc.setFillColor(30, 41, 59); // slate-800
-  doc.roundedRect(width / 2 - 100, 75, 200, 30, 15, 15, 'F');
+  doc.roundedRect(width / 2 - 150, 75, 300, 30, 15, 15, 'F');
   doc.setTextColor(56, 189, 248); // sky-400
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
@@ -439,35 +439,39 @@ export function exportHeatScorecardPdf({
     body,
     styles: {
       font: 'helvetica',
-      fontSize: 10,
+      fontSize: 9, // Slightly smaller font
       halign: 'center',
       valign: 'middle',
-      cellPadding: 6
+      cellPadding: 4
     },
     headStyles: {
-      fillColor: [15, 23, 42], // slate-900 (dark header)
+      fillColor: [15, 23, 42],
       textColor: 255,
       fontStyle: 'bold',
       lineWidth: 0
     },
     columnStyles: {
-      2: { halign: 'left', fontStyle: 'bold' }, // Nom surfeur
-      3: { halign: 'left', fontSize: 9 }, // Pays
+      0: { cellWidth: 30 }, // Rank
+      1: { cellWidth: 50, fontSize: 8 }, // Lycra
+      2: { halign: 'left', fontStyle: 'bold', cellWidth: 120 }, // Nom surfeur (larges for full names)
+      3: { halign: 'left', fontSize: 8, cellWidth: 60 }, // Pays
+      // Wave columns will autosize
       // Best 2 column bold
-      [head.length - 1]: { fontStyle: 'bold', fillColor: [240, 253, 244] } // bg-green-50 approx
+      [head.length - 1]: { fontStyle: 'bold', fillColor: [240, 253, 244], cellWidth: 50 }
     },
     alternateRowStyles: {
-      fillColor: [248, 250, 252] // slate-50
+      fillColor: [248, 250, 252]
     },
-    tableLineColor: [203, 213, 225], // slate-300
+    tableLineColor: [203, 213, 225],
     tableLineWidth: 0.1,
+    margin: { left: 20, right: 20 } // Use full width
   });
 
   // Footer
   const pageHeight = doc.internal.pageSize.getHeight();
   doc.setFontSize(8);
   doc.setTextColor(150);
-  doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, width / 2, pageHeight - 20, { align: 'center' });
+  doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, width / 2, pageHeight - 15, { align: 'center' });
 
   doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
 }
