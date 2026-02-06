@@ -13,7 +13,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
-    const { config, configSaved, setConfig } = useConfigStore();
+    const { config, configSaved, setConfig, setConfigSaved } = useConfigStore();
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { handleScoreSubmit } = useScoreManager();
     const { subscribeToHeat, markHeatFinished, syncHeatViaWebhook, isConnected } = useRealtimeSync();
@@ -91,6 +91,10 @@ export default function JudgePage() {
                         heatId: data.heat_number || 1,
                         surferNames: surferNames
                     }));
+
+                    // IMPORTANT: Set configSaved to true after loading from database
+                    setConfigSaved(true);
+
                     try {
                         localStorage.setItem('surfJudgingConfigSaved', 'true');
                     } catch { }
