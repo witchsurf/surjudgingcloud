@@ -1156,11 +1156,26 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
           <div className="space-y-2">
             {["J1", "J2", "J3", "J4", "J5"].map(position => {
+              const envBase =
+                (import.meta as { env?: Record<string, string> }).env?.VITE_KIOSK_BASE_URL ||
+                (import.meta as { env?: Record<string, string> }).env?.VITE_SITE_URL;
+              let kioskBase = typeof window !== 'undefined' ? window.location.origin : '';
+              if (envBase) {
+                try {
+                  const url = new URL(envBase);
+                  const trimmedPath = url.pathname.replace(/\/+$/, '');
+                  kioskBase = `${url.origin}${trimmedPath}`;
+                } catch {
+                  kioskBase = envBase.replace(/\/+$/, '');
+                }
+              }
+
               const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem('surfJudgingActiveEventId') : null;
-              const eventId = eventIdRaw ? Number(eventIdRaw) : null;
+              const eventIdCandidate = activeEventId ?? (eventIdRaw ? Number(eventIdRaw) : null);
+              const eventId = Number.isFinite(Number(eventIdCandidate)) ? Number(eventIdCandidate) : null;
               const kioskUrl = eventId
-                ? `${window.location.origin}/judge?position=${position}&eventId=${eventId}`
-                : `${window.location.origin}/judge?position=${position}`;
+                ? `${kioskBase}/judge?position=${position}&eventId=${eventId}`
+                : `${kioskBase}/judge?position=${position}`;
               return (
                 <div key={position} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                   <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">{position.replace("J", "")}</div>
