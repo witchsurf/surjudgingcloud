@@ -339,10 +339,25 @@ export function exportHeatResultsPDF({ eventName, category, config, rounds, hist
         }
       });
     });
+    doc.save(`${slugify(`${eventName}-${category}-heat${config.heatId}`)}_structure.pdf`);
   }
-
-  doc.save(`${slugify(`${eventName}-${category}-heat${config.heatId}`)}_structure.pdf`);
 }
+
+// Palette de couleurs pour le PDF
+const PDF_COLORS: Record<string, [number, number, number] | string> = {
+  'ROUGE': [239, 68, 68],
+  'BLANC': [248, 250, 252], // Fond gris clair pour être visible
+  'JAUNE': [234, 179, 8],
+  'BLEU': [59, 130, 246],
+  'VERT': [34, 197, 94],
+  'NOIR': [31, 41, 55]
+};
+
+const SEED_ORDER = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'];
+const getSeedPriority = (color: string) => {
+  const idx = SEED_ORDER.indexOf(color.toUpperCase());
+  return idx === -1 ? 99 : idx;
+};
 
 export function exportHeatScorecardPdf({
   config,
@@ -406,10 +421,20 @@ export function exportHeatScorecardPdf({
     return;
   }
 
-  const ordered = [...stats].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
+  // TRI : Par Rang puis par Seeding (Couleur)
+  const ordered = [...stats].sort((a, b) => {
+    const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
+    if (rankDiff !== 0) return rankDiff;
+    return getSeedPriority(a.surfer) - getSeedPriority(b.surfer);
+  });
 
-  // Limit columns for PDF readability
-  const displayWavesKey = Array.from({ length: config.waves }, (_, i) => i + 1);
+  // VAGUES DYNAMIQUES : Max de vagues surfées
+  const maxTaken = Math.max(...stats.map(s => s.waves.filter(w => w.score > 0).length), 0);
+  // On affiche au moins config.waves ou ce qui a été surfé, borné par 1 et le max possible
+  const columnsToShow = Math.max(1, Math.min(config.waves, Math.max(maxTaken, 5)));
+  // J'utilise Math.max(maxTaken, 5) pour montrer au moins 5 colonnes vides si rien n'est surfé, pour garder la forme du tableau
+
+  const displayWavesKey = Array.from({ length: columnsToShow }, (_, i) => i + 1);
 
   const head: string[] = ['#', 'Lycra', 'Surfeur', 'Pays'];
   displayWavesKey.forEach(w => head.push(`V${w}`));
@@ -452,19 +477,38 @@ export function exportHeatScorecardPdf({
     },
     columnStyles: {
       0: { cellWidth: 30 }, // Rank
-      1: { cellWidth: 50, fontSize: 8 }, // Lycra
+      1: { cellWidth: 50, fontSize: 8, fontStyle: 'bold' }, // Lycra
       2: { halign: 'left', fontStyle: 'bold', cellWidth: 120 }, // Nom surfeur (larges for full names)
       3: { halign: 'left', fontSize: 8, cellWidth: 60 }, // Pays
       // Wave columns will autosize
       // Best 2 column bold
-      [head.length - 1]: { fontStyle: 'bold', fillColor: [240, 253, 244], cellWidth: 50 }
+      [head.length - 1]: { fontStyle: 'bold', fillColor: [240, 253, 244], cellWidth: 50, textColor: [22, 101, 52] }
     },
     alternateRowStyles: {
       fillColor: [248, 250, 252]
     },
     tableLineColor: [203, 213, 225],
     tableLineWidth: 0.1,
-    margin: { left: 20, right: 20 } // Use full width
+    margin: { left: 20, right: 20 }, // Use full width
+
+    // COLORATION LYCRA
+    didParseCell: (data) => {
+      if (data.section === 'body' && data.column.index === 1) {
+        const surferColorName = ordered[data.row.index].surfer; // Récupère la couleur brute (ROUGE)
+        const rgb = PDF_COLORS[surferColorName];
+        if (rgb) {
+          if (Array.isArray(rgb)) {
+            data.cell.styles.fillColor = rgb;
+            // Texte blanc sauf pour Jaune et Blanc
+            if (surferColorName === 'JAUNE' || surferColorName === 'BLANC') {
+              data.cell.styles.textColor = [0, 0, 0];
+            } else {
+              data.cell.styles.textColor = [255, 255, 255];
+            }
+          }
+        }
+      }
+    }
   });
 
   // Footer
