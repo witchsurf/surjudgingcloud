@@ -1,27 +1,51 @@
 #!/bin/bash
-set -euo pipefail
+set -e
 
-PLAYGROUND_DIR="/Users/laraise/.gemini/antigravity/playground/neon-planck"
-DESKTOP_DIR="$HOME/Desktop/judging"
-REMOTE_USER="root"
-REMOTE_HOST="195.35.2.170"
-REMOTE_DIR="/opt/judging"
+# Deployment script for surfjudging.cloud
+# This script runs on the VPS to deploy the latest changes
 
-echo "📦 Step 1/2: Syncing Playground → Desktop..."
-rsync -av --delete \
-  --exclude 'node_modules' \
-  --exclude '.git' \
-  --exclude '.DS_Store' \
-  --exclude 'deploy.sh' \
-  --exclude 'sync_to_vps.sh' \
-  "$PLAYGROUND_DIR"/ "$DESKTOP_DIR"/
+echo "🚀 Starting deployment..."
+echo "================================"
 
-echo "✅ Desktop updated!"
-echo ""
-echo "🚀 Step 2/2: Syncing Desktop → VPS..."
-rsync -avz --delete \
-  --exclude '.git' \
-  --exclude 'node_modules' \
-  "$DESKTOP_DIR"/ "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR"
+# Navigate to project directory
+cd /opt/judging
 
+# Pull latest changes
+echo "📥 Pulling latest changes from GitHub..."
+git fetch origin
+git reset --hard origin/main
+
+# Stop containers
+echo "⏸️  Stopping containers..."
+cd infra
+docker compose down
+
+# Rebuild frontend
+echo "🔨 Building frontend..."
+cd ../frontend
+rm -rf dist node_modules/.vite
+npm run build
+
+# Rebuild and restart containers
+echo "🐳 Rebuilding and starting containers..."
+cd ../infra
+docker compose build --no-cache surfjudging
+docker compose up -d
+
+# Wait for services to start
+echo "⏳ Waiting for services to start..."
+sleep 10
+
+# Check status
 echo "✅ Deployment complete!"
+echo "================================"
+echo "📊 Container status:"
+docker compose ps
+
+echo ""
+echo "🔍 Recent Traefik logs:"
+docker compose logs --tail=20 traefik
+
+echo ""
+echo "✅ Deployment finished successfully!"
+echo "🌐 Site: https://surfjudging.cloud"

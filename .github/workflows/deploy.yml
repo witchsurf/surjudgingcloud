@@ -4,56 +4,39 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch: # Permet de lancer manuellement le déploiement
+    paths:
+      - 'frontend/**'
+      - 'infra/**'
+      - 'backend/**'
+      - 'deploy.sh'
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
   deploy:
+    name: Deploy to Production VPS
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: 🚀 Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            cd /opt/judging
+            chmod +x deploy.sh
+            ./deploy.sh
 
-      - name: Add VPS to known hosts
+      - name: ✅ Deployment Status
+        if: success()
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          echo "✅ Deployment successful!"
+          echo "🌐 Site: https://surfjudging.cloud"
 
-      - name: Deploy to VPS
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PATH: ${{ secrets.VPS_PATH }}
+      - name: ❌ Deployment Failed
+        if: failure()
         run: |
-          echo "🚀 Starting deployment to VPS..."
-
-          # Sync files to VPS (exclude node_modules, .git, etc.)
-          rsync -avz --delete \
-            --exclude '.git' \
-            --exclude 'node_modules' \
-            --exclude '.DS_Store' \
-            --exclude '.env' \
-            --exclude 'dist' \
-            --exclude '.github' \
-            ./ $VPS_USER@$VPS_HOST:$VPS_PATH/
-
-          echo "✅ Files synced to VPS"
-
-          # Execute deployment script on VPS
-          ssh $VPS_USER@$VPS_HOST "cd $VPS_PATH && chmod +x deploy_on_vps.sh && ./deploy_on_vps.sh"
-
-          echo "✅ Deployment completed successfully!"
-
-      - name: Notify deployment status
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment succeeded!"
-          else
-            echo "❌ Deployment failed!"
-          fi
+          echo "❌ Deployment failed!"
+          echo "Check the logs above for details."
