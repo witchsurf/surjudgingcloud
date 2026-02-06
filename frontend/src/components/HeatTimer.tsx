@@ -224,7 +224,7 @@ function HeatTimer({
         </div>
       )}
 
-      {timeLeft === 0 && (
+      {timeLeft === 0 && timer.startTime && (
         <div className="mb-4 px-3 py-2 bg-red-600 text-white rounded-lg animate-pulse">
           <p className="font-bold">🏁 TEMPS ÉCOULÉ !</p>
         </div>

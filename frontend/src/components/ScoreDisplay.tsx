@@ -136,6 +136,19 @@ export default function ScoreDisplay({
 }: ScoreDisplayProps) {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [surferStats, setSurferStats] = useState<SurferStats[]>([]);
+  const [eventData, setEventData] = useState<any>(null);
+
+  // Load eventData for PDF export
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('eventData');
+      if (stored) {
+        setEventData(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error('Error loading eventData', e);
+    }
+  }, []);
 
   // Pour les noms et pays, on lit des champs optionnels du config si présents
   const surferNames = config.surferNames ?? {};
@@ -208,7 +221,7 @@ export default function ScoreDisplay({
 
             <button
               type="button"
-              onClick={() => exportHeatScorecardPdf({ config, scores })}
+              onClick={() => exportHeatScorecardPdf({ config, scores, eventData })}
               className="mt-2 inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 border border-white/60 rounded-full text-xs sm:text-sm font-semibold hover:bg-white/10 w-full sm:w-auto"
             >
               <FileText className="w-4 h-4" />

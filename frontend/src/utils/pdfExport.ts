@@ -349,48 +349,70 @@ export function exportHeatScorecardPdf({
   scores,
   surferNames,
   surferCountries,
+  eventData,
 }: {
   config: AppConfig;
   scores: Score[];
   surferNames?: Record<string, string>;
   surferCountries?: Record<string, string>;
+  eventData?: any;
 }) {
   if (!config?.competition) {
     throw new Error('Configuration de heat invalide pour export PDF');
   }
 
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt' });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   const namesMap = surferNames ?? config.surferNames ?? {};
   const countriesMap = surferCountries ?? config.surferCountries ?? {};
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text(`${config.competition} – ${config.division || 'Division ?'}`, width / 2, 50, { align: 'center' });
-  doc.setFontSize(12);
-  doc.text(`Round ${config.round} · Heat ${config.heatId}`, width / 2, 70, { align: 'center' });
+  // --- HEADER PRO ---
+  // Background gradient-like header
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.rect(0, 0, width, 100, 'F');
 
+  // Event Name
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  const title = eventData?.name?.toUpperCase() ?? config.competition.toUpperCase();
+  doc.text(title, width / 2, 40, { align: 'center' });
+
+  // Organizer / Subtitle
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(148, 163, 184); // slate-400
+  const organizer = eventData?.organizer ? `Organisé par ${eventData.organizer}` : '';
+  const dateStr = eventData?.start_date ? ` • ${new Date(eventData.start_date).toLocaleDateString('fr-FR')}` : '';
+  doc.text(`${organizer}${dateStr}`, width / 2, 60, { align: 'center' });
+
+  // Heat Info Badge
+  // Round & Heat info
+  doc.setFillColor(30, 41, 59); // slate-800
+  doc.roundedRect(width / 2 - 100, 75, 200, 30, 15, 15, 'F');
+  doc.setTextColor(56, 189, 248); // sky-400
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(`${config.division} • R${config.round} • HEAT ${config.heatId}`, width / 2, 94, { align: 'center' });
+
+  // --- CONTENT ---
   const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves);
 
   if (!stats.length) {
+    doc.setTextColor(0, 0, 0);
     doc.setFontSize(14);
-    doc.text('Aucune note enregistrée pour ce heat.', width / 2, doc.internal.pageSize.getHeight() / 2, { align: 'center' });
+    doc.text('Aucune note enregistrée pour ce heat.', width / 2, 200, { align: 'center' });
     doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
     return;
   }
 
   const ordered = [...stats].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
-  const maxWaves = Math.max(
-    ...ordered.map((stat) => stat.waves.length),
-    config.waves,
-    1
-  );
-  const limitedWaves = Math.min(maxWaves, 6);
 
-  const head: string[] = ['Rang', 'Lycra', 'Nom', 'Pays'];
-  for (let i = 0; i < limitedWaves; i += 1) {
-    head.push(`V${i + 1}`);
-  }
+  // Limit columns for PDF readability
+  const displayWavesKey = Array.from({ length: config.waves }, (_, i) => i + 1);
+
+  const head: string[] = ['#', 'Lycra', 'Surfeur', 'Pays'];
+  displayWavesKey.forEach(w => head.push(`V${w}`));
   head.push('Best 2');
 
   const body = ordered.map((stat) => {
@@ -398,36 +420,60 @@ export function exportHeatScorecardPdf({
     const displayName = namesMap[stat.surfer] ?? stat.surfer;
     const country = countriesMap[stat.surfer] ?? '';
     row.push(stat.rank ?? '-');
-    row.push(stat.surfer);
+    row.push(colorLabelMap[stat.surfer as keyof typeof colorLabelMap] ?? stat.surfer); // Traduction couleur si possible
     row.push(displayName);
     row.push(country);
 
-    for (let i = 0; i < limitedWaves; i += 1) {
-      const wave = stat.waves.find((w) => w.wave === i + 1);
-      row.push(wave && wave.score > 0 ? wave.score.toFixed(2) : '');
-    }
+    displayWavesKey.forEach(wIdx => {
+      const wave = stat.waves.find((w) => w.wave === wIdx);
+      row.push(wave && wave.score > 0 ? wave.score.toFixed(2) : '-');
+    });
 
     row.push((stat.bestTwo ?? 0).toFixed(2));
     return row;
   });
 
   autoTable(doc, {
-    startY: 100,
+    startY: 130,
     head: [head],
     body,
-    styles: { font: 'helvetica', fontSize: 10, halign: 'center', valign: 'middle' },
-    headStyles: { fillColor: [12, 74, 110], textColor: 255, fontStyle: 'bold' },
-    columnStyles: {
-      2: { halign: 'left' },
-      3: { halign: 'left' },
+    styles: {
+      font: 'helvetica',
+      fontSize: 10,
+      halign: 'center',
+      valign: 'middle',
+      cellPadding: 6
     },
+    headStyles: {
+      fillColor: [15, 23, 42], // slate-900 (dark header)
+      textColor: 255,
+      fontStyle: 'bold',
+      lineWidth: 0
+    },
+    columnStyles: {
+      2: { halign: 'left', fontStyle: 'bold' }, // Nom surfeur
+      3: { halign: 'left', fontSize: 9 }, // Pays
+      // Best 2 column bold
+      [head.length - 1]: { fontStyle: 'bold', fillColor: [240, 253, 244] } // bg-green-50 approx
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252] // slate-50
+    },
+    tableLineColor: [203, 213, 225], // slate-300
+    tableLineWidth: 0.1,
   });
+
+  // Footer
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, width / 2, pageHeight - 20, { align: 'center' });
 
   doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
 }
 
 /**
- * Export complete competition PDF with all categories, all heats, results, and qualifiers
+ * Export complete competition PDF with all categories
  */
 export function exportFullCompetitionPDF({
   eventName,
