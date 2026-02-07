@@ -9,7 +9,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
 import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllScoresForEvent, ensureEventExists } from '../api/supabaseClient';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode } from '../lib/supabase';
 
 const DEFAULT_DIVISIONS: string[] = [];
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
@@ -88,6 +88,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
+  const [supabaseMode, setSupabaseModeState] = useState(getSupabaseMode());
+  const supabaseConfig = getSupabaseConfig();
+  const [offlineAdminPin, setOfflineAdminPin] = useState(() => {
+    try {
+      return localStorage.getItem('admin_offline_pin') || '';
+    } catch {
+      return '';
+    }
+  });
 
   const { normalized: heatId } = React.useMemo(
     () =>
@@ -220,10 +229,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   // Évaluer le statut de la base de données
   React.useEffect(() => {
     const checkDbStatus = () => {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const { supabaseUrl, supabaseAnonKey } = getSupabaseConfig();
       const supabaseConfigured = Boolean(
-        supabaseUrl && supabaseKey && supabaseUrl !== 'undefined' && supabaseKey !== 'undefined'
+        supabaseUrl && supabaseAnonKey && supabaseUrl !== 'undefined' && supabaseAnonKey !== 'undefined'
       );
 
       if (!navigator.onLine) {
@@ -259,6 +267,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       window.removeEventListener('offline', handleOffline);
     };
   }, [configSaved]);
+
+  const handleSupabaseModeChange = (mode: 'local' | 'cloud' | null) => {
+    setSupabaseMode(mode);
+    setSupabaseModeState(mode);
+    window.location.reload();
+  };
 
   const syncDivisionsFromParticipants = useCallback(() => {
     try {
@@ -318,6 +332,19 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     onConfigChange({ ...config, [field]: value });
   };
 
+  const handleSaveOfflineAdminPin = () => {
+    try {
+      if (offlineAdminPin.trim()) {
+        localStorage.setItem('admin_offline_pin', offlineAdminPin.trim());
+      } else {
+        localStorage.removeItem('admin_offline_pin');
+      }
+      alert('Code admin hors-ligne enregistré.');
+    } catch (error) {
+      console.warn('Impossible de sauvegarder le code admin hors-ligne', error);
+      alert('Erreur: impossible de sauvegarder le code admin hors-ligne.');
+    }
+  };
 
 
 
@@ -715,6 +742,35 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 <span className="text-sm text-red-600">Déconnecté</span>
               </>
             )}
+          </div>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-gray-700">Mode Supabase:</span>
+            <button
+              type="button"
+              onClick={() => handleSupabaseModeChange(null)}
+              className={`px-2.5 py-1 rounded border text-xs ${!supabaseMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
+            >
+              Auto
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSupabaseModeChange('local')}
+              className={`px-2.5 py-1 rounded border text-xs ${supabaseMode === 'local' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
+            >
+              Local (LAN)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSupabaseModeChange('cloud')}
+              className={`px-2.5 py-1 rounded border text-xs ${supabaseMode === 'cloud' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
+            >
+              Cloud (Internet)
+            </button>
+          </div>
+          <div className="text-xs text-gray-600">
+            URL active : <span className="font-mono">{supabaseConfig.supabaseUrl || '—'}</span>
           </div>
         </div>
       </div>
@@ -1137,6 +1193,30 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 />
                 <span className="text-xs text-gray-500">
                   Définissez un code simple (ex: 1234) pour permettre aux juges de se connecter sans email.
+                </span>
+              </div>
+            </div>
+            <div className="pt-4 border-t border-gray-200">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Code Admin Hors-ligne (LAN)
+              </label>
+              <div className="flex flex-col md:flex-row md:items-center gap-2">
+                <input
+                  type="text"
+                  value={offlineAdminPin}
+                  onChange={(e) => setOfflineAdminPin(e.target.value)}
+                  placeholder="Ex: 7890"
+                  className="w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveOfflineAdminPin}
+                  className="px-3 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900"
+                >
+                  Enregistrer
+                </button>
+                <span className="text-xs text-gray-500">
+                  Permet d’accéder à /admin sans magic link quand Internet est indisponible.
                 </span>
               </div>
             </div>

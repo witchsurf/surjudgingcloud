@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseConfig } from '../lib/supabase';
 import type { AppConfig, HeatTimer, KioskConfig, HeatSyncRequest } from '../types';
 import { ensureHeatId } from '../utils/heat';
 import { DEFAULT_TIMER_DURATION, INITIAL_CONFIG } from '../utils/constants';
@@ -41,8 +41,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
   useEffect(() => {
     const checkSupabaseConfig = () => {
-      const url = import.meta.env.VITE_SUPABASE_URL;
-      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      const { supabaseUrl: url, supabaseAnonKey: key } = getSupabaseConfig();
 
       const configured = Boolean(url && key && url !== 'undefined' && key !== 'undefined');
 

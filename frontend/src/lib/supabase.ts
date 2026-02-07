@@ -1,16 +1,112 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+type SupabaseMode = 'cloud' | 'local' | null;
+
+const SUPABASE_MODE_STORAGE_KEY = 'supabase_mode';
+const SUPABASE_URL_OVERRIDE_KEY = 'supabase_url_override';
+const SUPABASE_ANON_OVERRIDE_KEY = 'supabase_anon_override';
+
+const resolveEnv = (key: string): string | undefined => {
+  return (import.meta as { env?: Record<string, string> }).env?.[key];
+};
+
+const readStored = (key: string): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+export const getSupabaseMode = (): SupabaseMode => {
+  const stored = readStored(SUPABASE_MODE_STORAGE_KEY);
+  return stored === 'cloud' || stored === 'local' ? stored : null;
+};
+
+export const setSupabaseMode = (mode: SupabaseMode) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!mode) {
+      window.localStorage.removeItem(SUPABASE_MODE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(SUPABASE_MODE_STORAGE_KEY, mode);
+  } catch {
+    // ignore storage errors
+  }
+};
+
+export const setSupabaseOverrides = (url?: string, anonKey?: string) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (url) {
+      window.localStorage.setItem(SUPABASE_URL_OVERRIDE_KEY, url);
+    } else {
+      window.localStorage.removeItem(SUPABASE_URL_OVERRIDE_KEY);
+    }
+    if (anonKey) {
+      window.localStorage.setItem(SUPABASE_ANON_OVERRIDE_KEY, anonKey);
+    } else {
+      window.localStorage.removeItem(SUPABASE_ANON_OVERRIDE_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+};
+
+export const getSupabaseConfig = () => {
+  const mode = getSupabaseMode();
+  const overrideUrl = readStored(SUPABASE_URL_OVERRIDE_KEY);
+  const overrideAnon = readStored(SUPABASE_ANON_OVERRIDE_KEY);
+
+  const urlFromMode =
+    mode === 'local'
+      ? resolveEnv('VITE_SUPABASE_URL_LAN') || resolveEnv('VITE_SUPABASE_URL_LOCAL')
+      : mode === 'cloud'
+        ? resolveEnv('VITE_SUPABASE_URL_CLOUD')
+        : undefined;
+
+  const anonFromMode =
+    mode === 'local'
+      ? resolveEnv('VITE_SUPABASE_ANON_KEY_LAN') || resolveEnv('VITE_SUPABASE_ANON_KEY_LOCAL')
+      : mode === 'cloud'
+        ? resolveEnv('VITE_SUPABASE_ANON_KEY_CLOUD')
+        : undefined;
+
+  const supabaseUrl =
+    overrideUrl ||
+    urlFromMode ||
+    resolveEnv('VITE_SUPABASE_URL');
+  const supabaseAnonKey =
+    overrideAnon ||
+    anonFromMode ||
+    resolveEnv('VITE_SUPABASE_ANON_KEY');
+
+  return {
+    supabaseUrl,
+    supabaseAnonKey,
+    mode,
+  };
+};
+
+const { supabaseUrl, supabaseAnonKey } = getSupabaseConfig();
 
 // Créer le client Supabase seulement si les variables d'environnement sont valides
-export const supabase = supabaseUrl && supabaseAnonKey && supabaseUrl !== 'undefined' && supabaseAnonKey !== 'undefined'
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export const supabase =
+  supabaseUrl && supabaseAnonKey && supabaseUrl !== 'undefined' && supabaseAnonKey !== 'undefined'
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
 
 // Fonction pour vérifier si Supabase est configuré
 export const isSupabaseConfigured = () => {
-  return !!(supabaseUrl && supabaseAnonKey && supabaseUrl !== 'undefined' && supabaseAnonKey !== 'undefined' && supabase);
+  return !!(
+    supabaseUrl &&
+    supabaseAnonKey &&
+    supabaseUrl !== 'undefined' &&
+    supabaseAnonKey !== 'undefined' &&
+    supabase
+  );
 };
 
 // Types pour la base de données
