@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
 import EventStatus from './EventStatus';
+import { isDevMode, getDevUser } from '../lib/offlineAuth';
 
 interface EventFormData {
   name: string;
@@ -32,6 +33,18 @@ const CreateEvent = () => {
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    // In dev mode, bypass all auth checks
+    if (isDevMode()) {
+      const devUser = getDevUser();
+      if (devUser) {
+        setAuthorized(true);
+        setSessionUserId(devUser.id);
+        setAuthChecked(true);
+        console.log('🔧 CreateEvent: Dev mode - auto-authorized as:', devUser.email);
+      }
+      return;
+    }
+
     if (!requiresAuth || !supabase) {
       setAuthChecked(true);
       setAuthorized(true);

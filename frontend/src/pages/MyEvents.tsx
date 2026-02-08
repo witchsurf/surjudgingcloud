@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -7,6 +7,9 @@ import { useConfigStore } from '../stores/configStore';
 import type { AppConfig } from '../types';
 import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/supabaseClient';
 import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
+import { OfflineAuthWrapper } from '../components/OfflineAuthWrapper';
+import { isDevMode } from '../lib/offlineAuth';
+import { syncEventsFromCloud, getCachedCloudEvents, getLastSyncTime, needsCloudSync } from '../utils/syncCloudEvents';
 
 
 
@@ -117,19 +120,24 @@ const normalizeOwnedEvents = (rows: SupabaseEventRow[]): OwnedEvent[] =>
       : row.event_last_config ?? null,
   }));
 
-export default function MyEvents() {
+// Memoized content component to prevent unnecessary re-renders
+const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMode }: { initialUser: User | null; isOfflineMode: boolean }) {
   const [events, setEvents] = useState<OwnedEvent[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(initialUser);
   const [continuingId, setContinuingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Magic Link State
   const [email, setEmail] = useState('');
   const [sendingMagicLink, setSendingMagicLink] = useState(false);
-  const [processingMagicLink, setProcessingMagicLink] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
+
+  // Cloud Sync State
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -151,105 +159,103 @@ export default function MyEvents() {
     return url.toString();
   }, [baseUrl, redirectIntent]);
 
-  const loadEvents = useCallback(async (userId: string) => {
-    if (!supabase || !isSupabaseConfigured()) {
-      setEvents([]);
+  const loadEvents = useCallback(async (userId: string, skipOnline = false) => {
+    // In dev/offline mode, load from cached cloud events
+    if (skipOnline || !supabase || !isSupabaseConfigured()) {
+      console.log('📴 Offline/Dev mode - loading cached cloud events');
+      const cachedEvents = getCachedCloudEvents();
+      setEvents(cachedEvents as any[]);
+      setLastSync(getLastSyncTime());
+      setLoadingEvents(false);
+      console.log(`✅ Loaded ${cachedEvents.length} cached events`);
       return;
     }
+
     setLoadingEvents(true);
     setError(null);
 
-    const { data, error: fetchError } = await supabase
-      .from('events')
-      .select('id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('events')
+        .select('id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-    if (fetchError) {
-      setError(fetchError.message ?? 'Impossible de charger vos événements.');
+      if (fetchError) {
+        setError(fetchError.message ?? 'Impossible de charger vos événements.');
+        setEvents([]);
+      } else {
+        const normalized = normalizeOwnedEvents(((data ?? []) as unknown) as SupabaseEventRow[]);
+        setEvents(normalized);
+      }
+    } catch (err) {
+      console.error('Error loading events:', err);
       setEvents([]);
-    } else {
-      const normalized = normalizeOwnedEvents(((data ?? []) as unknown) as SupabaseEventRow[]);
-      setEvents(normalized);
+    } finally {
+      setLoadingEvents(false);
     }
-
-    setLoadingEvents(false);
   }, []);
 
+  // Sync initial user from wrapper (only when user ID changes)
   useEffect(() => {
-    if (!supabase || !isSupabaseConfigured()) return;
+    setUser(initialUser);
+
+    if (initialUser?.id) {
+      loadEvents(initialUser.id, isOfflineMode);
+      // Load last sync time
+      setLastSync(getLastSyncTime());
+    } else {
+      setEvents([]);
+      setLoadingEvents(false);
+    }
+    // Only re-run when user ID changes, not when isOfflineMode changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialUser?.id]);
+
+  // Clear redirect params in dev/offline mode (run once on mount)
+  useEffect(() => {
+    if (isOfflineMode && redirectIntent) {
+      const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, []);
+
+  // Magic link processing (only if not in dev/offline mode)
+  useEffect(() => {
+    if (isOfflineMode || !supabase || !isSupabaseConfigured()) return;
     if (typeof window === 'undefined' || !window.location.hash || window.location.hash.length <= 1) return;
 
     const params = new URLSearchParams(window.location.hash.slice(1));
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    const type = params.get('type');
     const errorDescription = params.get('error_description');
 
     if (errorDescription) {
       setError(decodeURIComponent(errorDescription));
     }
 
-    if (!accessToken || !refreshToken) {
+    // Clear hash params after reading
+    const cleanedUrl = `${window.location.origin}${window.location.pathname}${window.location.search || ''}`;
+    window.history.replaceState({}, document.title, cleanedUrl);
+  }, [isOfflineMode]);
+
+  const [checkingRedirect, setCheckingRedirect] = useState(!isOfflineMode);
+  const [hasRedirected, setHasRedirected] = useState(false);
+
+  useEffect(() => {
+    // Skip redirect logic in offline/dev mode
+    if (isOfflineMode) {
+      setCheckingRedirect(false);
       return;
     }
 
-    setProcessingMagicLink(true);
-    supabase.auth
-      .setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      })
-      .then(({ error: sessionError }) => {
-        if (sessionError) {
-          setError(sessionError.message ?? "Impossible d'activer la session depuis le lien magique.");
-        } else if (type === 'magiclink') {
-          setLinkSent(false);
-        }
-      })
-      .finally(() => {
-        setProcessingMagicLink(false);
-        params.delete('access_token');
-        params.delete('refresh_token');
-        const cleanedUrl = `${window.location.origin}${window.location.pathname}${window.location.search || ''}`;
-        window.history.replaceState({}, document.title, cleanedUrl);
-      });
-  }, []);
+    if (hasRedirected) return;
 
-  useEffect(() => {
-    if (!supabase || !isSupabaseConfigured()) return;
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data?.user ?? null);
-      if (data?.user?.id) {
-        loadEvents(data.user.id);
-      }
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user?.id) {
-        loadEvents(session.user.id);
-      } else {
-        setEvents([]);
-      }
-    });
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, [loadEvents]);
-
-  const [checkingRedirect, setCheckingRedirect] = useState(true);
-
-  useEffect(() => {
     let shouldRedirect = false;
 
     // Check URL param first
-    if (redirectIntent && user) {
-      if (redirectIntent === 'create-event') {
-        shouldRedirect = true;
-        navigate('/create-event', { replace: true });
-      }
+    if (redirectIntent && user && redirectIntent === 'create-event') {
+      shouldRedirect = true;
+      setHasRedirected(true);
+      navigate('/create-event', { replace: true });
     }
 
     // Check localStorage fallback (more robust for magic links)
@@ -258,12 +264,30 @@ export default function MyEvents() {
       if (storedRedirect === 'create-event') {
         shouldRedirect = true;
         localStorage.removeItem('loginRedirect');
+        setHasRedirected(true);
         navigate('/create-event', { replace: true });
       }
     }
 
     setCheckingRedirect(false);
-  }, [redirectIntent, user, navigate]);
+  }, [redirectIntent, user?.id, hasRedirected, isOfflineMode, navigate]);
+
+  const handleSyncFromCloud = async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const cloudEvents = await syncEventsFromCloud(user?.email || '');
+      setEvents(cloudEvents as any[]);
+      setLastSync(new Date());
+      console.log(`✅ Synced ${cloudEvents.length} events from cloud`);
+    } catch (err: any) {
+      const errorMsg = err?.message || 'Impossible de synchroniser avec le cloud';
+      setSyncError(errorMsg);
+      console.error('❌ Sync error:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleSendMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -434,12 +458,6 @@ export default function MyEvents() {
             </p>
           </div>
 
-          {processingMagicLink && (
-            <div className="mb-4 rounded-xl border border-blue-400/80 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
-              Validation de votre lien magique en cours...
-            </div>
-          )}
-
           {linkSent ? (
             <div className="rounded-xl border border-emerald-400/80 bg-emerald-500/10 px-4 py-4 text-center">
               <p className="text-emerald-200">
@@ -471,14 +489,10 @@ export default function MyEvents() {
 
               <button
                 type="submit"
-                disabled={sendingMagicLink || processingMagicLink}
+                disabled={sendingMagicLink}
                 className="flex w-full items-center justify-center rounded-full bg-blue-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-200 disabled:cursor-not-allowed disabled:bg-blue-300"
               >
-                {processingMagicLink
-                  ? 'Activation en cours...'
-                  : sendingMagicLink
-                    ? 'Envoi en cours...'
-                    : 'Envoyer le lien de connexion'}
+                {sendingMagicLink ? 'Envoi en cours...' : 'Envoyer le lien de connexion'}
               </button>
             </form>
           )}
@@ -504,18 +518,53 @@ export default function MyEvents() {
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
-              onClick={() => loadEvents(user.id)}
+              onClick={() => loadEvents(user.id, isOfflineMode)}
               className="rounded-full border border-blue-400/40 bg-white/10 px-4 py-2 text-sm text-blue-100 hover:bg-white/20 transition"
             >
               🔄 Rafraîchir
             </button>
-            <Link
-              to="/create-event"
-              className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100 hover:bg-emerald-500/20 transition"
+
+            {/* Cloud Sync Button (only in offline/dev mode) */}
+            {isOfflineMode && (
+              <button
+                onClick={handleSyncFromCloud}
+                disabled={syncing}
+                className="rounded-full border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm text-purple-100 hover:bg-purple-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {syncing ? '⏳ Synchronisation...' : '🌐 Sync depuis Cloud'}
+              </button>
+            )}
+
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔗 Create event button clicked, navigating...');
+                setTimeout(() => {
+                  console.log('🔗 Executing navigation to /create-event');
+                  navigate('/create-event');
+                }, 0);
+              }}
+              className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100 hover:bg-emerald-500/20 transition cursor-pointer"
             >
               ➕ Créer un nouvel événement
-            </Link>
+            </button>
           </div>
+
+          {/* Sync Status */}
+          {isOfflineMode && lastSync && (
+            <p className="mt-2 text-xs text-slate-400">
+              📅 Dernière sync: {lastSync.toLocaleString('fr-FR')}
+              {needsCloudSync() && <span className="ml-2 text-amber-400">• Sync recommandée</span>}
+            </p>
+          )}
+
+          {/* Sync Error */}
+          {syncError && (
+            <div className="mt-3 rounded-xl border border-red-400/80 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {syncError}
+            </div>
+          )}
         </div>
 
         {loadingEvents ? (
@@ -525,9 +574,21 @@ export default function MyEvents() {
         ) : events.length === 0 ? (
           <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-8 text-center text-slate-300">
             <p>Vous n'avez pas encore créé d'événement.</p>
-            <Link to="/create-event" className="mt-4 inline-flex items-center justify-center rounded-full bg-blue-500 px-5 py-3 text-sm font-medium text-white hover:bg-blue-400">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔗 Button clicked, navigating to /create-event');
+                // Use setTimeout to ensure navigation happens after current render cycle
+                setTimeout(() => {
+                  console.log('🔗 Executing navigation...');
+                  navigate('/create-event');
+                }, 0);
+              }}
+              className="mt-4 inline-flex items-center justify-center rounded-full bg-blue-500 px-5 py-3 text-sm font-medium text-white hover:bg-blue-400 cursor-pointer"
+            >
               Créer mon premier événement
-            </Link>
+            </button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -588,7 +649,27 @@ export default function MyEvents() {
             {actionError}
           </div>
         )}
+
+        {/* Dev/Offline Mode Indicator */}
+        {isOfflineMode && (
+          <div className="mt-6 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            {isDevMode() ? '🔧 Mode Développement Actif' : '📴 Mode Hors Ligne - Dernière synchro: ' + (user ? 'récente' : 'inconnue')}
+          </div>
+        )}
       </div>
     </div>
+  );
+});
+
+// Export with Offline Auth Wrapper - Using callback to prevent re-render issues
+export default function MyEvents() {
+  const renderContent = useCallback((user: User | null, isOfflineMode: boolean) => (
+    <MyEventsContent initialUser={user} isOfflineMode={isOfflineMode} />
+  ), []);
+
+  return (
+    <OfflineAuthWrapper>
+      {renderContent}
+    </OfflineAuthWrapper>
   );
 }
