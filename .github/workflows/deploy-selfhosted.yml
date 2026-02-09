@@ -1,0 +1,41 @@
+name: Deploy to VPS (Self-Hosted)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - 'infra/**'
+      - 'backend/**'
+      - 'deploy.sh'
+      - '.github/workflows/**'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  deploy:
+    name: Deploy to Production VPS
+    runs-on: self-hosted # Use self-hosted runner on your VPS
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🚀 Deploy
+        run: |
+          cd /opt/judging
+          git pull origin main
+          chmod +x deploy.sh
+          ./deploy.sh
+
+      - name: ✅ Deployment Status
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          echo "🌐 Site: http://surfjudging.local:5173"
+
+      - name: ❌ Deployment Failed
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check the logs above for details."
