@@ -5,8 +5,10 @@
 
 set -e  # Exit on error
 
-VPS_HOST="192.168.1.78"
-VPS_USER="sandy"
+# IMPORTANT: Update these with your VPS details
+# VPS_HOST should be your PUBLIC IP or domain, NOT local VM IP
+VPS_HOST="YOUR_VPS_PUBLIC_IP_OR_DOMAIN"  # Example: 203.0.113.45 or surfjudging.cloud
+VPS_USER="sandy"  # Your SSH username on the VPS
 DEPLOY_DIR="/opt/judging"
 
 echo "🚀 Deploying to VPS at ${VPS_HOST}..."
