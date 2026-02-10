@@ -208,9 +208,9 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       setEvents([]);
       setLoadingEvents(false);
     }
-    // Only re-run when user ID changes, not when isOfflineMode changes
+    // Only re-run when user ID changes or when isOfflineMode changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialUser?.id]);
+  }, [initialUser?.id, isOfflineMode]);
 
   // Clear redirect params in dev/offline mode (run once on mount)
   useEffect(() => {
@@ -327,7 +327,26 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     setActionError(null);
     setContinuingId(event.id);
     try {
-      const snapshot = await fetchEventConfigSnapshot(event.id);
+      // In offline/dev mode, use cached event_last_config instead of fetching
+      let snapshot: EventConfigSnapshot | null;
+
+      if (isOfflineMode && event.event_last_config) {
+        console.log('📴 Offline mode - using cached event_last_config');
+        snapshot = {
+          event_id: event.event_last_config.event_id,
+          event_name: event.event_last_config.event_name,
+          division: event.event_last_config.division,
+          round: event.event_last_config.round,
+          heat_number: event.event_last_config.heat_number,
+          judges: [],
+          surfers: [],
+          surferNames: {},
+          surferCountries: {},
+          updated_at: event.event_last_config.updated_at,
+        };
+      } else {
+        snapshot = await fetchEventConfigSnapshot(event.id);
+      }
 
       // If no snapshot exists, auto-save config with first category
       if (!snapshot) {
@@ -524,16 +543,14 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
               🔄 Rafraîchir
             </button>
 
-            {/* Cloud Sync Button (only in offline/dev mode) */}
-            {isOfflineMode && (
-              <button
-                onClick={handleSyncFromCloud}
-                disabled={syncing}
-                className="rounded-full border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm text-purple-100 hover:bg-purple-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {syncing ? '⏳ Synchronisation...' : '🌐 Sync depuis Cloud'}
-              </button>
-            )}
+            {/* Cloud Sync Button - Cache events for offline use */}
+            <button
+              onClick={handleSyncFromCloud}
+              disabled={syncing}
+              className="rounded-full border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm text-purple-100 hover:bg-purple-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {syncing ? '⏳ Synchronisation...' : '🌐 Sync depuis Cloud'}
+            </button>
 
             <button
               onClick={(e) => {
@@ -552,7 +569,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           </div>
 
           {/* Sync Status */}
-          {isOfflineMode && lastSync && (
+          {lastSync && (
             <p className="mt-2 text-xs text-slate-400">
               📅 Dernière sync: {lastSync.toLocaleString('fr-FR')}
               {needsCloudSync() && <span className="ml-2 text-amber-400">• Sync recommandée</span>}

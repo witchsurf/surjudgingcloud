@@ -1,11 +1,19 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getCachedCloudParticipants } from './syncCloudEvents';
+import { isDevMode } from '../lib/offlineAuth';
 
 /**
  * Get the first category from participants for an event
  * Used for auto-configuring division when loading event for first time
  */
 export async function getFirstCategoryFromParticipants(eventId: number): Promise<string | null> {
-    if (!isSupabaseConfigured() || !supabase) {
+    // In dev/offline mode, try cached participants first
+    if (isDevMode() || !isSupabaseConfigured() || !supabase) {
+        const cachedParticipants = getCachedCloudParticipants(eventId);
+        if (cachedParticipants.length > 0) {
+            console.log('📴 Using cached participants for first category');
+            return cachedParticipants[0]?.category || null;
+        }
         return null;
     }
 
@@ -34,7 +42,18 @@ export async function getFirstCategoryFromParticipants(eventId: number): Promise
  * Get all distinct categories for an event from participants
  */
 export async function getEventCategories(eventId: number): Promise<string[]> {
-    if (!isSupabaseConfigured() || !supabase) {
+    // In dev/offline mode, try cached participants first
+    if (isDevMode() || !isSupabaseConfigured() || !supabase) {
+        const cachedParticipants = getCachedCloudParticipants(eventId);
+        if (cachedParticipants.length > 0) {
+            console.log('📴 Using cached participants for categories');
+            const categories = Array.from(new Set(
+                cachedParticipants
+                    .map(p => p.category?.trim())
+                    .filter(Boolean)
+            )) as string[];
+            return categories;
+        }
         return [];
     }
 
