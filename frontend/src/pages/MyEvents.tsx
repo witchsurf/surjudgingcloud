@@ -155,19 +155,15 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
 
   const { setActiveEventId, setConfig, setConfigSaved, setLoadedFromDb } = useConfigStore();
 
-  const baseUrl = useMemo(() => {
-    const base = new URL(import.meta.env.BASE_URL || '/', window.location.origin);
-    return base.toString().replace(/\/$/, '');
-  }, []);
-
   const redirectUrl = useMemo(() => {
-    const url = new URL(baseUrl.toString());
-    url.pathname = `${url.pathname.replace(/\/$/, '')}/my-events`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const base = origin || new URL(import.meta.env.BASE_URL || '/', 'http://localhost').origin;
+    const url = new URL('/my-events', base);
     if (redirectIntent) {
       url.searchParams.set('redirect', redirectIntent);
     }
     return url.toString();
-  }, [baseUrl, redirectIntent]);
+  }, [redirectIntent]);
 
   const loginRedirectTarget = useMemo(() => {
     const params = new URLSearchParams();
