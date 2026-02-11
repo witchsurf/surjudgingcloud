@@ -30,6 +30,7 @@ export const KioskJudgeLogin = ({ position, onSuccess }: KioskJudgeLoginProps) =
             sessionStorage.setItem('kiosk_position', position);
 
             // Call success callback
+            console.log('🚀 KioskJudgeLogin: Login success for', position, trimmedName);
             onSuccess({
                 id: kioskId,
                 name: trimmedName

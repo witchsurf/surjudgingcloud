@@ -53,14 +53,17 @@ export default function JudgePage() {
 
     // Load event config from DB for anonymous users (kiosk mode)
     useEffect(() => {
+        console.log('🔍 JudgePage: useEffect checking config. eventIdFromUrl:', eventIdFromUrl, 'supabaseConfigured:', isSupabaseConfigured());
+
         if (!eventIdFromUrl || !isSupabaseConfigured()) {
+            console.log('⚠️ JudgePage: Skipping config load (no eventId or Supabase not configured)');
             setConfigLoading(false);
             return;
         }
 
         const loadEventConfig = async () => {
             try {
-                console.log('📥 Loading event config for eventId:', eventIdFromUrl);
+                console.log('📥 JudgePage: Fetching config from event_last_config for ID:', eventIdFromUrl);
 
                 const { data, error } = await supabase!
                     .from('event_last_config')
@@ -69,13 +72,19 @@ export default function JudgePage() {
                     .single();
 
                 if (error) {
-                    console.error('❌ Error loading event config:', error);
+                    const isHtml = error.message?.trim().startsWith('<!DOCTYPE html>') || error.message?.includes('<html>');
+                    if (isHtml) {
+                        console.error('❌ JudgePage: API returned HTML instead of JSON. This usually means a port conflict or routing issue (e.g., Nginx catching the request instead of Supabase API).');
+                        // Optional: show a more user-friendly error in the UI if needed
+                    } else {
+                        console.error('❌ JudgePage: DB error loading config:', error);
+                    }
                     setConfigLoading(false);
                     return;
                 }
 
                 if (data) {
-                    console.log('✅ Event config loaded:', data);
+                    console.log('✅ JudgePage: Data found in DB:', data);
 
                     // Build surferNames from data
                     const surferNames: Record<string, string> = {};
@@ -93,21 +102,27 @@ export default function JudgePage() {
                     }));
 
                     // IMPORTANT: Set configSaved to true after loading from database
+                    console.log('🚀 JudgePage: Setting configSaved to true in store');
                     setConfigSaved(true);
 
                     try {
                         localStorage.setItem('surfJudgingConfigSaved', 'true');
-                    } catch { }
+                        console.log('💾 JudgePage: Manual localStorage surfJudgingConfigSaved set to true');
+                    } catch (e) { console.warn('JudgePage: localStorage error', e); }
+
+                    setConfigLoading(false);
+                } else {
+                    console.warn('❓ JudgePage: No data found for eventId:', eventIdFromUrl);
                     setConfigLoading(false);
                 }
             } catch (err) {
-                console.error('❌ Exception loading config:', err);
+                console.error('❌ JudgePage: Exception in loadEventConfig:', err);
                 setConfigLoading(false);
             }
         };
 
         loadEventConfig();
-    }, [eventIdFromUrl, setConfig]);
+    }, [eventIdFromUrl, setConfig, setConfigSaved]);
 
     // Subscribe to realtime timer/config for the current heat
     useEffect(() => {

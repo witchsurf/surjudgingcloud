@@ -1268,20 +1268,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               const envBase =
                 supabaseMode === 'local'
                   ? env.VITE_KIOSK_BASE_URL_LAN ||
-                    env.VITE_KIOSK_BASE_URL_LOCAL ||
-                    env.VITE_SITE_URL_LAN ||
-                    env.VITE_SITE_URL_LOCAL ||
-                    env.VITE_SITE_URL ||
-                    env.VITE_KIOSK_BASE_URL
+                  env.VITE_KIOSK_BASE_URL_LOCAL ||
+                  env.VITE_SITE_URL_LAN ||
+                  env.VITE_SITE_URL_LOCAL ||
+                  env.VITE_SITE_URL ||
+                  env.VITE_KIOSK_BASE_URL
                   : supabaseMode === 'cloud'
                     ? env.VITE_KIOSK_BASE_URL_CLOUD ||
-                      env.VITE_SITE_URL_CLOUD ||
-                      env.VITE_KIOSK_BASE_URL ||
-                      env.VITE_SITE_URL
+                    env.VITE_SITE_URL_CLOUD ||
+                    env.VITE_KIOSK_BASE_URL ||
+                    env.VITE_SITE_URL
                     : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
               const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
               const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
-              let kioskBase = isPrivateHostname(currentHostname) ? currentOrigin : '';
+              // Prefer envBase (LAN/Cloud config) over current origin if we are on localhost
+              // or if we are explicitly in local mode.
+              let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost' && supabaseMode !== 'local') ? currentOrigin : '';
               if (!kioskBase && envBase) {
                 try {
                   const url = new URL(envBase);
