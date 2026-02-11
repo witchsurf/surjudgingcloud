@@ -74,8 +74,8 @@ export default function JudgePage() {
                 if (error) {
                     const isHtml = error.message?.trim().startsWith('<!DOCTYPE html>') || error.message?.includes('<html>');
                     if (isHtml) {
-                        console.error('❌ JudgePage: API returned HTML instead of JSON. This usually means a port conflict or routing issue (e.g., Nginx catching the request instead of Supabase API).');
-                        // Optional: show a more user-friendly error in the UI if needed
+                        console.error('❌ JudgePage: API returned HTML instead of JSON. Snippet:', error.message?.slice(0, 200));
+                        console.error('This usually means a port conflict or routing issue (e.g., Nginx catching the request instead of Supabase API).');
                     } else {
                         console.error('❌ JudgePage: DB error loading config:', error);
                     }
