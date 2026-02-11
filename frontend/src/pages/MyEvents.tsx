@@ -9,7 +9,7 @@ import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnap
 import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
 import { OfflineAuthWrapper } from '../components/OfflineAuthWrapper';
 import { isDevMode } from '../lib/offlineAuth';
-import { syncEventsFromCloud, getCachedCloudEvents, getLastSyncTime, needsCloudSync } from '../utils/syncCloudEvents';
+import { syncEventsFromCloud, getCachedCloudEvents, getLastSyncTime, needsCloudSync, getCloudClient } from '../utils/syncCloudEvents';
 
 
 
@@ -29,6 +29,9 @@ type OwnedEvent = {
     updated_at: string | null;
   } | null;
 };
+
+const CLOUD_SYNC_AFTER_LOGIN_KEY = 'surfjudging_cloud_sync_after_login';
+const CLOUD_EMAIL_KEY = 'surfjudging_cloud_email';
 
 const DEFAULT_APP_CONFIG: AppConfig = {
   competition: '',
@@ -138,6 +141,11 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [cloudLoginRequired, setCloudLoginRequired] = useState(false);
+  const [cloudEmail, setCloudEmail] = useState(() => (typeof window !== 'undefined' ? window.localStorage.getItem(CLOUD_EMAIL_KEY) ?? '' : ''));
+  const [cloudSendingMagicLink, setCloudSendingMagicLink] = useState(false);
+  const [cloudLinkSent, setCloudLinkSent] = useState(false);
+  const [cloudLoginError, setCloudLoginError] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -289,10 +297,29 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     setCheckingRedirect(false);
   }, [redirectIntent, user?.id, hasRedirected, isOfflineMode, navigate]);
 
-  const handleSyncFromCloud = async () => {
+  const handleSyncFromCloud = useCallback(async () => {
     setSyncing(true);
     setSyncError(null);
     try {
+      if (isDevMode()) {
+        const cloudClient = getCloudClient();
+        const { data: { session } } = await cloudClient.auth.getSession();
+        if (!session?.access_token) {
+          setCloudLoginRequired(true);
+          setSyncError('Connexion cloud requise. Veuillez vous connecter.');
+          return;
+        }
+
+        const cloudEvents = await syncEventsFromCloud(session.user?.email || cloudEmail || '', session.access_token);
+        setEvents(cloudEvents as any[]);
+        setLastSync(new Date());
+        setCloudLoginRequired(false);
+        setCloudLinkSent(false);
+        setCloudLoginError(null);
+        console.log(`✅ Synced ${cloudEvents.length} events from cloud`);
+        return;
+      }
+
       const cloudEvents = await syncEventsFromCloud(user?.email || '');
       setEvents(cloudEvents as any[]);
       setLastSync(new Date());
@@ -304,7 +331,57 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     } finally {
       setSyncing(false);
     }
+  }, [cloudEmail, user?.email]);
+
+  const handleSendCloudMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCloudLoginError(null);
+    if (!cloudEmail.trim()) {
+      setCloudLoginError('Veuillez entrer votre email cloud.');
+      return;
+    }
+
+    try {
+      const cloudClient = getCloudClient();
+      window.localStorage.setItem(CLOUD_EMAIL_KEY, cloudEmail.trim());
+      window.localStorage.setItem(CLOUD_SYNC_AFTER_LOGIN_KEY, 'true');
+      setCloudSendingMagicLink(true);
+      const { error: signInError } = await cloudClient.auth.signInWithOtp({
+        email: cloudEmail.trim(),
+        options: { emailRedirectTo: redirectUrl }
+      });
+      if (signInError) throw signInError;
+      setCloudLinkSent(true);
+    } catch (err: any) {
+      setCloudLoginError(err?.message ?? 'Impossible d’envoyer le lien cloud.');
+    } finally {
+      setCloudSendingMagicLink(false);
+    }
   };
+
+  useEffect(() => {
+    if (!isDevMode()) return;
+    if (typeof window === 'undefined') return;
+    if (window.localStorage.getItem(CLOUD_SYNC_AFTER_LOGIN_KEY) !== 'true') return;
+
+    let cancelled = false;
+    const attemptAutoSync = async () => {
+      try {
+        const cloudClient = getCloudClient();
+        const { data: { session } } = await cloudClient.auth.getSession();
+        if (!session?.access_token || cancelled) return;
+        window.localStorage.removeItem(CLOUD_SYNC_AFTER_LOGIN_KEY);
+        await handleSyncFromCloud();
+      } catch (err) {
+        console.warn('Auto sync after cloud login failed:', err);
+      }
+    };
+
+    attemptAutoSync();
+    return () => {
+      cancelled = true;
+    };
+  }, [handleSyncFromCloud]);
 
   const handleSendMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -597,6 +674,40 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           {syncError && (
             <div className="mt-3 rounded-xl border border-red-400/80 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {syncError}
+            </div>
+          )}
+
+          {isDevMode() && cloudLoginRequired && (
+            <div className="mt-4 rounded-2xl border border-blue-400/50 bg-blue-500/10 px-4 py-4 text-sm text-blue-100">
+              <p className="mb-3 font-semibold">Connexion cloud requise pour synchroniser</p>
+              {cloudLinkSent ? (
+                <div className="rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-4 py-3 text-emerald-200">
+                  ✅ Lien de connexion envoyé à <strong>{cloudEmail}</strong>. Ouvre le lien rapidement.
+                </div>
+              ) : (
+                <form onSubmit={handleSendCloudMagicLink} className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <input
+                    type="email"
+                    required
+                    value={cloudEmail}
+                    onChange={(e) => setCloudEmail(e.target.value)}
+                    placeholder="votre@email.com"
+                    className="flex-1 rounded-xl border border-blue-400/40 bg-slate-900 px-4 py-2 text-sm text-white placeholder:text-slate-400 focus:border-blue-300 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={cloudSendingMagicLink}
+                    className="rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {cloudSendingMagicLink ? 'Envoi...' : 'Envoyer le lien'}
+                  </button>
+                </form>
+              )}
+              {cloudLoginError && (
+                <div className="mt-3 rounded-xl border border-red-400/70 bg-red-500/10 px-4 py-2 text-red-200">
+                  {cloudLoginError}
+                </div>
+              )}
             </div>
           )}
         </div>

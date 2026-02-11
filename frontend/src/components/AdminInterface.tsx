@@ -10,6 +10,7 @@ import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
 import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllScoresForEvent, ensureEventExists } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode } from '../lib/supabase';
+import { isPrivateHostname } from '../utils/network';
 
 const DEFAULT_DIVISIONS: string[] = [];
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
@@ -1251,8 +1252,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                       env.VITE_KIOSK_BASE_URL ||
                       env.VITE_SITE_URL
                     : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
-              let kioskBase = typeof window !== 'undefined' ? window.location.origin : '';
-              if (envBase) {
+              const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+              const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+              let kioskBase = isPrivateHostname(currentHostname) ? currentOrigin : '';
+              if (!kioskBase && envBase) {
                 try {
                   const url = new URL(envBase);
                   const trimmedPath = url.pathname.replace(/\/+$/, '');
@@ -1260,6 +1263,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 } catch {
                   kioskBase = envBase.replace(/\/+$/, '');
                 }
+              }
+              if (!kioskBase) {
+                kioskBase = currentOrigin;
               }
 
               const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem('surfJudgingActiveEventId') : null;

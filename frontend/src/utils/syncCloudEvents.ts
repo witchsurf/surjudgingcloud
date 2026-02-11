@@ -36,7 +36,7 @@ interface CloudParticipant {
 /**
  * Get cloud Supabase client
  */
-function getCloudClient() {
+export function getCloudClient() {
   const url = import.meta.env.VITE_SUPABASE_URL_CLOUD;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY_CLOUD;
 
