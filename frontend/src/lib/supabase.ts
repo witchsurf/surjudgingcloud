@@ -5,6 +5,7 @@ type SupabaseMode = 'cloud' | 'local' | null;
 const SUPABASE_MODE_STORAGE_KEY = 'supabase_mode';
 const SUPABASE_URL_OVERRIDE_KEY = 'supabase_url_override';
 const SUPABASE_ANON_OVERRIDE_KEY = 'supabase_anon_override';
+const SUPABASE_CLOUD_LOCK_KEY = 'supabase_cloud_lock';
 
 const resolveEnv = (key: string): string | undefined => {
   return (import.meta as { env?: Record<string, string> }).env?.[key];
@@ -22,6 +23,23 @@ const readStored = (key: string): string | null => {
 export const getSupabaseMode = (): SupabaseMode => {
   const stored = readStored(SUPABASE_MODE_STORAGE_KEY);
   return stored === 'cloud' || stored === 'local' ? stored : null;
+};
+
+export const isCloudLocked = (): boolean => {
+  return readStored(SUPABASE_CLOUD_LOCK_KEY) === 'true';
+};
+
+export const setCloudLocked = (locked: boolean) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (locked) {
+      window.localStorage.setItem(SUPABASE_CLOUD_LOCK_KEY, 'true');
+    } else {
+      window.localStorage.removeItem(SUPABASE_CLOUD_LOCK_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
 };
 
 export const setSupabaseMode = (mode: SupabaseMode) => {
@@ -56,7 +74,9 @@ export const setSupabaseOverrides = (url?: string, anonKey?: string) => {
 };
 
 export const getSupabaseConfig = () => {
-  const mode = getSupabaseMode();
+  const storedMode = getSupabaseMode();
+  const cloudLocked = isCloudLocked();
+  const mode = cloudLocked ? 'local' : storedMode;
   const overrideUrl = readStored(SUPABASE_URL_OVERRIDE_KEY);
   const overrideAnon = readStored(SUPABASE_ANON_OVERRIDE_KEY);
 

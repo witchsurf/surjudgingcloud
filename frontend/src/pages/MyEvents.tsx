@@ -2,7 +2,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, isCloudLocked } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
 import type { AppConfig } from '../types';
 import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/supabaseClient';
@@ -146,6 +146,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [cloudSendingMagicLink, setCloudSendingMagicLink] = useState(false);
   const [cloudLinkSent, setCloudLinkSent] = useState(false);
   const [cloudLoginError, setCloudLoginError] = useState<string | null>(null);
+  const [cloudLocked, setCloudLockedState] = useState(isCloudLocked());
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -212,6 +213,12 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   }, []);
 
   // Sync initial user from wrapper (only when user ID changes)
+  useEffect(() => {
+    const onStorage = () => setCloudLockedState(isCloudLocked());
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   useEffect(() => {
     setUser(initialUser);
 
@@ -297,6 +304,10 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     setSyncing(true);
     setSyncError(null);
     try {
+      if (cloudLocked) {
+        setSyncError('Mode LAN actif : la synchronisation cloud est bloquée.');
+        return;
+      }
       if (isDevMode()) {
         const cloudClient = getCloudClient();
         const { data: { session } } = await cloudClient.auth.getSession();
@@ -327,7 +338,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     } finally {
       setSyncing(false);
     }
-  }, [cloudEmail, user?.email]);
+  }, [cloudEmail, user?.email, cloudLocked]);
 
   const handleSendCloudMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -359,6 +370,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     if (!isDevMode()) return;
     if (typeof window === 'undefined') return;
     if (window.localStorage.getItem(CLOUD_SYNC_AFTER_LOGIN_KEY) !== 'true') return;
+    if (cloudLocked) return;
 
     let cancelled = false;
     const attemptAutoSync = async () => {
@@ -377,7 +389,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     return () => {
       cancelled = true;
     };
-  }, [handleSyncFromCloud]);
+  }, [handleSyncFromCloud, cloudLocked]);
 
   const handleSendMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -665,6 +677,11 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
               {needsCloudSync() && <span className="ml-2 text-amber-400">• Sync recommandée</span>}
             </p>
           )}
+          {cloudLocked && (
+            <div className="mt-2 rounded-xl border border-amber-400/60 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
+              🔒 Mode LAN actif : le cloud est bloqué. Déverrouillez pour synchroniser.
+            </div>
+          )}
 
           {/* Sync Error */}
           {syncError && (
@@ -673,7 +690,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
             </div>
           )}
 
-          {isDevMode() && cloudLoginRequired && (
+          {isDevMode() && cloudLoginRequired && !cloudLocked && (
             <div className="mt-4 rounded-2xl border border-blue-400/50 bg-blue-500/10 px-4 py-4 text-sm text-blue-100">
               <p className="mb-3 font-semibold">Connexion cloud requise pour synchroniser</p>
               {cloudLinkSent ? (

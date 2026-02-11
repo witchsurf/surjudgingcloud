@@ -9,7 +9,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
 import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllScoresForEvent, ensureEventExists } from '../api/supabaseClient';
-import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
 const DEFAULT_DIVISIONS: string[] = [];
@@ -79,6 +79,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [dbStatus, setDbStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [selectedJudge, setSelectedJudge] = useState('');
   const [selectedSurfer, setSelectedSurfer] = useState('');
+  const [cloudLocked, setCloudLockedState] = useState(isCloudLocked());
   const [selectedWave, setSelectedWave] = useState<number | ''>('');
   const [scoreInput, setScoreInput] = useState('');
   const [showOverridePanel, setShowOverridePanel] = useState(false);
@@ -270,8 +271,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [configSaved]);
 
   const handleSupabaseModeChange = (mode: 'local' | 'cloud' | null) => {
+    if (cloudLocked && mode === 'cloud') {
+      alert('Mode Cloud bloqué. Désactivez le verrouillage LAN pour revenir au cloud.');
+      return;
+    }
     setSupabaseMode(mode);
     setSupabaseModeState(mode);
+    window.location.reload();
+  };
+
+  const handleCloudLockToggle = (locked: boolean) => {
+    setCloudLocked(locked);
+    setCloudLockedState(locked);
+    if (locked) {
+      setSupabaseMode('local');
+      setSupabaseModeState('local');
+    }
     window.location.reload();
   };
 
@@ -769,10 +784,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             >
               Cloud (Internet)
             </button>
+            <button
+              type="button"
+              onClick={() => handleCloudLockToggle(!cloudLocked)}
+              className={`px-2.5 py-1 rounded border text-xs ${cloudLocked ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-gray-700 border-gray-300'}`}
+            >
+              {cloudLocked ? '🔒 Cloud bloqué (LAN)' : 'Basculer LAN (bloque cloud)'}
+            </button>
           </div>
           <div className="text-xs text-gray-600">
             URL active : <span className="font-mono">{supabaseConfig.supabaseUrl || '—'}</span>
           </div>
+          {cloudLocked && (
+            <div className="text-xs text-amber-700">
+              Mode LAN verrouillé : le cloud est désactivé jusqu’à déverrouillage.
+            </div>
+          )}
         </div>
       </div>
 
