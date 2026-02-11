@@ -1,6 +1,6 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
@@ -142,6 +142,8 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectIntent = searchParams.get('redirect');
+  const location = useLocation();
+  const isLoginRoute = location.pathname === '/login';
 
   const { setActiveEventId, setConfig, setConfigSaved, setLoadedFromDb } = useConfigStore();
 
@@ -158,6 +160,15 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     }
     return url.toString();
   }, [baseUrl, redirectIntent]);
+
+  const loginRedirectTarget = useMemo(() => {
+    const params = new URLSearchParams();
+    if (redirectIntent) {
+      params.set('redirect', redirectIntent);
+    }
+    const query = params.toString();
+    return query ? `/login?${query}` : '/login';
+  }, [redirectIntent]);
 
   const loadEvents = useCallback(async (userId: string, skipOnline = false) => {
     // In dev/offline mode, load from cached cloud events
@@ -211,6 +222,12 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     // Only re-run when user ID changes or when isOfflineMode changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialUser?.id, isOfflineMode]);
+
+  // Force login route when online auth is required
+  useEffect(() => {
+    if (isOfflineMode || user || isLoginRoute) return;
+    navigate(loginRedirectTarget, { replace: true });
+  }, [isOfflineMode, user?.id, isLoginRoute, loginRedirectTarget, navigate]);
 
   // Clear redirect params in dev/offline mode (run once on mount)
   useEffect(() => {

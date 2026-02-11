@@ -50,6 +50,7 @@ function App() {
                     <Route path="/fix" element={<FixScores />} />
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/create-event" element={<CreateEvent />} />
+                    <Route path="/login" element={<MyEventsPage />} />
                     <Route path="/my-events" element={<MyEventsPage />} />
                     <Route path="/payment" element={<PaymentPage />} />
                     <Route path="/participants" element={<ParticipantsPage />} />
