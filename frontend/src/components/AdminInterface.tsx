@@ -1236,9 +1236,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
           <div className="space-y-2">
             {["J1", "J2", "J3", "J4", "J5"].map(position => {
+              const env = (import.meta as { env?: Record<string, string> }).env ?? {};
               const envBase =
-                (import.meta as { env?: Record<string, string> }).env?.VITE_KIOSK_BASE_URL ||
-                (import.meta as { env?: Record<string, string> }).env?.VITE_SITE_URL;
+                supabaseMode === 'local'
+                  ? env.VITE_KIOSK_BASE_URL_LAN ||
+                    env.VITE_KIOSK_BASE_URL_LOCAL ||
+                    env.VITE_SITE_URL_LAN ||
+                    env.VITE_SITE_URL_LOCAL ||
+                    env.VITE_SITE_URL ||
+                    env.VITE_KIOSK_BASE_URL
+                  : supabaseMode === 'cloud'
+                    ? env.VITE_KIOSK_BASE_URL_CLOUD ||
+                      env.VITE_SITE_URL_CLOUD ||
+                      env.VITE_KIOSK_BASE_URL ||
+                      env.VITE_SITE_URL
+                    : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
               let kioskBase = typeof window !== 'undefined' ? window.location.origin : '';
               if (envBase) {
                 try {

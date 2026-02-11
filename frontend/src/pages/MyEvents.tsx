@@ -334,15 +334,15 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
         console.log('📴 Offline mode - using cached event_last_config');
         snapshot = {
           event_id: event.event_last_config.event_id,
-          event_name: event.event_last_config.event_name,
-          division: event.event_last_config.division,
-          round: event.event_last_config.round,
-          heat_number: event.event_last_config.heat_number,
+          event_name: event.event_last_config.event_name ?? event.name ?? DEFAULT_APP_CONFIG.competition,
+          division: event.event_last_config.division ?? DEFAULT_APP_CONFIG.division,
+          round: event.event_last_config.round ?? DEFAULT_APP_CONFIG.round,
+          heat_number: event.event_last_config.heat_number ?? DEFAULT_APP_CONFIG.heatId,
           judges: [],
           surfers: [],
           surferNames: {},
           surferCountries: {},
-          updated_at: event.event_last_config.updated_at,
+          updated_at: event.event_last_config.updated_at ?? new Date().toISOString(),
         };
       } else {
         snapshot = await fetchEventConfigSnapshot(event.id);
