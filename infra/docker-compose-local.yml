@@ -17,7 +17,7 @@ services:
       POSTGRES_HOST: /var/run/postgresql
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./backend/sql:/docker-entrypoint-initdb.d
+      - ../backend/sql:/docker-entrypoint-initdb.d
     networks:
       - surfjudging_network
 
@@ -43,8 +43,8 @@ services:
     container_name: surfjudging_kong
     restart: unless-stopped
     ports:
-      - "8000:8000"  # API
-      - "8443:8443"  # API HTTPS
+      - "8000:8000" # API
+      - "8443:8443" # API HTTPS
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
@@ -53,7 +53,7 @@ services:
       KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
       KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
     volumes:
-      - ./infra/kong.yml:/var/lib/kong/kong.yml:ro
+      - ./kong.yml:/var/lib/kong/kong.yml:ro
     networks:
       - surfjudging_network
 
@@ -160,6 +160,7 @@ services:
 volumes:
   postgres-data:
   storage-data:
+
 
 networks:
   surfjudging_network:
