@@ -205,6 +205,40 @@ export default function JudgePage() {
         );
     }
 
+    if (!configSaved) {
+        return (
+            <div className="max-w-4xl mx-auto p-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-8 text-center">
+                    <h2 className="text-2xl font-bold text-blue-800 mb-2">En attente de configuration</h2>
+                    <p className="text-blue-700 mb-4">
+                        L'interface de notation sera disponible une fois la compétition configurée.
+                    </p>
+                    {/* DEBUG PANEL */}
+                    <div className="mt-6 p-4 bg-gray-100 rounded text-left text-xs font-mono text-gray-600 border border-gray-300 overflow-auto max-h-60">
+                        <p className="font-bold mb-1">🔍 Diagnostic Kiosk:</p>
+                        <p>Event ID (URL): {eventIdFromUrl || 'Non défini'}</p>
+                        <p>Supabase Configuré: {isSupabaseConfigured() ? 'OUI' : 'NON'}</p>
+                        <p>Config Chargée: {configLoading ? 'En cours...' : 'Terminé'}</p>
+                        <p>Config Sauvée (Store): {configSaved ? 'OUI' : 'NON'}</p>
+                        <p>Compétition: {config.competition || 'Vide'}</p>
+                        <p>Round/Heat: R{config.round} H{config.heatId}</p>
+                        <p>URL API: {import.meta.env.VITE_SUPABASE_URL}</p>
+                        <p>Last fetch error: {
+                            // On pourrait stocker l'erreur dans un state pour l'afficher ici
+                            'Voir console'
+                        }</p>
+                    </div>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                        Rafraîchir
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     // Fast path: always show the judge code screen when judge_id is present, skipping magic-link/user auth.
     // Regular judge login (legacy UUID-based)
     if (!currentJudge && judgeIdFromUrl && !positionFromUrl) {
