@@ -76,28 +76,36 @@ export const setSupabaseOverrides = (url?: string, anonKey?: string) => {
 export const getSupabaseConfig = () => {
   const storedMode = getSupabaseMode();
   const cloudLocked = isCloudLocked();
-  const mode = cloudLocked ? 'local' : storedMode;
+  let mode = cloudLocked ? 'local' : storedMode;
   const overrideUrl = readStored(SUPABASE_URL_OVERRIDE_KEY);
   const overrideAnon = readStored(SUPABASE_ANON_OVERRIDE_KEY);
+
+  // Auto-detect mode if not explicitly set
+  // This is crucial for fixing the "Mode: null" issue
+  if (!mode) {
+    const currentUrl = overrideUrl || resolveEnv('VITE_SUPABASE_URL') || window.location.origin;
+    if (currentUrl.includes('192.168') || currentUrl.includes('localhost') || currentUrl.includes(':8000')) {
+      mode = 'local';
+    } else {
+      mode = 'cloud';
+    }
+  }
 
   const urlFromMode =
     mode === 'local'
       ? resolveEnv('VITE_SUPABASE_URL_LAN') || resolveEnv('VITE_SUPABASE_URL_LOCAL')
-      : mode === 'cloud'
-        ? resolveEnv('VITE_SUPABASE_URL_CLOUD')
-        : undefined;
+      : resolveEnv('VITE_SUPABASE_URL_CLOUD');
 
   const anonFromMode =
     mode === 'local'
       ? resolveEnv('VITE_SUPABASE_ANON_KEY_LAN') || resolveEnv('VITE_SUPABASE_ANON_KEY_LOCAL')
-      : mode === 'cloud'
-        ? resolveEnv('VITE_SUPABASE_ANON_KEY_CLOUD')
-        : undefined;
+      : resolveEnv('VITE_SUPABASE_ANON_KEY_CLOUD');
 
   const supabaseUrl =
     overrideUrl ||
     urlFromMode ||
     resolveEnv('VITE_SUPABASE_URL');
+
   const supabaseAnonKey =
     overrideAnon ||
     anonFromMode ||
@@ -110,12 +118,26 @@ export const getSupabaseConfig = () => {
   };
 };
 
-const { supabaseUrl, supabaseAnonKey } = getSupabaseConfig();
+export const { supabaseUrl, supabaseAnonKey, mode } = getSupabaseConfig();
+
+console.log(`🔌 Supabase Mode: ${mode}`);
+console.log(`🔗 Supabase URL: ${supabaseUrl}`);
+console.log(`🔑 Supabase Key (local): ${mode === 'local' ? (supabaseAnonKey?.substring(0, 15) + '...') : 'N/A'}`);
 
 // Créer le client Supabase seulement si les variables d'environnement sont valides
 export const supabase =
   supabaseUrl && supabaseAnonKey && supabaseUrl !== 'undefined' && supabaseAnonKey !== 'undefined'
-    ? createClient(supabaseUrl, supabaseAnonKey)
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        // Use strictly separate storage keys to avoid session bleeding
+        storageKey: mode === 'local'
+          ? 'surfjudging-local-auth-token'
+          : `surfjudging-cloud-auth-token`,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    })
     : null;
 
 // Fonction pour vérifier si Supabase est configuré
@@ -193,7 +215,7 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
   if (!isSupabaseConfigured() || !supabase) {
     // Fallback mode hors-ligne
     // Prepare payload for offline save — mirror the online formatting (infer division, normalize fields)
-    const offlinePayload = heats.rounds.map((round: any) => 
+    const offlinePayload = heats.rounds.map((round: any) =>
       round.heats.map((heat: any) => ({
         id: `${competitionId}_${heat.round}_H${resolveHeatNumber(heat)}`,
         competition: competitionId,
@@ -203,10 +225,10 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
             if (Array.isArray(participants) && participants.length > 0) {
               const counts: Record<string, number> = {};
               participants.forEach((p: any) => { if (p.category) counts[p.category] = (counts[p.category] || 0) + 1; });
-              const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+              const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
               return sorted.length ? sorted[0][0] : 'OPEN';
             }
-          } catch (err) {}
+          } catch (err) { }
           return 'OPEN';
         })(),
         round: heat.round,
@@ -226,7 +248,7 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
     return null;
   }
 
-  const formattedHeats = heats.rounds.map((round: any) => 
+  const formattedHeats = heats.rounds.map((round: any) =>
     round.heats.map((heat: any) => ({
       id: `${competitionId}_${heat.round}_H${resolveHeatNumber(heat)}`,
       // Prefer the human-readable event name saved in localStorage at event creation time
@@ -248,7 +270,7 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
             // Most common category among participants
             const counts: Record<string, number> = {};
             participants.forEach((p: any) => { if (p.category) counts[p.category] = (counts[p.category] || 0) + 1; });
-            const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+            const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
             return sorted.length ? sorted[0][0] : 'OPEN';
           }
         } catch (err) {

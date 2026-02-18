@@ -2,13 +2,13 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured, isCloudLocked } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, isCloudLocked, mode } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
 import type { AppConfig } from '../types';
 import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/supabaseClient';
 import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
 import { OfflineAuthWrapper } from '../components/OfflineAuthWrapper';
-import { isDevMode } from '../lib/offlineAuth';
+import { isDevMode, saveOfflineCredentials } from '../lib/offlineAuth';
 import { syncEventsFromCloud, getCachedCloudEvents, getLastSyncTime, needsCloudSync, getCloudClient } from '../utils/syncCloudEvents';
 
 
@@ -143,8 +143,10 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [cloudLoginRequired, setCloudLoginRequired] = useState(false);
   const [cloudEmail, setCloudEmail] = useState(() => (typeof window !== 'undefined' ? window.localStorage.getItem(CLOUD_EMAIL_KEY) ?? '' : ''));
+  const [cloudPassword, setCloudPassword] = useState('');
   const [cloudSendingMagicLink, setCloudSendingMagicLink] = useState(false);
   const [cloudLinkSent, setCloudLinkSent] = useState(false);
+  const [isCloudLoading, setIsCloudLoading] = useState(false);
   const [cloudLoginError, setCloudLoginError] = useState<string | null>(null);
   const [cloudLocked, setCloudLockedState] = useState(isCloudLocked());
 
@@ -175,41 +177,61 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     return query ? `/login?${query}` : '/login';
   }, [redirectIntent]);
 
-  const loadEvents = useCallback(async (userId: string, skipOnline = false) => {
-    // In dev/offline mode, load from cached cloud events
-    if (skipOnline || !supabase || !isSupabaseConfigured()) {
-      console.log('📴 Offline/Dev mode - loading cached cloud events');
-      const cachedEvents = getCachedCloudEvents();
-      setEvents(cachedEvents as any[]);
-      setLastSync(getLastSyncTime());
-      setLoadingEvents(false);
-      console.log(`✅ Loaded ${cachedEvents.length} cached events`);
-      return;
-    }
-
+  const loadEvents = useCallback(async (userId: string) => {
     setLoadingEvents(true);
     setError(null);
 
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('events')
-        .select('id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+    let loadedEvents: OwnedEvent[] = [];
+    let dbSuccess = false;
 
-      if (fetchError) {
-        setError(fetchError.message ?? 'Impossible de charger vos événements.');
-        setEvents([]);
-      } else {
-        const normalized = normalizeOwnedEvents(((data ?? []) as unknown) as SupabaseEventRow[]);
-        setEvents(normalized);
+    // 1. Try to load from Supabase (Local or Cloud) if configured
+    if (supabase && isSupabaseConfigured()) {
+      try {
+        console.log('🔄 Attempting to load events from Supabase DB...');
+        let query = supabase
+          .from('events')
+          .select('id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)');
+
+        // Always filter by user_id to ensure a user only sees their own events.
+        // Even in local mode, data isolation is key.
+        if (userId) {
+          query = query.eq('user_id', userId);
+        }
+
+        const { data, error: fetchError } = await query
+          .order('created_at', { ascending: false });
+
+        if (fetchError) {
+          console.warn('⚠️ Supabase fetch failed:', fetchError.message);
+          // Don't set error yet, try cache first
+        } else {
+          loadedEvents = normalizeOwnedEvents(((data ?? []) as unknown) as SupabaseEventRow[]);
+          dbSuccess = true;
+          console.log(`✅ Loaded ${loadedEvents.length} events from DB`);
+        }
+      } catch (err) {
+        console.warn('⚠️ Supabase fetch error:', err);
       }
-    } catch (err) {
-      console.error('Error loading events:', err);
-      setEvents([]);
-    } finally {
-      setLoadingEvents(false);
     }
+
+    // 2. Fallback to Cache ONLY if we are in cloud mode or if DB is absolutely unreachable
+    const isLocalMode = mode === 'local';
+
+    if (!dbSuccess || (loadedEvents.length === 0 && !isLocalMode)) {
+      console.log('📴 Checking cached cloud events (fallback)...');
+      const cachedEvents = getCachedCloudEvents();
+
+      if (cachedEvents.length > 0) {
+        console.log(`✅ Loaded ${cachedEvents.length} cached events from localStorage`);
+        loadedEvents = normalizeOwnedEvents(cachedEvents as any[]);
+        setLastSync(getLastSyncTime());
+      }
+    } else if (isLocalMode && loadedEvents.length === 0) {
+      console.log('ℹ️ Local DB is empty. Please "Sync from Cloud" to populate it.');
+    }
+
+    setEvents(loadedEvents);
+    setLoadingEvents(false);
   }, []);
 
   // Sync initial user from wrapper (only when user ID changes)
@@ -223,7 +245,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     setUser(initialUser);
 
     if (initialUser?.id) {
-      loadEvents(initialUser.id, isOfflineMode);
+      loadEvents(initialUser.id);
       // Load last sync time
       setLastSync(getLastSyncTime());
     } else {
@@ -363,6 +385,40 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       setCloudLoginError(err?.message ?? 'Impossible d’envoyer le lien cloud.');
     } finally {
       setCloudSendingMagicLink(false);
+    }
+  };
+
+  const handleCloudPasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCloudLoginError(null);
+    if (!cloudEmail.trim() || !cloudPassword.trim()) {
+      setCloudLoginError('Email et mot de passe requis.');
+      return;
+    }
+
+    try {
+      const cloudClient = getCloudClient();
+      setIsCloudLoading(true);
+      const { data, error: signInError } = await cloudClient.auth.signInWithPassword({
+        email: cloudEmail.trim(),
+        password: cloudPassword.trim(),
+      });
+      if (signInError) throw signInError;
+
+      const cloudUser = data.user;
+      if (cloudUser) {
+        console.log('✅ Cloud user authenticated (Password):', cloudUser.email);
+        setUser(cloudUser);
+        saveOfflineCredentials(cloudUser, data.session?.access_token || '', data.session?.refresh_token || '');
+      }
+
+      setCloudLoginRequired(false);
+      window.localStorage.setItem(CLOUD_EMAIL_KEY, cloudEmail.trim());
+      await handleSyncFromCloud();
+    } catch (err: any) {
+      setCloudLoginError(err?.message ?? 'Échec de la connexion cloud.');
+    } finally {
+      setIsCloudLoading(false);
     }
   };
 
@@ -639,7 +695,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
-              onClick={() => loadEvents(user.id, isOfflineMode)}
+              onClick={() => loadEvents(user.id)}
               className="rounded-full border border-blue-400/40 bg-white/10 px-4 py-2 text-sm text-blue-100 hover:bg-white/20 transition"
             >
               🔄 Rafraîchir
@@ -695,26 +751,50 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
               <p className="mb-3 font-semibold">Connexion cloud requise pour synchroniser</p>
               {cloudLinkSent ? (
                 <div className="rounded-xl border border-emerald-400/60 bg-emerald-500/10 px-4 py-3 text-emerald-200">
-                  ✅ Lien de connexion envoyé à <strong>{cloudEmail}</strong>. Ouvre le lien rapidement.
+                  ✅ Lien de connexion envoyé à <strong>{cloudEmail}</strong>. Ouvre le lien rapidement depuis ce navigateur.
                 </div>
               ) : (
-                <form onSubmit={handleSendCloudMagicLink} className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <input
-                    type="email"
-                    required
-                    value={cloudEmail}
-                    onChange={(e) => setCloudEmail(e.target.value)}
-                    placeholder="votre@email.com"
-                    className="flex-1 rounded-xl border border-blue-400/40 bg-slate-900 px-4 py-2 text-sm text-white placeholder:text-slate-400 focus:border-blue-300 focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={cloudSendingMagicLink}
-                    className="rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {cloudSendingMagicLink ? 'Envoi...' : 'Envoyer le lien'}
-                  </button>
-                </form>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <input
+                      type="email"
+                      required
+                      value={cloudEmail}
+                      onChange={(e) => setCloudEmail(e.target.value)}
+                      placeholder="Email Cloud"
+                      className="rounded-xl border border-blue-400/40 bg-slate-900 px-4 py-2 text-sm text-white placeholder:text-slate-400 focus:border-blue-300 focus:outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={cloudPassword}
+                      onChange={(e) => setCloudPassword(e.target.value)}
+                      placeholder="Mot de passe"
+                      className="rounded-xl border border-blue-400/40 bg-slate-900 px-4 py-2 text-sm text-white placeholder:text-slate-400 focus:border-blue-300 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleCloudPasswordLogin}
+                      disabled={isCloudLoading || !cloudPassword}
+                      className="inline-flex items-center justify-center rounded-full bg-blue-500 px-6 py-2 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {isCloudLoading ? 'Connexion...' : 'Se connecter (Bim!)'}
+                    </button>
+
+                    <button
+                      onClick={handleSendCloudMagicLink}
+                      disabled={cloudSendingMagicLink || isCloudLoading}
+                      className="inline-flex items-center justify-center rounded-full border border-blue-400/40 bg-transparent px-6 py-2 text-xs font-medium text-blue-100 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {cloudSendingMagicLink ? 'Envoi...' : 'Recevoir un lien magique'}
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-slate-500">
+                    💡 La connexion par mot de passe vous évite de quitter la page et de switcher de réseau.
+                  </p>
+                </div>
               )}
               {cloudLoginError && (
                 <div className="mt-3 rounded-xl border border-red-400/70 bg-red-500/10 px-4 py-2 text-red-200">

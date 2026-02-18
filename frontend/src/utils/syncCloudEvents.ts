@@ -1,11 +1,13 @@
 /**
- * Sync Cloud Events to Local Storage
- *
- * This utility syncs events and participants from cloud Supabase to local storage
- * for offline/dev work. Data is cached and can be used without internet.
+ * Sync Cloud Events to Local Storage AND Local Database
+ * 
+ * This utility syncs events, participants, and heats from cloud Supabase 
+ * to the Local Supabase instance, allowing offline clients (like Kiosk tablets)
+ * to access the data via the local network.
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { supabase, isSupabaseConfigured } from '../lib/supabase'; // Local Supabase Client
 
 const CLOUD_EVENTS_KEY = 'surfjudging_cloud_events';
 const CLOUD_PARTICIPANTS_KEY = 'surfjudging_cloud_participants';
@@ -33,9 +35,6 @@ interface CloudParticipant {
   license?: string;
 }
 
-/**
- * Get cloud Supabase client
- */
 export function getCloudClient() {
   const url = import.meta.env.VITE_SUPABASE_URL_CLOUD;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY_CLOUD;
@@ -44,83 +43,191 @@ export function getCloudClient() {
     throw new Error('Cloud Supabase credentials not configured');
   }
 
-  return createClient(url, key);
+  return createClient(url, key, {
+    auth: {
+      storageKey: 'surfjudging-cloud-auth-token',
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false
+    }
+  });
 }
 
 /**
- * Sync events from cloud to local storage
+ * Sync events from cloud to local storage AND local DB
  * @param userEmail - Email of the user (used to match cloud account)
  * @param accessToken - Optional: provide access token from current session
  */
 export async function syncEventsFromCloud(userEmail: string, accessToken?: string): Promise<CloudEvent[]> {
   try {
     console.log('🌐 Syncing events from cloud for:', userEmail);
-
     const cloudSupabase = getCloudClient();
-
     let userId: string;
 
-    // Try to get user from provided token or current session
+    // 1. Authenticate with Cloud
     if (accessToken) {
-      // Use provided token
       const { data: { user }, error: authError } = await cloudSupabase.auth.getUser(accessToken);
-      if (authError || !user) {
-        throw new Error('Invalid access token');
-      }
+      if (authError || !user) throw new Error('Invalid access token');
       userId = user.id;
       console.log('✅ Using provided token for:', user.email);
     } else {
-      // Try current session
       const { data: { user }, error: authError } = await cloudSupabase.auth.getUser();
-
       if (authError || !user) {
-        console.warn('⚠️ No cloud authentication found. User needs to login to cloud first.');
+        console.warn('⚠️ No cloud authentication found.');
         throw new Error('Cloud authentication required. Please login online first.');
       }
       userId = user.id;
       console.log('✅ Cloud user authenticated:', user.email);
     }
 
-    // Fetch events for this user
+    // 2. Fetch Events
     const { data: events, error: fetchError } = await cloudSupabase
       .from('events')
-      .select('id, name, organizer, status, start_date, end_date, user_id, created_at, event_last_config(event_id, event_name, division, round, heat_number, updated_at)')
+      .select(`
+        id, name, organizer, status, start_date, end_date, 
+        user_id, created_at, categories, judges, config,
+        event_last_config(event_id, event_name, division, round, heat_number, updated_at, judges)
+      `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (fetchError) {
-      console.error('❌ Error fetching cloud events:', fetchError);
-      throw fetchError;
-    }
-
+    if (fetchError) throw fetchError;
     console.log(`✅ Fetched ${events?.length || 0} events from cloud`);
 
-    // Fetch participants for all events
+    // 3. Fetch Participants & Heats for these events
     const eventIds = (events || []).map(e => e.id);
     let allParticipants: CloudParticipant[] = [];
 
-    if (eventIds.length > 0) {
-      const { data: participants, error: participantsError } = await cloudSupabase
-        .from('participants')
-        .select('id, event_id, seed, name, category, country, license')
-        .in('event_id', eventIds)
-        .order('seed', { ascending: true });
+    // We will push data to Local DB if configured
+    const canWriteToLocalDB = isSupabaseConfigured() && supabase;
+    if (canWriteToLocalDB) {
+      console.log('🔄 Syncing data to Local Supabase DB...');
+    } else {
+      console.warn('⚠️ Local Supabase not configured. Only syncing to LocalStorage.');
+    }
 
-      if (participantsError) {
-        console.warn('⚠️ Error fetching participants (continuing without them):', participantsError);
-      } else {
-        allParticipants = participants || [];
-        console.log(`✅ Fetched ${allParticipants.length} participants from cloud`);
+    if (eventIds.length > 0) {
+      // Fetch Participants
+      const { data: participants, error: partError } = await cloudSupabase
+        .from('participants')
+        .select('*')
+        .in('event_id', eventIds);
+
+      if (!partError && participants) {
+        allParticipants = participants;
+        console.log(`✅ Fetched ${participants.length} participants`);
+      }
+
+      // Fetch Heats (including entries)
+      // Note: fetching hierarchically to ensure we get everything
+      const { data: heats, error: heatsError } = await cloudSupabase
+        .from('heats')
+        .select(`
+            *,
+            heat_entries(*),
+            heat_slot_mappings(*)
+        `)
+        .in('event_id', eventIds);
+
+      if (heatsError) console.warn('⚠️ Error fetching heats:', heatsError);
+      else console.log(`✅ Fetched ${heats?.length || 0} heats`);
+
+      // 4. WRITE TO LOCAL DB
+      if (canWriteToLocalDB && supabase) {
+        // Upsert Events
+        const eventsPayload = events!.map(e => ({
+          id: e.id,
+          name: e.name,
+          organizer: e.organizer,
+          status: e.status,
+          start_date: e.start_date,
+          end_date: e.end_date,
+          user_id: e.user_id, // Keep original user_id or map to local? Keeping matches structure.
+          created_at: e.created_at,
+          categories: e.categories,
+          judges: e.judges,
+          config: e.config
+        }));
+        const { error: eventUpsertErr } = await supabase.from('events').upsert(eventsPayload);
+        if (eventUpsertErr) console.error('❌ Failed to upsert events to local DB:', eventUpsertErr);
+
+        // Upsert Participants
+        if (participants && participants.length > 0) {
+          const { error: partUpsertErr } = await supabase.from('participants').upsert(participants);
+          if (partUpsertErr) console.error('❌ Failed to upsert participants:', partUpsertErr);
+        }
+
+        // Upsert Heats & Children
+        if (heats && heats.length > 0) {
+          // Flatten heats for insertion
+          const heatsPayload = heats.map(h => {
+            const { heat_entries, heat_slot_mappings, ...heatData } = h;
+            return heatData;
+          });
+          const { error: heatUpsertErr } = await supabase.from('heats').upsert(heatsPayload);
+          if (heatUpsertErr) console.error('❌ Failed to upsert heats:', heatUpsertErr);
+
+          // Entries
+          const entriesPayload = heats.flatMap(h => h.heat_entries || []);
+          if (entriesPayload.length > 0) {
+            const { error: entriesErr } = await supabase.from('heat_entries').upsert(entriesPayload);
+            if (entriesErr) console.error('❌ Failed to upsert heat entries:', entriesErr);
+          }
+
+          // Slot Mappings
+          const mappingsPayload = heats.flatMap(h => h.heat_slot_mappings || []);
+          if (mappingsPayload.length > 0) {
+            const { error: mapErr } = await supabase.from('heat_slot_mappings').upsert(mappingsPayload);
+            if (mapErr) console.error('❌ Failed to upsert mappings:', mapErr);
+          }
+        }
+
+        // Upsert Event Last Config
+        const configsPayload = events!
+          .filter(e => e.event_last_config) // Some might be null
+          .map(e => {
+            // Ensure event_last_config is an object, not array (Supabase sometimes returns array for 1:1)
+            const conf = Array.isArray(e.event_last_config) ? e.event_last_config[0] : e.event_last_config;
+            if (!conf) return null;
+            return {
+              event_id: conf.event_id,
+              event_name: conf.event_name,
+              division: conf.division,
+              round: conf.round,
+              heat_number: conf.heat_number,
+              updated_at: conf.updated_at,
+              judges: conf.judges
+            };
+          })
+          .filter(c => c !== null);
+
+        if (configsPayload.length > 0) {
+          // Using RPC for config upsert if table RLS/policies are strict, or direct upsert
+          const { error: confErr } = await supabase.from('event_last_config').upsert(configsPayload);
+          if (confErr) {
+            console.warn('⚠️ Direct upsert of config failed, trying RPC...', confErr);
+            // Fallback to RPC if direct fails
+            for (const conf of configsPayload) {
+              await supabase.rpc('upsert_event_last_config', {
+                p_event_id: conf.event_id,
+                p_event_name: conf.event_name,
+                p_division: conf.division,
+                p_round: conf.round,
+                p_heat_number: conf.heat_number,
+                p_judges: conf.judges || []
+              });
+            }
+          }
+        }
+        console.log('💾✅ Data successfully synced to Local Supabase DB');
       }
     }
 
-    // Store in localStorage
+    // 5. Store in localStorage (Legacy/fallback support)
     const eventsToStore = events || [];
     localStorage.setItem(CLOUD_EVENTS_KEY, JSON.stringify(eventsToStore));
     localStorage.setItem(CLOUD_PARTICIPANTS_KEY, JSON.stringify(allParticipants));
     localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
-
-    console.log('💾 Events and participants cached to localStorage');
 
     return eventsToStore as CloudEvent[];
   } catch (error) {
