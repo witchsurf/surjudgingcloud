@@ -11,7 +11,9 @@ BEGIN;
 
 -- 1. Ensure columns exist and have correct types
 ALTER TABLE public.events 
-  ADD COLUMN IF NOT EXISTS config jsonb DEFAULT '{}'::jsonb;
+  ADD COLUMN IF NOT EXISTS config jsonb DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS owner_id uuid,
+  ADD COLUMN IF NOT EXISTS method text;
 
 -- 2. Relax constraints (Make payment/metadata columns nullable for local sync)
 ALTER TABLE public.events 
@@ -23,7 +25,11 @@ ALTER TABLE public.events
   ALTER COLUMN organizer DROP NOT NULL,
   ALTER COLUMN status SET DEFAULT 'paid'; -- Default to paid locally to allow viewing
 
--- 3. Relax RLS for Local Mode
+-- 3. Relax Heats constraints
+-- Drop the status check which is often too restrictive for synced data
+ALTER TABLE public.heats DROP CONSTRAINT IF EXISTS heats_status_check;
+
+-- 4. Relax RLS for Local Mode
 -- We enable RLS but add very permissive policies for the local network.
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 
