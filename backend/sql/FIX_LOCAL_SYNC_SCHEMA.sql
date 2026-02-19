@@ -15,6 +15,7 @@ ALTER TABLE public.events
 
 -- 2. Relax constraints (Make payment/metadata columns nullable for local sync)
 ALTER TABLE public.events 
+  DROP CONSTRAINT IF EXISTS events_user_id_fkey, -- VERY IMPORTANT: Allows syncing events from cloud users not present locally
   ALTER COLUMN price DROP NOT NULL,
   ALTER COLUMN currency DROP NOT NULL,
   ALTER COLUMN start_date DROP NOT NULL,
