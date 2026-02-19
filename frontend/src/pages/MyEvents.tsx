@@ -416,7 +416,11 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       window.localStorage.setItem(CLOUD_EMAIL_KEY, cloudEmail.trim());
       await handleSyncFromCloud();
     } catch (err: any) {
-      setCloudLoginError(err?.message ?? 'Échec de la connexion cloud.');
+      let msg = err?.message ?? 'Échec de la connexion cloud.';
+      if (msg === 'Failed to fetch') {
+        msg = 'Erreur réseau : Vérifiez que votre Mac a accès à Internet (Cloud) ET au réseau de la VM (.69).';
+      }
+      setCloudLoginError(msg);
     } finally {
       setIsCloudLoading(false);
     }
@@ -432,18 +436,36 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     const attemptAutoSync = async () => {
       try {
         const cloudClient = getCloudClient();
-        const { data: { session } } = await cloudClient.auth.getSession();
-        if (!session?.access_token || cancelled) return;
+
+        // Force session check (useful if hash just arrived)
+        const { data: { session }, error: sessionError } = await cloudClient.auth.getSession();
+        if (sessionError) throw sessionError;
+
+        if (!session?.access_token) {
+          // If we expected a sync but have no session, maybe wait a bit or show error
+          if (window.localStorage.getItem(CLOUD_SYNC_AFTER_LOGIN_KEY) === 'true' && !window.location.hash) {
+            console.warn('⚠️ Sync expected but no cloud session found.');
+          }
+          return;
+        }
+
+        if (cancelled) return;
+        console.log('🚀 Cloud session found! Starting auto-sync...');
         window.localStorage.removeItem(CLOUD_SYNC_AFTER_LOGIN_KEY);
         await handleSyncFromCloud();
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Auto sync after cloud login failed:', err);
+        setSyncError(err?.message === 'Failed to fetch'
+          ? 'Erreur réseau lors de la synchro auto. Internet est requis.'
+          : err?.message);
       }
     };
 
-    attemptAutoSync();
+    // Small delay to let the URL hash be processed if redirected
+    const timer = setTimeout(attemptAutoSync, 500);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [handleSyncFromCloud, cloudLocked]);
 
@@ -792,7 +814,8 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
                   </div>
 
                   <p className="text-[10px] text-slate-500">
-                    💡 La connexion par mot de passe vous évite de quitter la page et de switcher de réseau.
+                    💡 La connexion par mot de passe vous évite de quitter la page.
+                    (Définit en ligne sur <a href="https://app.supabase.com" target="_blank" className="underline">supabase.com</a> ou via "Reset Password").
                   </p>
                 </div>
               )}
