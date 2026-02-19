@@ -80,12 +80,11 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
       console.log('✅ Cloud user authenticated:', user.email);
     }
 
-    // 2. Fetch Events
+    // 2. Fetch Events (Select * to ensure we get all metadata expected by local DB)
     const { data: events, error: fetchError } = await cloudSupabase
       .from('events')
       .select(`
-        id, name, organizer, status, start_date, end_date, 
-        user_id, created_at, categories, judges, config,
+        *,
         event_last_config(event_id, event_name, division, round, heat_number, updated_at, judges)
       `)
       .eq('user_id', userId)
@@ -106,6 +105,8 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
       console.warn('⚠️ Local Supabase not configured. Only syncing to LocalStorage.');
     }
 
+    let localSyncError = false;
+
     if (eventIds.length > 0) {
       // Fetch Participants
       const { data: participants, error: partError } = await cloudSupabase
@@ -119,7 +120,6 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
       }
 
       // Fetch Heats (including entries)
-      // Note: fetching hierarchically to ensure we get everything
       const { data: heats, error: heatsError } = await cloudSupabase
         .from('heats')
         .select(`
@@ -134,59 +134,64 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
 
       // 4. WRITE TO LOCAL DB
       if (canWriteToLocalDB && supabase) {
-        // Upsert Events
-        const eventsPayload = events!.map(e => ({
-          id: e.id,
-          name: e.name,
-          organizer: e.organizer,
-          status: e.status,
-          start_date: e.start_date,
-          end_date: e.end_date,
-          user_id: e.user_id, // Keep original user_id or map to local? Keeping matches structure.
-          created_at: e.created_at,
-          categories: e.categories,
-          judges: e.judges,
-          config: e.config
-        }));
+        // Upsert Events - Use the full fetched object
+        const eventsPayload = events!.map(e => {
+          const { event_last_config, ...cleanEvent } = (e as any);
+          return cleanEvent;
+        });
+
         const { error: eventUpsertErr } = await supabase.from('events').upsert(eventsPayload);
-        if (eventUpsertErr) console.error('❌ Failed to upsert events to local DB:', eventUpsertErr);
+        if (eventUpsertErr) {
+          console.error('❌ Failed to upsert events to local DB:', eventUpsertErr);
+          localSyncError = true;
+        }
 
         // Upsert Participants
         if (participants && participants.length > 0) {
           const { error: partUpsertErr } = await supabase.from('participants').upsert(participants);
-          if (partUpsertErr) console.error('❌ Failed to upsert participants:', partUpsertErr);
+          if (partUpsertErr) {
+            console.error('❌ Failed to upsert participants:', partUpsertErr);
+            localSyncError = true;
+          }
         }
 
         // Upsert Heats & Children
         if (heats && heats.length > 0) {
-          // Flatten heats for insertion
           const heatsPayload = heats.map(h => {
             const { heat_entries, heat_slot_mappings, ...heatData } = h;
             return heatData;
           });
           const { error: heatUpsertErr } = await supabase.from('heats').upsert(heatsPayload);
-          if (heatUpsertErr) console.error('❌ Failed to upsert heats:', heatUpsertErr);
+          if (heatUpsertErr) {
+            console.error('❌ Failed to upsert heats:', heatUpsertErr);
+            localSyncError = true;
+          }
 
           // Entries
           const entriesPayload = heats.flatMap(h => h.heat_entries || []);
           if (entriesPayload.length > 0) {
             const { error: entriesErr } = await supabase.from('heat_entries').upsert(entriesPayload);
-            if (entriesErr) console.error('❌ Failed to upsert heat entries:', entriesErr);
+            if (entriesErr) {
+              console.error('❌ Failed to upsert heat entries:', entriesErr);
+              localSyncError = true;
+            }
           }
 
           // Slot Mappings
           const mappingsPayload = heats.flatMap(h => h.heat_slot_mappings || []);
           if (mappingsPayload.length > 0) {
             const { error: mapErr } = await supabase.from('heat_slot_mappings').upsert(mappingsPayload);
-            if (mapErr) console.error('❌ Failed to upsert mappings:', mapErr);
+            if (mapErr) {
+              console.error('❌ Failed to upsert mappings:', mapErr);
+              localSyncError = true;
+            }
           }
         }
 
         // Upsert Event Last Config
         const configsPayload = events!
-          .filter(e => e.event_last_config) // Some might be null
+          .filter(e => e.event_last_config)
           .map(e => {
-            // Ensure event_last_config is an object, not array (Supabase sometimes returns array for 1:1)
             const conf = Array.isArray(e.event_last_config) ? e.event_last_config[0] : e.event_last_config;
             if (!conf) return null;
             return {
@@ -202,11 +207,9 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
           .filter(c => c !== null);
 
         if (configsPayload.length > 0) {
-          // Using RPC for config upsert if table RLS/policies are strict, or direct upsert
           const { error: confErr } = await supabase.from('event_last_config').upsert(configsPayload);
           if (confErr) {
-            console.warn('⚠️ Direct upsert of config failed, trying RPC...', confErr);
-            // Fallback to RPC if direct fails
+            console.warn('⚠️ Direct upsert of config failed, trying RPC...');
             for (const conf of configsPayload) {
               await supabase.rpc('upsert_event_last_config', {
                 p_event_id: conf.event_id,
@@ -219,7 +222,13 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
             }
           }
         }
-        console.log('💾✅ Data successfully synced to Local Supabase DB');
+
+        if (!localSyncError) {
+          console.log('💾✅ Data successfully synced to Local Supabase DB');
+        } else {
+          console.warn('⚠️ Data sync completed with errors. Check local database schema and permissions.');
+          throw new Error('Certaines données n’ont pas pu être écrites dans la base locale. Exécutez le script SQL de correction.');
+        }
       }
     }
 

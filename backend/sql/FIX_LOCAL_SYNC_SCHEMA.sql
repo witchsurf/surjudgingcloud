@@ -1,0 +1,57 @@
+-- ============================================================================
+-- FIX_LOCAL_SYNC_SCHEMA.sql
+-- ============================================================================
+-- Fixes common errors during "Sync from Cloud":
+-- 1. Adds missing 'config' column
+-- 2. Makes payment columns optional (since they are not used locally)
+-- 3. Enables permissive RLS for the local network
+-- ============================================================================
+
+BEGIN;
+
+-- 1. Ensure columns exist and have correct types
+ALTER TABLE public.events 
+  ADD COLUMN IF NOT EXISTS config jsonb DEFAULT '{}'::jsonb;
+
+-- 2. Relax constraints (Make payment/metadata columns nullable for local sync)
+ALTER TABLE public.events 
+  ALTER COLUMN price DROP NOT NULL,
+  ALTER COLUMN currency DROP NOT NULL,
+  ALTER COLUMN start_date DROP NOT NULL,
+  ALTER COLUMN end_date DROP NOT NULL,
+  ALTER COLUMN organizer DROP NOT NULL,
+  ALTER COLUMN status SET DEFAULT 'paid'; -- Default to paid locally to allow viewing
+
+-- 3. Relax RLS for Local Mode
+-- We enable RLS but add very permissive policies for the local network.
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "local_all_access_events" ON public.events;
+CREATE POLICY "local_all_access_events" ON public.events 
+  FOR ALL 
+  TO anon, authenticated 
+  USING (true) 
+  WITH CHECK (true);
+
+-- Also ensure event_last_config is permissive
+ALTER TABLE public.event_last_config ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "local_all_access_config" ON public.event_last_config;
+CREATE POLICY "local_all_access_config" ON public.event_last_config 
+  FOR ALL 
+  TO anon, authenticated 
+  USING (true) 
+  WITH CHECK (true);
+
+-- Ensure other tables are also permissive for local sync/usage
+DROP POLICY IF EXISTS "local_all_access_participants" ON public.participants;
+CREATE POLICY "local_all_access_participants" ON public.participants FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "local_all_access_heats" ON public.heats;
+CREATE POLICY "local_all_access_heats" ON public.heats FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "local_all_access_heat_entries" ON public.heat_entries;
+CREATE POLICY "local_all_access_heat_entries" ON public.heat_entries FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+COMMIT;
+
+SELECT '✅ Local Sync Schema Fixed!' as result;
