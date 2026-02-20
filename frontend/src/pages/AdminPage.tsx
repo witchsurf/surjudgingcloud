@@ -12,7 +12,8 @@ import { getHeatIdentifiers } from '../utils/heat';
 import {
     updateEventConfiguration,
     saveEventConfigSnapshot,
-    fetchOrderedHeatSequence
+    fetchOrderedHeatSequence,
+    fetchEventIdByName
 } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { AppConfig } from '../types';
@@ -26,7 +27,9 @@ export default function AdminPage() {
         persistConfig,
         activeEventId,
         availableDivisions,
-        loadedFromDb
+        loadedFromDb,
+        loadConfigFromDb,
+        setActiveEventId
     } = useConfigStore();
 
     const {
@@ -260,6 +263,24 @@ export default function AdminPage() {
         }
     }, [config, activeEventId, closeHeat]);
 
+    const handleReconnectToDb = useCallback(async () => {
+        if (!isSupabaseConfigured()) {
+            throw new Error('Supabase n’est pas configuré. Vérifiez les variables VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY.');
+        }
+
+        let targetEventId = activeEventId ?? null;
+        if (!targetEventId && config.competition) {
+            targetEventId = await fetchEventIdByName(config.competition);
+        }
+
+        if (!targetEventId) {
+            throw new Error('Événement introuvable en base. Ouvrez "Mes événements" puis cliquez "Continuer".');
+        }
+
+        setActiveEventId(targetEventId);
+        await loadConfigFromDb(targetEventId);
+    }, [activeEventId, config.competition, loadConfigFromDb, setActiveEventId]);
+
     return (
         <AdminInterface
             config={config}
@@ -283,6 +304,7 @@ export default function AdminPage() {
             loadError={loadError}
             loadedFromDb={loadedFromDb}
             activeEventId={activeEventId ?? undefined}
+            onReconnectToDb={handleReconnectToDb}
         />
     );
 }

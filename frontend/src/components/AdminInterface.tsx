@@ -50,6 +50,7 @@ interface AdminInterfaceProps {
   loadError?: string | null;
   loadedFromDb?: boolean;
   activeEventId?: number;
+  onReconnectToDb?: () => Promise<void>;
 }
 const AdminInterface: React.FC<AdminInterfaceProps> = ({
   config,
@@ -72,7 +73,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   loadState = 'loaded',
   loadError = null,
   loadedFromDb = false,
-  activeEventId
+  activeEventId,
+  onReconnectToDb
 }) => {
   const navigate = useNavigate();
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -99,6 +101,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       return '';
     }
   });
+  const [reconnectPending, setReconnectPending] = useState(false);
+  const [reconnectMessage, setReconnectMessage] = useState<string | null>(null);
 
   const { normalized: heatId } = React.useMemo(
     () =>
@@ -225,6 +229,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       window.setTimeout(() => setDisplayLinkCopied(false), 2000);
     } catch (error) {
       console.warn('Impossible de copier le lien affichage:', error);
+    }
+  };
+
+  const handleAutoReconnect = async () => {
+    if (!onReconnectToDb) return;
+    setReconnectPending(true);
+    setReconnectMessage(null);
+    try {
+      await onReconnectToDb();
+      setReconnectMessage('✅ Reconnexion réussie: configuration rechargée depuis Supabase.');
+      onReloadData();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Impossible de recharger depuis Supabase.';
+      setReconnectMessage(`❌ ${msg}`);
+    } finally {
+      setReconnectPending(false);
     }
   };
 
@@ -1106,6 +1126,30 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               <p>Heat: {config.competition} / {config.division} / R{config.round} H{config.heatId}</p>
               <p>Surfers: {config.surfers.join(', ')}</p>
               <p>Loaded from DB: {loadedFromDb ? 'YES' : 'NO'}</p>
+              <p>Supabase mode: {supabaseMode || 'auto'}</p>
+              <p>DB status: {dbStatus}</p>
+              {!loadedFromDb && (
+                <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+                  <p className="font-semibold">⚠️ Configuration non chargée depuis la base.</p>
+                  <p>Action recommandée: reconnecter à Supabase puis recharger la config.</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      onClick={handleAutoReconnect}
+                      disabled={reconnectPending || !onReconnectToDb}
+                      className="px-2 py-1 bg-amber-200 rounded hover:bg-amber-300 disabled:opacity-50"
+                    >
+                      {reconnectPending ? 'Reconnexion...' : 'Reconnect to Supabase'}
+                    </button>
+                    <button
+                      onClick={() => navigate('/my-events')}
+                      className="px-2 py-1 bg-white border border-amber-300 rounded hover:bg-amber-100"
+                    >
+                      Ouvrir Mes événements
+                    </button>
+                  </div>
+                  {reconnectMessage && <p className="mt-2">{reconnectMessage}</p>}
+                </div>
+              )}
               <button
                 onClick={async () => {
                   try {

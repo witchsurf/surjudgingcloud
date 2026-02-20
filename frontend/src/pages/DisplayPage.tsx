@@ -85,6 +85,17 @@ const normalizeSurferCountries = (map?: Record<string, string>) => {
     }, {});
 };
 
+const isLikelyPlaceholder = (name?: string) => {
+    if (!name) return false;
+    const normalized = name.toUpperCase().trim();
+    return normalized.includes('QUALIFI') ||
+        normalized.includes('REPECH') ||
+        normalized.startsWith('R') ||
+        normalized.startsWith('RP') ||
+        normalized.startsWith('POSITION') ||
+        normalized === 'BYE';
+};
+
 const normalizeScores = (scores: Score[]) => scores.map(score => ({
     ...score,
     surfer: normalizeColorCode(score.surfer) || score.surfer,
@@ -224,16 +235,43 @@ export default function DisplayPage() {
     );
 
     // Load participant names for current heat
-    const { participants: heatParticipants } = useHeatParticipants(currentHeatId);
+    const { participants: heatParticipants, source: heatParticipantsSource } = useHeatParticipants(currentHeatId);
 
     // Sync heat participants into config when they load
     useEffect(() => {
-        // Always sync participants, even if empty (to clear stale data from previous heats)
-        setConfig(prev => ({
-            ...prev,
-            surferNames: heatParticipants
-        }));
-    }, [heatParticipants, setConfig]);
+        setConfig(prev => {
+            if (heatParticipantsSource === 'entries') {
+                return {
+                    ...prev,
+                    surferNames: heatParticipants
+                };
+            }
+
+            if (heatParticipantsSource === 'mappings') {
+                const mergedNames = { ...(prev.surferNames || {}) };
+
+                Object.entries(heatParticipants).forEach(([color, incomingName]) => {
+                    const currentName = mergedNames[color];
+                    const currentIsReal = Boolean(currentName) && !isLikelyPlaceholder(currentName);
+                    const incomingIsPlaceholder = isLikelyPlaceholder(incomingName);
+
+                    // Preserve known real names when fallback mappings only provide placeholders.
+                    if (currentIsReal && incomingIsPlaceholder) {
+                        return;
+                    }
+                    mergedNames[color] = incomingName;
+                });
+
+                return {
+                    ...prev,
+                    surferNames: mergedNames
+                };
+            }
+
+            // If we couldn't load entries/mappings yet, keep existing names to avoid flicker.
+            return prev;
+        });
+    }, [heatParticipants, heatParticipantsSource, setConfig]);
 
     const [isReloading, setIsReloading] = useState(false);
 

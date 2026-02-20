@@ -16,10 +16,12 @@ export function useHeatParticipants(heatId: string) {
     const [participants, setParticipants] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [source, setSource] = useState<'entries' | 'mappings' | 'empty'>('empty');
 
     useEffect(() => {
         if (!heatId || !supabase) {
             setParticipants({});
+            setSource('empty');
             return;
         }
 
@@ -74,6 +76,7 @@ export function useHeatParticipants(heatId: string) {
                     });
 
                     setParticipants(names);
+                    setSource('entries');
                     setLoading(false);
                     return;
                 }
@@ -117,6 +120,7 @@ export function useHeatParticipants(heatId: string) {
                     });
 
                     setParticipants(names);
+                    setSource('mappings');
                     setLoading(false);
                     return;
                 }
@@ -124,6 +128,7 @@ export function useHeatParticipants(heatId: string) {
                 // Strategy 3: Final fallback - empty colors (shouldn't happen)
                 console.warn('[useHeatParticipants] No participants or mappings found, using empty state', { heatId });
                 setParticipants({});
+                setSource('empty');
                 setLoading(false);
 
             } catch (err) {
@@ -131,6 +136,7 @@ export function useHeatParticipants(heatId: string) {
                 console.error('[useHeatParticipants] Failed to load participants', { heatId, error: message });
                 setError(message);
                 setParticipants({});
+                setSource('empty');
                 setLoading(false);
             }
         };
@@ -160,5 +166,5 @@ export function useHeatParticipants(heatId: string) {
         };
     }, [heatId]);
 
-    return { participants, loading, error };
+    return { participants, loading, error, source };
 }
