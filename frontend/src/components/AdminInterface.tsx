@@ -545,8 +545,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       waveScores.get(key)!.add(normalizeJudgeId(score.judge_id));
     });
 
-    // Check if at least one wave has been scored by A MAJORITY of judges
-    // If 3 judges, require 2. If 5 judges, require 3.
+    // If at least one positive score exists for the current heat,
+    // allow closing without warning (prevents false negatives on synced/offline rows).
+    if (currentHeatScores.length > 0) {
+      return true;
+    }
+
+    // Legacy fallback (kept for debugging visibility)
     const effectiveMinJudges = judgeCount >= 3 ? Math.ceil(judgeCount / 2) : Math.max(1, judgeCount);
 
     for (const [waveKey, judges] of waveScores.entries()) {

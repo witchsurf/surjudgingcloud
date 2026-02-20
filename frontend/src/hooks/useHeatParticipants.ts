@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { fetchHeatEntriesWithParticipants, fetchHeatSlotMappings } from '../api/supabaseClient';
 
 /**
  * Hook to load participant names/placeholders for a heat
@@ -32,36 +33,30 @@ export function useHeatParticipants(heatId: string) {
             try {
                 console.log('[useHeatParticipants] Loading participants for heat', { heatId });
 
-                // Strategy 1: Try heat_entries (real participants)
-                const { data: entries, error: entriesError } = await supabase!
-                    .from('heat_entries')
-                    .select(`
-                        color,
-                        position,
-                        participant:participants(name, country)
-                    `)
-                    .eq('heat_id', heatId)
-                    .order('position', { ascending: true });
+                // Color mapping: DB uses English, UI uses French
+                const colorMap: Record<string, string> = {
+                    RED: 'ROUGE',
+                    WHITE: 'BLANC',
+                    YELLOW: 'JAUNE',
+                    BLUE: 'BLEU',
+                    BLACK: 'NOIR',
+                    GREEN: 'VERT',
+                    ROUGE: 'ROUGE',
+                    BLANC: 'BLANC',
+                    JAUNE: 'JAUNE',
+                    BLEU: 'BLEU',
+                    NOIR: 'NOIR',
+                    VERT: 'VERT'
+                };
 
-                if (entriesError) throw entriesError;
+                // Strategy 1: robust read path from shared API helper
+                const entries = await fetchHeatEntriesWithParticipants(heatId);
 
                 if (entries && entries.length > 0) {
-                    // Color mapping: DB uses English, UI uses French
-                    const colorMap: Record<string, string> = {
-                        RED: 'ROUGE',
-                        WHITE: 'BLANC',
-                        YELLOW: 'JAUNE',
-                        BLUE: 'BLEU',
-                        BLACK: 'NOIR',
-                        GREEN: 'VERT'
-                    };
-
                     const names = entries.reduce((acc, entry) => {
-                        const colorEN = entry.color?.toUpperCase() || '';
-                        const colorFR = colorMap[colorEN] || colorEN; // Translate or fallback to original
-                        // participant is an array from the join, get first element
-                        const participant = Array.isArray(entry.participant) ? entry.participant[0] : entry.participant;
-                        const name = participant?.name || colorFR;
+                        const colorKey = entry.color?.toUpperCase() || '';
+                        const colorFR = colorMap[colorKey] || colorKey;
+                        const name = entry.participant?.name || colorFR;
 
                         if (colorFR) {
                             return { ...acc, [colorFR]: name };
@@ -84,13 +79,7 @@ export function useHeatParticipants(heatId: string) {
                 // Strategy 2: Fallback to heat_slot_mappings (placeholders)
                 console.warn('[useHeatParticipants] No heat_entries found, trying heat_slot_mappings', { heatId });
 
-                const { data: mappings, error: mappingsError } = await supabase!
-                    .from('heat_slot_mappings')
-                    .select('position, placeholder')
-                    .eq('heat_id', heatId)
-                    .order('position', { ascending: true });
-
-                if (mappingsError) throw mappingsError;
+                const mappings = await fetchHeatSlotMappings(heatId);
 
                 if (mappings && mappings.length > 0) {
                     // Map position to standard colors
