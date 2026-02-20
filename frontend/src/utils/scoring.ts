@@ -187,8 +187,9 @@ export function getEffectiveJudgeCount(scores: Score[], configuredCount?: number
   ).size;
 
   if (configuredCount && configuredCount > 0) {
-    if (uniqueJudges === 0) return configuredCount;
-    return Math.min(uniqueJudges, configuredCount);
+    // Display/admin rules are based on configured judges.
+    // This prevents early partial display when only 1/3 judges has scored.
+    return configuredCount;
   }
 
   return Math.max(uniqueJudges, 1);

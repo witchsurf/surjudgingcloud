@@ -96,6 +96,24 @@ const isLikelyPlaceholder = (name?: string) => {
         normalized === 'BYE';
 };
 
+const mergeSurferNames = (
+    existing: Record<string, string> | undefined,
+    incoming: Record<string, string> | undefined
+) => {
+    const mergedNames = { ...(existing || {}) };
+    Object.entries(incoming || {}).forEach(([color, incomingName]) => {
+        const currentName = mergedNames[color];
+        const currentIsReal = Boolean(currentName) && !isLikelyPlaceholder(currentName);
+        const incomingIsPlaceholder = isLikelyPlaceholder(incomingName);
+
+        if (currentIsReal && incomingIsPlaceholder) {
+            return;
+        }
+        mergedNames[color] = incomingName;
+    });
+    return mergedNames;
+};
+
 const normalizeScores = (scores: Score[]) => scores.map(score => ({
     ...score,
     surfer: normalizeColorCode(score.surfer) || score.surfer,
@@ -243,28 +261,14 @@ export default function DisplayPage() {
             if (heatParticipantsSource === 'entries') {
                 return {
                     ...prev,
-                    surferNames: heatParticipants
+                    surferNames: mergeSurferNames(prev.surferNames, heatParticipants)
                 };
             }
 
             if (heatParticipantsSource === 'mappings') {
-                const mergedNames = { ...(prev.surferNames || {}) };
-
-                Object.entries(heatParticipants).forEach(([color, incomingName]) => {
-                    const currentName = mergedNames[color];
-                    const currentIsReal = Boolean(currentName) && !isLikelyPlaceholder(currentName);
-                    const incomingIsPlaceholder = isLikelyPlaceholder(incomingName);
-
-                    // Preserve known real names when fallback mappings only provide placeholders.
-                    if (currentIsReal && incomingIsPlaceholder) {
-                        return;
-                    }
-                    mergedNames[color] = incomingName;
-                });
-
                 return {
                     ...prev,
-                    surferNames: mergedNames
+                    surferNames: mergeSurferNames(prev.surferNames, heatParticipants)
                 };
             }
 
@@ -310,25 +314,35 @@ export default function DisplayPage() {
 
                     // Minor config changes only - update without reload
                     try {
-                        const newConfig = {
-                            competition: snapshot.event_name || '',
-                            division: snapshot.division || 'OPEN',
-                            round: snapshot.round || 1,
-                            heatId: snapshot.heat_number || 1,
-                            judges: snapshot.judges?.map(j => j.id) || [],
-                            judgeNames: snapshot.judges?.reduce((acc, j) => ({ ...acc, [j.id]: j.name || j.id }), {}) || {},
-                            surfers: snapshot.surfers || config.surfers,
-                            surferNames: snapshot.surferNames || {},
-                            surferCountries: snapshot.surferCountries || {},
-                            surfersPerHeat: snapshot.surfers?.length || 4,
-                            waves: config.waves,
-                            tournamentType: config.tournamentType,
-                            totalSurfers: config.totalSurfers,
-                            totalHeats: config.totalHeats,
-                            totalRounds: config.totalRounds
-                        };
                         console.log('✅ Display: config updated (no reload needed)');
-                        setConfig(normalizeConfig(newConfig as AppConfig));
+                        setConfig((prev) => {
+                            const snapshotNames = normalizeSurferMap(snapshot.surferNames || {});
+                            const mergedNames = mergeSurferNames(prev.surferNames, snapshotNames);
+                            const mergedCountries = {
+                                ...(prev.surferCountries || {}),
+                                ...normalizeSurferCountries(snapshot.surferCountries || {})
+                            };
+
+                            const newConfig = {
+                                ...prev,
+                                competition: snapshot.event_name || prev.competition || '',
+                                division: snapshot.division || prev.division || 'OPEN',
+                                round: snapshot.round || prev.round || 1,
+                                heatId: snapshot.heat_number || prev.heatId || 1,
+                                judges: snapshot.judges?.map(j => j.id) || prev.judges || [],
+                                judgeNames: snapshot.judges?.reduce((acc, j) => ({ ...acc, [j.id]: j.name || j.id }), {}) || prev.judgeNames || {},
+                                surfers: snapshot.surfers || prev.surfers,
+                                surferNames: mergedNames,
+                                surferCountries: mergedCountries,
+                                surfersPerHeat: snapshot.surfers?.length || prev.surfersPerHeat || 4,
+                                waves: prev.waves,
+                                tournamentType: prev.tournamentType,
+                                totalSurfers: prev.totalSurfers,
+                                totalHeats: prev.totalHeats,
+                                totalRounds: prev.totalRounds
+                            };
+                            return normalizeConfig(newConfig as AppConfig);
+                        });
                     } catch (error) {
                         console.error('❌ Display: failed to update config:', error);
                     }

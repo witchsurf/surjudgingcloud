@@ -170,7 +170,7 @@ export default function ScoreDisplay({
       config.surfers,
       judgeCount,
       config.waves,
-      heatStatus === 'finished' || heatStatus === 'closed'
+      false
     );
     setSurferStats(stats);
   }, [scores, configSaved, config, heatStatus]);

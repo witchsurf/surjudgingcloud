@@ -565,121 +565,138 @@ export function exportFullCompetitionPDF({
     `QUALIFIE R${roundNumber}-H${heatNumber} (P${position})`,
     `QUALIFIE R${roundNumber}-H${heatNumber} P${position}`,
     `QUALIFIE R${roundNumber} H${heatNumber} P${position}`,
+    `FINALISTE R${roundNumber}-H${heatNumber} (P${position})`,
+    `FINALISTE R${roundNumber}-H${heatNumber} P${position}`,
+    `FINALISTE R${roundNumber} H${heatNumber} P${position}`,
     `R${roundNumber}-H${heatNumber}-P${position}`,
     `R${roundNumber} H${heatNumber} P${position}`,
   ]);
 
-  // === BUILD QUALIFIER MAPPINGS FROM SCORES ===
-  // Map: "DIVISION ROUND HEAT (POSITION)" → {name, country}
   const qualifierMap = new Map<string, { name: string; country?: string }>();
+  const isPlaceholderLike = (value?: string | null) => {
+    if (!value) return false;
+    const normalized = normalizePlaceholderKey(value);
+    return normalized.includes('QUALIFI') ||
+      normalized.includes('FINALISTE') ||
+      normalized.includes('REPECH') ||
+      /^R\s*\d+/.test(normalized) ||
+      /^RP\s*\d+/.test(normalized) ||
+      normalized.startsWith('POSITION') ||
+      normalized === 'BYE';
+  };
 
-  Object.entries(divisions).forEach(([divisionName, rounds]) => {
-    rounds.forEach((round) => {
-      round.heats.forEach((heat) => {
-        if (!heat.heatId || !scores[heat.heatId]) return;
+  const resolveQualifiedFromText = (placeholderText: string) => {
+    const normalized = normalizePlaceholderKey(placeholderText);
+    let qualified = qualifierMap.get(normalized);
 
-        const heatScores = scores[heat.heatId];
-        if (heatScores.length === 0) return;
+    if (!qualified) {
+      const match = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*(?:P\s*)?(\d+)/);
+      if (match) {
+        const [, roundTxt, heatTxt, posTxt] = match;
+        const fallbackKeys = buildQualifierKeyVariants(
+          '',
+          Number(roundTxt),
+          Number(heatTxt),
+          Number(posTxt)
+        );
+        qualified = fallbackKeys
+          .map((key) => qualifierMap.get(normalizePlaceholderKey(key)))
+          .find(Boolean);
+      }
+    }
 
-        // Group scores by surfer/color
-        const surferResults: Array<{
-          color: string;
-          name: string;
-          country?: string;
-          best2: number;
-        }> = [];
+    return qualified;
+  };
 
-        heat.slots.forEach((slot) => {
-          if (!slot.name || !slot.color) return; // Skip placeholders and slots without color
+  const writeHeatQualifiers = (
+    divisionName: string,
+    roundNumber: number,
+    heatNumber: number,
+    slots: Array<{
+      color?: string;
+      name?: string;
+      country?: string;
+      placeholder?: string;
+      bye?: boolean;
+    }>,
+    heatScores: Score[]
+  ) => {
+    if (!heatScores.length) return;
 
-          const colorMatch = colorLabelMap[slot.color as keyof typeof colorLabelMap];
-          const surferScores = heatScores.filter(
-            (s) => s.surfer === colorMatch || s.surfer === slot.color
-          );
+    const surfersWithNames = slots
+      .filter((slot) => slot.color && slot.name && !isPlaceholderLike(slot.name))
+      .map((slot) => ({
+        color: colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color!,
+        name: slot.name!,
+        country: slot.country ?? undefined,
+      }));
 
-          // Calculate best 2 waves
-          const waveAverages: Record<number, number[]> = {};
-          surferScores.forEach((s) => {
-            if (!waveAverages[s.wave_number]) waveAverages[s.wave_number] = [];
-            const val = Number(s.score);
-            if (!isNaN(val)) waveAverages[s.wave_number].push(val);
-          });
+    if (!surfersWithNames.length) return;
 
-          const waveScores = Object.values(waveAverages).map((scores) => {
-            if (scores.length === 0) return 0;
-            return scores.reduce((sum, s) => sum + s, 0) / scores.length;
-          });
+    const heatSurfers = surfersWithNames.map((s) => s.color);
+    const judgeCount = new Set(heatScores.map((s) => s.judge_id).filter(Boolean)).size;
+    const stats = calculateSurferStats(
+      heatScores,
+      heatSurfers,
+      Math.max(judgeCount, 1),
+      20,
+      true
+    );
 
-          waveScores.sort((a, b) => b - a);
-          const best2 = waveScores.slice(0, 2).reduce((sum, s) => sum + s, 0);
+    const statsByColor = new Map(stats.map((stat) => [stat.surfer.toUpperCase(), stat]));
+    const ranked = surfersWithNames
+      .map((surfer) => ({
+        ...surfer,
+        bestTwo: statsByColor.get(surfer.color.toUpperCase())?.bestTwo ?? 0,
+      }))
+      .sort((a, b) => b.bestTwo - a.bestTwo);
 
-          surferResults.push({
-            color: slot.color,
-            name: slot.name,
-            country: slot.country,
-            best2,
-          });
-        });
-
-        // Sort by best2 descending
-        surferResults.sort((a, b) => b.best2 - a.best2);
-
-        // Create mappings for top 4 (or however many qualified)
-        surferResults.forEach((result, index) => {
-          const position = index + 1;
-
-          // Generate multiple key formats to match different placeholder styles
-          const keys = buildQualifierKeyVariants(
-            divisionName.toUpperCase(),
-            round.roundNumber,
-            heat.heatNumber,
-            position
-          );
-
-          keys.forEach((key) => {
-            qualifierMap.set(normalizePlaceholderKey(key), {
-              name: result.name,
-              country: result.country,
-            });
-          });
+    ranked.forEach((result, index) => {
+      const position = index + 1;
+      const keys = buildQualifierKeyVariants(
+        divisionName.toUpperCase(),
+        roundNumber,
+        heatNumber,
+        position
+      );
+      keys.forEach((key) => {
+        qualifierMap.set(normalizePlaceholderKey(key), {
+          name: result.name,
+          country: result.country,
         });
       });
     });
-  });
+  };
 
-  // === RESOLVE PLACEHOLDERS IN ALL ROUNDS ===
-  Object.values(divisions).forEach((rounds) => {
-    rounds.forEach((round) => {
+  // Iterative propagation by round:
+  // 1) resolve placeholders from previous heats
+  // 2) compute current heat ranking from scores
+  // 3) write new qualifier keys for next rounds
+  Object.entries(divisions).forEach(([divisionName, rounds]) => {
+    const orderedRounds = [...rounds].sort((a, b) => a.roundNumber - b.roundNumber);
+
+    orderedRounds.forEach((round) => {
       round.heats.forEach((heat) => {
         heat.slots.forEach((slot) => {
-          if (slot.placeholder && !slot.bye) {
-            const normalized = normalizePlaceholderKey(slot.placeholder);
-            let qualified = qualifierMap.get(normalized);
+          const candidate = slot.placeholder || (isPlaceholderLike(slot.name) ? slot.name : undefined);
+          if (!candidate || slot.bye) return;
+          const qualified = resolveQualifiedFromText(candidate);
+          if (!qualified) return;
 
-            if (!qualified) {
-              const match = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*(?:P\s*)?(\d+)/);
-              if (match) {
-                const [, roundTxt, heatTxt, posTxt] = match;
-                const fallbackKeys = buildQualifierKeyVariants(
-                  '',
-                  Number(roundTxt),
-                  Number(heatTxt),
-                  Number(posTxt)
-                );
-                qualified = fallbackKeys
-                  .map((key) => qualifierMap.get(normalizePlaceholderKey(key)))
-                  .find(Boolean);
-              }
-            }
-            if (qualified) {
-              // Replace placeholder with actual participant
-              slot.name = qualified.name;
-              if (qualified.country) slot.country = qualified.country;
-              delete slot.placeholder;
-              delete slot.bye;
-            }
-          }
+          slot.name = qualified.name;
+          if (qualified.country) slot.country = qualified.country;
+          delete slot.placeholder;
+          delete slot.bye;
         });
+
+        const heatScores = heat.heatId ? (scores[heat.heatId] ?? []) : [];
+        writeHeatQualifiers(
+          divisionName,
+          round.roundNumber,
+          heat.heatNumber,
+          heat.slots,
+          heatScores
+        );
       });
     });
   });

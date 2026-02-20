@@ -507,7 +507,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const canCloseHeat = () => {
     const normalizeJudgeId = (raw?: string) => {
-      const upper = (raw || '').toUpperCase();
+      const upper = (raw || '').trim().toUpperCase();
       if (upper === 'KIOSK-J1') return 'J1';
       if (upper === 'KIOSK-J2') return 'J2';
       if (upper === 'KIOSK-J3') return 'J3';
@@ -515,7 +515,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     };
 
     const currentHeatScores = (scores || []).filter(
-      (score) => ensureHeatId(score.heat_id) === heatId
+      (score) => ensureHeatId(score.heat_id) === heatId && Number(score.score) > 0
     );
     if (!currentHeatScores.length) return false;
 
@@ -554,6 +554,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         console.log(`✅ Vague complète trouvée: ${waveKey} (${judges.size}/${judgeCount} juges)`);
         return true;
       }
+    }
+
+    // Fallback: if enough distinct judges have scored this heat, avoid false warning
+    // caused by inconsistent wave numbering in legacy synced rows.
+    if (scoredJudges.size >= effectiveMinJudges && currentHeatScores.length >= effectiveMinJudges) {
+      console.log(`✅ Fallback close validation: ${scoredJudges.size} juges actifs sur ce heat`);
+      return true;
     }
 
     console.warn(`⚠️ Pas assez de juges sur une même vague (Requis: ${effectiveMinJudges}). Détail:`, Object.fromEntries(waveScores));
