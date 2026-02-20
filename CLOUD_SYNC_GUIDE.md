@@ -2,205 +2,194 @@
 
 ## Overview
 
-This guide shows you how to sync events from your cloud Supabase (where payment/creation happens) to your local dev environment for offline testing.
+This runbook defines the **robust Cloud -> Local sync protocol** used by the app (`frontend/src/utils/syncCloudEvents.ts`) for offline/LAN operations.
+
+It covers:
+- pre-flight checks
+- sync execution
+- post-sync validation
+- incident handling
 
 ---
 
-## 🎯 How It Works
+## Sync Scope (Current)
 
+Synced from Cloud to Local:
+- `events`
+- `participants`
+- `heats`
+- `heat_entries`
+- `heat_slot_mappings`
+- `scores`
+- `event_last_config`
+- local cache (`surfjudging_cloud_events`, `surfjudging_cloud_participants`, `surfjudging_last_sync`)
+
+Not synced:
+- browser-only runtime state (UI flags, local temporary form values)
+- live in-memory timer state unless persisted in DB
+
+---
+
+## 1) Pre-flight (Mandatory)
+
+### 1.1 Environment Variables
+
+In `.env.local`, verify:
+
+```env
+VITE_SUPABASE_URL_LAN=http://192.168.x.x:8000
+VITE_SUPABASE_ANON_KEY_LAN=...
+
+VITE_SUPABASE_URL_CLOUD=https://<cloud-project>.supabase.co
+VITE_SUPABASE_ANON_KEY_CLOUD=...
 ```
-Online (Production)          Local (Development)
-─────────────────────        ───────────────────
-User pays → Event created    Pull events from cloud
-      ↓                               ↓
-Cloud Supabase               Cache in localStorage
-                                      ↓
-                             Work offline with real data
+
+### 1.2 Local DB Schema & Policies
+
+Run once on local DB:
+
+```sql
+-- backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql
 ```
 
+This script:
+- relaxes cloud/local mismatch constraints used in offline mode
+- enables permissive local RLS policies for sync-critical tables
+
+### 1.3 App Mode
+
+- LAN/Local mode must target local Supabase (`supabase_mode=local` or cloud lock active)
+- user must have a valid cloud session before clicking sync
+
 ---
 
-## 📋 Prerequisites
+## 2) Execution Protocol
 
-1. ✅ Dev mode enabled (`VITE_DEV_MODE=true`)
-2. ✅ Cloud Supabase credentials configured in `.env.local`
-3. ✅ At least one event created in cloud (via payment flow)
+### Preferred path (UI)
 
----
+1. Go to `/my-events`
+2. Authenticate cloud account if prompted
+3. Click `🌐 Sync depuis Cloud`
+4. Wait until sync completes
 
-## 🚀 Initial Sync (First Time)
-
-### Option 1: Using Browser Console (Easiest)
-
-1. **Open your app** in dev mode: `http://localhost:5173/my-events`
-
-2. **Open browser console** (F12 or Cmd+Option+J)
-
-3. **Run this command:**
+### Manual fallback (console)
 
 ```javascript
-// Sync events from cloud
-import('/src/utils/syncCloudEvents.ts').then(module => {
-  module.syncEventsFromCloud('your-email@example.com')
-    .then(events => {
-      console.log('✅ Synced events:', events);
-      window.location.reload();
-    })
-    .catch(err => console.error('❌ Sync failed:', err));
+import('/src/utils/syncCloudEvents.ts').then(async (m) => {
+  const events = await m.syncEventsFromCloud('your-email@example.com');
+  console.log('Synced events:', events.length);
 });
 ```
 
-Replace `your-email@example.com` with your actual cloud account email.
+---
 
-### Option 2: Using the Sync Button (Requires Cloud Login First)
+## 3) Robustness Built In
 
-**Important:** You need to login to cloud at least once for this to work.
-
-1. **Temporarily switch to cloud Supabase:**
-   ```env
-   # In .env.local, temporarily comment out dev mode
-   # VITE_DEV_MODE=true
-
-   # And use cloud URLs
-   VITE_SUPABASE_URL=https://xwaymumbkmwxqifihuvn.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-   ```
-
-2. **Restart dev server** and login via magic link
-
-3. **Re-enable dev mode:**
-   ```env
-   VITE_DEV_MODE=true
-   VITE_SUPABASE_URL=http://surfjudging.local:8000
-   ```
-
-4. **Restart and click "🌐 Sync depuis Cloud"** button
+The sync pipeline now includes:
+- explicit column selection (no blind `select *`)
+- retry with exponential backoff for remote fetch/upsert (`withRetry`)
+- FK-safe ordering:
+  1. `events`
+  2. `participants`
+  3. `heats`
+  4. `heat_entries` (replace by heat)
+  5. `heat_slot_mappings` (replace by heat)
+  6. `scores`
+  7. `event_last_config` (+ RPC fallback)
+- normalized payload values for schema drift tolerance
+- partial-failure diagnostics (`Sync local partiel: ...`)
 
 ---
 
-## 🔄 Regular Sync
+## 4) Post-sync Validation Checklist
 
-Once initial sync is done, you can sync anytime:
+Run these checks on local DB after sync:
 
-1. Open `/my-events` page
-2. Click **"🌐 Sync depuis Cloud"** button
-3. Wait for sync to complete
-4. Your events are now cached locally!
-
-The app will show:
-- ✅ Success message with event count
-- 📅 Last sync timestamp
-- ⚠️ Warning if sync is older than 24 hours
-
----
-
-## 🛠️ Manual Sync (Alternative Method)
-
-If the button doesn't work, you can sync manually:
-
-### Step 1: Get Your Cloud Events
-
-```bash
-# Install Supabase CLI if needed
-npm install -g supabase
-
-# Or use curl to query directly
-curl -X GET 'https://xwaymumbkmwxqifihuvn.supabase.co/rest/v1/events?select=*' \
-  -H "apikey: YOUR_ANON_KEY" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```sql
+-- Counts by table
+select
+  (select count(*) from events) as events_count,
+  (select count(*) from participants) as participants_count,
+  (select count(*) from heats) as heats_count,
+  (select count(*) from heat_entries) as heat_entries_count,
+  (select count(*) from heat_slot_mappings) as mappings_count,
+  (select count(*) from scores) as scores_count;
 ```
 
-### Step 2: Store in localStorage
+```sql
+-- Orphans check (must be 0)
+select count(*) as orphan_entries
+from heat_entries e
+left join heats h on h.id = e.heat_id
+where h.id is null;
 
-Open browser console and run:
+select count(*) as orphan_mappings
+from heat_slot_mappings m
+left join heats h on h.id = m.heat_id
+where h.id is null;
+```
+
+```sql
+-- Event snapshot exists
+select event_id, event_name, division, round, heat_number, updated_at
+from event_last_config
+order by updated_at desc
+limit 10;
+```
+
+UI checks:
+- events visible in `/my-events`
+- selecting event opens correct round/heat
+- display/judge pages show names (not only placeholders) when data exists
+
+---
+
+## 5) Incident Playbook
+
+### Error: `Sync local partiel: ...`
+
+1. Read first failing step in message (`events`, `participants`, `heats`, `scores`, etc.)
+2. Re-run `backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql`
+3. Re-run sync
+4. If still failing, inspect table-specific policy/constraint
+
+### Error: cloud auth/session invalid
+
+- re-authenticate cloud user from `/my-events`
+- retry sync
+
+### Error: network (`Failed to fetch`)
+
+- check internet for cloud and LAN reachability for local Supabase
+- retry (sync already retries transient failures internally)
+
+---
+
+## 6) Recovery / Re-sync
+
+If local DB is inconsistent:
+
+1. Keep cloud as source of truth
+2. Re-apply `FIX_LOCAL_SYNC_SCHEMA.sql`
+3. Trigger sync again from `/my-events`
+4. Run post-sync validation queries
+
+Optional cache reset:
 
 ```javascript
-const events = [
-  // Paste your events here from the API response
-  { id: 1, name: "My Event", organizer: "Me", ... }
-];
-
-localStorage.setItem('surfjudging_cloud_events', JSON.stringify(events));
-localStorage.setItem('surfjudging_last_sync', new Date().toISOString());
-console.log('✅ Events cached!');
-window.location.reload();
+localStorage.removeItem('surfjudging_cloud_events');
+localStorage.removeItem('surfjudging_cloud_participants');
+localStorage.removeItem('surfjudging_last_sync');
 ```
 
 ---
 
-## 📊 What Gets Synced
+## Quick Reference
 
-From cloud to local:
-- ✅ Event basic info (name, organizer, dates)
-- ✅ Event status
-- ✅ Last configuration (division, round, heat)
-- ✅ Participants (if any)
-- ✅ User ID associations
-
-Not synced (local only):
-- ❌ Real-time scores during competition
-- ❌ Judge work counts
-- ❌ Timer states
-
----
-
-## 🔧 Troubleshooting
-
-### Error: "Cloud authentication required"
-
-**Solution:** You need to login to cloud at least once. Follow "Option 2" above.
-
-### Error: "Cloud Supabase credentials not configured"
-
-**Solution:** Check your `.env.local` has:
-```env
-VITE_SUPABASE_URL_CLOUD=https://xwaymumbkmwxqifihuvn.supabase.co
-VITE_SUPABASE_ANON_KEY_CLOUD=your-cloud-key
-```
-
-### Events not showing after sync
-
-**Solution:**
-1. Check browser console for errors
-2. Verify localStorage: `localStorage.getItem('surfjudging_cloud_events')`
-3. Click "🔄 Rafraîchir" to reload
-4. Hard refresh: Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows)
-
-### Sync is very old
-
-**Solution:** The app warns if last sync is over 24 hours old. Just click "Sync depuis Cloud" again to refresh.
-
----
-
-## 📝 Quick Reference
-
-| Action | Command |
-|--------|---------|
-| **Initial Sync** | Browser console: `module.syncEventsFromCloud('email')` |
-| **Regular Sync** | Click "🌐 Sync depuis Cloud" button |
-| **Check Last Sync** | Look for "📅 Dernière sync:" under buttons |
-| **Clear Cache** | `localStorage.removeItem('surfjudging_cloud_events')` |
-| **View Cached** | `JSON.parse(localStorage.getItem('surfjudging_cloud_events'))` |
-
----
-
-## ✨ Benefits
-
-| Before | After |
-|--------|-------|
-| ❌ No events in dev mode | ✅ Real events from production |
-| ❌ Need to create test data | ✅ Use actual paid events |
-| ❌ Can't test real workflows | ✅ Test with production data |
-| ❌ Online dependency | ✅ Work completely offline |
-
----
-
-## 🎉 You're All Set!
-
-Once synced, your local dev environment will show all events from your cloud production environment. You can:
-- ✅ Test with real event data
-- ✅ Work offline
-- ✅ Create heats and manage participants
-- ✅ Test full competition workflows
-
-Just remember to sync periodically to get new events!
+| Action | Command / Path |
+|---|---|
+| Apply local schema fix | `backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql` |
+| Trigger sync | `/my-events` -> `🌐 Sync depuis Cloud` |
+| Manual sync | `syncEventsFromCloud('email')` |
+| Validate cache timestamp | `localStorage.getItem('surfjudging_last_sync')` |
+| Validate table counts | SQL checks in section 4 |
