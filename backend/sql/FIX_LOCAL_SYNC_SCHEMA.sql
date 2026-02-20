@@ -50,6 +50,12 @@ CREATE POLICY "local_all_access_config" ON public.event_last_config
   WITH CHECK (true);
 
 -- Ensure other tables are also permissive for local sync/usage
+ALTER TABLE public.participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.heats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.heat_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.heat_slot_mappings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scores ENABLE ROW LEVEL SECURITY;
+
 DROP POLICY IF EXISTS "local_all_access_participants" ON public.participants;
 CREATE POLICY "local_all_access_participants" ON public.participants FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
@@ -58,6 +64,12 @@ CREATE POLICY "local_all_access_heats" ON public.heats FOR ALL TO anon, authenti
 
 DROP POLICY IF EXISTS "local_all_access_heat_entries" ON public.heat_entries;
 CREATE POLICY "local_all_access_heat_entries" ON public.heat_entries FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "local_all_access_heat_slot_mappings" ON public.heat_slot_mappings;
+CREATE POLICY "local_all_access_heat_slot_mappings" ON public.heat_slot_mappings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "local_all_access_scores" ON public.scores;
+CREATE POLICY "local_all_access_scores" ON public.scores FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 COMMIT;
 

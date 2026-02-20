@@ -24,6 +24,8 @@ docker compose down
 echo "🔨 Building frontend..."
 cd ../frontend
 rm -rf dist node_modules/.vite
+# Ensure dependencies match lockfile before building
+npm ci
 npm run build
 
 # Rebuild and restart containers

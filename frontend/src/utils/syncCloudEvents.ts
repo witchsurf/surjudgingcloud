@@ -35,6 +35,29 @@ interface CloudParticipant {
   license?: string;
 }
 
+type CloudHeat = {
+  id: string;
+  event_id: number;
+  competition?: string | null;
+  division?: string | null;
+  round?: number | null;
+  heat_number?: number | null;
+  heat_size?: number | null;
+  status?: string | null;
+  color_order?: string[] | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  closed_at?: string | null;
+  is_active?: boolean | null;
+  heat_entries?: Array<Record<string, unknown>>;
+  heat_slot_mappings?: Array<Record<string, unknown>>;
+};
+
+type SyncIssue = {
+  step: string;
+  message: string;
+};
+
 export function getCloudClient() {
   const url = import.meta.env.VITE_SUPABASE_URL_CLOUD;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY_CLOUD;
@@ -51,6 +74,50 @@ export function getCloudClient() {
       detectSessionInUrl: true
     }
   });
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function pickDefined<T extends Record<string, unknown>>(row: T, allowedKeys: string[]) {
+  return allowedKeys.reduce<Record<string, unknown>>((acc, key) => {
+    const value = row[key];
+    if (value !== undefined) acc[key] = value;
+    return acc;
+  }, {});
+}
+
+function normalizeHeatStatus(status?: string | null) {
+  const raw = (status || '').toLowerCase();
+  if (raw === 'open') return 'waiting';
+  if (raw === 'waiting' || raw === 'running' || raw === 'paused' || raw === 'finished' || raw === 'closed') {
+    return raw;
+  }
+  return 'waiting';
+}
+
+async function withRetry<T>(fn: () => Promise<T>, step: string, maxAttempts = 3): Promise<T> {
+  let attempt = 0;
+  let lastError: unknown;
+  while (attempt < maxAttempts) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      attempt += 1;
+      if (attempt >= maxAttempts) break;
+      const backoffMs = 250 * Math.pow(2, attempt - 1);
+      console.warn(`⚠️ ${step} failed (attempt ${attempt}/${maxAttempts}), retrying in ${backoffMs}ms`, error);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -99,14 +166,19 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
     }
 
     // 2. Fetch Events (Select * to ensure we get all metadata expected by local DB)
-    const { data: events, error: fetchError } = await cloudSupabase
-      .from('events')
-      .select(`
-        *,
-        event_last_config(event_id, event_name, division, round, heat_number, updated_at, judges)
-      `)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    const { data: events, error: fetchError } = await withRetry(
+      () =>
+        cloudSupabase
+          .from('events')
+          .select(`
+            id, name, organizer, status, start_date, end_date, user_id, created_at, updated_at,
+            price, currency, method, paid, paid_at, payment_ref, categories, judges, config,
+            event_last_config(event_id, event_name, division, round, heat_number, updated_at, judges)
+          `)
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false }),
+      'Fetch cloud events'
+    );
 
     if (fetchError) throw fetchError;
     console.log(`✅ Fetched ${events?.length || 0} events from cloud`);
@@ -126,11 +198,17 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
     let localSyncError = false;
 
     if (eventIds.length > 0) {
+      const syncIssues: SyncIssue[] = [];
+
       // Fetch Participants
-      const { data: participants, error: partError } = await cloudSupabase
-        .from('participants')
-        .select('*')
-        .in('event_id', eventIds);
+      const { data: participants, error: partError } = await withRetry(
+        () =>
+          cloudSupabase
+            .from('participants')
+            .select('id, event_id, seed, name, category, country, license, created_at, updated_at')
+            .in('event_id', eventIds),
+        'Fetch cloud participants'
+      );
 
       if (!partError && participants) {
         allParticipants = participants;
@@ -138,75 +216,217 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
       }
 
       // Fetch Heats (including entries)
-      const { data: heats, error: heatsError } = await cloudSupabase
-        .from('heats')
-        .select(`
-            *,
-            heat_entries(*),
-            heat_slot_mappings(*)
-        `)
-        .in('event_id', eventIds);
+      const { data: heats, error: heatsError } = await withRetry(
+        () =>
+          cloudSupabase
+            .from('heats')
+            .select(`
+              id, event_id, competition, division, round, heat_number, heat_size, status, color_order, created_at, updated_at, closed_at, is_active,
+              heat_entries(id, heat_id, participant_id, position, seed, color, created_at),
+              heat_slot_mappings(id, heat_id, position, placeholder, source_round, source_heat, source_position, created_at)
+            `)
+            .in('event_id', eventIds),
+        'Fetch cloud heats'
+      );
 
       if (heatsError) console.warn('⚠️ Error fetching heats:', heatsError);
       else console.log(`✅ Fetched ${heats?.length || 0} heats`);
 
       // 4. WRITE TO LOCAL DB
       if (canWriteToLocalDB && supabase) {
-        // Upsert Events - Use the full fetched object
-        const eventsPayload = events!.map(e => {
-          const { event_last_config, ...cleanEvent } = (e as any);
-          return cleanEvent;
+        // 4a) Events first (parent table)
+        const eventsPayload = (events || []).map((eventRow: Record<string, unknown>) => {
+          const { event_last_config, ...eventData } = eventRow;
+          return pickDefined(
+            {
+              ...eventData,
+              organizer: eventData.organizer ?? '',
+              status: eventData.status ?? 'paid',
+              price: eventData.price ?? 0,
+              currency: eventData.currency ?? 'XOF',
+              categories: eventData.categories ?? [],
+              judges: eventData.judges ?? [],
+              config: eventData.config ?? {},
+            },
+            [
+              'id', 'name', 'organizer', 'status', 'start_date', 'end_date', 'user_id', 'created_at', 'updated_at',
+              'price', 'currency', 'method', 'paid', 'paid_at', 'payment_ref', 'categories', 'judges', 'config'
+            ]
+          );
         });
 
-        const { error: eventUpsertErr } = await supabase.from('events').upsert(eventsPayload);
-        if (eventUpsertErr) {
-          console.error('❌ Failed to upsert events to local DB:', eventUpsertErr);
-          localSyncError = true;
+        for (const batch of chunkArray(eventsPayload, 100)) {
+          const { error } = await withRetry(
+            () => supabase.from('events').upsert(batch, { onConflict: 'id' }),
+            'Upsert local events'
+          );
+          if (error) {
+            syncIssues.push({ step: 'events', message: error.message });
+            localSyncError = true;
+          }
         }
 
-        // Upsert Participants
+        // 4b) Participants
         if (participants && participants.length > 0) {
-          const { error: partUpsertErr } = await supabase.from('participants').upsert(participants);
-          if (partUpsertErr) {
-            console.error('❌ Failed to upsert participants:', partUpsertErr);
-            localSyncError = true;
-          }
-        }
+          const participantsPayload = participants.map((participant: Record<string, unknown>) =>
+            pickDefined(
+              {
+                ...participant,
+                seed: participant.seed ?? 0,
+                category: participant.category ?? 'OPEN',
+                name: participant.name ?? 'UNKNOWN',
+              },
+              ['id', 'event_id', 'seed', 'name', 'category', 'country', 'license', 'created_at', 'updated_at']
+            )
+          );
 
-        // Upsert Heats & Children
-        if (heats && heats.length > 0) {
-          const heatsPayload = heats.map(h => {
-            const { heat_entries, heat_slot_mappings, ...heatData } = h;
-            return heatData;
-          });
-          const { error: heatUpsertErr } = await supabase.from('heats').upsert(heatsPayload);
-          if (heatUpsertErr) {
-            console.error('❌ Failed to upsert heats:', heatUpsertErr);
-            localSyncError = true;
-          }
-
-          // Entries
-          const entriesPayload = heats.flatMap(h => h.heat_entries || []);
-          if (entriesPayload.length > 0) {
-            const { error: entriesErr } = await supabase.from('heat_entries').upsert(entriesPayload);
-            if (entriesErr) {
-              console.error('❌ Failed to upsert heat entries:', entriesErr);
-              localSyncError = true;
-            }
-          }
-
-          // Slot Mappings
-          const mappingsPayload = heats.flatMap(h => h.heat_slot_mappings || []);
-          if (mappingsPayload.length > 0) {
-            const { error: mapErr } = await supabase.from('heat_slot_mappings').upsert(mappingsPayload);
-            if (mapErr) {
-              console.error('❌ Failed to upsert mappings:', mapErr);
+          for (const batch of chunkArray(participantsPayload, 500)) {
+            const { error } = await withRetry(
+              () => supabase.from('participants').upsert(batch, { onConflict: 'id' }),
+              'Upsert local participants'
+            );
+            if (error) {
+              syncIssues.push({ step: 'participants', message: error.message });
               localSyncError = true;
             }
           }
         }
 
-        // Upsert Event Last Config
+        // 4c) Heats + children
+        const cloudHeats = (heats || []) as CloudHeat[];
+        if (cloudHeats.length > 0) {
+          const heatsPayload = cloudHeats.map((heat) =>
+            pickDefined(
+              {
+                ...heat,
+                status: normalizeHeatStatus(heat.status),
+                round: heat.round ?? 1,
+                heat_number: heat.heat_number ?? 1,
+                division: heat.division ?? 'OPEN',
+                competition: heat.competition ?? '',
+              },
+              [
+                'id', 'event_id', 'competition', 'division', 'round', 'heat_number', 'heat_size', 'status',
+                'color_order', 'created_at', 'updated_at', 'closed_at', 'is_active'
+              ]
+            )
+          );
+
+          for (const batch of chunkArray(heatsPayload, 200)) {
+            const { error } = await withRetry(
+              () => supabase.from('heats').upsert(batch, { onConflict: 'id' }),
+              'Upsert local heats'
+            );
+            if (error) {
+              syncIssues.push({ step: 'heats', message: error.message });
+              localSyncError = true;
+            }
+          }
+
+          const allHeatIds = cloudHeats.map((heat) => heat.id).filter(Boolean);
+
+          // Replace entries per heat to avoid PK/sequence mismatches.
+          for (const heatId of allHeatIds) {
+            const entriesForHeat = cloudHeats
+              .find((heat) => heat.id === heatId)
+              ?.heat_entries ?? [];
+
+            const { error: deleteError } = await supabase
+              .from('heat_entries')
+              .delete()
+              .eq('heat_id', heatId);
+
+            if (deleteError) {
+              syncIssues.push({ step: `heat_entries_delete:${heatId}`, message: deleteError.message });
+              localSyncError = true;
+              continue;
+            }
+
+            if (entriesForHeat.length > 0) {
+              const payload = entriesForHeat.map((entry) =>
+                pickDefined(
+                  {
+                    ...entry,
+                    heat_id: heatId,
+                    position: Number(entry.position ?? 0),
+                    seed: Number(entry.seed ?? entry.position ?? 0),
+                  } as Record<string, unknown>,
+                  ['heat_id', 'participant_id', 'position', 'seed', 'color', 'created_at']
+                )
+              );
+
+              const validRows = payload.filter((row) => Number(row.position) > 0);
+              if (validRows.length > 0) {
+                const { error } = await supabase.from('heat_entries').insert(validRows);
+                if (error) {
+                  syncIssues.push({ step: `heat_entries_insert:${heatId}`, message: error.message });
+                  localSyncError = true;
+                }
+              }
+            }
+          }
+
+          // Replace mappings per heat.
+          for (const heatId of allHeatIds) {
+            const mappingsForHeat = cloudHeats
+              .find((heat) => heat.id === heatId)
+              ?.heat_slot_mappings ?? [];
+
+            const { error: deleteError } = await supabase
+              .from('heat_slot_mappings')
+              .delete()
+              .eq('heat_id', heatId);
+
+            if (deleteError) {
+              syncIssues.push({ step: `heat_slot_mappings_delete:${heatId}`, message: deleteError.message });
+              localSyncError = true;
+              continue;
+            }
+
+            if (mappingsForHeat.length > 0) {
+              const payload = mappingsForHeat.map((mapping) =>
+                pickDefined(
+                  {
+                    ...mapping,
+                    heat_id: heatId,
+                    position: Number(mapping.position ?? 0),
+                  } as Record<string, unknown>,
+                  ['heat_id', 'position', 'placeholder', 'source_round', 'source_heat', 'source_position', 'created_at']
+                )
+              );
+
+              const validRows = payload.filter((row) => Number(row.position) > 0);
+              if (validRows.length > 0) {
+                const { error } = await supabase.from('heat_slot_mappings').insert(validRows);
+                if (error) {
+                  syncIssues.push({ step: `heat_slot_mappings_insert:${heatId}`, message: error.message });
+                  localSyncError = true;
+                }
+              }
+            }
+          }
+        }
+
+        // 4d) Scores sync (important for offline continuity)
+        const { data: scoresRows, error: scoresFetchError } = await cloudSupabase
+          .from('scores')
+          .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
+          .in('event_id', eventIds);
+
+        if (scoresFetchError) {
+          syncIssues.push({ step: 'scores_fetch', message: scoresFetchError.message });
+        } else if (scoresRows && scoresRows.length > 0) {
+          for (const batch of chunkArray(scoresRows, 1000)) {
+            const { error } = await supabase.from('scores').upsert(batch, { onConflict: 'id' });
+            if (error) {
+              syncIssues.push({ step: 'scores_upsert', message: error.message });
+              localSyncError = true;
+              break;
+            }
+          }
+        }
+
+        // 4e) Event Last Config
         const configsPayload = events!
           .filter(e => e.event_last_config)
           .map(e => {
@@ -214,22 +434,30 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
             if (!conf) return null;
             return {
               event_id: conf.event_id,
-              event_name: conf.event_name,
-              division: conf.division,
-              round: conf.round,
-              heat_number: conf.heat_number,
+              event_name: conf.event_name || (e as Record<string, unknown>).name || '',
+              division: conf.division || 'OPEN',
+              round: conf.round ?? 1,
+              heat_number: conf.heat_number ?? 1,
               updated_at: conf.updated_at,
-              judges: conf.judges
+              judges: conf.judges || []
             };
           })
-          .filter(c => c !== null);
+          .filter((c): c is {
+            event_id: number;
+            event_name: string;
+            division: string;
+            round: number;
+            heat_number: number;
+            updated_at?: string;
+            judges: unknown[];
+          } => c !== null);
 
         if (configsPayload.length > 0) {
-          const { error: confErr } = await supabase.from('event_last_config').upsert(configsPayload);
+          const { error: confErr } = await supabase.from('event_last_config').upsert(configsPayload, { onConflict: 'event_id' });
           if (confErr) {
-            console.warn('⚠️ Direct upsert of config failed, trying RPC...');
+            console.warn('⚠️ Direct upsert of config failed, trying RPC fallback...');
             for (const conf of configsPayload) {
-              await supabase.rpc('upsert_event_last_config', {
+              const { error: rpcErr } = await supabase.rpc('upsert_event_last_config', {
                 p_event_id: conf.event_id,
                 p_event_name: conf.event_name,
                 p_division: conf.division,
@@ -237,6 +465,10 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
                 p_heat_number: conf.heat_number,
                 p_judges: conf.judges || []
               });
+              if (rpcErr) {
+                syncIssues.push({ step: `event_last_config_rpc:${conf.event_id}`, message: rpcErr.message });
+                localSyncError = true;
+              }
             }
           }
         }
@@ -244,8 +476,12 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
         if (!localSyncError) {
           console.log('💾✅ Data successfully synced to Local Supabase DB');
         } else {
-          console.warn('⚠️ Data sync completed with errors. Check local database schema and permissions.');
-          throw new Error('Certaines données n’ont pas pu être écrites dans la base locale. Exécutez le script SQL de correction.');
+          console.warn('⚠️ Data sync completed with errors:', syncIssues);
+          const summary = syncIssues
+            .slice(0, 3)
+            .map((issue) => `${issue.step}: ${issue.message}`)
+            .join(' | ');
+          throw new Error(`Sync local partiel: ${summary}`);
         }
       }
     }
