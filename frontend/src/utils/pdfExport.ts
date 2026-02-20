@@ -353,6 +353,17 @@ const PDF_COLORS: Record<string, [number, number, number] | string> = {
   'NOIR': [31, 41, 55]
 };
 
+const normalizeLycraForPdf = (value: string) => {
+  const key = value.trim().toUpperCase();
+  if (key === 'RED') return 'ROUGE';
+  if (key === 'WHITE') return 'BLANC';
+  if (key === 'YELLOW') return 'JAUNE';
+  if (key === 'BLUE') return 'BLEU';
+  if (key === 'GREEN') return 'VERT';
+  if (key === 'BLACK') return 'NOIR';
+  return key;
+};
+
 const SEED_ORDER = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'];
 const getSeedPriority = (color: string) => {
   const idx = SEED_ORDER.indexOf(color.toUpperCase());
@@ -534,6 +545,30 @@ export function exportFullCompetitionPDF({
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();
 
+  const normalizePlaceholderKey = (value: string) =>
+    value
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\(\)\[\]]/g, ' ')
+      .replace(/[_-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const buildQualifierKeyVariants = (
+    divisionName: string,
+    roundNumber: number,
+    heatNumber: number,
+    position: number
+  ) => ([
+    `${divisionName} R${roundNumber} H${heatNumber} (P${position})`,
+    `QUALIFIE R${roundNumber}-H${heatNumber} (P${position})`,
+    `QUALIFIE R${roundNumber}-H${heatNumber} P${position}`,
+    `QUALIFIE R${roundNumber} H${heatNumber} P${position}`,
+    `R${roundNumber}-H${heatNumber}-P${position}`,
+    `R${roundNumber} H${heatNumber} P${position}`,
+  ]);
+
   // === BUILD QUALIFIER MAPPINGS FROM SCORES ===
   // Map: "DIVISION ROUND HEAT (POSITION)" → {name, country}
   const qualifierMap = new Map<string, { name: string; country?: string }>();
@@ -594,17 +629,15 @@ export function exportFullCompetitionPDF({
           const position = index + 1;
 
           // Generate multiple key formats to match different placeholder styles
-          const keys = [
-            // Format 1: "OPEN R1 H1 (P1)"
-            `${divisionName.toUpperCase()} R${round.roundNumber} H${heat.heatNumber} (P${position})`,
-            // Format 2: "QUALIFIÉ R1-H1 (P1)" (generic)
-            `QUALIFIÉ R${round.roundNumber}-H${heat.heatNumber} (P${position})`,
-            // Format 3: "R1-H1-P1" (legacy)
-            `R${round.roundNumber}-H${heat.heatNumber}-P${position}`,
-          ];
+          const keys = buildQualifierKeyVariants(
+            divisionName.toUpperCase(),
+            round.roundNumber,
+            heat.heatNumber,
+            position
+          );
 
-          keys.forEach(key => {
-            qualifierMap.set(key, {
+          keys.forEach((key) => {
+            qualifierMap.set(normalizePlaceholderKey(key), {
               name: result.name,
               country: result.country,
             });
@@ -620,8 +653,24 @@ export function exportFullCompetitionPDF({
       round.heats.forEach((heat) => {
         heat.slots.forEach((slot) => {
           if (slot.placeholder && !slot.bye) {
-            const normalized = slot.placeholder.toUpperCase().trim();
-            const qualified = qualifierMap.get(normalized);
+            const normalized = normalizePlaceholderKey(slot.placeholder);
+            let qualified = qualifierMap.get(normalized);
+
+            if (!qualified) {
+              const match = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*(?:P\s*)?(\d+)/);
+              if (match) {
+                const [, roundTxt, heatTxt, posTxt] = match;
+                const fallbackKeys = buildQualifierKeyVariants(
+                  '',
+                  Number(roundTxt),
+                  Number(heatTxt),
+                  Number(posTxt)
+                );
+                qualified = fallbackKeys
+                  .map((key) => qualifierMap.get(normalizePlaceholderKey(key)))
+                  .find(Boolean);
+              }
+            }
             if (qualified) {
               // Replace placeholder with actual participant
               slot.name = qualified.name;
@@ -812,10 +861,27 @@ export function exportFullCompetitionPDF({
             body: tableBody,
             styles: { font: 'helvetica', fontSize: 9, halign: 'center', valign: 'middle', cellPadding: 3 },
             headStyles: { fillColor: hasResults ? [34, 197, 94] : (isRepechage ? [220, 38, 38] : [12, 148, 236]), textColor: 255, fontStyle: 'bold' },
-            columnStyles: { 3: { halign: 'left' }, 4: { halign: 'left' } },
+            columnStyles: {
+              3: { halign: 'left', fontStyle: 'bold' },
+              4: { halign: 'left' }
+            },
             tableLineWidth: 0.3,
             tableLineColor: [200, 200, 200],
             margin: { left: 50, right: 50 },
+            didParseCell: (data) => {
+              if (data.section === 'body' && data.column.index === 1) {
+                const lycraLabel = typeof data.row.raw?.[1] === 'string' ? data.row.raw[1] : '';
+                const normalized = normalizeLycraForPdf(lycraLabel);
+                const rgb = PDF_COLORS[normalized];
+                if (Array.isArray(rgb)) {
+                  data.cell.styles.fillColor = rgb;
+                  data.cell.styles.textColor = normalized === 'JAUNE' || normalized === 'BLANC'
+                    ? [0, 0, 0]
+                    : [255, 255, 255];
+                  data.cell.styles.fontStyle = 'bold';
+                }
+              }
+            },
           });
 
           const lastTable = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
@@ -850,4 +916,3 @@ export function exportFullCompetitionPDF({
   });
   doc.save(`${slugify(eventName)}_competition_complete.pdf`);
 }
-

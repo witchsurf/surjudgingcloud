@@ -66,18 +66,36 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
 
     // 1. Authenticate with Cloud
     if (accessToken) {
-      const { data: { user }, error: authError } = await cloudSupabase.auth.getUser(accessToken);
-      if (authError || !user) throw new Error('Invalid access token');
-      userId = user.id;
-      console.log('✅ Using provided token for:', user.email);
-    } else {
-      const { data: { user }, error: authError } = await cloudSupabase.auth.getUser();
-      if (authError || !user) {
-        console.warn('⚠️ No cloud authentication found.');
-        throw new Error('Cloud authentication required. Please login online first.');
+      try {
+        const { data: { user }, error: authError } = await cloudSupabase.auth.getUser(accessToken);
+        if (authError || !user) throw new Error('Invalid access token');
+        userId = user.id;
+        console.log('✅ Using provided token for:', user.email);
+      } catch (err: any) {
+        if (err?.message === 'Failed to fetch') {
+          throw new Error('Erreur réseau Cloud : Internet est requis pour vérifier votre connexion.');
+        }
+        throw new Error('Votre session Cloud est invalide. Veuillez vous reconnecter.');
       }
-      userId = user.id;
-      console.log('✅ Cloud user authenticated:', user.email);
+    } else {
+      try {
+        const { data: { user }, error: authError } = await cloudSupabase.auth.getUser();
+        if (authError || !user) {
+          console.warn('⚠️ No cloud authentication found.');
+          throw new Error('Connexion Cloud requise. Veuillez vous connecter pour synchroniser.');
+        }
+        userId = user.id;
+        console.log('✅ Cloud user authenticated:', user.email);
+      } catch (err: any) {
+        if (err?.message === 'Failed to fetch') {
+          throw new Error('Erreur réseau Cloud : Internet est requis. Vérifiez votre partage de connexion.');
+        }
+        // If it's an actual auth error (like 401), re-throw a friendly version
+        if (err?.message?.includes('token') || err?.message?.includes('auth')) {
+          throw new Error('Votre session Cloud a expiré. Veuillez vous reconnecter.');
+        }
+        throw err;
+      }
     }
 
     // 2. Fetch Events (Select * to ensure we get all metadata expected by local DB)

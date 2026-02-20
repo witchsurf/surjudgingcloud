@@ -13,14 +13,14 @@ interface JudgingStore {
     // State
     scores: Score[];
     timer: HeatTimer;
-    heatStatus: 'waiting' | 'running' | 'paused' | 'finished';
+    heatStatus: 'waiting' | 'running' | 'paused' | 'finished' | 'closed';
     overrideLogs: ScoreOverrideLog[];
     judgeWorkCount: Record<string, number>;
 
     // Actions
     setScores: (scores: Score[] | ((prev: Score[]) => Score[])) => void;
     setTimer: (timer: HeatTimer | ((prev: HeatTimer) => HeatTimer)) => void;
-    setHeatStatus: (status: 'waiting' | 'running' | 'paused' | 'finished') => void;
+    setHeatStatus: (status: 'waiting' | 'running' | 'paused' | 'finished' | 'closed') => void;
     setOverrideLogs: (logs: ScoreOverrideLog[] | ((prev: ScoreOverrideLog[]) => ScoreOverrideLog[])) => void;
     setJudgeWorkCount: (count: Record<string, number> | ((prev: Record<string, number>) => Record<string, number>)) => void;
 

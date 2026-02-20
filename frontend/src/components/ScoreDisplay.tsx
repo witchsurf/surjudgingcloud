@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Users, Trophy, FileText } from 'lucide-react';
 import HeatTimer from './HeatTimer';
 import HeatResults from './HeatResults';
-import { calculateSurferStats } from '../utils/scoring';
+import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
 
 import type {
@@ -17,7 +17,7 @@ interface ScoreDisplayProps {
   scores: Score[];
   timer: HeatTimerType;
   configSaved: boolean;
-  heatStatus?: 'waiting' | 'running' | 'paused' | 'finished';
+  heatStatus?: 'waiting' | 'running' | 'paused' | 'finished' | 'closed';
 }
 
 // Couleurs officielles
@@ -164,16 +164,16 @@ export default function ScoreDisplay({
     if (!configSaved) return;
     if (!config || !config.surfers) return;
 
-    const judgeCount = config.judges.length;
+    const judgeCount = getEffectiveJudgeCount(scores, config.judges.length);
     const stats = calculateSurferStats(
       scores,
       config.surfers,
       judgeCount,
       config.waves,
-      heatStatus === 'finished' // allowIncomplete if heat is finished
+      heatStatus === 'finished' || heatStatus === 'closed'
     );
     setSurferStats(stats);
-  }, [scores, configSaved, config]);
+  }, [scores, configSaved, config, heatStatus]);
 
   if (!config?.competition) {
     return (

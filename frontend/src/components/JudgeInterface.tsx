@@ -16,7 +16,7 @@ interface JudgeInterfaceProps {
   timer?: HeatTimerType;
   isChiefJudge?: boolean;
   scores?: Score[];
-  heatStatus?: 'waiting' | 'running' | 'paused' | 'finished';
+  heatStatus?: 'waiting' | 'running' | 'paused' | 'finished' | 'closed';
   onHeatClose?: () => void;
   isConnected?: boolean;
 }
@@ -371,6 +371,8 @@ function JudgeInterface({
         score: scoreValue
       });
 
+      let nextInput: ScoreInputState | null = null;
+
       if (savedScore) {
         const sanitizedScore = {
           ...savedScore,
@@ -399,10 +401,40 @@ function JudgeInterface({
             );
             return [...withoutDuplicate, sanitizedScore];
           });
+
+          const judgeHeatScores = updatedScores.filter(
+            (score) => ensureHeatId(score.heat_id) === currentHeatId && score.judge_id === judgeId
+          );
+          const hasScore = (surfer: string, wave: number) =>
+            judgeHeatScores.some((score) => score.surfer === surfer && score.wave_number === wave);
+
+          const nextWaveSameSurfer = activeInput.wave + 1;
+          if (nextWaveSameSurfer <= config.waves && !hasScore(activeInput.surfer, nextWaveSameSurfer)) {
+            nextInput = { surfer: activeInput.surfer, wave: nextWaveSameSurfer, value: '' };
+          } else {
+            const currentIndex = config.surfers.indexOf(activeInput.surfer);
+            const orderedSurfers = currentIndex >= 0
+              ? [...config.surfers.slice(currentIndex + 1), ...config.surfers.slice(0, currentIndex + 1)]
+              : config.surfers;
+
+            for (const surfer of orderedSurfers) {
+              let waveFound: number | null = null;
+              for (let wave = 1; wave <= config.waves; wave += 1) {
+                if (!hasScore(surfer, wave)) {
+                  waveFound = wave;
+                  break;
+                }
+              }
+              if (waveFound) {
+                nextInput = { surfer, wave: waveFound, value: '' };
+                break;
+              }
+            }
+          }
         }
       }
 
-      setActiveInput(null);
+      setActiveInput(nextInput);
       setInputValue('');
 
     } catch (error) {

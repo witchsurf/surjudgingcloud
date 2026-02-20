@@ -486,31 +486,43 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const canCloseHeat = () => {
-    // Check if at least ONE wave has been scored by MINIMUM 3 judges
-    // Rules: 3 judges = avg of 3, 5 judges = drop min/max + avg of 3
-    if (!scores || scores.length === 0) return false;
+    const normalizeJudgeId = (raw?: string) => {
+      const upper = (raw || '').toUpperCase();
+      if (upper === 'KIOSK-J1') return 'J1';
+      if (upper === 'KIOSK-J2') return 'J2';
+      if (upper === 'KIOSK-J3') return 'J3';
+      return upper;
+    };
 
-    const judgeCount = config.judges?.length || 0;
-    // Fix: Adapt minimum requirement to the number of judges (min 3 usually, but 1 or 2 if fewer judges)
-    const MIN_JUDGES_PER_WAVE = judgeCount === 0 ? 1 : Math.min(3, judgeCount);
+    const currentHeatScores = (scores || []).filter(
+      (score) => ensureHeatId(score.heat_id) === heatId
+    );
+    if (!currentHeatScores.length) return false;
 
-    if (judgeCount < 3 && judgeCount > 0) {
-      // Info log instead of warning when running with few judges
-      console.log(`ℹ️ Mode effectif réduit (${judgeCount} juges). Seuil validité: ${MIN_JUDGES_PER_WAVE} notes.`);
-    } else if (judgeCount === 0) {
-      console.warn(`⚠️ Pas assez de juges configurés (${judgeCount}).`);
-      return false;
-    }
+    const configuredJudges = new Set(
+      (config.judges || [])
+        .map((judgeId) => normalizeJudgeId(judgeId))
+        .filter(Boolean)
+    );
+    const scoredJudges = new Set(
+      currentHeatScores
+        .map((score) => normalizeJudgeId(score.judge_id))
+        .filter(Boolean)
+    );
 
-    // Group scores by surfer and wave
+    // Prefer configured judges when available; fallback to observed judges.
+    const judgeCount = configuredJudges.size > 0 ? configuredJudges.size : scoredJudges.size;
+    if (judgeCount === 0) return false;
+
+    // Group scores by surfer and wave (current heat only)
     const waveScores = new Map<string, Set<string>>();
 
-    scores.forEach(score => {
+    currentHeatScores.forEach(score => {
       const key = `${score.surfer}-W${score.wave_number}`;
       if (!waveScores.has(key)) {
         waveScores.set(key, new Set());
       }
-      waveScores.get(key)!.add(score.judge_id);
+      waveScores.get(key)!.add(normalizeJudgeId(score.judge_id));
     });
 
     // Check if at least one wave has been scored by A MAJORITY of judges
@@ -524,13 +536,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
     }
 
-    // Fallback: If we have ANY scores but didn't meet the strict criteria,
-    // we return false to trigger the WARNING (checking is good), BUT
-    // we should make sure the warning is clear.
-    // Actually, if there are scores but not enough judges, it IS a valid warning.
-    // The user's issue might be that they HAVE all scores but it still fails.
-    // This could happen if `judge_id` mismatch.
-    // Let's debug by logging the `judges` set content.
     console.warn(`⚠️ Pas assez de juges sur une même vague (Requis: ${effectiveMinJudges}). Détail:`, Object.fromEntries(waveScores));
     return false;
   };

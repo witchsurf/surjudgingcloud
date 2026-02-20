@@ -282,6 +282,8 @@ export function useHeatManager() {
 
         let nextSurfers = config.surfers;
         let nextSurfersPerHeat = config.surfersPerHeat;
+        let nextSurferNames: Record<string, string> = { ...(config.surferNames ?? {}) };
+        let nextSurferCountries: Record<string, string> = { ...(config.surferCountries ?? {}) };
 
         if (nextCandidate && Array.isArray(nextCandidate.color_order) && nextCandidate.color_order.length) {
             const normalizedColors = nextCandidate.color_order
@@ -299,6 +301,39 @@ export function useHeatManager() {
             }
         }
 
+        const nextHeatKeyCandidate = nextCandidate ? ensureHeatId(nextCandidate.id) : null;
+        if (nextHeatKeyCandidate && isSupabaseConfigured()) {
+            try {
+                const nextHeatEntriesRaw = await fetchHeatEntriesWithParticipants(nextHeatKeyCandidate);
+                const nextHeatEntries = normalizeHeatEntries(nextHeatEntriesRaw);
+                const inferredNames: Record<string, string> = {};
+                const inferredCountries: Record<string, string> = {};
+
+                nextHeatEntries.forEach((entry) => {
+                    const rawColor = entry.color ? entry.color.toUpperCase() : '';
+                    const label = rawColor ? colorLabelMap[(rawColor as HeatColor)] ?? rawColor : '';
+                    if (!label) return;
+                    const participant = Array.isArray(entry.participant) ? entry.participant[0] : entry.participant;
+
+                    if (participant?.name) {
+                        inferredNames[label] = participant.name;
+                    }
+                    if (participant?.country) {
+                        inferredCountries[label] = participant.country;
+                    }
+                });
+
+                if (Object.keys(inferredNames).length > 0) {
+                    nextSurferNames = { ...nextSurferNames, ...inferredNames };
+                }
+                if (Object.keys(inferredCountries).length > 0) {
+                    nextSurferCountries = { ...nextSurferCountries, ...inferredCountries };
+                }
+            } catch (error) {
+                console.warn('Impossible de précharger les participants du heat suivant', error);
+            }
+        }
+
         // 5. Update Config & State
         if (colorCacheChanged && typeof window !== 'undefined') {
             localStorage.setItem(HEAT_COLOR_CACHE_KEY, JSON.stringify(colorCache));
@@ -312,6 +347,8 @@ export function useHeatManager() {
                 heatId: nextHeatNumber,
                 surfers: nextSurfers,
                 surfersPerHeat: nextSurfersPerHeat,
+                surferNames: nextSurferNames,
+                surferCountries: nextSurferCountries,
             }
             : { ...config };
 
