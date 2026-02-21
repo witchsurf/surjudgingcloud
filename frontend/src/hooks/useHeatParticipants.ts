@@ -209,56 +209,120 @@ async function resolveNamesFromMappings(
         }
     }
 
-    // Fallback 2: reuse bracket+scores logic (same spirit as admin full PDF)
-    // so Display gets the same resolved qualifiers even when per-heat source lookup is sparse.
+    // Fallback 2: iterative qualifier propagation (same spirit as admin full PDF)
+    // Works even when source_* columns are missing in mappings.
     if (Object.keys(namesByTargetColor).length === 0) {
         try {
             const rounds = await fetchCategoryHeats(currentHeat.event_id, currentHeat.division);
             const allScores = await fetchAllScoresForEvent(currentHeat.event_id);
-            const qualifierByRef = new Map<string, string>();
+            const normalizePlaceholderKey = (value: string) =>
+                value
+                    .toUpperCase()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[\(\)\[\]]/g, ' ')
+                    .replace(/[_-]/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
 
-            rounds
-                .sort((a, b) => a.roundNumber - b.roundNumber)
-                .forEach((round) => {
-                    round.heats.forEach((heat) => {
-                        if (!heat.heatId) return;
-                        const heatScores = allScores[heat.heatId] ?? [];
-                        if (!heatScores.length) return;
+            const buildQualifierKeyVariants = (roundNumber: number, heatNumber: number, position: number) => ([
+                `QUALIFIE R${roundNumber}-H${heatNumber} (P${position})`,
+                `QUALIFIE R${roundNumber}-H${heatNumber} P${position}`,
+                `QUALIFIE R${roundNumber} H${heatNumber} P${position}`,
+                `FINALISTE R${roundNumber}-H${heatNumber} (P${position})`,
+                `FINALISTE R${roundNumber}-H${heatNumber} P${position}`,
+                `FINALISTE R${roundNumber} H${heatNumber} P${position}`,
+                `R${roundNumber}-H${heatNumber}-P${position}`,
+                `R${roundNumber} H${heatNumber} P${position}`,
+            ]);
 
-                        const namesByColor = heat.slots.reduce<Record<string, string>>((acc, slot) => {
-                            if (!slot.color || !slot.name || isPlaceholderLike(slot.name)) return acc;
-                            const label = colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color;
-                            const normalized = normalizeColor(label);
-                            if (normalized) acc[normalized] = slot.name;
-                            return acc;
-                        }, {});
+            const qualifierMap = new Map<string, string>();
 
-                        const surfers = Object.keys(namesByColor);
-                        if (!surfers.length) return;
+            const resolveFromPlaceholderText = (text?: string) => {
+                if (!text) return undefined;
+                const normalized = normalizePlaceholderKey(text);
+                let resolved = qualifierMap.get(normalized);
+                if (!resolved) {
+                    const match = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*(?:P\s*)?(\d+)/);
+                    if (match) {
+                        const [, r, h, p] = match;
+                        resolved = buildQualifierKeyVariants(Number(r), Number(h), Number(p))
+                            .map((k) => qualifierMap.get(normalizePlaceholderKey(k)))
+                            .find(Boolean);
+                    }
+                }
+                return resolved;
+            };
 
-                        const normalizedScores = heatScores.map((score) => ({
-                            ...score,
-                            surfer: normalizeColor(score.surfer) || score.surfer
-                        }));
-                        const judgeCount = new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size;
-                        const stats = calculateSurferStats(normalizedScores, surfers, Math.max(judgeCount, 1), 20, true);
-
-                        stats
-                            .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
-                            .forEach((stat) => {
-                                const name = namesByColor[stat.surfer.toUpperCase()];
-                                if (!name) return;
-                                const key = `${round.roundNumber}-${heat.heatNumber}-${stat.rank}`;
-                                if (!qualifierByRef.has(key)) qualifierByRef.set(key, name);
-                            });
+            const orderedRounds = [...rounds].sort((a, b) => a.roundNumber - b.roundNumber);
+            orderedRounds.forEach((round) => {
+                round.heats.forEach((heat) => {
+                    heat.slots.forEach((slot) => {
+                        if (!slot.name && !slot.placeholder) return;
+                        const candidate = slot.placeholder || slot.name;
+                        if (!candidate || !isPlaceholderLike(candidate)) return;
+                        const resolved = resolveFromPlaceholderText(candidate);
+                        if (resolved) {
+                            slot.name = resolved;
+                            slot.placeholder = undefined;
+                            slot.bye = false;
+                        }
                     });
-                });
 
-            withSource.forEach((mapping) => {
-                const key = `${mapping.source_round}-${mapping.source_heat}-${mapping.source_position}`;
-                const name = qualifierByRef.get(key);
+                    if (!heat.heatId) return;
+                    const heatScores = allScores[heat.heatId] ?? [];
+                    if (!heatScores.length) return;
+
+                    const namesByColor = heat.slots.reduce<Record<string, string>>((acc, slot) => {
+                        if (!slot.color || !slot.name || isPlaceholderLike(slot.name)) return acc;
+                        const label = colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color;
+                        const normalized = normalizeColor(label);
+                        if (normalized) acc[normalized] = slot.name;
+                        return acc;
+                    }, {});
+
+                    const surfers = Object.keys(namesByColor);
+                    if (!surfers.length) return;
+
+                    const normalizedScores = heatScores.map((score) => ({
+                        ...score,
+                        surfer: normalizeColor(score.surfer) || score.surfer
+                    }));
+                    const judgeCount = new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size;
+                    const stats = calculateSurferStats(normalizedScores, surfers, Math.max(judgeCount, 1), 20, true);
+
+                    stats
+                        .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+                        .forEach((stat) => {
+                            const name = namesByColor[stat.surfer.toUpperCase()];
+                            if (!name) return;
+                            buildQualifierKeyVariants(round.roundNumber, heat.heatNumber, stat.rank)
+                                .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), name));
+                        });
+                });
+            });
+
+            const targetMappings = withSource.length > 0 ? withSource : mappings;
+            targetMappings.forEach((mapping) => {
                 const targetColor = COLORS_BY_POSITION[mapping.position];
-                if (name && targetColor) {
+                if (!targetColor) return;
+
+                let name: string | undefined;
+                if (mapping.source_round != null && mapping.source_heat != null && mapping.source_position != null) {
+                    name = buildQualifierKeyVariants(
+                        Number(mapping.source_round),
+                        Number(mapping.source_heat),
+                        Number(mapping.source_position)
+                    )
+                        .map((key) => qualifierMap.get(normalizePlaceholderKey(key)))
+                        .find(Boolean);
+                }
+
+                if (!name) {
+                    name = resolveFromPlaceholderText(mapping.placeholder || undefined);
+                }
+
+                if (name) {
                     namesByTargetColor[targetColor] = name;
                 }
             });
@@ -347,7 +411,7 @@ export function useHeatParticipants(heatId: string) {
                     console.log('[useHeatParticipants] Loaded from heat_slot_mappings', {
                         heatId,
                         count: mappings.length,
-                        withSourceCount: mappings.filter((m) => m.source_round != null && m.source_heat != null && m.source_position != null).length,
+                        withSourceCount: withSource.length,
                         placeholders: Object.keys(placeholderNames),
                         resolved: Object.keys(resolvedFromSource),
                         resolvedNames: resolvedFromSource
