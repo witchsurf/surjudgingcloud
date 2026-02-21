@@ -514,9 +514,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       return upper;
     };
 
-    const currentHeatScores = (scores || []).filter(
+    const normalizeText = (value?: string) => (value || '').trim().toUpperCase();
+
+    const exactHeatScores = (scores || []).filter(
       (score) => ensureHeatId(score.heat_id) === heatId && Number(score.score) > 0
     );
+
+    const fallbackByMetaScores = (scores || []).filter((score) => {
+      if (Number(score.score) <= 0) return false;
+      const sameCompetition = normalizeText(score.competition) === normalizeText(config.competition);
+      const sameDivision = normalizeText(score.division) === normalizeText(config.division);
+      const sameRound = Number(score.round) === Number(config.round);
+      return sameCompetition && sameDivision && sameRound;
+    });
+
+    const currentHeatScores = exactHeatScores.length > 0 ? exactHeatScores : fallbackByMetaScores;
     if (!currentHeatScores.length) return false;
 
     const configuredJudges = new Set(

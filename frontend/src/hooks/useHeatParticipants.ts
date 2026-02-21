@@ -1,6 +1,149 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { fetchHeatEntriesWithParticipants, fetchHeatSlotMappings } from '../api/supabaseClient';
+import {
+    fetchHeatEntriesWithParticipants,
+    fetchHeatSlotMappings,
+    fetchHeatMetadata,
+    fetchHeatScores
+} from '../api/supabaseClient';
+import { calculateSurferStats } from '../utils/scoring';
+
+const COLORS_BY_POSITION: Record<number, string> = {
+    1: 'ROUGE',
+    2: 'BLANC',
+    3: 'JAUNE',
+    4: 'BLEU',
+    5: 'NOIR',
+    6: 'VERT'
+};
+
+const COLOR_MAP: Record<string, string> = {
+    RED: 'ROUGE',
+    WHITE: 'BLANC',
+    YELLOW: 'JAUNE',
+    BLUE: 'BLEU',
+    BLACK: 'NOIR',
+    GREEN: 'VERT',
+    ROUGE: 'ROUGE',
+    BLANC: 'BLANC',
+    JAUNE: 'JAUNE',
+    BLEU: 'BLEU',
+    NOIR: 'NOIR',
+    VERT: 'VERT'
+};
+
+const normalizeColor = (value?: string | null) => {
+    if (!value) return '';
+    return COLOR_MAP[value.toUpperCase()] || value.toUpperCase();
+};
+
+const isPlaceholderLike = (value?: string | null) => {
+    if (!value) return false;
+    const v = value.toUpperCase().trim();
+    return v.includes('QUALIFI') ||
+        v.includes('FINALISTE') ||
+        v.includes('REPECH') ||
+        v.startsWith('R') ||
+        v.startsWith('RP') ||
+        v.startsWith('POSITION') ||
+        v === 'BYE';
+};
+
+async function resolveNamesFromMappings(
+    heatId: string,
+    mappings: Array<{
+        position: number;
+        source_round?: number | null;
+        source_heat?: number | null;
+        source_position?: number | null;
+    }>
+) {
+    if (!supabase || !mappings.length) return {};
+
+    const withSource = mappings.filter(
+        (m) => m.source_round != null && m.source_heat != null && m.source_position != null
+    );
+    if (!withSource.length) return {};
+
+    const currentHeat = await fetchHeatMetadata(heatId);
+    if (!currentHeat?.event_id || !currentHeat?.division) return {};
+
+    const sourceRounds = Array.from(new Set(withSource.map((m) => Number(m.source_round))));
+    const { data: sourceHeats, error } = await supabase
+        .from('heats')
+        .select('id, round, heat_number')
+        .eq('event_id', currentHeat.event_id)
+        .eq('division', currentHeat.division)
+        .in('round', sourceRounds);
+
+    if (error) {
+        console.warn('[useHeatParticipants] Unable to query source heats', error);
+        return {};
+    }
+
+    const sourceHeatIdByKey = new Map<string, string>();
+    (sourceHeats || []).forEach((row: { id: string; round: number; heat_number: number }) => {
+        sourceHeatIdByKey.set(`${row.round}-${row.heat_number}`, row.id);
+    });
+
+    const namesByTargetColor: Record<string, string> = {};
+    const rankCache = new Map<string, Map<number, string>>();
+    const nameCache = new Map<string, Record<string, string>>();
+
+    for (const mapping of withSource) {
+        const sourceKey = `${mapping.source_round}-${mapping.source_heat}`;
+        const sourceHeatId = sourceHeatIdByKey.get(sourceKey);
+        if (!sourceHeatId) continue;
+
+        if (!rankCache.has(sourceHeatId)) {
+            const sourceEntries = await fetchHeatEntriesWithParticipants(sourceHeatId);
+            const namesByColor = sourceEntries.reduce<Record<string, string>>((acc, entry) => {
+                const color = normalizeColor(entry.color);
+                const name = entry.participant?.name;
+                if (!color || !name || isPlaceholderLike(name)) return acc;
+                acc[color] = name;
+                return acc;
+            }, {});
+            nameCache.set(sourceHeatId, namesByColor);
+
+            const sourceScoresRaw = await fetchHeatScores(sourceHeatId);
+            const sourceScores = sourceScoresRaw.map((score) => ({
+                ...score,
+                surfer: normalizeColor(score.surfer) || score.surfer
+            }));
+            const surfers = Object.keys(namesByColor);
+            const judgeCount = new Set(sourceScores.map((score) => score.judge_id).filter(Boolean)).size;
+            const stats = calculateSurferStats(sourceScores, surfers, Math.max(judgeCount, 1), 20, true);
+
+            const rankToColor = new Map<number, string>();
+            stats
+                .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+                .forEach((stat) => {
+                    if (!rankToColor.has(stat.rank)) {
+                        rankToColor.set(stat.rank, stat.surfer.toUpperCase());
+                    }
+                });
+
+            rankCache.set(sourceHeatId, rankToColor);
+        }
+
+        const rankToColor = rankCache.get(sourceHeatId);
+        const namesByColor = nameCache.get(sourceHeatId);
+        if (!rankToColor || !namesByColor) continue;
+
+        const sourceRank = Number(mapping.source_position);
+        const sourceColor = rankToColor.get(sourceRank);
+        if (!sourceColor) continue;
+
+        const name = namesByColor[sourceColor];
+        const targetColor = COLORS_BY_POSITION[mapping.position];
+        if (name && targetColor) {
+            namesByTargetColor[targetColor] = name;
+        }
+    }
+
+    return namesByTargetColor;
+}
 
 /**
  * Hook to load participant names/placeholders for a heat
@@ -32,68 +175,35 @@ export function useHeatParticipants(heatId: string) {
 
             try {
                 console.log('[useHeatParticipants] Loading participants for heat', { heatId });
-
-                // Color mapping: DB uses English, UI uses French
-                const colorMap: Record<string, string> = {
-                    RED: 'ROUGE',
-                    WHITE: 'BLANC',
-                    YELLOW: 'JAUNE',
-                    BLUE: 'BLEU',
-                    BLACK: 'NOIR',
-                    GREEN: 'VERT',
-                    ROUGE: 'ROUGE',
-                    BLANC: 'BLANC',
-                    JAUNE: 'JAUNE',
-                    BLEU: 'BLEU',
-                    NOIR: 'NOIR',
-                    VERT: 'VERT'
-                };
-
-                // Strategy 1: robust read path from shared API helper
                 const entries = await fetchHeatEntriesWithParticipants(heatId);
+                const entryNames = (entries || []).reduce((acc, entry) => {
+                    const color = normalizeColor(entry.color);
+                    if (!color) return acc;
+                    const name = entry.participant?.name || color;
+                    return { ...acc, [color]: name };
+                }, {} as Record<string, string>);
 
-                if (entries && entries.length > 0) {
-                    const names = entries.reduce((acc, entry) => {
-                        const colorKey = entry.color?.toUpperCase() || '';
-                        const colorFR = colorMap[colorKey] || colorKey;
-                        const name = entry.participant?.name || colorFR;
-
-                        if (colorFR) {
-                            return { ...acc, [colorFR]: name };
-                        }
-                        return acc;
-                    }, {} as Record<string, string>);
-
+                const hasRealEntryNames = Object.values(entryNames).some((name) => !isPlaceholderLike(name));
+                if (hasRealEntryNames) {
                     console.log('[useHeatParticipants] Loaded from heat_entries', {
                         heatId,
                         count: entries.length,
-                        names: Object.keys(names)
+                        names: Object.keys(entryNames)
                     });
 
-                    setParticipants(names);
+                    setParticipants(entryNames);
                     setSource('entries');
                     setLoading(false);
                     return;
                 }
 
-                // Strategy 2: Fallback to heat_slot_mappings (placeholders)
-                console.warn('[useHeatParticipants] No heat_entries found, trying heat_slot_mappings', { heatId });
+                console.warn('[useHeatParticipants] No resolved entry names, trying mappings/source resolution', { heatId });
 
                 const mappings = await fetchHeatSlotMappings(heatId);
 
                 if (mappings && mappings.length > 0) {
-                    // Map position to standard colors
-                    const colorsByPosition: Record<number, string> = {
-                        1: 'ROUGE',
-                        2: 'BLANC',
-                        3: 'JAUNE',
-                        4: 'BLEU',
-                        5: 'NOIR',
-                        6: 'VERT'
-                    };
-
-                    const names = mappings.reduce((acc, mapping) => {
-                        const color = colorsByPosition[mapping.position];
+                    const placeholderNames = mappings.reduce((acc, mapping) => {
+                        const color = COLORS_BY_POSITION[mapping.position];
                         const placeholder = mapping.placeholder || `Position ${mapping.position}`;
 
                         if (color) {
@@ -102,19 +212,33 @@ export function useHeatParticipants(heatId: string) {
                         return acc;
                     }, {} as Record<string, string>);
 
+                    const resolvedFromSource = await resolveNamesFromMappings(heatId, mappings);
+                    const merged = {
+                        ...placeholderNames,
+                        ...entryNames,
+                        ...resolvedFromSource
+                    };
+
                     console.log('[useHeatParticipants] Loaded from heat_slot_mappings', {
                         heatId,
                         count: mappings.length,
-                        placeholders: Object.keys(names)
+                        placeholders: Object.keys(placeholderNames),
+                        resolved: Object.keys(resolvedFromSource)
                     });
 
-                    setParticipants(names);
+                    setParticipants(merged);
+                    setSource(Object.keys(resolvedFromSource).length > 0 ? 'entries' : 'mappings');
+                    setLoading(false);
+                    return;
+                }
+
+                if (Object.keys(entryNames).length > 0) {
+                    setParticipants(entryNames);
                     setSource('mappings');
                     setLoading(false);
                     return;
                 }
 
-                // Strategy 3: Final fallback - empty colors (shouldn't happen)
                 console.warn('[useHeatParticipants] No participants or mappings found, using empty state', { heatId });
                 setParticipants({});
                 setSource('empty');
