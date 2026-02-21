@@ -6,6 +6,7 @@ import { useJudgingStore } from '../stores/judgingStore';
 import {
     fetchEventConfigSnapshot,
     fetchAllEventHeats,
+    fetchAllScoresForEvent,
     fetchHeatMetadata,
     fetchHeatScores,
     fetchHeatEntriesWithParticipants
@@ -15,6 +16,8 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers } from '../utils/heat';
+import { calculateSurferStats } from '../utils/scoring';
+import { colorLabelMap } from '../utils/colorUtils';
 import type { AppConfig, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
 
@@ -114,6 +117,42 @@ const mergeSurferNames = (
     return mergedNames;
 };
 
+const normalizePlaceholderKey = (value: string) =>
+    value
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\(\)\[\]]/g, ' ')
+        .replace(/[_-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const buildQualifierKeyVariants = (roundNumber: number, heatNumber: number, position: number) => ([
+    `QUALIFIE R${roundNumber}-H${heatNumber} (P${position})`,
+    `QUALIFIE R${roundNumber}-H${heatNumber} P${position}`,
+    `QUALIFIE R${roundNumber} H${heatNumber} P${position}`,
+    `FINALISTE R${roundNumber}-H${heatNumber} (P${position})`,
+    `FINALISTE R${roundNumber}-H${heatNumber} P${position}`,
+    `FINALISTE R${roundNumber} H${heatNumber} P${position}`,
+    `R${roundNumber}-H${heatNumber}-P${position}`,
+    `R${roundNumber} H${heatNumber} P${position}`,
+]);
+
+const resolveFromQualifierMap = (text: string, qualifierMap: Map<string, string>) => {
+    const normalized = normalizePlaceholderKey(text);
+    let resolved = qualifierMap.get(normalized);
+    if (!resolved) {
+        const match = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*(?:P\s*)?(\d+)/);
+        if (match) {
+            const [, r, h, p] = match;
+            resolved = buildQualifierKeyVariants(Number(r), Number(h), Number(p))
+                .map((k) => qualifierMap.get(normalizePlaceholderKey(k)))
+                .find(Boolean);
+        }
+    }
+    return resolved;
+};
+
 const normalizeScores = (scores: Score[]) => scores.map(score => ({
     ...score,
     surfer: normalizeColorCode(score.surfer) || score.surfer,
@@ -191,6 +230,83 @@ export default function DisplayPage() {
                     if (e.participant.country) surferCountries[e.color] = e.participant.country;
                 }
             });
+
+            // History fallback: resolve qualifier placeholders from division rounds + event scores
+            const hasRealNames = Object.values(surferNames).some((name) => !isLikelyPlaceholder(name));
+            if (!hasRealNames && activeEventId) {
+                const divisionKey = Object.keys(historyHeats).find(
+                    (key) => normalizeDivision(key) === normalizeDivision(metadata.division)
+                );
+                const divisionRounds = divisionKey ? historyHeats[divisionKey] : [];
+                if (divisionRounds.length > 0) {
+                    const rounds = JSON.parse(JSON.stringify(divisionRounds)) as RoundSpec[];
+                    const allScores = await fetchAllScoresForEvent(activeEventId);
+                    const qualifierMap = new Map<string, string>();
+
+                    rounds
+                        .sort((a, b) => a.roundNumber - b.roundNumber)
+                        .forEach((round) => {
+                            round.heats.forEach((heat) => {
+                                heat.slots.forEach((slot) => {
+                                    const candidate = slot.placeholder || slot.name;
+                                    if (!candidate || !isLikelyPlaceholder(candidate)) return;
+                                    const resolved = resolveFromQualifierMap(candidate, qualifierMap);
+                                    if (resolved) {
+                                        slot.name = resolved;
+                                        slot.placeholder = undefined;
+                                    }
+                                });
+
+                                if (!heat.heatId) return;
+                                const heatScores = allScores[heat.heatId] ?? [];
+                                if (!heatScores.length) return;
+
+                                const namesByColor = heat.slots.reduce<Record<string, string>>((acc, slot) => {
+                                    if (!slot.color || !slot.name || isLikelyPlaceholder(slot.name)) return acc;
+                                    const label = colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color;
+                                    const normalized = normalizeColorCode(label);
+                                    if (normalized) acc[normalized] = slot.name;
+                                    return acc;
+                                }, {});
+                                const surfers = Object.keys(namesByColor);
+                                if (!surfers.length) return;
+
+                                const normalizedScores = heatScores.map((score) => ({
+                                    ...score,
+                                    surfer: normalizeColorCode(score.surfer) || score.surfer
+                                }));
+                                const judgeCount = new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size;
+                                const stats = calculateSurferStats(normalizedScores, surfers, Math.max(judgeCount, 1), 20, true);
+
+                                stats
+                                    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+                                    .forEach((stat) => {
+                                        const name = namesByColor[stat.surfer.toUpperCase()];
+                                        if (!name) return;
+                                        buildQualifierKeyVariants(round.roundNumber, heat.heatNumber, stat.rank)
+                                            .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), name));
+                                    });
+                            });
+                        });
+
+                    const targetHeat = rounds
+                        .flatMap((round) => round.heats)
+                        .find((heat) => heat.heatId === heatId);
+
+                    if (targetHeat) {
+                        targetHeat.slots.forEach((slot) => {
+                            const color = slot.color ? (normalizeColorCode(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color) || slot.color) : '';
+                            if (!color) return;
+                            const candidate = slot.name || slot.placeholder;
+                            if (!candidate) return;
+                            const resolved = isLikelyPlaceholder(candidate)
+                                ? resolveFromQualifierMap(candidate, qualifierMap)
+                                : candidate;
+                            if (resolved) surferNames[color] = resolved;
+                        });
+                    }
+                }
+            }
 
             // 3. Fetch scores
             const rawScores = await fetchHeatScores(heatId);
