@@ -391,6 +391,10 @@ export function useHeatParticipants(heatId: string) {
                 const mappings = await fetchHeatSlotMappings(heatId);
 
                 if (mappings && mappings.length > 0) {
+                    const withSourceCount = mappings.filter(
+                        (m) => m.source_round != null && m.source_heat != null && m.source_position != null
+                    ).length;
+
                     const placeholderNames = mappings.reduce((acc, mapping) => {
                         const color = COLORS_BY_POSITION[mapping.position];
                         const placeholder = mapping.placeholder || `Position ${mapping.position}`;
@@ -411,7 +415,7 @@ export function useHeatParticipants(heatId: string) {
                     console.log('[useHeatParticipants] Loaded from heat_slot_mappings', {
                         heatId,
                         count: mappings.length,
-                        withSourceCount: withSource.length,
+                        withSourceCount,
                         placeholders: Object.keys(placeholderNames),
                         resolved: Object.keys(resolvedFromSource),
                         resolvedNames: resolvedFromSource
