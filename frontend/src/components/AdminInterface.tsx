@@ -12,7 +12,6 @@ import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetch
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
-const DEFAULT_DIVISIONS: string[] = [];
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 
 
@@ -92,6 +91,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [overrideStatus, setOverrideStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [overridePending, setOverridePending] = useState(false);
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
+  const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number }>>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [supabaseMode, setSupabaseModeState] = useState(getSupabaseMode());
@@ -422,6 +422,88 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const handleConfigChange = (field: keyof AppConfig, value: any) => {
     onConfigChange({ ...config, [field]: value });
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadDivisionHeatSequence = async () => {
+      if (!activeEventId || !config.division || !isSupabaseConfigured()) {
+        setDivisionHeatSequence([]);
+        return;
+      }
+
+      try {
+        const sequence = await fetchOrderedHeatSequence(activeEventId, config.division);
+        if (!cancelled) {
+          setDivisionHeatSequence(sequence.map((row) => ({ round: row.round, heat_number: row.heat_number })));
+        }
+      } catch (error) {
+        console.warn('Impossible de charger la structure round/heat pour la division:', error);
+        if (!cancelled) {
+          setDivisionHeatSequence([]);
+        }
+      }
+    };
+
+    loadDivisionHeatSequence();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEventId, config.division]);
+
+  const effectiveDivisionOptions = React.useMemo(() => {
+    const fromStore = (availableDivisions || [])
+      .map((value) => value?.toString().trim())
+      .filter((value): value is string => Boolean(value));
+    const fromParticipants = (divisionOptions || [])
+      .map((value) => value?.toString().trim())
+      .filter((value): value is string => Boolean(value));
+    const merged = fromStore.length ? fromStore : fromParticipants;
+    return Array.from(new Set(merged)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [availableDivisions, divisionOptions]);
+
+  const roundOptions = React.useMemo(() => {
+    if (!divisionHeatSequence.length) return [config.round];
+    return Array.from(new Set(divisionHeatSequence.map((row) => row.round))).sort((a, b) => a - b);
+  }, [divisionHeatSequence, config.round]);
+
+  const heatOptionsForRound = React.useMemo(() => {
+    if (!divisionHeatSequence.length) return [config.heatId];
+    const options = divisionHeatSequence
+      .filter((row) => row.round === config.round)
+      .map((row) => row.heat_number);
+    const unique = Array.from(new Set(options)).sort((a, b) => a - b);
+    return unique.length ? unique : [config.heatId];
+  }, [divisionHeatSequence, config.round, config.heatId]);
+
+  useEffect(() => {
+    if (!effectiveDivisionOptions.length) return;
+    const currentIsValid = effectiveDivisionOptions.some(
+      (division) => division.toLowerCase() === config.division.toLowerCase()
+    );
+    if (!currentIsValid) {
+      onConfigChange({ ...config, division: effectiveDivisionOptions[0] });
+    }
+  }, [effectiveDivisionOptions, config, onConfigChange]);
+
+  useEffect(() => {
+    if (!roundOptions.length) return;
+
+    const firstRound = roundOptions[0];
+    const nextRound = roundOptions.includes(config.round) ? config.round : firstRound;
+
+    const heatsInRound = divisionHeatSequence
+      .filter((row) => row.round === nextRound)
+      .map((row) => row.heat_number);
+    const uniqueHeats = Array.from(new Set(heatsInRound)).sort((a, b) => a - b);
+    const firstHeat = uniqueHeats[0] ?? config.heatId;
+    const nextHeatId = uniqueHeats.includes(config.heatId) && nextRound === config.round
+      ? config.heatId
+      : firstHeat;
+
+    if (nextRound !== config.round || nextHeatId !== config.heatId) {
+      onConfigChange({ ...config, round: nextRound, heatId: nextHeatId });
+    }
+  }, [roundOptions, divisionHeatSequence, config, onConfigChange]);
 
   const handleSaveOfflineAdminPin = () => {
     try {
@@ -1012,44 +1094,61 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Division
             </label>
-            <input
-              type="text"
-              list="division-options"
+            <select
               value={config.division}
-              onChange={(e) => handleConfigChange('division', e.target.value)}
+              onChange={(e) => {
+                const nextDivision = e.target.value;
+                onConfigChange({ ...config, division: nextDivision });
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Division auto-remplie"
-            />
-            <datalist id="division-options">
-              {(divisionOptions.length ? divisionOptions : (availableDivisions.length ? availableDivisions : DEFAULT_DIVISIONS)).map((division) => (
-                <option key={division} value={division} />
+            >
+              {effectiveDivisionOptions.map((division) => (
+                <option key={division} value={division}>
+                  {division}
+                </option>
               ))}
-            </datalist>
+              {!effectiveDivisionOptions.length && (
+                <option value={config.division || ''}>{config.division || 'Aucune division'}</option>
+              )}
+            </select>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Round</label>
-            <input
-              type="number"
-              min="1"
+            <select
               value={config.round}
-              onChange={(e) => handleConfigChange('round', parseInt(e.target.value) || 1)}
+              onChange={(e) => {
+                const nextRound = Number.parseInt(e.target.value, 10) || 1;
+                const firstHeat = divisionHeatSequence
+                  .filter((row) => row.round === nextRound)
+                  .map((row) => row.heat_number)
+                  .sort((a, b) => a - b)[0] ?? 1;
+                onConfigChange({ ...config, round: nextRound, heatId: firstHeat });
+              }}
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="1"
-            />
+            >
+              {roundOptions.map((round) => (
+                <option key={round} value={round}>
+                  Round {round}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Heat #</label>
-            <input
-              type="number"
-              min="1"
+            <select
               value={config.heatId}
-              onChange={(e) => handleConfigChange('heatId', parseInt(e.target.value) || 1)}
+              onChange={(e) => handleConfigChange('heatId', Number.parseInt(e.target.value, 10) || 1)}
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="1"
-            />
+            >
+              {heatOptionsForRound.map((heatNumber) => (
+                <option key={heatNumber} value={heatNumber}>
+                  Heat {heatNumber}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Vagues</label>
