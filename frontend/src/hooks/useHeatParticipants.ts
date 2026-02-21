@@ -65,26 +65,44 @@ async function resolveNamesFromMappings(
     );
     if (!withSource.length) return {};
 
-    const currentHeat = await fetchHeatMetadata(heatId);
-    if (!currentHeat?.event_id || !currentHeat?.division) return {};
-
-    const sourceRounds = Array.from(new Set(withSource.map((m) => Number(m.source_round))));
-    const { data: sourceHeats, error } = await supabase
-        .from('heats')
-        .select('id, round, heat_number')
-        .eq('event_id', currentHeat.event_id)
-        .eq('division', currentHeat.division)
-        .in('round', sourceRounds);
-
-    if (error) {
-        console.warn('[useHeatParticipants] Unable to query source heats', error);
-        return {};
-    }
+    // Fast path: infer source heat_id from current heat_id pattern
+    // ex: test_off_line_junior_r3_h1 -> test_off_line_junior_r1_h2
+    const normalizedHeatId = (heatId || '').toLowerCase();
+    const idMatch = normalizedHeatId.match(/^(.*)_r\d+_h\d+$/);
+    const inferredPrefix = idMatch?.[1] || '';
 
     const sourceHeatIdByKey = new Map<string, string>();
-    (sourceHeats || []).forEach((row: { id: string; round: number; heat_number: number }) => {
-        sourceHeatIdByKey.set(`${row.round}-${row.heat_number}`, row.id);
-    });
+    if (inferredPrefix) {
+        withSource.forEach((mapping) => {
+            const round = Number(mapping.source_round);
+            const heat = Number(mapping.source_heat);
+            const key = `${round}-${heat}`;
+            if (!sourceHeatIdByKey.has(key)) {
+                sourceHeatIdByKey.set(key, `${inferredPrefix}_r${round}_h${heat}`);
+            }
+        });
+    } else {
+        // Fallback: query heats table if pattern is not parsable
+        const currentHeat = await fetchHeatMetadata(heatId);
+        if (!currentHeat?.event_id || !currentHeat?.division) return {};
+
+        const sourceRounds = Array.from(new Set(withSource.map((m) => Number(m.source_round))));
+        const { data: sourceHeats, error } = await supabase
+            .from('heats')
+            .select('id, round, heat_number')
+            .eq('event_id', currentHeat.event_id)
+            .eq('division', currentHeat.division)
+            .in('round', sourceRounds);
+
+        if (error) {
+            console.warn('[useHeatParticipants] Unable to query source heats', error);
+            return {};
+        }
+
+        (sourceHeats || []).forEach((row: { id: string; round: number; heat_number: number }) => {
+            sourceHeatIdByKey.set(`${row.round}-${row.heat_number}`, row.id);
+        });
+    }
 
     const namesByTargetColor: Record<string, string> = {};
     const rankCache = new Map<string, Map<number, string>>();
