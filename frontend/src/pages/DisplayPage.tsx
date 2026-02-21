@@ -399,8 +399,6 @@ export default function DisplayPage() {
     useEffect(() => {
         if (!activeEventId) return;
 
-        console.log('📡 Display: subscribing to event config updates for event:', activeEventId);
-
         const channel = supabase
             ?.channel(`event-config-${activeEventId}`)
             .on('postgres_changes', {
@@ -408,9 +406,7 @@ export default function DisplayPage() {
                 schema: 'public',
                 table: 'event_last_config',
                 filter: `event_id=eq.${activeEventId}`
-            }, async (payload) => {
-                console.log('📡 Display: received config update:', payload);
-
+            }, async () => {
                 // Check if heat/round changed
                 const snapshot = await fetchEventConfigSnapshot(activeEventId);
                 if (snapshot) {
@@ -418,10 +414,6 @@ export default function DisplayPage() {
                     const roundChanged = snapshot.round !== config.round;
 
                     if (heatChanged || roundChanged) {
-                        console.log('🔄 Display: Heat/Round changed, reloading page...', {
-                            from: `R${config.round}H${config.heatId}`,
-                            to: `R${snapshot.round}H${snapshot.heat_number}`
-                        });
                         setIsReloading(true);
                         // Force reload to ensure clean state
                         setTimeout(() => window.location.reload(), 100);
@@ -430,7 +422,6 @@ export default function DisplayPage() {
 
                     // Minor config changes only - update without reload
                     try {
-                        console.log('✅ Display: config updated (no reload needed)');
                         setConfig((prev) => {
                             const snapshotNames = normalizeSurferMap(snapshot.surferNames || {});
                             const mergedNames = mergeSurferNames(prev.surferNames, snapshotNames);
@@ -467,7 +458,6 @@ export default function DisplayPage() {
             .subscribe();
 
         return () => {
-            console.log('📡 Display: unsubscribing from event config');
             if (channel) {
                 supabase?.removeChannel(channel);
             }
@@ -512,7 +502,6 @@ export default function DisplayPage() {
 
         // Écouter les scores en temps réel (INSERT/UPDATE)
         const handleNewScore = (event: Event) => {
-            console.log('⚡ Display: Nouveau score reçu en temps réel');
             const customEvent = event as CustomEvent;
             const newScore = customEvent.detail;
 

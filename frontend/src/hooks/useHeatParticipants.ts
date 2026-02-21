@@ -363,7 +363,6 @@ export function useHeatParticipants(heatId: string) {
             setError(null);
 
             try {
-                console.log('[useHeatParticipants] Loading participants for heat', { heatId });
                 const entries = await fetchHeatEntriesWithParticipants(heatId);
                 const entryNames = (entries || []).reduce((acc, entry) => {
                     const color = normalizeColor(entry.color);
@@ -374,19 +373,11 @@ export function useHeatParticipants(heatId: string) {
 
                 const hasRealEntryNames = Object.values(entryNames).some((name) => !isPlaceholderLike(name));
                 if (hasRealEntryNames) {
-                    console.log('[useHeatParticipants] Loaded from heat_entries', {
-                        heatId,
-                        count: entries.length,
-                        names: Object.keys(entryNames)
-                    });
-
                     setParticipants(entryNames);
                     setSource('entries');
                     setLoading(false);
                     return;
                 }
-
-                console.warn('[useHeatParticipants] No resolved entry names, trying mappings/source resolution', { heatId });
 
                 const mappings = await fetchHeatSlotMappings(heatId);
 
@@ -412,15 +403,6 @@ export function useHeatParticipants(heatId: string) {
                         ...resolvedFromSource
                     };
 
-                    console.log('[useHeatParticipants] Loaded from heat_slot_mappings', {
-                        heatId,
-                        count: mappings.length,
-                        withSourceCount,
-                        placeholders: Object.keys(placeholderNames),
-                        resolved: Object.keys(resolvedFromSource),
-                        resolvedNames: resolvedFromSource
-                    });
-
                     setParticipants(merged);
                     setSource(Object.keys(resolvedFromSource).length > 0 ? 'entries' : 'mappings');
                     setLoading(false);
@@ -434,7 +416,6 @@ export function useHeatParticipants(heatId: string) {
                     return;
                 }
 
-                console.warn('[useHeatParticipants] No participants or mappings found, using empty state', { heatId });
                 setParticipants({});
                 setSource('empty');
                 setLoading(false);
@@ -462,8 +443,7 @@ export function useHeatParticipants(heatId: string) {
                     table: 'heat_entries',
                     filter: `heat_id=eq.${heatId}`
                 },
-                (payload) => {
-                    console.log('[useHeatParticipants] Realtime update received:', payload);
+                () => {
                     loadParticipants();
                 }
             )

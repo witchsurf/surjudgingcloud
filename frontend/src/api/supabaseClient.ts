@@ -885,8 +885,6 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
   ensureSupabase();
   const normalizedHeatId = ensureHeatId(heatId);
 
-  console.log('🔍 fetchHeatEntriesWithParticipants called for:', normalizedHeatId, heatId !== normalizedHeatId ? `(alias ${heatId})` : '');
-
   const { data, error } = await supabase!
     .from('heat_entries')
     .select('color, position, participant_id, seed, participant:participants(name, country, license)')
@@ -918,31 +916,10 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
       }
       : null,
   }));
-  console.log('📊 heat_entries query returned:', rows.length, 'rows');
-
-  if (rows.length > 0) {
-    console.log('📋 First entry sample:', rows[0]);
-    rows.forEach((row, idx) => {
-      console.log(`  [${idx}] color=${row.color}, position=${row.position}, participant_id=${row.participant_id}, has_participant=${!!row.participant}, participant_name=${row.participant?.name || 'NULL'}`);
-    });
-  }
-
   const hasNamedParticipant = rows.some((row) => row.participant?.name);
-  console.log(`✅ Has named participants: ${hasNamedParticipant}`);
 
   if (rows.length > 0 && hasNamedParticipant) {
     return typedRows;
-  }
-
-  console.log(
-    '⚠️ heat_entries fallback triggered -> rows:%d hasNamed:%s',
-    rows.length,
-    hasNamedParticipant
-  );
-  if (rows.length === 0) {
-    console.log('⚠️ No rows returned from heat_entries, attempting v_heat_lineup view');
-  } else {
-    console.log('⚠️ Rows returned but without participant names, attempting v_heat_lineup view');
   }
 
   const { data: lineup, error: lineupError } = await supabase!
@@ -954,11 +931,6 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
   if (lineupError) {
     console.error('❌ Error fetching v_heat_lineup:', lineupError);
     throw lineupError;
-  }
-
-  console.log('📊 v_heat_lineup returned:', (lineup ?? []).length, 'rows');
-  if (lineup && lineup.length > 0) {
-    console.log('📋 Lineup sample:', lineup[0]);
   }
 
   const fallbackEntries = (lineup ?? []).map((row: { jersey_color: string | null; position: number; surfer_name: string | null; country: string | null; seed: number | null }) => ({
@@ -976,7 +948,6 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
   }));
 
   if (fallbackEntries.length === 0 && rows.length > 0) {
-    console.log('⚠️ v_heat_lineup also returned 0 rows, falling back to raw heat_entries data');
     return rows;
   }
 
