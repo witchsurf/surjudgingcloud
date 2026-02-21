@@ -158,7 +158,18 @@ export default function JudgePage() {
                     }));
                 }
             }
-            if (status) setHeatStatus(status);
+            if (status) {
+                setHeatStatus(status);
+            } else {
+                // Fallback: infer status from timer to avoid blocking judges on stale/missing realtime status.
+                if (nextTimer.isRunning) {
+                    setHeatStatus('running');
+                } else if (nextTimer.startTime) {
+                    setHeatStatus('finished');
+                } else {
+                    setHeatStatus('waiting');
+                }
+            }
         });
         return unsubscribe;
     }, [configSaved, config.competition, currentHeatId, config.heatId, config.round, config.division, subscribeToHeat, setTimer, setConfig, setHeatStatus, configLoading]);

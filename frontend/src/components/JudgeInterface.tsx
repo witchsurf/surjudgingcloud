@@ -304,12 +304,15 @@ function JudgeInterface({
   // AUTORISE : pendant (running), en pause (paused), et après expiration (finished)
   const isTimerActive = () => {
     if (!configSaved) return false;
-    // Bloquer si le timer n'a pas encore démarré (évite les erreurs avant que les surfeurs surfent)
-    if (heatStatus === 'waiting') return false;
     // Bloquer si le heat est officiellement clos par le chef juge
     if (heatStatus === 'closed') return false;
+    // Fallback robuste: si le timer a déjà démarré une fois, on autorise la notation
+    // même en cas de statut realtime transitoirement incohérent.
+    const heatHasStarted = Boolean(timer?.startTime);
+    // Bloquer uniquement si le heat est explicitement en attente ET jamais démarré.
+    if (heatStatus === 'waiting' && !heatHasStarted) return false;
     // Autoriser dans tous les autres cas: running, paused, finished
-    return heatStatus !== undefined;
+    return true;
   };
 
   const getScoreForWave = (surfer: string, wave: number) => {
@@ -524,7 +527,7 @@ function JudgeInterface({
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
           <Lock className="w-6 h-6 text-red-600" />
           <div>
-            {heatStatus === 'waiting' ? (
+            {heatStatus === 'waiting' && !timer?.startTime ? (
               <>
                 <h3 className="font-semibold text-red-800">Timer Non Démarré - Notation Bloquée</h3>
                 <p className="text-red-700 text-sm">
