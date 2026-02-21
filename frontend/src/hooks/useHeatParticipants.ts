@@ -4,9 +4,12 @@ import {
     fetchHeatEntriesWithParticipants,
     fetchHeatSlotMappings,
     fetchHeatMetadata,
-    fetchHeatScores
+    fetchHeatScores,
+    fetchCategoryHeats,
+    fetchAllScoresForEvent
 } from '../api/supabaseClient';
 import { calculateSurferStats } from '../utils/scoring';
+import { colorLabelMap } from '../utils/colorUtils';
 
 const COLORS_BY_POSITION: Record<number, string> = {
     1: 'ROUGE',
@@ -59,6 +62,8 @@ async function resolveNamesFromMappings(
     }>
 ) {
     if (!supabase || !mappings.length) return {};
+    const currentHeat = await fetchHeatMetadata(heatId);
+    if (!currentHeat?.event_id || !currentHeat?.division) return {};
 
     const withSource = mappings.filter(
         (m) => m.source_round != null && m.source_heat != null && m.source_position != null
@@ -83,9 +88,6 @@ async function resolveNamesFromMappings(
         });
     } else {
         // Fallback: query heats table if pattern is not parsable
-        const currentHeat = await fetchHeatMetadata(heatId);
-        if (!currentHeat?.event_id || !currentHeat?.division) return {};
-
         const sourceRounds = Array.from(new Set(withSource.map((m) => Number(m.source_round))));
         const { data: sourceHeats, error } = await supabase
             .from('heats')
@@ -157,6 +159,64 @@ async function resolveNamesFromMappings(
         const targetColor = COLORS_BY_POSITION[mapping.position];
         if (name && targetColor) {
             namesByTargetColor[targetColor] = name;
+        }
+    }
+
+    // Fallback 2: reuse bracket+scores logic (same spirit as admin full PDF)
+    // so Display gets the same resolved qualifiers even when per-heat source lookup is sparse.
+    if (Object.keys(namesByTargetColor).length === 0) {
+        try {
+            const rounds = await fetchCategoryHeats(currentHeat.event_id, currentHeat.division);
+            const allScores = await fetchAllScoresForEvent(currentHeat.event_id);
+            const qualifierByRef = new Map<string, string>();
+
+            rounds
+                .sort((a, b) => a.roundNumber - b.roundNumber)
+                .forEach((round) => {
+                    round.heats.forEach((heat) => {
+                        if (!heat.heatId) return;
+                        const heatScores = allScores[heat.heatId] ?? [];
+                        if (!heatScores.length) return;
+
+                        const namesByColor = heat.slots.reduce<Record<string, string>>((acc, slot) => {
+                            if (!slot.color || !slot.name || isPlaceholderLike(slot.name)) return acc;
+                            const label = colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color;
+                            const normalized = normalizeColor(label);
+                            if (normalized) acc[normalized] = slot.name;
+                            return acc;
+                        }, {});
+
+                        const surfers = Object.keys(namesByColor);
+                        if (!surfers.length) return;
+
+                        const normalizedScores = heatScores.map((score) => ({
+                            ...score,
+                            surfer: normalizeColor(score.surfer) || score.surfer
+                        }));
+                        const judgeCount = new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size;
+                        const stats = calculateSurferStats(normalizedScores, surfers, Math.max(judgeCount, 1), 20, true);
+
+                        stats
+                            .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+                            .forEach((stat) => {
+                                const name = namesByColor[stat.surfer.toUpperCase()];
+                                if (!name) return;
+                                const key = `${round.roundNumber}-${heat.heatNumber}-${stat.rank}`;
+                                if (!qualifierByRef.has(key)) qualifierByRef.set(key, name);
+                            });
+                    });
+                });
+
+            withSource.forEach((mapping) => {
+                const key = `${mapping.source_round}-${mapping.source_heat}-${mapping.source_position}`;
+                const name = qualifierByRef.get(key);
+                const targetColor = COLORS_BY_POSITION[mapping.position];
+                if (name && targetColor) {
+                    namesByTargetColor[targetColor] = name;
+                }
+            });
+        } catch (error) {
+            console.warn('[useHeatParticipants] Bracket-score fallback failed', error);
         }
     }
 
@@ -241,7 +301,8 @@ export function useHeatParticipants(heatId: string) {
                         heatId,
                         count: mappings.length,
                         placeholders: Object.keys(placeholderNames),
-                        resolved: Object.keys(resolvedFromSource)
+                        resolved: Object.keys(resolvedFromSource),
+                        resolvedNames: resolvedFromSource
                     });
 
                     setParticipants(merged);
