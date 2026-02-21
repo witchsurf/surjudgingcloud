@@ -108,6 +108,11 @@ export function useHeatManager() {
         }
 
         let sequence: any[] = [];
+        const currentHeatScores = (scores || []).filter(
+            (score) => ensureHeatId(score.heat_id) === currentHeatId && Number(score.score) > 0
+        );
+        const hasCurrentHeatResults = currentHeatScores.length > 0;
+
         if (activeEventId && isSupabaseConfigured()) {
             try {
                 sequence = await fetchOrderedHeatSequence(activeEventId, config.division);
@@ -116,7 +121,8 @@ export function useHeatManager() {
             }
 
             // Logic to advance qualifiers (complex logic from App.tsx)
-            try {
+            if (hasCurrentHeatResults) {
+                try {
                 const currentEntriesRaw = await fetchHeatEntriesWithParticipants(currentHeatId);
                 const currentEntries = normalizeHeatEntries(currentEntriesRaw);
 
@@ -203,8 +209,11 @@ export function useHeatManager() {
                         }
                     }
                 }
-            } catch (error) {
-                console.warn('Impossible de préparer les qualifiés', error);
+                } catch (error) {
+                    console.warn('Impossible de préparer les qualifiés', error);
+                }
+            } else {
+                console.warn('⚠️ Aucune note valide sur le heat courant: propagation des qualifiés ignorée.');
             }
         }
 

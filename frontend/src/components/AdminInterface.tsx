@@ -5,10 +5,12 @@ import { useNavigate } from 'react-router-dom';
 import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason } from '../types';
 import { validateScore } from '../utils/scoring';
+import { calculateSurferStats } from '../utils/scoring';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
+import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchHeatScores, ensureEventExists } from '../api/supabaseClient';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, replaceHeatEntries, ensureEventExists } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
@@ -95,6 +97,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number }>>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
+  const [rebuildPending, setRebuildPending] = useState(false);
   const [supabaseMode, setSupabaseModeState] = useState(getSupabaseMode());
   const supabaseConfig = getSupabaseConfig();
   const [offlineAdminPin, setOfflineAdminPin] = useState(() => {
@@ -761,6 +764,120 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return false;
   };
 
+  const normalizeJerseyLabel = (value?: string | null): string => {
+    const raw = (value || '').toUpperCase().trim();
+    if (!raw) return '';
+    return colorLabelMap[(raw as HeatColor)] ?? raw;
+  };
+
+  const handleRebuildDivisionQualifiers = async () => {
+    if (!config.competition || !config.division) {
+      setOverrideStatus({ type: 'error', message: 'Compétition/division manquante.' });
+      return;
+    }
+
+    setRebuildPending(true);
+    try {
+      const eventId = await fetchEventIdByName(config.competition);
+      if (!eventId) {
+        throw new Error('Événement introuvable.');
+      }
+
+      const sequence = await fetchOrderedHeatSequence(eventId, config.division);
+      if (!sequence.length) {
+        throw new Error(`Aucun heat trouvé pour la division ${config.division}.`);
+      }
+
+      let updatedTargetHeats = 0;
+
+      for (const sourceHeat of sequence) {
+        const sourceScoresRaw = await fetchHeatScores(sourceHeat.id);
+        const sourceScores = sourceScoresRaw
+          .filter((score) => Number(score.score) > 0)
+          .map((score) => ({ ...score, surfer: normalizeJerseyLabel(score.surfer) || score.surfer }));
+
+        if (!sourceScores.length) {
+          continue;
+        }
+
+        const sourceEntries = await fetchHeatEntriesWithParticipants(sourceHeat.id);
+        const entryByColor = new Map<string, { participantId: number | null; seed: number | null; colorCode: string | null }>();
+
+        sourceEntries.forEach((entry) => {
+          const rawColor = (entry.color || '').toUpperCase();
+          const label = normalizeJerseyLabel(rawColor);
+          if (!label) return;
+          entryByColor.set(label, {
+            participantId: entry.participant_id ?? null,
+            seed: entry.seed ?? null,
+            colorCode: rawColor || null,
+          });
+        });
+
+        if (!entryByColor.size) {
+          continue;
+        }
+
+        const surfers = Array.from(entryByColor.keys());
+        const judgeCount = Math.max(new Set(sourceScores.map((score) => score.judge_id).filter(Boolean)).size, 1);
+        const maxWaves = Math.max(config.waves || 12, 1);
+        const stats = calculateSurferStats(sourceScores, surfers, judgeCount, maxWaves, true)
+          .sort((a, b) => a.rank - b.rank);
+
+        const entryByRank = new Map<number, { participantId: number | null; seed: number | null; colorCode: string | null }>();
+        stats.forEach((stat) => {
+          const info = entryByColor.get(stat.surfer.trim().toUpperCase());
+          if (info) {
+            entryByRank.set(stat.rank, info);
+          }
+        });
+
+        for (const targetHeat of sequence) {
+          const mappings = await fetchHeatSlotMappings(targetHeat.id);
+          if (!mappings.length) continue;
+
+          const targetColorOrder = (targetHeat.color_order ?? []).map((color) => (color || '').toUpperCase());
+          const updates: Array<{ position: number; participant_id: number | null; seed?: number | null; color?: string | null }> = [];
+
+          mappings.forEach((mapping: any) => {
+            if (Number(mapping.source_round) !== Number(sourceHeat.round) || Number(mapping.source_heat) !== Number(sourceHeat.heat_number)) {
+              return;
+            }
+            const sourceRank = Number(mapping.source_position ?? 0);
+            if (!sourceRank) return;
+            const qualifier = entryByRank.get(sourceRank);
+            if (!qualifier) return;
+
+            const mappedColor = targetColorOrder[mapping.position - 1] || qualifier.colorCode || null;
+            updates.push({
+              position: mapping.position,
+              participant_id: qualifier.participantId,
+              seed: qualifier.seed ?? null,
+              color: mappedColor,
+            });
+          });
+
+          if (updates.length) {
+            await replaceHeatEntries(targetHeat.id, updates);
+            updatedTargetHeats += 1;
+          }
+        }
+      }
+
+      setOverrideStatus({
+        type: 'success',
+        message: `Qualifiés recalculés pour ${config.division}. Heats cibles mis à jour: ${updatedTargetHeats}.`
+      });
+      onReloadData();
+    } catch (error) {
+      console.error('❌ Rebuild qualifiers error:', error);
+      const message = error instanceof Error ? error.message : 'Impossible de recalculer les qualifiés.';
+      setOverrideStatus({ type: 'error', message });
+    } finally {
+      setRebuildPending(false);
+    }
+  };
+
   const handleCloseHeat = async () => {
     let canCloseWithoutWarning = canCloseHeat();
 
@@ -803,29 +920,31 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       if (eventId) {
-        // Call N8N heat-sync workflow to finalize scores and advance qualifiers
-        try {
-          const currentHeatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
-          console.log('🔄 Calling heat-sync for:', currentHeatId);
+        // Optional external workflow hook (disabled by default to avoid cross-division side effects).
+        const enableExternalHeatSync = import.meta.env.VITE_ENABLE_HEAT_SYNC_WEBHOOK === 'true';
+        if (enableExternalHeatSync) {
+          try {
+            const currentHeatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+            console.log('🔄 Calling heat-sync for:', currentHeatId);
 
-          // Use static import for supabase instead of dynamic
-          if (!supabase) throw new Error("Supabase client not initialized");
+            if (!supabase) throw new Error("Supabase client not initialized");
 
-          const { data: syncData, error: syncError } = await supabase.functions.invoke('heat-sync', {
-            body: {
-              heat_id: currentHeatId,
-              event_id: eventId,
-              action: 'finalize'
+            const { data: syncData, error: syncError } = await supabase.functions.invoke('heat-sync', {
+              body: {
+                heat_id: currentHeatId,
+                event_id: eventId,
+                action: 'finalize'
+              }
+            });
+
+            if (syncError) {
+              console.warn('⚠️ Heat sync failed, continuing anyway:', syncError);
+            } else {
+              console.log('✅ Heat sync successful:', syncData);
             }
-          });
-
-          if (syncError) {
-            console.warn('⚠️ Heat sync failed, continuing anyway:', syncError);
-          } else {
-            console.log('✅ Heat sync successful:', syncData);
+          } catch (syncErr) {
+            console.warn('⚠️ Heat sync error, continuing anyway:', syncErr);
           }
-        } catch (syncErr) {
-          console.warn('⚠️ Heat sync error, continuing anyway:', syncErr);
         }
 
         const sequence = await fetchOrderedHeatSequence(eventId, config.division);
@@ -1477,6 +1596,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               >
                 <FileText className="w-4 h-4" />
                 <span>{eventPdfPending ? 'Export évènement…' : 'Export complet (PDF)'}</span>
+              </button>
+
+              <button
+                onClick={handleRebuildDivisionQualifiers}
+                disabled={rebuildPending || !configSaved}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${rebuildPending || !configSaved
+                  ? 'bg-amber-300 cursor-not-allowed'
+                  : 'bg-amber-600 hover:bg-amber-700'
+                  }`}
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>{rebuildPending ? 'Recalcul en cours…' : 'Recalculer qualifiés (division)'}</span>
               </button>
 
               <button
