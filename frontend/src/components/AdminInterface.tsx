@@ -811,6 +811,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         const mappings = await fetchHeatSlotMappings(targetHeat.id);
         if (!mappings.length) continue;
 
+        const targetEntries = await fetchHeatEntriesWithParticipants(targetHeat.id);
+        const targetSeedByPosition = new Map<number, number>();
+        targetEntries.forEach((entry) => {
+          targetSeedByPosition.set(entry.position, entry.seed ?? entry.position);
+        });
+
         const targetColorOrder = (targetHeat.color_order ?? []).map((color) => (color || '').toUpperCase());
         const updates: Array<{ position: number; participant_id: number | null; seed?: number | null; color?: string | null }> = [];
 
@@ -875,7 +881,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           updates.push({
             position: mapping.position,
             participant_id: qualifier?.participantId ?? null,
-            seed: qualifier?.seed ?? null,
+            seed: qualifier?.seed ?? targetSeedByPosition.get(mapping.position) ?? mapping.position,
             color: mappedColor,
           });
         }
