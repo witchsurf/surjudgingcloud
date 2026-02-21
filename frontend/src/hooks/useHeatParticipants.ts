@@ -56,6 +56,7 @@ async function resolveNamesFromMappings(
     heatId: string,
     mappings: Array<{
         position: number;
+        placeholder?: string | null;
         source_round?: number | null;
         source_heat?: number | null;
         source_position?: number | null;
@@ -65,9 +66,55 @@ async function resolveNamesFromMappings(
     const currentHeat = await fetchHeatMetadata(heatId);
     if (!currentHeat?.event_id || !currentHeat?.division) return {};
 
-    const withSource = mappings.filter(
-        (m) => m.source_round != null && m.source_heat != null && m.source_position != null
-    );
+    const parseSourceFromPlaceholder = (placeholder?: string | null) => {
+        const normalized = (placeholder || '').toUpperCase().trim();
+        if (!normalized) return null;
+
+        const direct = normalized.match(/R(P?)(\d+)-H(\d+)-P(\d+)/);
+        if (direct) {
+            return {
+                round: Number(direct[2]),
+                heat: Number(direct[3]),
+                position: Number(direct[4]),
+            };
+        }
+
+        const displayStyle = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)\s*\(P\s*(\d+)\)/);
+        if (displayStyle) {
+            return {
+                round: Number(displayStyle[1]),
+                heat: Number(displayStyle[2]),
+                position: Number(displayStyle[3]),
+            };
+        }
+
+        const loose = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)\s*[- ]?\s*P\s*(\d+)/);
+        if (loose) {
+            return {
+                round: Number(loose[1]),
+                heat: Number(loose[2]),
+                position: Number(loose[3]),
+            };
+        }
+
+        return null;
+    };
+
+    const withSource = mappings
+        .map((mapping) => {
+            if (mapping.source_round != null && mapping.source_heat != null && mapping.source_position != null) {
+                return mapping;
+            }
+            const parsed = parseSourceFromPlaceholder(mapping.placeholder);
+            if (!parsed) return mapping;
+            return {
+                ...mapping,
+                source_round: parsed.round,
+                source_heat: parsed.heat,
+                source_position: parsed.position,
+            };
+        })
+        .filter((m) => m.source_round != null && m.source_heat != null && m.source_position != null);
     if (!withSource.length) return {};
 
     // Fast path: infer source heat_id from current heat_id pattern
@@ -300,6 +347,7 @@ export function useHeatParticipants(heatId: string) {
                     console.log('[useHeatParticipants] Loaded from heat_slot_mappings', {
                         heatId,
                         count: mappings.length,
+                        withSourceCount: mappings.filter((m) => m.source_round != null && m.source_heat != null && m.source_position != null).length,
                         placeholders: Object.keys(placeholderNames),
                         resolved: Object.keys(resolvedFromSource),
                         resolvedNames: resolvedFromSource
