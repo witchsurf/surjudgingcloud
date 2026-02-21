@@ -8,7 +8,7 @@ import { validateScore } from '../utils/scoring';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllScoresForEvent, ensureEventExists } from '../api/supabaseClient';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllScoresForEvent, fetchHeatScores, ensureEventExists } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
@@ -585,8 +585,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleCloseHeat = async () => {
+    let canCloseWithoutWarning = canCloseHeat();
+
+    // Safety net: if local/store state is stale, verify directly from DB before showing warning.
+    if (!canCloseWithoutWarning) {
+      try {
+        const dbScores = await fetchHeatScores(heatId);
+        if (dbScores.some((score) => Number(score.score) > 0)) {
+          canCloseWithoutWarning = true;
+        }
+      } catch (error) {
+        console.warn('Impossible de vérifier les scores DB avant fermeture du heat:', error);
+      }
+    }
+
     // Warning if no scores, but allow to proceed with confirmation
-    if (!canCloseHeat()) {
+    if (!canCloseWithoutWarning) {
       const forceClose = confirm(
         '⚠️ ATTENTION: Aucune vague complète enregistrée!\n\n' +
         'Ce heat sera fermé SANS RÉSULTATS.\n' +
