@@ -29,6 +29,7 @@ infra/.env.production
 infra/.env
 frontend/.env.local
 n8n_key*
+infra/letsencrypt/acme.json
 
 # Additional build ignores
 build/

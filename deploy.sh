@@ -31,6 +31,11 @@ npm run build
 # Rebuild and restart containers
 echo "🐳 Rebuilding and starting containers..."
 cd ../infra
+# Ensure ACME storage remains secure across deploys (Traefik requires 600)
+mkdir -p letsencrypt
+touch letsencrypt/acme.json
+chmod 600 letsencrypt/acme.json || true
+chown root:root letsencrypt/acme.json || true
 docker compose build --no-cache surfjudging
 docker compose up -d
 

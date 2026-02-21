@@ -83,6 +83,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [selectedSurfer, setSelectedSurfer] = useState('');
   const [cloudLocked, setCloudLockedState] = useState(isCloudLocked());
   const [selectedWave, setSelectedWave] = useState<number | ''>('');
+  const [moveTargetSurfer, setMoveTargetSurfer] = useState('');
+  const [moveTargetWave, setMoveTargetWave] = useState<number | ''>('');
   const [scoreInput, setScoreInput] = useState('');
   const [showOverridePanel, setShowOverridePanel] = useState(false);
   const [overrideReason, setOverrideReason] = useState<OverrideReason>('correction');
@@ -176,6 +178,59 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     } catch (error) {
       console.error('❌ Override erreur:', error);
       setOverrideStatus({ type: 'error', message: 'Impossible d’enregistrer la correction.' });
+    } finally {
+      setOverridePending(false);
+    }
+  };
+
+  const handleMoveScore = async () => {
+    if (!currentScore?.id) {
+      setOverrideStatus({ type: 'error', message: 'Aucune note sélectionnée à déplacer.' });
+      return;
+    }
+    if (!moveTargetSurfer || !moveTargetWave) {
+      setOverrideStatus({ type: 'error', message: 'Sélectionnez le surfeur et la vague de destination.' });
+      return;
+    }
+
+    const targetAlreadyUsed = scores.some(
+      (score) =>
+        ensureHeatId(score.heat_id) === heatId &&
+        score.judge_id === selectedJudge &&
+        score.surfer === moveTargetSurfer &&
+        score.wave_number === Number(moveTargetWave) &&
+        score.id !== currentScore.id
+    );
+    if (targetAlreadyUsed) {
+      setOverrideStatus({
+        type: 'error',
+        message: 'Destination déjà notée pour ce juge. Supprimez/corrigez d’abord cette note.'
+      });
+      return;
+    }
+
+    setOverridePending(true);
+    try {
+      if (!supabase) throw new Error('Supabase non initialisé');
+      const { error } = await supabase
+        .from('scores')
+        .update({
+          surfer: moveTargetSurfer,
+          wave_number: Number(moveTargetWave),
+          timestamp: new Date().toISOString()
+        })
+        .eq('id', currentScore.id);
+
+      if (error) throw error;
+
+      setOverrideStatus({
+        type: 'success',
+        message: `Note déplacée vers ${moveTargetSurfer} · Vague ${moveTargetWave}.`
+      });
+      onReloadData();
+    } catch (error) {
+      console.error('❌ Move score erreur:', error);
+      setOverrideStatus({ type: 'error', message: 'Impossible de déplacer la note.' });
     } finally {
       setOverridePending(false);
     }
@@ -1527,6 +1582,44 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 />
               </div>
             </div>
+
+            {currentScore && (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
+                <p className="text-sm font-medium text-indigo-900">
+                  Déplacer une note (mauvais surfeur / mauvaise vague)
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <select
+                    value={moveTargetSurfer}
+                    onChange={(e) => setMoveTargetSurfer(e.target.value)}
+                    className="w-full border border-indigo-300 rounded-lg px-3 py-2 bg-white"
+                  >
+                    <option value="">Surfeur destination</option>
+                    {config.surfers.map((surfer) => (
+                      <option key={surfer} value={surfer}>{surfer}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={moveTargetWave}
+                    onChange={(e) => setMoveTargetWave(Number(e.target.value))}
+                    className="w-full border border-indigo-300 rounded-lg px-3 py-2 bg-white"
+                  >
+                    <option value="">Vague destination</option>
+                    {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => (
+                      <option key={wave} value={wave}>Vague {wave}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleMoveScore}
+                  disabled={overridePending || !configSaved}
+                  className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'} ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  Déplacer la note sélectionnée
+                </button>
+              </div>
+            )}
 
             {overrideStatus && (
               <div className={`rounded-lg px-4 py-3 text-sm ${overrideStatus.type === 'success'

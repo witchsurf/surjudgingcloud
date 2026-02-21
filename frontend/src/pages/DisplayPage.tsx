@@ -92,6 +92,7 @@ const isLikelyPlaceholder = (name?: string) => {
     if (!name) return false;
     const normalized = name.toUpperCase().trim();
     return normalized.includes('QUALIFI') ||
+        normalized.includes('FINALISTE') ||
         normalized.includes('REPECH') ||
         normalized.startsWith('R') ||
         normalized.startsWith('RP') ||
