@@ -9,7 +9,6 @@ import {
     fetchHeatEntriesWithParticipants,
     fetchHeatSlotMappings,
     replaceHeatEntries,
-    fetchDistinctDivisions,
 } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
@@ -225,45 +224,16 @@ export function useHeatManager() {
             }
         }
 
-        // If no next heat in current division, check for next division
-        let nextDivision = config.division;
-        if (!nextCandidate && activeEventId) {
-            try {
-                const divisions = await fetchDistinctDivisions(activeEventId);
-                // Sort divisions to ensure consistent order (e.g., alphabetical or custom logic)
-                // Actually fetchDistinctDivisions sorts alphabetically or by creation.
-
-                const currentDivIndex = divisions.findIndex(d => d === config.division);
-                if (currentDivIndex >= 0 && currentDivIndex < divisions.length - 1) {
-                    nextDivision = divisions[currentDivIndex + 1];
-                    console.log(`🔄 Fin de la division ${config.division}, passage à ${nextDivision}`);
-
-                    // Fetch sequence for next division
-                    const nextDivSequence = await fetchOrderedHeatSequence(activeEventId, nextDivision);
-                    if (nextDivSequence && nextDivSequence.length > 0) {
-                        nextCandidate = nextDivSequence.find((item: any) => item.status !== 'closed') ?? nextDivSequence[0];
-                        if (nextCandidate) {
-                            nextRound = nextCandidate.round;
-                            nextHeatNumber = nextCandidate.heat_number;
-                        }
-                    }
-                } else {
-                    console.log(`✅ Fin de la division ${config.division} - Dernière division de l'événement`);
-
-                    // Show friendly alert to guide user
-                    setTimeout(() => {
-                        alert(
-                            `✅ Division ${config.division.toUpperCase()} terminée!\n\n` +
-                            `Tous les heats de cette division ont été notés.\n\n` +
-                            `Pour continuer:\n` +
-                            `→ Sélectionnez une autre division dans le menu déroulant\n\n` +
-                            `Ou cliquez OK pour terminer l'événement.`
-                        );
-                    }, 500); // Small delay to ensure UI is ready
-                }
-            } catch (error) {
-                console.warn('Impossible de déterminer la prochaine division', error);
-            }
+        // No automatic division switch: chief judge chooses next division manually from dropdown.
+        const nextDivision = config.division;
+        if (!nextCandidate) {
+            console.log(`✅ Division ${config.division} terminée (ou aucun heat ouvert restant dans cette division)`);
+            setTimeout(() => {
+                alert(
+                    `✅ Division ${config.division.toUpperCase()} terminée.\n\n` +
+                    `Sélectionnez la prochaine division manuellement dans le menu déroulant.`
+                );
+            }, 500);
         }
 
         const advanced = nextRound !== config.round || nextHeatNumber !== config.heatId;

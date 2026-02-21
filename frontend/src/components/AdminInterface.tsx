@@ -8,7 +8,7 @@ import { validateScore } from '../utils/scoring';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllScoresForEvent, fetchHeatScores, ensureEventExists } from '../api/supabaseClient';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchHeatScores, ensureEventExists } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
@@ -91,6 +91,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [overrideStatus, setOverrideStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [overridePending, setOverridePending] = useState(false);
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
+  const [eventDivisionOptions, setEventDivisionOptions] = useState<string[]>([]);
   const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number }>>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
@@ -425,6 +426,42 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   useEffect(() => {
     let cancelled = false;
+    const loadEventDivisions = async () => {
+      if (!isSupabaseConfigured() || !config.competition) {
+        setEventDivisionOptions([]);
+        return;
+      }
+
+      try {
+        let eventId = activeEventId ?? null;
+        if (!eventId) {
+          eventId = await fetchEventIdByName(config.competition);
+        }
+        if (!eventId) {
+          if (!cancelled) setEventDivisionOptions([]);
+          return;
+        }
+
+        const categories = await fetchAllEventCategories(eventId);
+        if (!cancelled) {
+          setEventDivisionOptions(categories);
+        }
+      } catch (error) {
+        console.warn('Impossible de charger toutes les divisions de l’événement:', error);
+        if (!cancelled) {
+          setEventDivisionOptions([]);
+        }
+      }
+    };
+
+    loadEventDivisions();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEventId, config.competition]);
+
+  useEffect(() => {
+    let cancelled = false;
     const loadDivisionHeatSequence = async () => {
       if (!activeEventId || !config.division || !isSupabaseConfigured()) {
         setDivisionHeatSequence([]);
@@ -451,15 +488,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [activeEventId, config.division]);
 
   const effectiveDivisionOptions = React.useMemo(() => {
+    const fromEvent = (eventDivisionOptions || [])
+      .map((value) => value?.toString().trim())
+      .filter((value): value is string => Boolean(value));
     const fromStore = (availableDivisions || [])
       .map((value) => value?.toString().trim())
       .filter((value): value is string => Boolean(value));
     const fromParticipants = (divisionOptions || [])
       .map((value) => value?.toString().trim())
       .filter((value): value is string => Boolean(value));
-    const merged = fromStore.length ? fromStore : fromParticipants;
+    const merged = [...fromEvent, ...fromStore, ...fromParticipants];
     return Array.from(new Set(merged)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [availableDivisions, divisionOptions]);
+  }, [eventDivisionOptions, availableDivisions, divisionOptions]);
 
   const roundOptions = React.useMemo(() => {
     if (!divisionHeatSequence.length) return [config.round];
