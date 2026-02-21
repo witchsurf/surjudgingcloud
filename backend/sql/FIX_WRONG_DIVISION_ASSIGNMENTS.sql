@@ -45,9 +45,9 @@ BEGIN
   -- Correction: on vide seulement participant_id quand category != division.
   UPDATE public.heat_entries he
   SET participant_id = NULL
-  FROM public.heats h
-  JOIN public.participants p ON p.id = he.participant_id
+  FROM public.heats h, public.participants p
   WHERE h.id = he.heat_id
+    AND p.id = he.participant_id
     AND h.event_id = v_event_id
     AND upper(trim(coalesce(p.category, ''))) <> upper(trim(coalesce(h.division, '')));
 
@@ -78,4 +78,3 @@ JOIN public.heats h ON h.id = he.heat_id
 LEFT JOIN public.participants p ON p.id = he.participant_id
 WHERE lower(h.competition) = lower('test off line') -- <-- A ADAPTER si besoin
 ORDER BY h.division, h.round, h.heat_number, he.position;
-
