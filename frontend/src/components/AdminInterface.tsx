@@ -788,79 +788,101 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         throw new Error(`Aucun heat trouvé pour la division ${config.division}.`);
       }
 
+      const parseSourceFromPlaceholder = (placeholder?: string | null) => {
+        const normalized = (placeholder || '').toUpperCase().trim();
+        if (!normalized) return null;
+
+        const direct = normalized.match(/R(P?)(\d+)-H(\d+)-P(\d+)/);
+        if (direct) return { round: Number(direct[2]), heat: Number(direct[3]), position: Number(direct[4]) };
+
+        const displayStyle = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)\s*\(P\s*(\d+)\)/);
+        if (displayStyle) return { round: Number(displayStyle[1]), heat: Number(displayStyle[2]), position: Number(displayStyle[3]) };
+
+        const loose = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)\s*[- ]?\s*P\s*(\d+)/);
+        if (loose) return { round: Number(loose[1]), heat: Number(loose[2]), position: Number(loose[3]) };
+
+        return null;
+      };
+
+      const rankCache = new Map<string, Map<number, { participantId: number | null; seed: number | null; colorCode: string | null }>>();
       let updatedTargetHeats = 0;
 
-      for (const sourceHeat of sequence) {
-        const sourceScoresRaw = await fetchHeatScores(sourceHeat.id);
-        const sourceScores = sourceScoresRaw
-          .filter((score) => Number(score.score) > 0)
-          .map((score) => ({ ...score, surfer: normalizeJerseyLabel(score.surfer) || score.surfer }));
+      for (const targetHeat of sequence) {
+        const mappings = await fetchHeatSlotMappings(targetHeat.id);
+        if (!mappings.length) continue;
 
-        if (!sourceScores.length) {
-          continue;
-        }
+        const targetColorOrder = (targetHeat.color_order ?? []).map((color) => (color || '').toUpperCase());
+        const updates: Array<{ position: number; participant_id: number | null; seed?: number | null; color?: string | null }> = [];
 
-        const sourceEntries = await fetchHeatEntriesWithParticipants(sourceHeat.id);
-        const entryByColor = new Map<string, { participantId: number | null; seed: number | null; colorCode: string | null }>();
-
-        sourceEntries.forEach((entry) => {
-          const rawColor = (entry.color || '').toUpperCase();
-          const label = normalizeJerseyLabel(rawColor);
-          if (!label) return;
-          entryByColor.set(label, {
-            participantId: entry.participant_id ?? null,
-            seed: entry.seed ?? null,
-            colorCode: rawColor || null,
-          });
-        });
-
-        if (!entryByColor.size) {
-          continue;
-        }
-
-        const surfers = Array.from(entryByColor.keys());
-        const judgeCount = Math.max(new Set(sourceScores.map((score) => score.judge_id).filter(Boolean)).size, 1);
-        const maxWaves = Math.max(config.waves || 12, 1);
-        const stats = calculateSurferStats(sourceScores, surfers, judgeCount, maxWaves, true)
-          .sort((a, b) => a.rank - b.rank);
-
-        const entryByRank = new Map<number, { participantId: number | null; seed: number | null; colorCode: string | null }>();
-        stats.forEach((stat) => {
-          const info = entryByColor.get(stat.surfer.trim().toUpperCase());
-          if (info) {
-            entryByRank.set(stat.rank, info);
-          }
-        });
-
-        for (const targetHeat of sequence) {
-          const mappings = await fetchHeatSlotMappings(targetHeat.id);
-          if (!mappings.length) continue;
-
-          const targetColorOrder = (targetHeat.color_order ?? []).map((color) => (color || '').toUpperCase());
-          const updates: Array<{ position: number; participant_id: number | null; seed?: number | null; color?: string | null }> = [];
-
-          mappings.forEach((mapping: any) => {
-            if (Number(mapping.source_round) !== Number(sourceHeat.round) || Number(mapping.source_heat) !== Number(sourceHeat.heat_number)) {
-              return;
+        for (const mapping of mappings as any[]) {
+          const parsed = (mapping.source_round != null && mapping.source_heat != null && mapping.source_position != null)
+            ? {
+              round: Number(mapping.source_round),
+              heat: Number(mapping.source_heat),
+              position: Number(mapping.source_position),
             }
-            const sourceRank = Number(mapping.source_position ?? 0);
-            if (!sourceRank) return;
-            const qualifier = entryByRank.get(sourceRank);
-            if (!qualifier) return;
+            : parseSourceFromPlaceholder(mapping.placeholder);
 
-            const mappedColor = targetColorOrder[mapping.position - 1] || qualifier.colorCode || null;
-            updates.push({
-              position: mapping.position,
-              participant_id: qualifier.participantId,
-              seed: qualifier.seed ?? null,
-              color: mappedColor,
+          if (!parsed || !parsed.round || !parsed.heat || !parsed.position) continue;
+
+          const sourceHeat = sequence.find((item) => Number(item.round) === parsed.round && Number(item.heat_number) === parsed.heat);
+          if (!sourceHeat) continue;
+
+          if (!rankCache.has(sourceHeat.id)) {
+            const sourceScoresRaw = await fetchHeatScores(sourceHeat.id);
+            const sourceScores = sourceScoresRaw
+              .filter((score) => Number(score.score) > 0)
+              .map((score) => ({ ...score, surfer: normalizeJerseyLabel(score.surfer) || score.surfer }));
+
+            const sourceEntries = await fetchHeatEntriesWithParticipants(sourceHeat.id);
+            const entryByColor = new Map<string, { participantId: number | null; seed: number | null; colorCode: string | null }>();
+
+            sourceEntries.forEach((entry) => {
+              const rawColor = (entry.color || '').toUpperCase();
+              const label = normalizeJerseyLabel(rawColor);
+              if (!label) return;
+              entryByColor.set(label, {
+                participantId: entry.participant_id ?? null,
+                seed: entry.seed ?? null,
+                colorCode: rawColor || null,
+              });
             });
-          });
 
-          if (updates.length) {
-            await replaceHeatEntries(targetHeat.id, updates);
-            updatedTargetHeats += 1;
+            const entryByRank = new Map<number, { participantId: number | null; seed: number | null; colorCode: string | null }>();
+            if (sourceScores.length > 0 && entryByColor.size > 0) {
+              const surfers = Array.from(entryByColor.keys());
+              const judgeCount = Math.max(new Set(sourceScores.map((score) => score.judge_id).filter(Boolean)).size, 1);
+              const maxWaves = Math.max(config.waves || 12, 1);
+              const stats = calculateSurferStats(sourceScores, surfers, judgeCount, maxWaves, true)
+                .sort((a, b) => a.rank - b.rank);
+
+              stats.forEach((stat) => {
+                const info = entryByColor.get(stat.surfer.trim().toUpperCase());
+                if (info) {
+                  entryByRank.set(stat.rank, info);
+                }
+              });
+            }
+
+            rankCache.set(sourceHeat.id, entryByRank);
           }
+
+          const entryByRank = rankCache.get(sourceHeat.id) ?? new Map();
+          const qualifier = entryByRank.get(parsed.position);
+          const mappedColor = targetColorOrder[mapping.position - 1] || qualifier?.colorCode || null;
+
+          // Important: if source heat has no valid result for this slot, explicitly clear stale participant.
+          updates.push({
+            position: mapping.position,
+            participant_id: qualifier?.participantId ?? null,
+            seed: qualifier?.seed ?? null,
+            color: mappedColor,
+          });
+        }
+
+        if (updates.length) {
+          await replaceHeatEntries(targetHeat.id, updates);
+          updatedTargetHeats += 1;
         }
       }
 
