@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, Waves, Lock, CreditCard as Edit3 } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
-import type { AppConfig, Score, HeatTimer as HeatTimerType } from '../types';
+import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
-import { fetchHeatScores, updateJudgeName, fetchEventIdByName } from '../api/supabaseClient';
+import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
+import { computeEffectiveInterferences, summarizeInterferenceBySurfer } from '../utils/interference';
 
 interface JudgeInterfaceProps {
   config?: AppConfig;
@@ -59,6 +60,11 @@ function JudgeInterface({
   const [submittedScores, setSubmittedScores] = useState<Score[]>([]);
   const [activeInput, setActiveInput] = useState<ScoreInputState | null>(null);
   const [inputValue, setInputValue] = useState('');
+  const [entryMode, setEntryMode] = useState<'score' | 'interference'>('score');
+  const [interferenceType, setInterferenceType] = useState<InterferenceType>('INT1');
+  const [headJudgeOverride, setHeadJudgeOverride] = useState(false);
+  const [interferenceCalls, setInterferenceCalls] = useState<InterferenceCall[]>([]);
+  const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
 
   // Judge Name Modal State
   const [showNameModal, setShowNameModal] = useState(false);
@@ -175,10 +181,27 @@ function JudgeInterface({
     setSubmittedScores(merged.filter(score => score.heat_id === currentId && score.judge_id === judgeId));
   }, [currentHeatId, judgeId, persistScoresToStorage, readAllScoresFromStorage]);
 
+  const refreshInterferenceCalls = useCallback(async () => {
+    if (!currentHeatId || !isSupabaseConfigured()) return;
+    try {
+      const calls = await fetchInterferenceCalls(currentHeatId);
+      setInterferenceCalls(calls);
+      setEffectiveInterferences(computeEffectiveInterferences(calls, Math.max(config.judges.length, 1)));
+    } catch (error) {
+      console.warn('Impossible de charger les interférences', error);
+      setInterferenceCalls([]);
+      setEffectiveInterferences([]);
+    }
+  }, [currentHeatId, config.judges.length]);
+
   // Charger les scores soumis depuis localStorage
   useEffect(() => {
     setSubmittedScores(readScoresFromStorage());
   }, [readScoresFromStorage]);
+
+  useEffect(() => {
+    refreshInterferenceCalls().catch(() => {});
+  }, [refreshInterferenceCalls]);
 
   // Écouter les changements de scores
   useEffect(() => {
@@ -339,11 +362,39 @@ function JudgeInterface({
 
   const handleCellClick = (surfer: string, wave: number) => {
     if (!timerActive) return;
+    if (entryMode === 'interference') {
+      handleInterferenceCall(surfer, wave).catch((error) => {
+        console.error('❌ Erreur interférence:', error);
+        alert('Impossible d’enregistrer l’interférence.');
+      });
+      return;
+    }
+
     if (!canScoreWave(surfer, wave)) return;
 
     const existingScore = getScoreForWave(surfer, wave);
     setActiveInput({ surfer, wave, value: existingScore?.score.toString() || '' });
     setInputValue(existingScore?.score.toString() || '');
+  };
+
+  const handleInterferenceCall = async (surfer: string, wave: number) => {
+    if (!currentHeatId) return;
+    const eventId = await fetchEventIdByName(config.competition);
+    const judgeName = config.judgeNames[judgeId] || judgeId;
+    await upsertInterferenceCall({
+      event_id: eventId,
+      heat_id: currentHeatId,
+      competition: config.competition,
+      division: config.division,
+      round: config.round,
+      judge_id: judgeId,
+      judge_name: judgeName,
+      surfer,
+      wave_number: wave,
+      call_type: interferenceType,
+      is_head_judge_override: isChiefJudge && headJudgeOverride,
+    });
+    await refreshInterferenceCalls();
   };
 
   const handleScoreSubmit = async () => {
@@ -451,6 +502,17 @@ function JudgeInterface({
   }
 
   const timerActive = isTimerActive();
+  const effectiveByTarget = useMemo(() => {
+    const map = new Map<string, EffectiveInterference>();
+    effectiveInterferences.forEach((item) => {
+      map.set(`${item.surfer.toUpperCase()}::${item.waveNumber}`, item);
+    });
+    return map;
+  }, [effectiveInterferences]);
+  const interferenceBySurfer = useMemo(
+    () => summarizeInterferenceBySurfer(effectiveInterferences),
+    [effectiveInterferences]
+  );
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
@@ -556,6 +618,44 @@ function JudgeInterface({
           <p className="text-sm text-gray-600 mt-1">
             Cliquez sur une case pour noter. Les vagues doivent être notées dans l'ordre.
           </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setEntryMode('score')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${entryMode === 'score' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
+            >
+              Mode notes
+            </button>
+            <button
+              type="button"
+              onClick={() => setEntryMode('interference')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${entryMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
+            >
+              Mode interférence
+            </button>
+            {entryMode === 'interference' && (
+              <>
+                <select
+                  value={interferenceType}
+                  onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
+                >
+                  <option value="INT1">Interférence #1 (B/2)</option>
+                  <option value="INT2">Interférence #2 (B=0)</option>
+                </select>
+                {isChiefJudge && (
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={headJudgeOverride}
+                      onChange={(e) => setHeadJudgeOverride(e.target.checked)}
+                    />
+                    Arbitrage Head Judge
+                  </label>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -588,6 +688,7 @@ function JudgeInterface({
                     const scoreData = getScoreForWave(surfer, wave);
                     const canScore = timerActive && canScoreWave(surfer, wave);
                     const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
+                    const effective = effectiveByTarget.get(`${surfer.toUpperCase()}::${wave}`);
 
                     return (
                       <td key={wave} className="px-3 py-3 text-center">
@@ -615,7 +716,9 @@ function JudgeInterface({
                         ) : scoreData ? (
                           <button
                             onClick={() => handleCellClick(surfer, wave)}
-                            className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 rounded text-sm font-medium hover:bg-green-200 transition-colors"
+                            className={`inline-flex items-center px-2 py-1 rounded text-sm font-medium transition-colors ${entryMode === 'interference'
+                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                              : 'bg-green-100 text-green-800 hover:bg-green-200'}`}
                             disabled={!timerActive}
                           >
                             {scoreData.score.toFixed(2)}
@@ -631,6 +734,11 @@ function JudgeInterface({
                           </button>
                         ) : (
                           <span className="text-gray-400">—</span>
+                        )}
+                        {effective && (
+                          <div className="mt-1 text-[10px] font-semibold text-amber-700">
+                            {effective.type === 'INT1' ? 'INT#1' : 'INT#2'} {effective.source === 'head_judge' ? '(HJ)' : ''}
+                          </div>
                         )}
                       </td>
                     );
@@ -658,10 +766,33 @@ function JudgeInterface({
             </div>
           </div>
           <p className="text-center text-xs text-gray-500 mt-2">
-            ⚠️ Les vagues doivent être notées dans l'ordre séquentiel pour chaque surfeur
+            {entryMode === 'interference'
+              ? '⚠️ Mode interférence: choisissez le type puis cliquez la note/vague du surfeur fautif.'
+              : '⚠️ Les vagues doivent être notées dans l\'ordre séquentiel pour chaque surfeur'}
           </p>
         </div>
       </div>
+
+      {effectiveInterferences.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-amber-900 mb-2">Interférences effectives (majorité / Head Judge)</h3>
+          <ul className="space-y-1 text-sm text-amber-800">
+            {config.surfers.map((surfer) => {
+              const summary = interferenceBySurfer.get(surfer.toUpperCase());
+              if (!summary) return null;
+              return (
+                <li key={surfer}>
+                  <strong>{surfer}</strong>: {summary.isDisqualified
+                    ? 'DSQ (2 interférences confirmées)'
+                    : summary.type === 'INT1'
+                      ? 'Interférence #1 active (B/2)'
+                      : 'Interférence #2 active (B=0)'}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* RÉSUMÉ DES SCORES */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">

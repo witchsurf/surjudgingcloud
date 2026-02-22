@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import type { AppConfig, Score } from '../types';
+import type { AppConfig, InterferenceCall, InterferenceType, Score } from '../types';
 import type { ParsedParticipant } from '../utils/csv';
 import type { RoundSpec, HeatSlotSpec } from '../utils/bracket';
 import { getColorSet } from '../utils/colorUtils';
@@ -1097,6 +1097,53 @@ export async function fetchHeatScores(heatId: string): Promise<Score[]> {
     created_at: row.created_at ?? undefined,
     synced: true,
   }));
+}
+
+export async function fetchInterferenceCalls(heatId: string): Promise<InterferenceCall[]> {
+  ensureSupabase();
+  const normalizedHeatId = ensureHeatId(heatId);
+  const { data, error } = await supabase!
+    .from('interference_calls')
+    .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
+    .eq('heat_id', normalizedHeatId)
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as InterferenceCall[];
+}
+
+export async function upsertInterferenceCall(input: {
+  event_id?: number | null;
+  heat_id: string;
+  competition?: string;
+  division?: string;
+  round?: number;
+  judge_id: string;
+  judge_name?: string;
+  surfer: string;
+  wave_number: number;
+  call_type: InterferenceType;
+  is_head_judge_override?: boolean;
+}): Promise<void> {
+  ensureSupabase();
+  const payload = {
+    event_id: input.event_id ?? null,
+    heat_id: ensureHeatId(input.heat_id),
+    competition: input.competition ?? null,
+    division: input.division ?? null,
+    round: input.round ?? null,
+    judge_id: input.judge_id,
+    judge_name: input.judge_name ?? null,
+    surfer: input.surfer,
+    wave_number: input.wave_number,
+    call_type: input.call_type,
+    is_head_judge_override: Boolean(input.is_head_judge_override),
+  };
+
+  const { error } = await supabase!
+    .from('interference_calls')
+    .upsert(payload, { onConflict: 'heat_id,judge_id,surfer,wave_number' });
+  if (error) throw error;
 }
 
 export async function fetchScoresForHeats(heatIds: string[]): Promise<Record<string, Score[]>> {

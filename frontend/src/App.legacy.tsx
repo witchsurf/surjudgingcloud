@@ -25,6 +25,7 @@ import {
   fetchOrderedHeatSequence,
   fetchHeatEntriesWithParticipants,
   fetchHeatSlotMappings,
+  fetchInterferenceCalls,
   replaceHeatEntries,
   fetchLatestEventConfig,
   updateEventConfiguration,
@@ -36,6 +37,7 @@ import {
 import { isSupabaseConfigured } from './lib/supabase';
 import { colorLabelMap, type HeatColor } from './utils/colorUtils';
 import { calculateSurferStats, getEffectiveJudgeCount } from './utils/scoring';
+import { computeEffectiveInterferences } from './utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from './utils/heat';
 
 const STORAGE_KEYS = {
@@ -1378,7 +1380,9 @@ function App() {
           });
 
           const judgeCount = getEffectiveJudgeCount(scores, config.judges.length);
-          const stats = calculateSurferStats(scores, config.surfers, judgeCount, config.waves)
+          const interferenceCalls = await fetchInterferenceCalls(currentHeatId);
+          const effectiveInterferences = computeEffectiveInterferences(interferenceCalls, Math.max(config.judges.length, 1));
+          const stats = calculateSurferStats(scores, config.surfers, judgeCount, config.waves, false, effectiveInterferences)
             .sort((a, b) => a.rank - b.rank);
 
           const entryByRank = new Map<number, {

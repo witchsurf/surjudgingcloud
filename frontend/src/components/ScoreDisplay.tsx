@@ -4,9 +4,13 @@ import HeatTimer from './HeatTimer';
 import HeatResults from './HeatResults';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
+import { fetchInterferenceCalls } from '../api/supabaseClient';
+import { computeEffectiveInterferences } from '../utils/interference';
+import { getHeatIdentifiers } from '../utils/heat';
 
 import type {
   AppConfig,
+  EffectiveInterference,
   Score,
   SurferStats,
   HeatTimer as HeatTimerType,
@@ -137,6 +141,13 @@ export default function ScoreDisplay({
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [surferStats, setSurferStats] = useState<SurferStats[]>([]);
   const [eventData, setEventData] = useState<any>(null);
+  const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
+  const { normalized: heatId } = getHeatIdentifiers(
+    config.competition,
+    config.division,
+    config.round,
+    config.heatId
+  );
 
   // Load eventData for PDF export
   useEffect(() => {
@@ -159,6 +170,29 @@ export default function ScoreDisplay({
     setLastUpdate(new Date());
   }, [scores]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!configSaved || !heatId) {
+      setEffectiveInterferences([]);
+      return;
+    }
+    fetchInterferenceCalls(heatId)
+      .then((calls) => {
+        if (cancelled) return;
+        const computed = computeEffectiveInterferences(calls, Math.max(config.judges.length, 1));
+        setEffectiveInterferences(computed);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('Impossible de charger les interférences du heat', error);
+          setEffectiveInterferences([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [configSaved, heatId, config.judges.length, scores]);
+
   // Calcul des stats
   useEffect(() => {
     if (!configSaved) return;
@@ -170,10 +204,11 @@ export default function ScoreDisplay({
       config.surfers,
       judgeCount,
       config.waves,
-      false
+      false,
+      effectiveInterferences
     );
     setSurferStats(stats);
-  }, [scores, configSaved, config, heatStatus]);
+  }, [scores, configSaved, config, heatStatus, effectiveInterferences]);
 
   if (!config?.competition) {
     return (
@@ -300,6 +335,16 @@ export default function ScoreDisplay({
                             <div className="text-base sm:text-xl font-bold leading-tight">
                               {displayName}
                             </div>
+                            {stat.isDisqualified && (
+                              <div className="text-[0.65rem] sm:text-xs font-semibold uppercase tracking-wide">
+                                DSQ (2 interférences)
+                              </div>
+                            )}
+                            {!stat.isDisqualified && (stat.interferenceType === 'INT1' || stat.interferenceType === 'INT2') && (
+                              <div className="text-[0.65rem] sm:text-xs font-semibold uppercase tracking-wide">
+                                {stat.interferenceType === 'INT1' ? 'Interférence #1 (B/2)' : 'Interférence #2 (B=0)'}
+                              </div>
+                            )}
                             {country && (
                               <div className="text-[0.65rem] sm:text-xs opacity-80 uppercase tracking-wide">
                                 {country}

@@ -67,8 +67,9 @@ export function rankSurfers(surferScores: Array<{ surfer: string; best2: number 
   });
 }
 
-import type { Score, SurferStats, WaveScore } from '../types';
+import type { EffectiveInterference, Score, SurferStats, WaveScore } from '../types';
 import { SURFER_COLORS } from './constants';
+import { summarizeInterferenceBySurfer } from './interference';
 
 function calculateScoreAverage(scores: number[], judgeCount: number): number {
   if (scores.length === 0) return 0;
@@ -95,8 +96,10 @@ export function calculateSurferStats(
   surfers: string[],
   judgeCount: number,
   maxWaves: number = 12,
-  allowIncomplete: boolean = false
+  allowIncomplete: boolean = false,
+  effectiveInterferences: EffectiveInterference[] = []
 ): SurferStats[] {
+  const interferenceBySurfer = summarizeInterferenceBySurfer(effectiveInterferences);
   const surferStats = surfers.map(surfer => {
     // Grouper les scores par vague
     const waveScores: Record<number, Record<string, number>> = {};
@@ -147,29 +150,50 @@ export function calculateSurferStats(
     // Trier par score décroissant et prendre les 2 meilleures (seulement les vagues complètes)
     const completeWaves = waves.filter(wave => wave.isComplete);
     const sortedWaves = [...completeWaves].sort((a, b) => b.score - a.score);
-    const bestTwo = roundScore(sortedWaves.slice(0, 2).reduce((sum, wave) => sum + wave.score, 0));
+    const summary = interferenceBySurfer.get(surfer.toUpperCase());
+    const isDisqualified = Boolean(summary?.isDisqualified);
+    const waveA = sortedWaves[0]?.score ?? 0;
+    const waveB = sortedWaves[1]?.score ?? 0;
+    let bestTwo = roundScore(waveA + waveB);
+
+    if (isDisqualified) {
+      bestTwo = 0;
+    } else if (summary?.type === 'INT1') {
+      bestTwo = roundScore(waveA + (waveB / 2));
+    } else if (summary?.type === 'INT2') {
+      bestTwo = roundScore(waveA);
+    }
 
     return {
       surfer,
       waves,
       bestTwo,
       rank: 1,
-      color: SURFER_COLORS[surfer as keyof typeof SURFER_COLORS] || '#6b7280'
+      color: SURFER_COLORS[surfer as keyof typeof SURFER_COLORS] || '#6b7280',
+      isDisqualified,
+      interferenceCount: summary?.count ?? 0,
+      interferenceType: summary?.type ?? null,
     };
   });
 
   // Calculer les rangs
-  const ranked = rankSurfers(surferStats.map(({ surfer, bestTwo }) => ({ surfer, best2: bestTwo })));
+  const eligible = surferStats
+    .filter((stats) => !stats.isDisqualified)
+    .map(({ surfer, bestTwo }) => ({ surfer, best2: bestTwo }));
+  const ranked = rankSurfers(eligible);
   const rankBySurfer = new Map(ranked.map(item => [item.surfer, item.rank]));
   const bestTwoBySurfer = new Map(ranked.map(item => [item.surfer, item.best2]));
+  const dsqRank = ranked.length + 1;
 
   const withRanks = surferStats.map(stats => ({
     ...stats,
-    bestTwo: bestTwoBySurfer.get(stats.surfer) ?? stats.bestTwo,
-    rank: rankBySurfer.get(stats.surfer) ?? stats.rank
+    bestTwo: stats.isDisqualified ? 0 : (bestTwoBySurfer.get(stats.surfer) ?? stats.bestTwo),
+    rank: stats.isDisqualified ? dsqRank : (rankBySurfer.get(stats.surfer) ?? stats.rank)
   }));
 
   withRanks.sort((a, b) => {
+    if (a.isDisqualified && !b.isDisqualified) return 1;
+    if (!a.isDisqualified && b.isDisqualified) return -1;
     if (a.rank !== b.rank) {
       return a.rank - b.rank;
     }

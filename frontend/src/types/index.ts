@@ -98,6 +98,35 @@ export interface SurferStats {
   bestTwo: number;
   rank: number;
   color: string;
+  isDisqualified?: boolean;
+  interferenceCount?: number;
+  interferenceType?: 'INT1' | 'INT2' | null;
+}
+
+export type InterferenceType = 'INT1' | 'INT2';
+
+export interface InterferenceCall {
+  id?: string;
+  event_id?: number | null;
+  heat_id: string;
+  competition?: string | null;
+  division?: string | null;
+  round?: number | null;
+  judge_id: string;
+  judge_name?: string | null;
+  surfer: string;
+  wave_number: number;
+  call_type: InterferenceType;
+  is_head_judge_override?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EffectiveInterference {
+  surfer: string;
+  waveNumber: number;
+  type: InterferenceType;
+  source: 'majority' | 'head_judge';
 }
 
 export type PaymentProvider = 'orange_money' | 'wave' | 'stripe';

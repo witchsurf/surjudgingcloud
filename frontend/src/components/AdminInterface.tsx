@@ -6,11 +6,12 @@ import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason } from '../types';
 import { validateScore } from '../utils/scoring';
 import { calculateSurferStats } from '../utils/scoring';
+import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, replaceHeatEntries, ensureEventExists } from '../api/supabaseClient';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
@@ -878,7 +879,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               const surfers = Array.from(entryByColor.keys());
               const judgeCount = Math.max(new Set(sourceScores.map((score) => score.judge_id).filter(Boolean)).size, 1);
               const maxWaves = Math.max(config.waves || 12, 1);
-              const stats = calculateSurferStats(sourceScores, surfers, judgeCount, maxWaves, true)
+              const sourceInterferenceCalls = await fetchInterferenceCalls(sourceHeat.id);
+              const effectiveInterferences = computeEffectiveInterferences(sourceInterferenceCalls, judgeCount);
+              const stats = calculateSurferStats(sourceScores, surfers, judgeCount, maxWaves, true, effectiveInterferences)
                 .sort((a, b) => a.rank - b.rank);
 
               stats.forEach((stat) => {
@@ -1035,6 +1038,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     );
     return Array.from(waves).sort((a, b) => a - b);
   }, [scores, selectedSurfer, heatId]);
+
+  React.useEffect(() => {
+    if (!selectedWave) return;
+    if (!surferScoredWaves.includes(Number(selectedWave))) {
+      setSelectedWave('');
+    }
+  }, [selectedWave, surferScoredWaves]);
 
   const handleResetAllData = () => {
     console.log('🗑️ RESET COMPLET DEPUIS ADMIN...');
@@ -1812,7 +1822,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-1">Surfeur</label>
                 <select
                   value={selectedSurfer}
-                  onChange={(e) => { setSelectedSurfer(e.target.value); setOverrideStatus(null); }}
+                  onChange={(e) => { setSelectedSurfer(e.target.value); setSelectedWave(''); setOverrideStatus(null); }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2"
                   required
                 >
@@ -1828,24 +1838,26 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-1">Vague</label>
                 <select
                   value={selectedWave}
-                  onChange={(e) => { setSelectedWave(Number(e.target.value)); setOverrideStatus(null); }}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedWave(value ? Number(value) : '');
+                    setOverrideStatus(null);
+                  }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2"
                   required
                 >
                   <option value="">Sélectionner une vague</option>
-                  {surferScoredWaves.length > 0 ? (
-                    surferScoredWaves.map((wave) => (
-                      <option key={wave} value={wave}>Vague {wave}</option>
-                    ))
-                  ) : (
-                    // Fallback to all waves if no scored waves found (covers Omission case for 1st wave)
-                    Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => (
-                      <option key={wave} value={wave}>Vague {wave}</option>
-                    ))
-                  )}
+                  {surferScoredWaves.map((wave) => (
+                    <option key={wave} value={wave}>Vague {wave}</option>
+                  ))}
                 </select>
-                {surferScoredWaves.length > 0 && (
-                  <p className="text-xs text-gray-500 mt-1">Seules les vagues notées sont affichées.</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Seules les vagues surfées/notées pour ce surfeur sont affichées.
+                </p>
+                {selectedSurfer && surferScoredWaves.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Aucune vague notée trouvée pour ce surfeur sur ce heat.
+                  </p>
                 )}
               </div>
 

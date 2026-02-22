@@ -5,11 +5,13 @@ import {
     fetchHeatSlotMappings,
     fetchHeatMetadata,
     fetchHeatScores,
+    fetchInterferenceCalls,
     fetchCategoryHeats,
     fetchAllScoresForEvent
 } from '../api/supabaseClient';
 import { calculateSurferStats } from '../utils/scoring';
 import { colorLabelMap } from '../utils/colorUtils';
+import { computeEffectiveInterferences } from '../utils/interference';
 
 const COLORS_BY_POSITION: Record<number, string> = {
     1: 'ROUGE',
@@ -180,7 +182,12 @@ async function resolveNamesFromMappings(
             }));
             const surfers = Object.keys(namesByColor);
             const judgeCount = new Set(sourceScores.map((score) => score.judge_id).filter(Boolean)).size;
-            const stats = calculateSurferStats(sourceScores, surfers, Math.max(judgeCount, 1), 20, true);
+            const sourceInterferenceCalls = await fetchInterferenceCalls(sourceHeatId);
+            const sourceEffectiveInterferences = computeEffectiveInterferences(
+                sourceInterferenceCalls,
+                Math.max(judgeCount, 1)
+            );
+            const stats = calculateSurferStats(sourceScores, surfers, Math.max(judgeCount, 1), 20, true, sourceEffectiveInterferences);
 
             const rankToColor = new Map<number, string>();
             stats
@@ -255,8 +262,8 @@ async function resolveNamesFromMappings(
             };
 
             const orderedRounds = [...rounds].sort((a, b) => a.roundNumber - b.roundNumber);
-            orderedRounds.forEach((round) => {
-                round.heats.forEach((heat) => {
+            for (const round of orderedRounds) {
+                for (const heat of round.heats) {
                     heat.slots.forEach((slot) => {
                         if (!slot.name && !slot.placeholder) return;
                         const candidate = slot.placeholder || slot.name;
@@ -288,8 +295,13 @@ async function resolveNamesFromMappings(
                         ...score,
                         surfer: normalizeColor(score.surfer) || score.surfer
                     }));
+                    const heatInterferenceCalls = await fetchInterferenceCalls(heat.heatId);
+                    const heatEffectiveInterferences = computeEffectiveInterferences(
+                        heatInterferenceCalls,
+                        Math.max(new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size, 1)
+                    );
                     const judgeCount = new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size;
-                    const stats = calculateSurferStats(normalizedScores, surfers, Math.max(judgeCount, 1), 20, true);
+                    const stats = calculateSurferStats(normalizedScores, surfers, Math.max(judgeCount, 1), 20, true, heatEffectiveInterferences);
 
                     stats
                         .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
@@ -299,8 +311,8 @@ async function resolveNamesFromMappings(
                             buildQualifierKeyVariants(round.roundNumber, heat.heatNumber, stat.rank)
                                 .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), name));
                         });
-                });
-            });
+                }
+            }
 
             const targetMappings = withSource.length > 0 ? withSource : mappings;
             targetMappings.forEach((mapping) => {

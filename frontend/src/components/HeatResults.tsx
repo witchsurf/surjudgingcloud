@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Score } from '../types';
+import type { EffectiveInterference, Score } from '../types';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
-import { fetchHeatEntriesWithParticipants } from '../api/supabaseClient';
+import { fetchHeatEntriesWithParticipants, fetchInterferenceCalls } from '../api/supabaseClient';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { HEAT_RESULTS_CACHE_KEY } from '../utils/constants';
+import { computeEffectiveInterferences } from '../utils/interference';
 
 interface HeatResultsProps {
   heatId: string | null;
@@ -56,6 +57,7 @@ export default function HeatResults({
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [entriesError, setEntriesError] = useState<string | null>(null);
   const [scoresState, setScoresState] = useState<Score[]>(scores);
+  const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
 
   useEffect(() => {
     setScoresState(scores);
@@ -180,11 +182,33 @@ export default function HeatResults({
     };
   }, [visible, heatId]);
 
+  useEffect(() => {
+    if (!visible || !heatId || !isSupabaseConfigured()) {
+      setEffectiveInterferences([]);
+      return;
+    }
+    let cancelled = false;
+    fetchInterferenceCalls(heatId)
+      .then((calls) => {
+        if (cancelled) return;
+        setEffectiveInterferences(computeEffectiveInterferences(calls, Math.max(judgeIds.length, 1)));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('Impossible de charger les interférences du heat', error);
+          setEffectiveInterferences([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, heatId, judgeIds.length, scoresState]);
+
   const rows = useMemo(() => {
     if (!scoresState.length) return [];
 
     const judgeCount = getEffectiveJudgeCount(scoresState, judgeIds.length);
-    const stats = calculateSurferStats(scoresState, surfers, judgeCount, maxWaves);
+    const stats = calculateSurferStats(scoresState, surfers, judgeCount, maxWaves, false, effectiveInterferences);
     const aggregates = stats.map((stat) => {
       const entryInfo = entryMap.get(stat.surfer) ?? { jersey: stat.surfer, name: stat.surfer };
 
@@ -207,7 +231,7 @@ export default function HeatResults({
         ...item,
         rank: index + 1,
       }));
-  }, [scoresState, surfers, judgeIds.length, maxWaves, entryMap]);
+  }, [scoresState, surfers, judgeIds.length, maxWaves, entryMap, effectiveInterferences]);
 
   useEffect(() => {
     if (!visible || !heatId || !rows.length) return;
