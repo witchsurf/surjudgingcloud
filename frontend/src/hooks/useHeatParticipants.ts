@@ -366,12 +366,16 @@ export function useHeatParticipants(heatId: string) {
                 const entries = await fetchHeatEntriesWithParticipants(heatId);
                 const entryNames = (entries || []).reduce((acc, entry) => {
                     const color = normalizeColor(entry.color);
-                    if (!color) return acc;
-                    const name = entry.participant?.name || color;
+                    const name = entry.participant?.name?.trim();
+                    if (!color || !name) return acc;
                     return { ...acc, [color]: name };
                 }, {} as Record<string, string>);
 
-                const hasRealEntryNames = Object.values(entryNames).some((name) => !isPlaceholderLike(name));
+                const hasRealEntryNames = Object.values(entryNames).some((name) => {
+                    const normalized = normalizeColor(name);
+                    if (normalized && normalized in COLOR_MAP) return false;
+                    return !isPlaceholderLike(name);
+                });
                 if (hasRealEntryNames) {
                     setParticipants(entryNames);
                     setSource('entries');
