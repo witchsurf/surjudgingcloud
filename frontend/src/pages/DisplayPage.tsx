@@ -373,6 +373,19 @@ export default function DisplayPage() {
     // Load participant names for current heat
     const { participants: heatParticipants, source: heatParticipantsSource } = useHeatParticipants(currentHeatId);
 
+    const liveDisplayConfig = useMemo(() => {
+        const mergedNames = mergeSurferNames(config.surferNames, heatParticipants);
+        const countries = Object.keys(liveHeatCountries).length > 0
+            ? liveHeatCountries
+            : (config.surferCountries || {});
+
+        return normalizeConfig({
+            ...config,
+            surferNames: mergedNames,
+            surferCountries: countries,
+        } as AppConfig);
+    }, [config, heatParticipants, liveHeatCountries]);
+
     useEffect(() => {
         let cancelled = false;
 
@@ -460,10 +473,10 @@ export default function DisplayPage() {
                         setConfig((prev) => {
                             const snapshotNames = normalizeSurferMap(snapshot.surferNames || {});
                             const mergedNames = mergeSurferNames(prev.surferNames, snapshotNames);
-                            const mergedCountries = {
-                                ...(prev.surferCountries || {}),
-                                ...normalizeSurferCountries(snapshot.surferCountries || {})
-                            };
+                            const snapshotCountries = normalizeSurferCountries(snapshot.surferCountries || {});
+                            const mergedCountries = Object.keys(liveHeatCountries).length > 0
+                                ? liveHeatCountries
+                                : (Object.keys(snapshotCountries).length > 0 ? snapshotCountries : (prev.surferCountries || {}));
 
                             const newConfig = {
                                 ...prev,
@@ -497,7 +510,7 @@ export default function DisplayPage() {
                 supabase?.removeChannel(channel);
             }
         };
-    }, [activeEventId, config.heatId, config.round]); // Removed setConfig to prevent loop
+    }, [activeEventId, config.heatId, config.round, liveHeatCountries]); // Removed setConfig to prevent loop
 
     // Subscribe to realtime heat timer/config and scores
     useEffect(() => {
@@ -623,7 +636,7 @@ export default function DisplayPage() {
             <div className="flex-grow pt-4">
                 {viewMode === 'live' ? (
                     <ScoreDisplay
-                        config={config}
+                        config={liveDisplayConfig}
                         scores={scores}
                         timer={timer}
                         configSaved={configSaved}
