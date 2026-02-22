@@ -200,6 +200,7 @@ export default function DisplayPage() {
     const [historyConfig, setHistoryConfig] = useState<AppConfig | null>(null);
     const [historyScores, setHistoryScores] = useState<Score[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+    const [liveHeatCountries, setLiveHeatCountries] = useState<Record<string, string>>({});
 
     // Fetch available heats on mount
     useEffect(() => {
@@ -372,27 +373,60 @@ export default function DisplayPage() {
     // Load participant names for current heat
     const { participants: heatParticipants, source: heatParticipantsSource } = useHeatParticipants(currentHeatId);
 
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadLiveHeatCountries = async () => {
+            try {
+                const entries = await fetchHeatEntriesWithParticipants(currentHeatId);
+                if (cancelled) return;
+
+                const countries = entries.reduce<Record<string, string>>((acc, entry) => {
+                    const color = normalizeColorCode(entry.color || undefined);
+                    const country = normalizeCountry(entry.participant?.country || undefined);
+                    if (!color || !country) return acc;
+                    acc[color] = country;
+                    return acc;
+                }, {});
+
+                setLiveHeatCountries(countries);
+            } catch (error) {
+                if (!cancelled) {
+                    console.warn('Impossible de charger les pays du heat courant', error);
+                    setLiveHeatCountries({});
+                }
+            }
+        };
+
+        loadLiveHeatCountries();
+        return () => {
+            cancelled = true;
+        };
+    }, [currentHeatId]);
+
     // Sync heat participants into config when they load
     useEffect(() => {
         setConfig(prev => {
             if (heatParticipantsSource === 'entries') {
                 return {
                     ...prev,
-                    surferNames: mergeSurferNames(prev.surferNames, heatParticipants)
+                    surferNames: mergeSurferNames(prev.surferNames, heatParticipants),
+                    surferCountries: liveHeatCountries
                 };
             }
 
             if (heatParticipantsSource === 'mappings') {
                 return {
                     ...prev,
-                    surferNames: mergeSurferNames(prev.surferNames, heatParticipants)
+                    surferNames: mergeSurferNames(prev.surferNames, heatParticipants),
+                    surferCountries: liveHeatCountries
                 };
             }
 
             // If we couldn't load entries/mappings yet, keep existing names to avoid flicker.
             return prev;
         });
-    }, [heatParticipants, heatParticipantsSource, setConfig]);
+    }, [heatParticipants, heatParticipantsSource, liveHeatCountries, setConfig]);
 
     const [isReloading, setIsReloading] = useState(false);
 
