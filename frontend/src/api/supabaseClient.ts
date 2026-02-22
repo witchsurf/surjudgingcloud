@@ -500,9 +500,26 @@ export async function createHeatsWithEntries(
     }
 
     const normalized = value.trim().toUpperCase();
-    const match = normalized.match(/^(RP?)(\d+)-H(\d+)-P(\d+)$/);
-    if (match) {
-      const [, , roundStr, heatStr, posStr] = match;
+    // Accept multiple formats:
+    // - R1-H2-P1
+    // - R1-H2 P1
+    // - R1-H2 (P1)
+    // - QUALIFIE R1-H2 (P1)
+    const canonical = normalized.match(/R(P?)(\d+)-H(\d+)-P(\d+)/);
+    if (canonical) {
+      const [, , roundStr, heatStr, posStr] = canonical;
+      return {
+        placeholder: normalized,
+        sourceRound: Number.parseInt(roundStr, 10),
+        sourceHeat: Number.parseInt(heatStr, 10),
+        sourcePosition: Number.parseInt(posStr, 10),
+      };
+    }
+
+    const spaced = normalized.match(/R(P?)(\d+)\s*-\s*H(\d+)\s*(?:\(\s*P(\d+)\s*\)|\s+P(\d+))/);
+    if (spaced) {
+      const [, , roundStr, heatStr, posA, posB] = spaced;
+      const posStr = posA ?? posB;
       return {
         placeholder: normalized,
         sourceRound: Number.parseInt(roundStr, 10),
@@ -586,9 +603,17 @@ export async function createHeatsWithEntries(
         const slotColor = colorOrder[index] ?? null;
         const seed = slot.seed ?? null;
 
-        // Skip participant validation for placeholders (future round qualifiers)
+        // Always create an entry row for placeholders so future rounds are fully hydrated
+        // and can be updated later via qualifier propagation.
         if (slot.placeholder) {
-          console.log(`  Slot ${index + 1}: Placeholder "${slot.placeholder}" - skipping entry creation`);
+          console.log(`  Slot ${index + 1}: Placeholder "${slot.placeholder}" - creating empty entry`);
+          entryRows.push({
+            heat_id: heatId,
+            participant_id: null,
+            position: index + 1,
+            seed: seed ?? index + 1,
+            color: slotColor,
+          });
           return;
         }
 
