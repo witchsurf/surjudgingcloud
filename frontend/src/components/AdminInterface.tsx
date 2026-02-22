@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, Wifi, WifiOff, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import HeatTimer from './HeatTimer';
-import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason } from '../types';
+import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
 import { validateScore } from '../utils/scoring';
 import { calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
@@ -11,7 +11,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists } from '../api/supabaseClient';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
@@ -91,6 +91,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [showOverridePanel, setShowOverridePanel] = useState(false);
   const [overrideReason, setOverrideReason] = useState<OverrideReason>('correction');
   const [overrideComment, setOverrideComment] = useState('');
+  const [correctionMode, setCorrectionMode] = useState<'score' | 'interference'>('score');
+  const [interferenceType, setInterferenceType] = useState<InterferenceType>('INT1');
+  const [headJudgeOverride, setHeadJudgeOverride] = useState(false);
   const [overrideStatus, setOverrideStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [overridePending, setOverridePending] = useState(false);
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
@@ -142,6 +145,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const handleOverrideSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (correctionMode === 'interference') {
+      await handleInterferenceSubmit();
+      return;
+    }
     if (!selectedJudge || !selectedSurfer || !selectedWave) {
       setOverrideStatus({ type: 'error', message: 'Veuillez sélectionner juge, surfeur et vague.' });
       return;
@@ -236,6 +243,46 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     } catch (error) {
       console.error('❌ Move score erreur:', error);
       setOverrideStatus({ type: 'error', message: 'Impossible de déplacer la note.' });
+    } finally {
+      setOverridePending(false);
+    }
+  };
+
+  const handleInterferenceSubmit = async () => {
+    if (!selectedJudge || !selectedSurfer || !selectedWave) {
+      setOverrideStatus({ type: 'error', message: 'Veuillez sélectionner juge, surfeur et vague.' });
+      return;
+    }
+    if (!configSaved) {
+      setOverrideStatus({ type: 'error', message: 'Veuillez d’abord sauvegarder la configuration du heat.' });
+      return;
+    }
+
+    setOverridePending(true);
+    try {
+      const eventId = activeEventId ?? await fetchEventIdByName(config.competition);
+      await upsertInterferenceCall({
+        event_id: eventId,
+        heat_id: heatId,
+        competition: config.competition,
+        division: config.division,
+        round: config.round,
+        judge_id: selectedJudge,
+        judge_name: config.judgeNames[selectedJudge] || selectedJudge,
+        surfer: selectedSurfer,
+        wave_number: Number(selectedWave),
+        call_type: interferenceType,
+        is_head_judge_override: headJudgeOverride,
+      });
+
+      setOverrideStatus({
+        type: 'success',
+        message: `Interférence ${interferenceType} enregistrée pour ${selectedSurfer} (vague ${selectedWave}).`
+      });
+      onReloadData();
+    } catch (error) {
+      console.error('❌ Interférence admin erreur:', error);
+      setOverrideStatus({ type: 'error', message: 'Impossible d’enregistrer l’interférence.' });
     } finally {
       setOverridePending(false);
     }
@@ -1798,6 +1845,23 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
         {showOverridePanel && (
           <form className="space-y-4" onSubmit={handleOverrideSubmit}>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCorrectionMode('score')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${correctionMode === 'score' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
+              >
+                Mode note
+              </button>
+              <button
+                type="button"
+                onClick={() => setCorrectionMode('interference')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${correctionMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
+              >
+                Mode interférence
+              </button>
+            </div>
+
             {/* Juge selection */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -1861,19 +1925,40 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 )}
               </div>
 
-              {/* Score input */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nouvelle note</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={scoreInput}
-                  onChange={(e) => { setScoreInput(e.target.value); setOverrideStatus(null); }}
-                  placeholder="0.00"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  required
-                />
-              </div>
+              {correctionMode === 'score' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nouvelle note</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={scoreInput}
+                    onChange={(e) => { setScoreInput(e.target.value); setOverrideStatus(null); }}
+                    placeholder="0.00"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    required
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Type d’interférence</label>
+                  <select
+                    value={interferenceType}
+                    onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="INT1">Interférence #1 (B/2)</option>
+                    <option value="INT2">Interférence #2 (B=0)</option>
+                  </select>
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={headJudgeOverride}
+                      onChange={(e) => setHeadJudgeOverride(e.target.checked)}
+                    />
+                    Arbitrage Head Judge
+                  </label>
+                </div>
+              )}
             </div>
 
             {currentScore && (
@@ -1885,34 +1970,35 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               </div>
             )}
 
-            {/* Reason + Comment */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Motif</label>
-                <select
-                  value={overrideReason}
-                  onChange={(e) => setOverrideReason(e.target.value as any)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  {Object.keys(reasonLabels).map((r) => (
-                    <option key={r} value={r}>{reasonLabels[r as keyof typeof reasonLabels]}</option>
-                  ))}
-                </select>
-              </div>
+            {correctionMode === 'score' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Motif</label>
+                  <select
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value as any)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    {Object.keys(reasonLabels).map((r) => (
+                      <option key={r} value={r}>{reasonLabels[r as keyof typeof reasonLabels]}</option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
-                <input
-                  type="text"
-                  value={overrideComment}
-                  onChange={(e) => setOverrideComment(e.target.value)}
-                  placeholder="Optionnel"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                  <input
+                    type="text"
+                    value={overrideComment}
+                    onChange={(e) => setOverrideComment(e.target.value)}
+                    placeholder="Optionnel"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
-            {currentScore && (
+            {correctionMode === 'score' && currentScore && (
               <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
                 <p className="text-sm font-medium text-indigo-900">
                   Déplacer une note (mauvais surfeur / mauvaise vague)
@@ -1959,14 +2045,26 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={overridePending || !configSaved}
-              className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
-                } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
-            >
-              {overridePending ? 'Application…' : 'Appliquer la correction'}
-            </button>
+            {correctionMode === 'score' ? (
+              <button
+                type="submit"
+                disabled={overridePending || !configSaved}
+                className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
+                  } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                {overridePending ? 'Application…' : 'Appliquer la correction'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleInterferenceSubmit}
+                disabled={overridePending || !configSaved}
+                className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
+                  } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                {overridePending ? 'Application…' : 'Poser l’interférence'}
+              </button>
+            )}
           </form>
         )}
       </div>
