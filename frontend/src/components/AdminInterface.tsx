@@ -770,6 +770,25 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return colorLabelMap[(raw as HeatColor)] ?? raw;
   };
 
+  const getFallbackColorForPosition = (position: number): string | null => {
+    switch (position) {
+      case 1:
+        return 'RED';
+      case 2:
+        return 'WHITE';
+      case 3:
+        return 'YELLOW';
+      case 4:
+        return 'BLUE';
+      case 5:
+        return 'GREEN';
+      case 6:
+        return 'BLACK';
+      default:
+        return null;
+    }
+  };
+
   const handleRebuildDivisionQualifiers = async () => {
     if (!config.competition || !config.division) {
       setOverrideStatus({ type: 'error', message: 'Compétition/division manquante.' });
@@ -875,7 +894,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
           const entryByRank = rankCache.get(sourceHeat.id) ?? new Map();
           const qualifier = entryByRank.get(parsed.position);
-          const mappedColor = targetColorOrder[mapping.position - 1] || qualifier?.colorCode || null;
+          const mappedColor = targetColorOrder[mapping.position - 1] || getFallbackColorForPosition(mapping.position);
 
           // Important: if source heat has no valid result for this slot, explicitly clear stale participant.
           updates.push({

@@ -26,6 +26,25 @@ const normalizeHeatEntries = (entries: unknown): any[] => {
     return [];
 };
 
+const getFallbackColorForPosition = (position: number): string | null => {
+    switch (position) {
+        case 1:
+            return 'RED';
+        case 2:
+            return 'WHITE';
+        case 3:
+            return 'YELLOW';
+        case 4:
+            return 'BLUE';
+        case 5:
+            return 'GREEN';
+        case 6:
+            return 'BLACK';
+        default:
+            return null;
+    }
+};
+
 export function useHeatManager() {
     const { config, setConfig, persistConfig, activeEventId } = useConfigStore();
     const {
@@ -179,7 +198,7 @@ export function useHeatManager() {
                             const qualifier = entryByRank.get(rank);
                             if (!qualifier) return;
 
-                            const targetColorCode = targetColorOrder[mapping.position - 1] || qualifier.colorCode || null;
+                            const targetColorCode = targetColorOrder[mapping.position - 1] || getFallbackColorForPosition(mapping.position);
                             updates.push({
                                 position: mapping.position,
                                 participant_id: qualifier.participantId,
