@@ -183,7 +183,7 @@ export function useHeatManager() {
                             updates.push({
                                 position: mapping.position,
                                 participant_id: qualifier.participantId,
-                                seed: qualifier.seed ?? null,
+                                seed: qualifier.seed ?? mapping.position,
                                 color: targetColorCode,
                             });
 
