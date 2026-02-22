@@ -572,7 +572,15 @@ export function exportFullCompetitionPDF({
     `R${roundNumber} H${heatNumber} P${position}`,
   ]);
 
-  const qualifierMap = new Map<string, { name: string; country?: string }>();
+  const qualifierMapByDivision = new Map<string, Map<string, { name: string; country?: string }>>();
+  const getDivisionQualifierMap = (divisionName: string) => {
+    const key = divisionName.toUpperCase().trim();
+    const existing = qualifierMapByDivision.get(key);
+    if (existing) return existing;
+    const created = new Map<string, { name: string; country?: string }>();
+    qualifierMapByDivision.set(key, created);
+    return created;
+  };
   const isPlaceholderLike = (value?: string | null) => {
     if (!value) return false;
     const normalized = normalizePlaceholderKey(value);
@@ -585,22 +593,23 @@ export function exportFullCompetitionPDF({
       normalized === 'BYE';
   };
 
-  const resolveQualifiedFromText = (placeholderText: string) => {
+  const resolveQualifiedFromText = (divisionName: string, placeholderText: string) => {
+    const divisionMap = getDivisionQualifierMap(divisionName);
     const normalized = normalizePlaceholderKey(placeholderText);
-    let qualified = qualifierMap.get(normalized);
+    let qualified = divisionMap.get(normalized);
 
     if (!qualified) {
       const match = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*(?:P\s*)?(\d+)/);
       if (match) {
         const [, roundTxt, heatTxt, posTxt] = match;
         const fallbackKeys = buildQualifierKeyVariants(
-          '',
+          divisionName.toUpperCase(),
           Number(roundTxt),
           Number(heatTxt),
           Number(posTxt)
         );
         qualified = fallbackKeys
-          .map((key) => qualifierMap.get(normalizePlaceholderKey(key)))
+          .map((key) => divisionMap.get(normalizePlaceholderKey(key)))
           .find(Boolean);
       }
     }
@@ -622,6 +631,7 @@ export function exportFullCompetitionPDF({
     heatScores: Score[]
   ) => {
     if (!heatScores.length) return;
+    const divisionMap = getDivisionQualifierMap(divisionName);
 
     const surfersWithNames = slots
       .filter((slot) => slot.color && slot.name && !isPlaceholderLike(slot.name))
@@ -660,7 +670,7 @@ export function exportFullCompetitionPDF({
         position
       );
       keys.forEach((key) => {
-        qualifierMap.set(normalizePlaceholderKey(key), {
+        divisionMap.set(normalizePlaceholderKey(key), {
           name: result.name,
           country: result.country,
         });
@@ -680,7 +690,7 @@ export function exportFullCompetitionPDF({
         heat.slots.forEach((slot) => {
           const candidate = slot.placeholder || (isPlaceholderLike(slot.name) ? slot.name : undefined);
           if (!candidate || slot.bye) return;
-          const qualified = resolveQualifiedFromText(candidate);
+          const qualified = resolveQualifiedFromText(divisionName, candidate);
           if (!qualified) return;
 
           slot.name = qualified.name;
