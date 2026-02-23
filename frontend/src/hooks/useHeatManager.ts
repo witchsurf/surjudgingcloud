@@ -195,9 +195,25 @@ export function useHeatManager() {
                         const updates: any[] = [];
                         const cacheEntries: Record<string, any> = {};
 
+                        const parseSourceFromPlaceholder = (placeholder?: string | null) => {
+                            const normalized = (placeholder || '').toUpperCase().trim();
+                            if (!normalized) return null;
+                            const direct = normalized.match(/R(P?)(\d+)-H(\d+)-P(\d+)/);
+                            if (direct) return { round: Number(direct[2]), heat: Number(direct[3]), position: Number(direct[4]) };
+                            const displayStyle = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)\s*\(P\s*(\d+)\)/);
+                            if (displayStyle) return { round: Number(displayStyle[1]), heat: Number(displayStyle[2]), position: Number(displayStyle[3]) };
+                            const loose = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)\s*[- ]?\s*P\s*(\d+)/);
+                            if (loose) return { round: Number(loose[1]), heat: Number(loose[2]), position: Number(loose[3]) };
+                            return null;
+                        };
+
                         mappings.forEach((mapping: any) => {
-                            if (mapping.source_round !== config.round || mapping.source_heat !== config.heatId) return;
-                            const rank = mapping.source_position ?? null;
+                            const parsed = parseSourceFromPlaceholder(mapping.placeholder);
+                            const sourceRound = parsed?.round ?? mapping.source_round;
+                            const sourceHeat = parsed?.heat ?? mapping.source_heat;
+                            const rank = parsed?.position ?? mapping.source_position ?? null;
+
+                            if (sourceRound !== config.round || sourceHeat !== config.heatId) return;
                             if (!rank) return;
                             const qualifier = entryByRank.get(rank);
                             if (!qualifier) return;

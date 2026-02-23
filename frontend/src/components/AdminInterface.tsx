@@ -892,13 +892,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         const updates: Array<{ position: number; participant_id: number | null; seed?: number | null; color?: string | null }> = [];
 
         for (const mapping of mappings as any[]) {
-          const parsed = (mapping.source_round != null && mapping.source_heat != null && mapping.source_position != null)
-            ? {
-              round: Number(mapping.source_round),
-              heat: Number(mapping.source_heat),
-              position: Number(mapping.source_position),
-            }
-            : parseSourceFromPlaceholder(mapping.placeholder);
+          const parsedFromPlaceholder = parseSourceFromPlaceholder(mapping.placeholder);
+          const parsed = parsedFromPlaceholder ?? (
+            (mapping.source_round != null && mapping.source_heat != null && mapping.source_position != null)
+              ? {
+                round: Number(mapping.source_round),
+                heat: Number(mapping.source_heat),
+                position: Number(mapping.source_position),
+              }
+              : null
+          );
 
           if (!parsed || !parsed.round || !parsed.heat || !parsed.position) continue;
 

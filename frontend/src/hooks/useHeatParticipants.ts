@@ -104,16 +104,13 @@ async function resolveNamesFromMappings(
 
     const withSource = mappings
         .map((mapping) => {
-            if (mapping.source_round != null && mapping.source_heat != null && mapping.source_position != null) {
-                return mapping;
-            }
             const parsed = parseSourceFromPlaceholder(mapping.placeholder);
-            if (!parsed) return mapping;
             return {
                 ...mapping,
-                source_round: parsed.round,
-                source_heat: parsed.heat,
-                source_position: parsed.position,
+                // Prefer placeholder-derived source when present: source_* can be stale/corrupted.
+                source_round: parsed?.round ?? mapping.source_round ?? null,
+                source_heat: parsed?.heat ?? mapping.source_heat ?? null,
+                source_position: parsed?.position ?? mapping.source_position ?? null,
             };
         })
         .filter((m) => m.source_round != null && m.source_heat != null && m.source_position != null);

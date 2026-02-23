@@ -555,6 +555,12 @@ export function exportFullCompetitionPDF({
       .replace(/\s+/g, ' ')
       .trim();
 
+  const normalizeHeatKey = (value?: string | null) => (value || '').toLowerCase().trim();
+  const normalizedScoresByHeat: Record<string, Score[]> = {};
+  Object.entries(scores).forEach(([heatKey, heatScores]) => {
+    normalizedScoresByHeat[normalizeHeatKey(heatKey)] = heatScores;
+  });
+
   const buildQualifierKeyVariants = (
     divisionName: string,
     roundNumber: number,
@@ -643,10 +649,14 @@ export function exportFullCompetitionPDF({
 
     if (!surfersWithNames.length) return;
 
-    const heatSurfers = surfersWithNames.map((s) => s.color);
+    const heatSurfers = surfersWithNames.map((s) => normalizeLycraForPdf(s.color));
     const judgeCount = new Set(heatScores.map((s) => s.judge_id).filter(Boolean)).size;
+    const normalizedHeatScores = heatScores.map((score) => ({
+      ...score,
+      surfer: normalizeLycraForPdf(score.surfer),
+    }));
     const stats = calculateSurferStats(
-      heatScores,
+      normalizedHeatScores,
       heatSurfers,
       Math.max(judgeCount, 1),
       20,
@@ -699,7 +709,7 @@ export function exportFullCompetitionPDF({
           delete slot.bye;
         });
 
-        const heatScores = heat.heatId ? (scores[heat.heatId] ?? []) : [];
+        const heatScores = heat.heatId ? (normalizedScoresByHeat[normalizeHeatKey(heat.heatId)] ?? []) : [];
         writeHeatQualifiers(
           divisionName,
           round.roundNumber,
@@ -808,7 +818,7 @@ export function exportFullCompetitionPDF({
         startY += 20;
 
         round.heats.forEach((heat, heatIdx) => {
-          const heatScores = heat.heatId ? scores[heat.heatId] ?? [] : [];
+          const heatScores = heat.heatId ? normalizedScoresByHeat[normalizeHeatKey(heat.heatId)] ?? [] : [];
           const hasResults = heatScores.length > 0;
 
           // Use the same calculation logic as Display
@@ -816,14 +826,14 @@ export function exportFullCompetitionPDF({
           if (hasResults) {
             const heatSurfers = heat.slots
               .filter(s => s.color !== undefined)
-              .map(s => colorLabelMap[s.color as keyof typeof colorLabelMap] || s.color!);
+              .map(s => normalizeLycraForPdf(colorLabelMap[s.color as keyof typeof colorLabelMap] || s.color!));
 
             // Get judge count from scores (count unique judge_ids)
             const uniqueJudges = new Set(heatScores.map(s => s.judge_id));
             const judgeCount = uniqueJudges.size;
 
             const stats = calculateSurferStats(
-              heatScores,
+              heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
               heatSurfers,
               judgeCount,
               20, // maxWaves
