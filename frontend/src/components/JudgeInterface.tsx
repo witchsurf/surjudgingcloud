@@ -7,6 +7,7 @@ import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchInterference
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { computeEffectiveInterferences, summarizeInterferenceBySurfer } from '../utils/interference';
+import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 
 interface JudgeInterfaceProps {
   config?: AppConfig;
@@ -65,6 +66,12 @@ function JudgeInterface({
   const [headJudgeOverride, setHeadJudgeOverride] = useState(false);
   const [interferenceCalls, setInterferenceCalls] = useState<InterferenceCall[]>([]);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
+
+  const normalizeSurferKey = useCallback((value?: string | null): string => {
+    const raw = (value || '').toUpperCase().trim();
+    if (!raw) return '';
+    return colorLabelMap[raw as HeatColor] ?? raw;
+  }, []);
 
   // Judge Name Modal State
   const [showNameModal, setShowNameModal] = useState(false);
@@ -339,8 +346,12 @@ function JudgeInterface({
   };
 
   const getScoreForWave = (surfer: string, wave: number) => {
+    const surferKey = normalizeSurferKey(surfer);
     return submittedScores.find(
-      s => s.surfer === surfer && s.wave_number === wave && s.judge_id === judgeId
+      s =>
+        normalizeSurferKey(s.surfer) === surferKey &&
+        s.wave_number === wave &&
+        s.judge_id === judgeId
     );
   };
 
@@ -381,6 +392,7 @@ function JudgeInterface({
     if (!currentHeatId) return;
     const eventId = await fetchEventIdByName(config.competition);
     const judgeName = config.judgeNames[judgeId] || judgeId;
+    const normalizedSurfer = normalizeSurferKey(surfer);
     await upsertInterferenceCall({
       event_id: eventId,
       heat_id: currentHeatId,
@@ -389,7 +401,7 @@ function JudgeInterface({
       round: config.round,
       judge_id: judgeId,
       judge_name: judgeName,
-      surfer,
+      surfer: normalizedSurfer,
       wave_number: wave,
       call_type: interferenceType,
       is_head_judge_override: isChiefJudge && headJudgeOverride,
@@ -439,7 +451,7 @@ function JudgeInterface({
             (score) => !(
               ensureHeatId(score.heat_id) === ensureHeatId(sanitizedScore.heat_id) &&
               score.judge_id === sanitizedScore.judge_id &&
-              score.surfer === sanitizedScore.surfer &&
+              normalizeSurferKey(score.surfer) === normalizeSurferKey(sanitizedScore.surfer) &&
               score.wave_number === sanitizedScore.wave_number
             )
           );
@@ -449,7 +461,10 @@ function JudgeInterface({
           // THEN update state
           setSubmittedScores(prev => {
             const withoutDuplicate = prev.filter(
-              (score) => !(score.surfer === sanitizedScore.surfer && score.wave_number === sanitizedScore.wave_number)
+              (score) => !(
+                normalizeSurferKey(score.surfer) === normalizeSurferKey(sanitizedScore.surfer) &&
+                score.wave_number === sanitizedScore.wave_number
+              )
             );
             return [...withoutDuplicate, sanitizedScore];
           });
@@ -484,7 +499,7 @@ function JudgeInterface({
   };
 
   const getSurferColor = (surfer: string) => {
-    return SURFER_COLORS[surfer] || '#6B7280';
+    return SURFER_COLORS[normalizeSurferKey(surfer)] || '#6B7280';
   };
 
   if (!configSaved) {
@@ -505,13 +520,19 @@ function JudgeInterface({
   const effectiveByTarget = useMemo(() => {
     const map = new Map<string, EffectiveInterference>();
     effectiveInterferences.forEach((item) => {
-      map.set(`${item.surfer.toUpperCase()}::${item.waveNumber}`, item);
+      map.set(`${normalizeSurferKey(item.surfer)}::${item.waveNumber}`, item);
     });
     return map;
-  }, [effectiveInterferences]);
+  }, [effectiveInterferences, normalizeSurferKey]);
   const interferenceBySurfer = useMemo(
-    () => summarizeInterferenceBySurfer(effectiveInterferences),
-    [effectiveInterferences]
+    () =>
+      summarizeInterferenceBySurfer(
+        effectiveInterferences.map((item) => ({
+          ...item,
+          surfer: normalizeSurferKey(item.surfer),
+        }))
+      ),
+    [effectiveInterferences, normalizeSurferKey]
   );
 
   return (
@@ -688,7 +709,7 @@ function JudgeInterface({
                     const scoreData = getScoreForWave(surfer, wave);
                     const canScore = timerActive && canScoreWave(surfer, wave);
                     const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
-                    const effective = effectiveByTarget.get(`${surfer.toUpperCase()}::${wave}`);
+                    const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
 
                     return (
                       <td key={wave} className="px-3 py-3 text-center">
@@ -778,7 +799,7 @@ function JudgeInterface({
           <h3 className="text-sm font-semibold text-amber-900 mb-2">Interférences effectives (majorité / Head Judge)</h3>
           <ul className="space-y-1 text-sm text-amber-800">
             {config.surfers.map((surfer) => {
-              const summary = interferenceBySurfer.get(surfer.toUpperCase());
+              const summary = interferenceBySurfer.get(normalizeSurferKey(surfer));
               if (!summary) return null;
               return (
                 <li key={surfer}>
@@ -801,7 +822,9 @@ function JudgeInterface({
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {config.surfers.map(surfer => {
-            const surferScores = submittedScores.filter(s => s.surfer === surfer);
+            const surferScores = submittedScores.filter(
+              (s) => normalizeSurferKey(s.surfer) === normalizeSurferKey(surfer)
+            );
             const nextWave = getNextAvailableWave(surfer);
 
             return (

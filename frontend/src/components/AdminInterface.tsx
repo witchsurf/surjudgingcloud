@@ -131,13 +131,20 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     probleme: 'Problème technique'
   };
 
+  function normalizeJerseyLabel(value?: string | null): string {
+    const raw = (value || '').toUpperCase().trim();
+    if (!raw) return '';
+    return colorLabelMap[(raw as HeatColor)] ?? raw;
+  }
+
   const currentScore = React.useMemo(() => {
     if (!selectedJudge || !selectedSurfer || !selectedWave) return undefined;
+    const selectedSurferKey = normalizeJerseyLabel(selectedSurfer);
     return scores
       .filter(score =>
         ensureHeatId(score.heat_id) === heatId &&
         score.judge_id === selectedJudge &&
-        score.surfer === selectedSurfer &&
+        normalizeJerseyLabel(score.surfer) === selectedSurferKey &&
         score.wave_number === Number(selectedWave)
       )
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
@@ -153,6 +160,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setOverrideStatus({ type: 'error', message: 'Veuillez sélectionner juge, surfeur et vague.' });
       return;
     }
+    const selectedSurferKey = normalizeJerseyLabel(selectedSurfer);
 
     const validation = validateScore(scoreInput);
     if (!validation.isValid || validation.value === undefined) {
@@ -172,7 +180,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         round: config.round,
         judgeId: selectedJudge,
         judgeName: config.judgeNames[selectedJudge] || selectedJudge,
-        surfer: selectedSurfer,
+        surfer: selectedSurferKey,
         waveNumber: Number(selectedWave),
         newScore: validation.value,
         reason: overrideReason,
@@ -204,12 +212,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setOverrideStatus({ type: 'error', message: 'Sélectionnez le surfeur et la vague de destination.' });
       return;
     }
+    const moveTargetSurferKey = normalizeJerseyLabel(moveTargetSurfer);
 
     const targetAlreadyUsed = scores.some(
       (score) =>
         ensureHeatId(score.heat_id) === heatId &&
         score.judge_id === selectedJudge &&
-        score.surfer === moveTargetSurfer &&
+        normalizeJerseyLabel(score.surfer) === moveTargetSurferKey &&
         score.wave_number === Number(moveTargetWave) &&
         score.id !== currentScore.id
     );
@@ -227,7 +236,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       const { error } = await supabase
         .from('scores')
         .update({
-          surfer: moveTargetSurfer,
+          surfer: moveTargetSurferKey,
           wave_number: Number(moveTargetWave),
           timestamp: new Date().toISOString()
         })
@@ -237,7 +246,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       setOverrideStatus({
         type: 'success',
-        message: `Note déplacée vers ${moveTargetSurfer} · Vague ${moveTargetWave}.`
+        message: `Note déplacée vers ${moveTargetSurferKey} · Vague ${moveTargetWave}.`
       });
       onReloadData();
     } catch (error) {
@@ -253,6 +262,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setOverrideStatus({ type: 'error', message: 'Veuillez sélectionner juge, surfeur et vague.' });
       return;
     }
+    const selectedSurferKey = normalizeJerseyLabel(selectedSurfer);
     if (!configSaved) {
       setOverrideStatus({ type: 'error', message: 'Veuillez d’abord sauvegarder la configuration du heat.' });
       return;
@@ -269,7 +279,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         round: config.round,
         judge_id: selectedJudge,
         judge_name: config.judgeNames[selectedJudge] || selectedJudge,
-        surfer: selectedSurfer,
+        surfer: selectedSurferKey,
         wave_number: Number(selectedWave),
         call_type: interferenceType,
         is_head_judge_override: headJudgeOverride,
@@ -277,7 +287,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       setOverrideStatus({
         type: 'success',
-        message: `Interférence ${interferenceType} enregistrée pour ${selectedSurfer} (vague ${selectedWave}).`
+        message: `Interférence ${interferenceType} enregistrée pour ${selectedSurferKey} (vague ${selectedWave}).`
       });
       onReloadData();
     } catch (error) {
@@ -812,12 +822,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return false;
   };
 
-  const normalizeJerseyLabel = (value?: string | null): string => {
-    const raw = (value || '').toUpperCase().trim();
-    if (!raw) return '';
-    return colorLabelMap[(raw as HeatColor)] ?? raw;
-  };
-
   const getFallbackColorForPosition = (position: number): string | null => {
     switch (position) {
       case 1:
@@ -1078,9 +1082,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const surferScoredWaves = React.useMemo(() => {
     if (!selectedSurfer) return [];
+    const selectedSurferKey = normalizeJerseyLabel(selectedSurfer);
     // Récupérer toutes les vagues notées pour ce surfeur (tous juges confondus)
     const waves = new Set(scores
-      .filter(s => s.surfer === selectedSurfer && ensureHeatId(s.heat_id) === heatId)
+      .filter(s => normalizeJerseyLabel(s.surfer) === selectedSurferKey && ensureHeatId(s.heat_id) === heatId)
       .map(s => s.wave_number)
     );
     return Array.from(waves).sort((a, b) => a - b);
@@ -1466,7 +1471,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           {config.surfers.length ? (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {config.surfers.map((surfer, index) => {
-                const color = SURFER_COLOR_MAP[surfer as keyof typeof SURFER_COLOR_MAP] ?? '#6b7280';
+                const surferKey = normalizeJerseyLabel(surfer);
+                const color = SURFER_COLOR_MAP[surferKey as keyof typeof SURFER_COLOR_MAP] ?? '#6b7280';
                 return (
                   <div key={`${surfer}-${index}`} className="flex items-center space-x-2 p-2 bg-gray-50 rounded">
                     <div
