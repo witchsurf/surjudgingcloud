@@ -40,14 +40,16 @@ export default function AdminPage() {
 
     const {
         timer,
-        startTimer,
-        pauseTimer,
-        resetTimer,
         setDuration
     } = useCompetitionTimer();
 
     const { closeHeat } = useHeatManager();
-    const { publishConfigUpdate } = useRealtimeSync();
+    const {
+        publishConfigUpdate,
+        publishTimerStart,
+        publishTimerPause,
+        publishTimerReset
+    } = useRealtimeSync();
     const { handleScoreOverride } = useScoreManager();
     const { createHeat, saveHeatConfig } = useSupabaseSync();
 
@@ -296,9 +298,9 @@ export default function AdminPage() {
             scores={scores}
             overrideLogs={overrideLogs}
             onScoreOverride={(req) => handleScoreOverride(req, currentHeatId)}
-            onRealtimeTimerStart={() => startTimer()} // AdminInterface expects (heatId, config, duration) but startTimer handles it
-            onRealtimeTimerPause={() => pauseTimer()}
-            onRealtimeTimerReset={() => resetTimer()}
+            onRealtimeTimerStart={publishTimerStart}
+            onRealtimeTimerPause={publishTimerPause}
+            onRealtimeTimerReset={publishTimerReset}
             availableDivisions={availableDivisions}
             loadState={loadState}
             loadError={loadError}

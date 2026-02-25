@@ -45,7 +45,7 @@ interface AdminInterfaceProps {
     comment?: string;
   }) => Promise<ScoreOverrideLog | undefined>;
   onRealtimeTimerStart?: (heatId: string, config: AppConfig, duration: number) => Promise<void>;
-  onRealtimeTimerPause?: (heatId: string) => Promise<void>;
+  onRealtimeTimerPause?: (heatId: string, remainingDuration?: number) => Promise<void>;
   onRealtimeTimerReset?: (heatId: string, duration: number) => Promise<void>;
   availableDivisions?: string[];
   loadState?: 'loading' | 'loaded' | 'empty' | 'error';
@@ -645,14 +645,25 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleTimerStart = () => {
-    if (timer.startTime) {
-      alert("Ce heat a déjà été jugé — impossible de relancer le timer.");
-      return;
+    let nextDuration = timer.duration;
+
+    if (timer.startTime && !timer.isRunning) {
+      const elapsedMinutes = (Date.now() - new Date(timer.startTime).getTime()) / 1000 / 60;
+      const remainingDuration = Math.max(0, timer.duration - elapsedMinutes);
+      const restartFromScratch = window.confirm(
+        "Ce heat a déjà été démarré.\nOK: recommencer la série depuis la durée complète.\nAnnuler: reprendre avec le temps restant."
+      );
+      nextDuration = restartFromScratch ? timer.duration : remainingDuration;
+      if (nextDuration <= 0) {
+        nextDuration = timer.duration;
+      }
     }
+
     const newTimer = {
       ...timer,
       isRunning: true,
-      startTime: new Date()
+      startTime: new Date(),
+      duration: nextDuration
     };
 
     onTimerChange(newTimer);
@@ -678,9 +689,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleTimerPause = () => {
+    const elapsedMinutes = timer.startTime
+      ? (Date.now() - new Date(timer.startTime).getTime()) / 1000 / 60
+      : 0;
+    const remainingDuration = Math.max(0, timer.duration - elapsedMinutes);
+
     const newTimer = {
       ...timer,
-      isRunning: false
+      isRunning: false,
+      startTime: null,
+      duration: remainingDuration
     };
 
     onTimerChange(newTimer);
@@ -688,7 +706,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     // Publier en temps réel via Supabase seulement si configuré
     if (onRealtimeTimerPause && configSaved) {
-      onRealtimeTimerPause(heatId)
+      onRealtimeTimerPause(heatId, remainingDuration)
         .then(() => {
           console.log('⏸️ ADMIN: Timer PAUSE publié en temps réel');
         })

@@ -101,9 +101,16 @@ export function useCompetitionTimer() {
     const pauseTimer = async () => {
         if (!timer.isRunning) return;
 
+        const elapsedMinutes = timer.startTime
+            ? (Date.now() - new Date(timer.startTime).getTime()) / 1000 / 60
+            : 0;
+        const remainingDuration = Math.max(0, timer.duration - elapsedMinutes);
+
         const newTimer: HeatTimer = {
             ...timer,
-            isRunning: false
+            isRunning: false,
+            startTime: null,
+            duration: remainingDuration
         };
 
         setTimer(newTimer);
@@ -111,7 +118,7 @@ export function useCompetitionTimer() {
         setHeatStatus('paused');
 
         try {
-            await publishTimerPause(currentHeatId);
+            await publishTimerPause(currentHeatId, remainingDuration);
         } catch (error) {
             console.error('Failed to publish timer pause:', error);
         }

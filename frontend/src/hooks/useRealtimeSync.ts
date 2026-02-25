@@ -20,7 +20,7 @@ interface UseRealtimeSyncReturn {
   lastUpdate: Date | null;
   error: string | null;
   publishTimerStart: (heatId: string, config: AppConfig, duration: number) => Promise<void>;
-  publishTimerPause: (heatId: string) => Promise<void>;
+  publishTimerPause: (heatId: string, remainingDuration?: number) => Promise<void>;
   publishTimerReset: (heatId: string, duration: number) => Promise<void>;
   publishConfigUpdate: (heatId: string, config: AppConfig) => Promise<void>;
   markHeatFinished: (heatId: string) => Promise<void>;
@@ -132,7 +132,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     }
   }, [ensureAuthenticatedSession]);
 
-  const publishTimerPause = useCallback(async (heatId: string) => {
+  const publishTimerPause = useCallback(async (heatId: string, remainingDuration?: number) => {
     const normalizedHeatId = ensureHeatId(heatId);
     if (!isSupabaseConfigured()) {
       console.warn('⏩ Timer pause ignoré (Supabase non configuré)');
@@ -143,11 +143,20 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       await ensureAuthenticatedSession();
 
       // 1. Update heat_timers table
+      const pauseTimerUpdate: {
+        is_running: boolean;
+        duration_minutes?: number;
+        start_time?: string | null;
+      } = {
+        is_running: false
+      };
+      if (typeof remainingDuration === 'number' && Number.isFinite(remainingDuration)) {
+        pauseTimerUpdate.duration_minutes = remainingDuration;
+        pauseTimerUpdate.start_time = null;
+      }
       const { error: timerError } = await supabase!
         .from('heat_timers')
-        .update({
-          is_running: false
-        })
+        .update(pauseTimerUpdate)
         .eq('heat_id', normalizedHeatId);
 
       if (timerError) {
@@ -156,12 +165,22 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       }
 
       // 2. Update heat_realtime_config for broadcasting
+      const realtimePauseUpdate: {
+        status: 'paused';
+        updated_by: string;
+        timer_duration_minutes?: number;
+        timer_start_time?: string | null;
+      } = {
+        status: 'paused',
+        updated_by: 'admin'
+      };
+      if (typeof remainingDuration === 'number' && Number.isFinite(remainingDuration)) {
+        realtimePauseUpdate.timer_duration_minutes = remainingDuration;
+        realtimePauseUpdate.timer_start_time = null;
+      }
       const { error } = await supabase!
         .from('heat_realtime_config')
-        .update({
-          status: 'paused',
-          updated_by: 'admin'
-        })
+        .update(realtimePauseUpdate)
         .eq('heat_id', normalizedHeatId);
 
       if (error) throw error;
