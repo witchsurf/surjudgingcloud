@@ -954,8 +954,10 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
     .order('position', { ascending: true });
 
   if (lineupError) {
-    console.error('❌ Error fetching v_heat_lineup:', lineupError);
-    throw lineupError;
+    // Some deployments may not have v_heat_lineup (or permissions on it).
+    // Do not crash participant loading: fallback to heat_entries rows.
+    console.warn('⚠️ v_heat_lineup unavailable, fallback to heat_entries only:', lineupError);
+    return typedRows;
   }
 
   const fallbackEntries = (lineup ?? []).map((row: { jersey_color: string | null; position: number; surfer_name: string | null; country: string | null; seed: number | null }) => ({
@@ -973,7 +975,7 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
   }));
 
   if (fallbackEntries.length === 0 && rows.length > 0) {
-    return rows;
+    return typedRows;
   }
 
   return fallbackEntries as unknown as HeatEntriesWithParticipantRow[];
