@@ -11,7 +11,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall } from '../api/supabaseClient';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchAllInterferenceCallsForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
@@ -1192,6 +1192,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       // Fetch ALL scores for ALL heats
       const allScores = await fetchAllScoresForEvent(eventId);
+      const allInterferenceCalls = await fetchAllInterferenceCallsForEvent(eventId);
 
       // Get event details (organizer, date) if available
       let organizer: string | undefined;
@@ -1224,6 +1225,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         date: eventDate,
         divisions: allDivisions,
         scores: allScores,
+        interferenceCalls: allInterferenceCalls,
       });
 
       console.log('✅ PDF complet généré avec', Object.keys(allDivisions).length, 'catégories');

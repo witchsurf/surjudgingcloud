@@ -887,6 +887,42 @@ export async function fetchAllScoresForEvent(eventId: number): Promise<Record<st
   return result;
 }
 
+/**
+ * Fetch all interference calls for all heats of an event
+ * Returns a map of heatId -> InterferenceCall[]
+ */
+export async function fetchAllInterferenceCallsForEvent(eventId: number): Promise<Record<string, InterferenceCall[]>> {
+  ensureSupabase();
+
+  const { data: heats, error: heatsError } = await supabase!
+    .from('heats')
+    .select('id')
+    .eq('event_id', eventId);
+
+  if (heatsError) throw heatsError;
+  const heatIds = (heats ?? []).map((h) => h.id);
+
+  if (!heatIds.length) return {};
+
+  const { data: calls, error: callsError } = await supabase!
+    .from('interference_calls')
+    .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
+    .in('heat_id', heatIds);
+
+  if (callsError) throw callsError;
+
+  const result: Record<string, InterferenceCall[]> = {};
+  (calls ?? []).forEach((call) => {
+    const key = ensureHeatId((call as InterferenceCall).heat_id);
+    if (!result[key]) {
+      result[key] = [];
+    }
+    result[key].push(call as InterferenceCall);
+  });
+
+  return result;
+}
+
 export function subscribeToHeatUpdates(eventId: number, category: string, callback: () => void) {
   ensureSupabase();
   const heatPrefix = `event_${eventId}_${category.replace(/\s+/g, '_')}_`;

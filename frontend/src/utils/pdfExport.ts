@@ -1,9 +1,10 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { RoundSpec } from './bracket';
-import type { AppConfig, Score } from '../types';
+import type { AppConfig, InterferenceCall, Score } from '../types';
 import { colorLabelMap } from './colorUtils';
 import { calculateSurferStats } from './scoring';
+import { computeEffectiveInterferences } from './interference';
 
 interface HeatResultHistoryEntry {
   heatKey: string;
@@ -35,6 +36,7 @@ interface FullCompetitionExportPayload {
   date?: string;
   divisions: Record<string, RoundSpec[]>;
   scores: Record<string, Score[]>;
+  interferenceCalls?: Record<string, InterferenceCall[]>;
 }
 
 const slugify = (value: string) =>
@@ -540,6 +542,7 @@ export function exportFullCompetitionPDF({
   date,
   divisions,
   scores,
+  interferenceCalls = {},
 }: FullCompetitionExportPayload) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
@@ -559,6 +562,10 @@ export function exportFullCompetitionPDF({
   const normalizedScoresByHeat: Record<string, Score[]> = {};
   Object.entries(scores).forEach(([heatKey, heatScores]) => {
     normalizedScoresByHeat[normalizeHeatKey(heatKey)] = heatScores;
+  });
+  const normalizedInterferencesByHeat: Record<string, InterferenceCall[]> = {};
+  Object.entries(interferenceCalls).forEach(([heatKey, heatCalls]) => {
+    normalizedInterferencesByHeat[normalizeHeatKey(heatKey)] = heatCalls;
   });
 
   const buildQualifierKeyVariants = (
@@ -657,6 +664,7 @@ export function exportFullCompetitionPDF({
     divisionName: string,
     roundNumber: number,
     heatNumber: number,
+    heatId: string | null,
     slots: Array<{
       color?: string;
       name?: string;
@@ -685,12 +693,21 @@ export function exportFullCompetitionPDF({
       ...score,
       surfer: normalizeLycraForPdf(score.surfer),
     }));
+    const heatKey = normalizeHeatKey(heatId);
+    const heatInterferences = heatKey
+      ? (normalizedInterferencesByHeat[heatKey] ?? [])
+      : [];
+    const effectiveInterferences = computeEffectiveInterferences(
+      heatInterferences,
+      Math.max(judgeCount, 1)
+    );
     const stats = calculateSurferStats(
       normalizedHeatScores,
       heatSurfers,
       Math.max(judgeCount, 1),
       20,
-      true
+      true,
+      effectiveInterferences
     );
 
     const statsByColor = new Map(stats.map((stat) => [stat.surfer.toUpperCase(), stat]));
@@ -744,6 +761,7 @@ export function exportFullCompetitionPDF({
           divisionName,
           round.roundNumber,
           heat.heatNumber,
+          heat.heatId ?? null,
           heat.slots,
           heatScores
         );
@@ -861,13 +879,21 @@ export function exportFullCompetitionPDF({
             // Get judge count from scores (count unique judge_ids)
             const uniqueJudges = new Set(heatScores.map(s => s.judge_id));
             const judgeCount = uniqueJudges.size;
+            const heatInterferences = heat.heatId
+              ? (normalizedInterferencesByHeat[normalizeHeatKey(heat.heatId)] ?? [])
+              : [];
+            const effectiveInterferences = computeEffectiveInterferences(
+              heatInterferences,
+              Math.max(judgeCount, 1)
+            );
 
             const stats = calculateSurferStats(
               heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
               heatSurfers,
               judgeCount,
               20, // maxWaves
-              true // allowIncomplete = true for finished heats
+              true, // allowIncomplete = true for finished heats
+              effectiveInterferences
             );
 
             surferStats = stats.map(s => ({
