@@ -428,10 +428,6 @@ export function useHeatParticipants(heatId: string) {
                 const mappings = await fetchHeatSlotMappings(heatId);
 
                 if (mappings && mappings.length > 0) {
-                    const withSourceCount = mappings.filter(
-                        (m) => m.source_round != null && m.source_heat != null && m.source_position != null
-                    ).length;
-
                     const placeholderNames = mappings.reduce((acc, mapping) => {
                         const color = COLORS_BY_POSITION[mapping.position];
                         const placeholder = mapping.placeholder || `Position ${mapping.position}`;
@@ -442,7 +438,7 @@ export function useHeatParticipants(heatId: string) {
                         return acc;
                     }, {} as Record<string, string>);
 
-                    const resolvedFromSource = await resolveNamesFromMappings(heatId, mappings);
+                    const resolvedFromSource = (await resolveNamesFromMappings(heatId, mappings)) || {};
                     const merged = {
                         ...placeholderNames,
                         ...entryNames,
