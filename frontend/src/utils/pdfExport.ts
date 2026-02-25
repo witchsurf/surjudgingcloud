@@ -568,6 +568,18 @@ export function exportFullCompetitionPDF({
     normalizedInterferencesByHeat[normalizeHeatKey(heatKey)] = heatCalls;
   });
 
+  const getHeatScoringParams = (heatScores: Score[]) => {
+    const judgeCount = new Set(heatScores.map((s) => s.judge_id).filter(Boolean)).size;
+    const maxWaves = Math.max(
+      1,
+      ...heatScores.map((s) => Number(s.wave_number) || 0)
+    );
+    return {
+      judgeCount: Math.max(judgeCount, 1),
+      maxWaves,
+    };
+  };
+
   const buildQualifierKeyVariants = (
     divisionName: string,
     roundNumber: number,
@@ -688,7 +700,7 @@ export function exportFullCompetitionPDF({
     if (!surfersWithNames.length) return;
 
     const heatSurfers = surfersWithNames.map((s) => normalizeLycraForPdf(s.color));
-    const judgeCount = new Set(heatScores.map((s) => s.judge_id).filter(Boolean)).size;
+    const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
     const normalizedHeatScores = heatScores.map((score) => ({
       ...score,
       surfer: normalizeLycraForPdf(score.surfer),
@@ -704,9 +716,9 @@ export function exportFullCompetitionPDF({
     const stats = calculateSurferStats(
       normalizedHeatScores,
       heatSurfers,
-      Math.max(judgeCount, 1),
-      20,
-      true,
+      judgeCount,
+      maxWaves,
+      false,
       effectiveInterferences
     );
 
@@ -876,23 +888,21 @@ export function exportFullCompetitionPDF({
               .filter(s => s.color !== undefined)
               .map(s => normalizeLycraForPdf(colorLabelMap[s.color as keyof typeof colorLabelMap] || s.color!));
 
-            // Get judge count from scores (count unique judge_ids)
-            const uniqueJudges = new Set(heatScores.map(s => s.judge_id));
-            const judgeCount = uniqueJudges.size;
+            const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
             const heatInterferences = heat.heatId
               ? (normalizedInterferencesByHeat[normalizeHeatKey(heat.heatId)] ?? [])
               : [];
             const effectiveInterferences = computeEffectiveInterferences(
               heatInterferences,
-              Math.max(judgeCount, 1)
+              judgeCount
             );
 
             const stats = calculateSurferStats(
               heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
               heatSurfers,
               judgeCount,
-              20, // maxWaves
-              true, // allowIncomplete = true for finished heats
+              maxWaves,
+              false,
               effectiveInterferences
             );
 
