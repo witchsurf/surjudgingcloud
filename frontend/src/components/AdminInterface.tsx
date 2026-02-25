@@ -113,6 +113,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   });
   const [reconnectPending, setReconnectPending] = useState(false);
   const [reconnectMessage, setReconnectMessage] = useState<string | null>(null);
+  const [plannedTimerDuration, setPlannedTimerDuration] = useState<number>(timer.duration);
 
   const { normalized: heatId } = React.useMemo(
     () =>
@@ -122,8 +123,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         config.round,
         config.heatId
       ),
-    [config.competition, config.division, config.round, config.heatId]
+      [config.competition, config.division, config.round, config.heatId]
   );
+
+  useEffect(() => {
+    setPlannedTimerDuration(timer.duration);
+  }, [heatId]);
 
   const reasonLabels: Record<OverrideReason, string> = {
     correction: 'Correction',
@@ -645,25 +650,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleTimerStart = () => {
-    let nextDuration = timer.duration;
-
-    if (timer.startTime && !timer.isRunning) {
-      const elapsedMinutes = (Date.now() - new Date(timer.startTime).getTime()) / 1000 / 60;
-      const remainingDuration = Math.max(0, timer.duration - elapsedMinutes);
-      const restartFromScratch = window.confirm(
-        "Ce heat a déjà été démarré.\nOK: recommencer la série depuis la durée complète.\nAnnuler: reprendre avec le temps restant."
-      );
-      nextDuration = restartFromScratch ? timer.duration : remainingDuration;
-      if (nextDuration <= 0) {
-        nextDuration = timer.duration;
-      }
-    }
-
     const newTimer = {
       ...timer,
       isRunning: true,
       startTime: new Date(),
-      duration: nextDuration
+      duration: timer.duration
     };
 
     onTimerChange(newTimer);
@@ -686,6 +677,38 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
 
     console.log('▶️ ADMIN: Timer démarré:', newTimer);
+  };
+
+  const handleTimerResume = () => {
+    if (timer.isRunning) return;
+    handleTimerStart();
+  };
+
+  const handleTimerRestartFull = () => {
+    if (!configSaved) return;
+    const fullDuration = Math.max(1, plannedTimerDuration || timer.duration || 20);
+    const newTimer = {
+      ...timer,
+      isRunning: true,
+      startTime: new Date(),
+      duration: fullDuration
+    };
+
+    onTimerChange(newTimer);
+    localStorage.setItem('surfJudgingTimer', JSON.stringify(newTimer));
+
+    if (onRealtimeTimerStart) {
+      onRealtimeTimerStart(heatId, config, fullDuration)
+        .then(() => {
+          console.log('🔁 ADMIN: Timer RESTART publié en temps réel');
+        })
+        .catch((error) => {
+          console.log('⚠️ ADMIN: Timer RESTART en mode local uniquement', error instanceof Error ? error.message : error);
+          window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
+        });
+    } else {
+      window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
+    }
   };
 
   const handleTimerPause = () => {
@@ -757,6 +780,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       ...timer,
       duration
     };
+    setPlannedTimerDuration(duration);
     onTimerChange(newTimer);
     localStorage.setItem('surfJudgingTimer', JSON.stringify(newTimer));
   };
@@ -1540,6 +1564,24 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           onDurationChange={handleTimerDurationChange}
           configSaved={configSaved}
         />
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={handleTimerResume}
+            disabled={!configSaved || timer.isRunning}
+            className="py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Reprendre (temps restant)
+          </button>
+          <button
+            type="button"
+            onClick={handleTimerRestartFull}
+            disabled={!configSaved}
+            className="py-2 px-4 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Recommencer (durée complète)
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow p-6">
