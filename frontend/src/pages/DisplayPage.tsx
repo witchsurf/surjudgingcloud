@@ -300,8 +300,14 @@ export default function DisplayPage() {
                                     ...score,
                                     surfer: normalizeColorCode(score.surfer) || score.surfer
                                 }));
-                                const judgeCount = new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size;
-                                const stats = calculateSurferStats(normalizedScores, surfers, Math.max(judgeCount, 1), 20, true);
+                                const configuredJudgeCount = Math.max(config.judges.length, 1);
+                                const stats = calculateSurferStats(
+                                    normalizedScores,
+                                    surfers,
+                                    configuredJudgeCount,
+                                    config.waves,
+                                    false
+                                );
 
                                 stats
                                     .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
@@ -348,6 +354,7 @@ export default function DisplayPage() {
                 }
             });
 
+            const historyJudges = config.judges.length > 0 ? config.judges : uniqueJudgeIds;
             const syntheticConfig: AppConfig = {
                 ...config, // fallback to current config defaults
                 competition: metadata.competition,
@@ -358,8 +365,11 @@ export default function DisplayPage() {
                 surferNames: surferNames,
                 surferCountries: surferCountries,
                 waves: config.waves, // Assuming wave count is constant per event or strictly failing back
-                judges: uniqueJudgeIds,
-                judgeNames: inferredJudgeNames,
+                judges: historyJudges,
+                judgeNames: {
+                    ...(config.judgeNames || {}),
+                    ...inferredJudgeNames
+                },
             };
 
             setHistoryConfig(normalizeConfig(syntheticConfig));
