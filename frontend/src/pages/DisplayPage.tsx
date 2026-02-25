@@ -118,6 +118,29 @@ const mergeSurferNames = (
     return mergedNames;
 };
 
+const mergeLiveHeatNames = (
+    existing: Record<string, string> | undefined,
+    incoming: Record<string, string> | undefined,
+    surfers: string[] | undefined,
+    source: 'entries' | 'mappings' | 'empty'
+) => {
+    if (source === 'empty') return existing || {};
+    const merged = { ...(existing || {}) };
+    const normalizedIncoming = normalizeSurferMap(incoming || {});
+    const targetSurfers = (surfers || []).map((s) => normalizeColorCode(s) || s);
+
+    targetSurfers.forEach((color) => {
+        if (normalizedIncoming[color] !== undefined) {
+            // Always trust current-heat payload (even placeholders) over previous heat names.
+            merged[color] = normalizedIncoming[color];
+        } else if (!merged[color]) {
+            merged[color] = color;
+        }
+    });
+
+    return merged;
+};
+
 const normalizePlaceholderKey = (value: string) =>
     value
         .toUpperCase()
@@ -374,7 +397,12 @@ export default function DisplayPage() {
     const { participants: heatParticipants, source: heatParticipantsSource } = useHeatParticipants(currentHeatId);
 
     const liveDisplayConfig = useMemo(() => {
-        const mergedNames = mergeSurferNames(config.surferNames, heatParticipants);
+        const mergedNames = mergeLiveHeatNames(
+            config.surferNames,
+            heatParticipants,
+            config.surfers,
+            heatParticipantsSource
+        );
         const countries = Object.keys(liveHeatCountries).length > 0
             ? liveHeatCountries
             : (config.surferCountries || {});
@@ -384,7 +412,7 @@ export default function DisplayPage() {
             surferNames: mergedNames,
             surferCountries: countries,
         } as AppConfig);
-    }, [config, heatParticipants, liveHeatCountries]);
+    }, [config, heatParticipants, liveHeatCountries, heatParticipantsSource]);
 
     useEffect(() => {
         let cancelled = false;
@@ -420,10 +448,16 @@ export default function DisplayPage() {
     // Sync heat participants into config when they load
     useEffect(() => {
         setConfig(prev => {
+            const mergedNames = mergeLiveHeatNames(
+                prev.surferNames,
+                heatParticipants,
+                prev.surfers,
+                heatParticipantsSource
+            );
             if (heatParticipantsSource === 'entries') {
                 return {
                     ...prev,
-                    surferNames: mergeSurferNames(prev.surferNames, heatParticipants),
+                    surferNames: mergedNames,
                     surferCountries: liveHeatCountries
                 };
             }
@@ -431,7 +465,7 @@ export default function DisplayPage() {
             if (heatParticipantsSource === 'mappings') {
                 return {
                     ...prev,
-                    surferNames: mergeSurferNames(prev.surferNames, heatParticipants),
+                    surferNames: mergedNames,
                     surferCountries: liveHeatCountries
                 };
             }

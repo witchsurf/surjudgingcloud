@@ -99,10 +99,20 @@ async function resolveNamesFromMappings(
             };
         }
 
+        // Support placeholders without explicit position: "QUALIFIE R1-H2"
+        const noPosition = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)/);
+        if (noPosition) {
+            return {
+                round: Number(noPosition[1]),
+                heat: Number(noPosition[2]),
+                position: null,
+            };
+        }
+
         return null;
     };
 
-    const withSource = mappings
+    const withSourceBase = mappings
         .map((mapping) => {
             const parsed = parseSourceFromPlaceholder(mapping.placeholder);
             return {
@@ -113,7 +123,30 @@ async function resolveNamesFromMappings(
                 source_position: parsed?.position ?? mapping.source_position ?? null,
             };
         })
-        .filter((m) => m.source_round != null && m.source_heat != null && m.source_position != null);
+        .filter((m) => m.source_round != null && m.source_heat != null);
+
+    // If mapping does not provide explicit source_position, assign it implicitly per source heat
+    // in slot order (P1, P2, ...). This handles placeholders like "QUALIFIE R1-H2".
+    const implicitCursor = new Map<string, number>();
+    const withSource = withSourceBase
+        .sort((a, b) => {
+            const aRound = Number(a.source_round ?? 0);
+            const bRound = Number(b.source_round ?? 0);
+            if (aRound !== bRound) return aRound - bRound;
+            const aHeat = Number(a.source_heat ?? 0);
+            const bHeat = Number(b.source_heat ?? 0);
+            if (aHeat !== bHeat) return aHeat - bHeat;
+            return Number(a.position ?? 0) - Number(b.position ?? 0);
+        })
+        .map((m) => {
+            if (m.source_position != null) return m;
+            const key = `${m.source_round}-${m.source_heat}`;
+            const next = (implicitCursor.get(key) ?? 0) + 1;
+            implicitCursor.set(key, next);
+            return { ...m, source_position: next };
+        })
+        .filter((m) => m.source_position != null);
+
     if (!withSource.length) return {};
 
     // Fast path: infer source heat_id from current heat_id pattern
