@@ -579,6 +579,7 @@ export function exportFullCompetitionPDF({
   ]);
 
   const qualifierMapByDivision = new Map<string, Map<string, { name: string; country?: string }>>();
+  const implicitQualifierCursor = new Map<string, number>();
   const getDivisionQualifierMap = (divisionName: string) => {
     const key = divisionName.toUpperCase().trim();
     const existing = qualifierMapByDivision.get(key);
@@ -617,6 +618,35 @@ export function exportFullCompetitionPDF({
         qualified = fallbackKeys
           .map((key) => divisionMap.get(normalizePlaceholderKey(key)))
           .find(Boolean);
+      }
+    }
+
+    // Support placeholders without explicit position, e.g. "QUALIFIE R1-H1".
+    // In this case we consume qualifiers in order (P1, then P2, ...).
+    if (!qualified) {
+      const noPosMatch = normalized.match(/R\s*(\d+)\s*H\s*(\d+)/);
+      if (noPosMatch) {
+        const [, roundTxt, heatTxt] = noPosMatch;
+        const roundNumber = Number(roundTxt);
+        const heatNumber = Number(heatTxt);
+        const cursorKey = `${divisionName.toUpperCase().trim()}::${roundNumber}::${heatNumber}`;
+        const startPos = (implicitQualifierCursor.get(cursorKey) ?? 0) + 1;
+
+        for (let pos = startPos; pos <= 8; pos += 1) {
+          const fallbackKeys = buildQualifierKeyVariants(
+            divisionName.toUpperCase(),
+            roundNumber,
+            heatNumber,
+            pos
+          );
+          qualified = fallbackKeys
+            .map((key) => divisionMap.get(normalizePlaceholderKey(key)))
+            .find(Boolean);
+          if (qualified) {
+            implicitQualifierCursor.set(cursorKey, pos);
+            break;
+          }
+        }
       }
     }
 
