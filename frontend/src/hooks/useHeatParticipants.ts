@@ -306,9 +306,9 @@ async function resolveNamesFromMappings(
                         }
                     });
 
-                    if (!heat.heatId) return;
+                    if (!heat.heatId) continue;
                     const heatScores = allScores[heat.heatId] ?? [];
-                    if (!heatScores.length) return;
+                    if (!heatScores.length) continue;
 
                     const namesByColor = heat.slots.reduce<Record<string, string>>((acc, slot) => {
                         if (!slot.color || !slot.name || isPlaceholderLike(slot.name)) return acc;
@@ -319,7 +319,7 @@ async function resolveNamesFromMappings(
                     }, {});
 
                     const surfers = Object.keys(namesByColor);
-                    if (!surfers.length) return;
+                    if (!surfers.length) continue;
 
                     const normalizedScores = heatScores.map((score) => ({
                         ...score,
