@@ -4,6 +4,7 @@ import type { AppConfig, HeatTimer, KioskConfig, HeatSyncRequest } from '../type
 import { ensureHeatId } from '../utils/heat';
 import { DEFAULT_TIMER_DURATION, INITIAL_CONFIG } from '../utils/constants';
 import { parseActiveHeatId } from '../api/supabaseClient';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface RealtimeHeatConfig {
   heat_id: string;
@@ -33,6 +34,123 @@ interface UseRealtimeSyncReturn {
   initializeKiosk: (input: { eventId?: number | null; heatId: string; judgeId?: string | null }) => Promise<KioskConfig>;
   syncHeatViaWebhook: (heatId: string, updates: Partial<RealtimeHeatConfig>) => Promise<void>;
 }
+
+type HeatUpdateListener = (
+  timer: HeatTimer,
+  config: AppConfig | null,
+  status: RealtimeHeatConfig['status']
+) => void;
+
+interface HeatChannelState {
+  channel: RealtimeChannel;
+  listeners: Map<string, HeatUpdateListener>;
+}
+
+const heatChannelRegistry = new Map<string, HeatChannelState>();
+let heatListenerSequence = 0;
+
+const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
+
+const emitHeatUpdate = (
+  heatId: string,
+  timer: HeatTimer,
+  config: AppConfig | null,
+  status: RealtimeHeatConfig['status']
+) => {
+  const state = heatChannelRegistry.get(heatId);
+  if (!state) return;
+
+  for (const listener of state.listeners.values()) {
+    try {
+      listener(timer, config, status);
+    } catch (error) {
+      console.error('❌ Listener realtime failed:', error);
+    }
+  }
+};
+
+const createHeatChannel = (normalizedHeatId: string) => {
+  const channelName = `heat-${normalizedHeatId}`;
+  const channel = supabase!
+    .channel(channelName)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'heat_realtime_config',
+        filter: `heat_id=eq.${normalizedHeatId}`
+      },
+      (payload) => {
+        const data = payload.new as RealtimeHeatConfig;
+        if (!data) return;
+
+        const timer: HeatTimer = {
+          isRunning: data.status === 'running',
+          startTime: data.timer_start_time ? new Date(data.timer_start_time) : null,
+          duration: data.timer_duration_minutes || DEFAULT_TIMER_DURATION
+        };
+
+        emitHeatUpdate(normalizedHeatId, timer, data.config_data ?? null, data.status);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'scores',
+        filter: `heat_id=eq.${normalizedHeatId}`
+      },
+      (payload) => {
+        window.dispatchEvent(new CustomEvent('newScoreRealtime', {
+          detail: payload.new
+        }));
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'scores',
+        filter: `heat_id=eq.${normalizedHeatId}`
+      },
+      (payload) => {
+        window.dispatchEvent(new CustomEvent('newScoreRealtime', {
+          detail: payload.new
+        }));
+      }
+    )
+    .subscribe((status) => {
+      if (debugRealtimeEnabled) {
+        console.log(`📡 [${channelName}] status:`, status, 'listeners:', heatChannelRegistry.get(normalizedHeatId)?.listeners.size ?? 0);
+      }
+    });
+
+  const state: HeatChannelState = {
+    channel,
+    listeners: new Map(),
+  };
+  heatChannelRegistry.set(normalizedHeatId, state);
+  return state;
+};
+
+const releaseHeatChannel = (normalizedHeatId: string) => {
+  const state = heatChannelRegistry.get(normalizedHeatId);
+  if (!state) return;
+
+  if (state.listeners.size === 0) {
+    try {
+      state.channel.unsubscribe();
+      supabase?.removeChannel(state.channel);
+    } catch (error) {
+      console.warn('⚠️ Failed to release realtime channel', normalizedHeatId, error);
+    } finally {
+      heatChannelRegistry.delete(normalizedHeatId);
+    }
+  }
+};
 
 export function useRealtimeSync(): UseRealtimeSyncReturn {
   const [isConnected, setIsConnected] = useState(false);
@@ -331,74 +449,16 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       return () => { };
     }
 
-    console.log('🔔 Subscription au heat:', normalizedHeatId);
+    const listenerId = `listener-${++heatListenerSequence}`;
+    const state = heatChannelRegistry.get(normalizedHeatId) ?? createHeatChannel(normalizedHeatId);
+    state.listeners.set(listenerId, (timer, config, status) => {
+      setLastUpdate(new Date());
+      onUpdate(timer, config, status);
+    });
 
-    const subscription = supabase!
-      .channel(`heat-${normalizedHeatId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'heat_realtime_config',
-          filter: `heat_id=eq.${normalizedHeatId}`
-        },
-        (payload) => {
-          console.log('📡 Mise à jour temps réel reçue:', payload);
-
-          const data = payload.new as RealtimeHeatConfig;
-          if (!data) return;
-
-          // Convertir les données en format local
-          const timer: HeatTimer = {
-            isRunning: data.status === 'running',
-            startTime: data.timer_start_time ? new Date(data.timer_start_time) : null,
-            duration: data.timer_duration_minutes || DEFAULT_TIMER_DURATION
-          };
-
-          const config = data.config_data ?? null;
-
-          setLastUpdate(new Date());
-          onUpdate(timer, config, data.status);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'scores',
-          filter: `heat_id=eq.${normalizedHeatId}`
-        },
-        (payload) => {
-          console.log('📊 Nouveau score en temps réel:', payload);
-          // Déclencher un événement pour notifier les composants
-          window.dispatchEvent(new CustomEvent('newScoreRealtime', {
-            detail: payload.new
-          }));
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'scores',
-          filter: `heat_id=eq.${normalizedHeatId}`
-        },
-        (payload) => {
-          console.log('📊 Score mis à jour en temps réel:', payload);
-          window.dispatchEvent(new CustomEvent('newScoreRealtime', {
-            detail: payload.new
-          }));
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 Statut subscription:', status);
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Connecté au temps réel pour heat:', normalizedHeatId);
-        }
-      });
+    if (debugRealtimeEnabled) {
+      console.log('🔔 Subscription au heat:', normalizedHeatId, 'listener:', listenerId, 'active listeners:', state.listeners.size);
+    }
 
     // Charger l'état initial
     const loadInitialState = async () => {
@@ -468,8 +528,13 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     // Fonction de nettoyage
     return () => {
-      console.log('🔌 Déconnexion subscription heat:', normalizedHeatId);
-      subscription.unsubscribe();
+      const currentState = heatChannelRegistry.get(normalizedHeatId);
+      if (!currentState) return;
+      currentState.listeners.delete(listenerId);
+      if (debugRealtimeEnabled) {
+        console.log('🔌 Déconnexion subscription heat:', normalizedHeatId, 'listener:', listenerId, 'remaining:', currentState.listeners.size);
+      }
+      releaseHeatChannel(normalizedHeatId);
     };
   }, [setLastUpdate]); // Dependencies stabilized
 

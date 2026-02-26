@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { History, ChevronDown, RotateCcw } from 'lucide-react';
 import ScoreDisplay from '../components/ScoreDisplay';
 import { useConfigStore } from '../stores/configStore';
@@ -224,6 +224,16 @@ export default function DisplayPage() {
     const [historyScores, setHistoryScores] = useState<Score[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [liveHeatCountries, setLiveHeatCountries] = useState<Record<string, string>>({});
+    const configRef = useRef(config);
+    const countriesRef = useRef(liveHeatCountries);
+
+    useEffect(() => {
+        configRef.current = config;
+    }, [config]);
+
+    useEffect(() => {
+        countriesRef.current = liveHeatCountries;
+    }, [liveHeatCountries]);
 
     // Fetch available heats on mount
     useEffect(() => {
@@ -502,8 +512,10 @@ export default function DisplayPage() {
                 // Check if heat/round changed
                 const snapshot = await fetchEventConfigSnapshot(activeEventId);
                 if (snapshot) {
-                    const heatChanged = snapshot.heat_number !== config.heatId;
-                    const roundChanged = snapshot.round !== config.round;
+                    const currentConfig = configRef.current;
+                    const currentCountries = countriesRef.current;
+                    const heatChanged = snapshot.heat_number !== currentConfig.heatId;
+                    const roundChanged = snapshot.round !== currentConfig.round;
 
                     if (heatChanged || roundChanged) {
                         setIsReloading(true);
@@ -518,8 +530,8 @@ export default function DisplayPage() {
                             const snapshotNames = normalizeSurferMap(snapshot.surferNames || {});
                             const mergedNames = mergeSurferNames(prev.surferNames, snapshotNames);
                             const snapshotCountries = normalizeSurferCountries(snapshot.surferCountries || {});
-                            const mergedCountries = Object.keys(liveHeatCountries).length > 0
-                                ? liveHeatCountries
+                            const mergedCountries = Object.keys(currentCountries).length > 0
+                                ? currentCountries
                                 : (Object.keys(snapshotCountries).length > 0 ? snapshotCountries : (prev.surferCountries || {}));
 
                             const newConfig = {
@@ -554,15 +566,11 @@ export default function DisplayPage() {
                 supabase?.removeChannel(channel);
             }
         };
-    }, [activeEventId, config.heatId, config.round, liveHeatCountries]); // Removed setConfig to prevent loop
+    }, [activeEventId]); // Keep a single subscription per event
 
     // Subscribe to realtime heat timer/config and scores
     useEffect(() => {
-        // Only run real-time sync if we are in LIVE mode!
-        // (Actually, we should arguably keep it running in background so switching back is instant, 
-        // but let's keep logic simple: hooks run always, we just choose what to display)
-
-        if (!configSaved || !config.competition) {
+        if (viewMode !== 'live' || !configSaved || !config.competition) {
             // Return a no-op cleanup function to prevent React error #310
             return () => { };
         }
