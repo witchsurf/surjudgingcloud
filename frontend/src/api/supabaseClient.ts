@@ -57,6 +57,10 @@ interface HeatSlotMappingRow {
   source_position: number | null;
 }
 
+const INTERFERENCE_CACHE_TTL_MS = 1500;
+const interferenceCache = new Map<string, { at: number; value: InterferenceCall[] }>();
+const interferenceInflight = new Map<string, Promise<InterferenceCall[]>>();
+
 /**
  * Fetch the active heat pointer - used by kiosk mode to know which heat is currently active
  */
@@ -1195,14 +1199,36 @@ export async function fetchHeatScores(heatId: string): Promise<Score[]> {
 export async function fetchInterferenceCalls(heatId: string): Promise<InterferenceCall[]> {
   ensureSupabase();
   const normalizedHeatId = ensureHeatId(heatId);
-  const { data, error } = await supabase!
-    .from('interference_calls')
-    .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
-    .eq('heat_id', normalizedHeatId)
-    .order('updated_at', { ascending: false });
 
-  if (error) throw error;
-  return (data ?? []) as InterferenceCall[];
+  const cached = interferenceCache.get(normalizedHeatId);
+  if (cached && Date.now() - cached.at < INTERFERENCE_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  const inflight = interferenceInflight.get(normalizedHeatId);
+  if (inflight) {
+    return inflight;
+  }
+
+  const request = (async () => {
+    const { data, error } = await supabase!
+      .from('interference_calls')
+      .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
+      .eq('heat_id', normalizedHeatId)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    const value = (data ?? []) as InterferenceCall[];
+    interferenceCache.set(normalizedHeatId, { at: Date.now(), value });
+    return value;
+  })();
+
+  interferenceInflight.set(normalizedHeatId, request);
+  try {
+    return await request;
+  } finally {
+    interferenceInflight.delete(normalizedHeatId);
+  }
 }
 
 export async function upsertInterferenceCall(input: {
@@ -1237,6 +1263,7 @@ export async function upsertInterferenceCall(input: {
     .from('interference_calls')
     .upsert(payload, { onConflict: 'heat_id,judge_id,surfer,wave_number' });
   if (error) throw error;
+  interferenceCache.delete(payload.heat_id);
 }
 
 export async function fetchScoresForHeats(heatIds: string[]): Promise<Record<string, Score[]>> {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import {
     fetchHeatEntriesWithParticipants,
@@ -36,6 +36,8 @@ const COLOR_MAP: Record<string, string> = {
     NOIR: 'NOIR',
     VERT: 'VERT'
 };
+
+const PARTICIPANT_RELOAD_THROTTLE_MS = 400;
 
 const normalizeColor = (value?: string | null) => {
     if (!value) return '';
@@ -392,6 +394,9 @@ export function useHeatParticipants(heatId: string) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [source, setSource] = useState<'entries' | 'mappings' | 'empty'>('empty');
+    const loadingRef = useRef(false);
+    const lastLoadRef = useRef(0);
+    const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
         if (!heatId || !supabase) {
@@ -400,7 +405,13 @@ export function useHeatParticipants(heatId: string) {
             return;
         }
 
-        const loadParticipants = async () => {
+        const loadParticipants = async (force = false) => {
+            const now = Date.now();
+            if (!force && (loadingRef.current || now - lastLoadRef.current < PARTICIPANT_RELOAD_THROTTLE_MS)) {
+                return;
+            }
+
+            loadingRef.current = true;
             setLoading(true);
             setError(null);
 
@@ -469,14 +480,27 @@ export function useHeatParticipants(heatId: string) {
                 setParticipants({});
                 setSource('empty');
                 setLoading(false);
+            } finally {
+                loadingRef.current = false;
+                lastLoadRef.current = Date.now();
             }
         };
 
-        loadParticipants();
+        const scheduleReload = (force = false) => {
+            if (reloadTimeoutRef.current) {
+                clearTimeout(reloadTimeoutRef.current);
+            }
+            reloadTimeoutRef.current = setTimeout(() => {
+                loadParticipants(force);
+            }, force ? 0 : 120);
+        };
+
+        scheduleReload(true);
 
         // Subscribe to real-time changes
+        const channelName = `heat_participants_${heatId}`;
         const subscription = supabase!
-            .channel(`heat_participants_${heatId}`)
+            .channel(channelName)
             .on(
                 'postgres_changes',
                 {
@@ -486,12 +510,27 @@ export function useHeatParticipants(heatId: string) {
                     filter: `heat_id=eq.${heatId}`
                 },
                 () => {
-                    loadParticipants();
+                    scheduleReload();
+                }
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'heat_slot_mappings',
+                    filter: `heat_id=eq.${heatId}`
+                },
+                () => {
+                    scheduleReload();
                 }
             )
             .subscribe();
 
         return () => {
+            if (reloadTimeoutRef.current) {
+                clearTimeout(reloadTimeoutRef.current);
+            }
             subscription.unsubscribe();
         };
     }, [heatId]);

@@ -7,6 +7,7 @@ import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/supabaseClient';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers } from '../utils/heat';
+import { supabase } from '../lib/supabase';
 
 import type {
   AppConfig,
@@ -171,27 +172,61 @@ export default function ScoreDisplay({
   }, [scores]);
 
   useEffect(() => {
-    let cancelled = false;
     if (!configSaved || !heatId) {
       setEffectiveInterferences([]);
       return;
     }
-    fetchInterferenceCalls(heatId)
-      .then((calls) => {
+
+    let cancelled = false;
+    let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const refreshInterferences = async () => {
+      try {
+        const calls = await fetchInterferenceCalls(heatId);
         if (cancelled) return;
         const computed = computeEffectiveInterferences(calls, Math.max(config.judges.length, 1));
         setEffectiveInterferences(computed);
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!cancelled) {
           console.warn('Impossible de charger les interférences du heat', error);
           setEffectiveInterferences([]);
         }
-      });
+      }
+    };
+
+    refreshInterferences();
+
+    const channel = supabase
+      ?.channel(`interference_calls_${heatId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'interference_calls',
+          filter: `heat_id=eq.${heatId}`
+        },
+        () => {
+          if (refreshTimeout) {
+            clearTimeout(refreshTimeout);
+          }
+          refreshTimeout = setTimeout(() => {
+            refreshInterferences();
+          }, 120);
+        }
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
     };
-  }, [configSaved, heatId, config.judges.length, scores]);
+  }, [configSaved, heatId, config.judges.length]);
 
   // Calcul des stats
   useEffect(() => {
