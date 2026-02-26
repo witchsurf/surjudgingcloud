@@ -29,11 +29,18 @@ export interface RoundSpec {
 export type FormatType = 'single-elim' | 'repechage';
 export type VariantType = 'V1' | 'V2';
 
+export interface HybridPlan {
+  enabled: boolean;
+  round2HeatSize: 2 | 3 | 4;
+  round2Advance: 1 | 2;
+}
+
 export interface ComputeOptions {
   format: FormatType;
   preferredHeatSize?: number | 'auto';
   variant?: VariantType;
   seedingMethod?: 'snake';
+  hybridPlan?: HybridPlan;
 }
 
 export interface ComputeResult {
@@ -129,6 +136,88 @@ function getAdvancingPositions(heat: HeatSpec): number[] {
   }
   // Legacy WSL rule for 3/4-person heats.
   return nonByePositions.slice(0, Math.min(2, nonByePositions.length));
+}
+
+function buildRoundFromReferences(
+  refs: SlotReference[],
+  roundNumber: number,
+  heatSize: number,
+  roundName: string
+): RoundSpec {
+  const heatCount = Math.max(1, Math.ceil(refs.length / heatSize));
+  const distribution = distributeReferencesSnake(refs, heatCount, heatSize);
+
+  return {
+    name: roundName,
+    roundNumber,
+    heats: distribution.map((heatRefs, idx) => {
+      const colorSet = getColorSet(heatSize);
+      return {
+        heatNumber: idx + 1,
+        slots: heatRefs.map((ref, slotIdx) => {
+          if (ref.sourceRound === 0) {
+            return { bye: true, placeholder: 'BYE', color: colorSet[slotIdx] };
+          }
+          return { placeholder: makePlaceholder(ref), color: colorSet[slotIdx] };
+        }),
+        roundRef: `R${roundNumber}-H${idx + 1}`,
+      };
+    }),
+  };
+}
+
+function collectAdvancers(round: RoundSpec, advanceCount: number): SlotReference[] {
+  const qualifiers: SlotReference[] = [];
+
+  round.heats.forEach((heat) => {
+    const nonByeCount = heat.slots.filter((slot) => !slot.bye).length;
+    const advancersInHeat = Math.min(Math.max(1, advanceCount), nonByeCount);
+    for (let position = 1; position <= advancersInHeat; position += 1) {
+      qualifiers.push({
+        sourceRound: round.roundNumber,
+        heatNumber: heat.heatNumber,
+        position,
+      });
+    }
+  });
+
+  return qualifiers;
+}
+
+function buildHybridSingleElimNextRounds(round1: HeatSpec[], plan: HybridPlan): RoundSpec[] {
+  const results: RoundSpec[] = [];
+  const round1Refs: SlotReference[] = [];
+
+  round1.forEach((heat) => {
+    const advancingPositions = getAdvancingPositions(heat);
+    advancingPositions.forEach((position) => {
+      round1Refs.push({ sourceRound: 1, heatNumber: heat.heatNumber, position });
+    });
+  });
+
+  if (!round1Refs.length) return results;
+
+  const round2 = buildRoundFromReferences(round1Refs, 2, plan.round2HeatSize, 'Round 2');
+  results.push(round2);
+
+  let currentRefs = collectAdvancers(round2, plan.round2Advance);
+  let roundNumber = 3;
+
+  while (currentRefs.length > 0) {
+    const round = buildRoundFromReferences(
+      currentRefs,
+      roundNumber,
+      2,
+      Math.ceil(currentRefs.length / 2) === 1 ? 'Finale' : `Round ${roundNumber}`
+    );
+    results.push(round);
+    if (round.heats.length === 1) break;
+
+    currentRefs = collectAdvancers(round, 1);
+    roundNumber += 1;
+  }
+
+  return results;
 }
 
 export function buildSingleElimNextRounds(round1: HeatSpec[], variant: VariantType = 'V1'): RoundSpec[] {
@@ -337,7 +426,7 @@ export function buildRepechageFlows(round1: HeatSpec[], mainRounds: RoundSpec[])
 }
 
 export function computeHeats(participants: ParticipantSeed[], options: ComputeOptions): ComputeResult {
-  const { preferredHeatSize = 'auto', variant = 'V1' } = options;
+  const { preferredHeatSize = 'auto', variant = 'V1', hybridPlan } = options;
   const participantCount = participants.length;
   const heatSize = determineHeatSize(participantCount, preferredHeatSize);
   const heatCount = determineHeatCount(participantCount, heatSize);
@@ -373,6 +462,11 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
   ];
 
   if (options.format === 'single-elim') {
+    if (hybridPlan?.enabled) {
+      const nextRounds = buildHybridSingleElimNextRounds(round1Heats, hybridPlan);
+      mainRounds.push(...nextRounds);
+      return { rounds: mainRounds };
+    }
     const nextRounds = buildSingleElimNextRounds(round1Heats, variant);
     mainRounds.push(...nextRounds);
     return { rounds: mainRounds };

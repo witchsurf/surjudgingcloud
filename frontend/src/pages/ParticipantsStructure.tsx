@@ -16,7 +16,7 @@ import {
   type ParticipantRecord,
 } from '../api/supabaseClient';
 import { exportBracketToCSV, exportBracketToPDF } from '../utils/pdfExport';
-import type { ComputeResult, RoundSpec } from '../utils/bracket';
+import type { ComputeResult, RoundSpec, HybridPlan } from '../utils/bracket';
 import { computeHeats } from '../utils/bracket';
 import type { ParsedParticipant } from '../utils/csv';
 import type { AppConfig } from '../types';
@@ -64,6 +64,9 @@ export default function ParticipantsStructure() {
   const [format, setFormat] = useState<FormatType>('single-elim');
   const [preferredHeatSize, setPreferredHeatSize] = useState<PreferredHeatSize>('auto');
   const [variant, setVariant] = useState<VariantType>('V1');
+  const [hybridEnabled, setHybridEnabled] = useState(false);
+  const [hybridRound2HeatSize, setHybridRound2HeatSize] = useState<2 | 3 | 4>(4);
+  const [hybridRound2Advance, setHybridRound2Advance] = useState<1 | 2>(2);
   const [overwrite, setOverwrite] = useState(false);
   const [preview, setPreview] = useState<ComputeResult | null>(null);
   const [previewCategory, setPreviewCategory] = useState<string>('');
@@ -395,6 +398,13 @@ export default function ParticipantsStructure() {
         format,
         preferredHeatSize,
         variant,
+        hybridPlan: hybridEnabled
+          ? ({
+            enabled: true,
+            round2HeatSize: hybridRound2HeatSize,
+            round2Advance: hybridRound2Advance,
+          } satisfies HybridPlan)
+          : undefined,
       });
       setPreview(result);
       setPreviewCategory(generatorCategory);
@@ -675,6 +685,48 @@ export default function ParticipantsStructure() {
                 </div>
               </div>
 
+              {format === 'single-elim' && (
+                <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <label className="flex items-center gap-2 text-sm text-slate-200">
+                    <input
+                      type="checkbox"
+                      checked={hybridEnabled}
+                      onChange={(event) => setHybridEnabled(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-400"
+                    />
+                    Activer plan hybride (R1 auto, puis R2 custom, puis man-on-man)
+                  </label>
+
+                  {hybridEnabled && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="text-xs uppercase tracking-widest text-slate-400">R2 taille de heat</label>
+                        <select
+                          value={hybridRound2HeatSize}
+                          onChange={(event) => setHybridRound2HeatSize(Number(event.target.value) as 2 | 3 | 4)}
+                          className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 focus:border-blue-400 focus:outline-none"
+                        >
+                          <option value={2}>2</option>
+                          <option value={3}>3</option>
+                          <option value={4}>4</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs uppercase tracking-widest text-slate-400">R2 qualifiés / heat</label>
+                        <select
+                          value={hybridRound2Advance}
+                          onChange={(event) => setHybridRound2Advance(Number(event.target.value) as 1 | 2)}
+                          className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-100 focus:border-blue-400 focus:outline-none"
+                        >
+                          <option value={1}>1</option>
+                          <option value={2}>2</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center gap-2 text-sm text-slate-300">
                 <input
                   id="overwrite"
@@ -699,6 +751,7 @@ export default function ParticipantsStructure() {
               <p><strong>Snake seeding</strong> : distribue les têtes de série en aller/retour sur les heats.</p>
               <p className="mt-2">Les 3e/4e places alimentent automatiquement le repêchage si le format est sélectionné.</p>
               <p className="mt-2">Les byes sont attribuées aux meilleurs seeds lorsque le nombre de participants ne remplit pas la série.</p>
+              <p className="mt-2">Plan hybride: Round 2 configurable (ex: heats de 4), puis bascule automatique en man-on-man jusqu’à la finale.</p>
             </div>
           </div>
 

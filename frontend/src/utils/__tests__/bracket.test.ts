@@ -86,6 +86,33 @@ describe('computeHeats', () => {
     expect(placeholders.some((placeholder) => placeholder?.includes('-P2'))).toBe(false);
   });
 
+  it('builds a hybrid bracket (R2 heats of 4, then man-on-man to final)', () => {
+    const participants = buildParticipants(12);
+    const result = computeHeats(participants, {
+      format: 'single-elim',
+      preferredHeatSize: 4,
+      hybridPlan: {
+        enabled: true,
+        round2HeatSize: 4,
+        round2Advance: 2,
+      },
+    });
+
+    expect(result.rounds).toHaveLength(4);
+    expect(result.rounds[0].heats).toHaveLength(3);
+    expect(result.rounds[1].heats).toHaveLength(2);
+    expect(result.rounds[1].heats[0].slots).toHaveLength(4);
+    expect(result.rounds[2].heats).toHaveLength(2);
+    expect(result.rounds[2].heats[0].slots).toHaveLength(2);
+    expect(result.rounds[3].name).toBe('Finale');
+    expect(result.rounds[3].heats[0].slots).toHaveLength(2);
+
+    const round2Placeholders = result.rounds[1].heats.flatMap((heat) =>
+      heat.slots.map((slot) => slot.placeholder).filter(Boolean)
+    );
+    expect(round2Placeholders.some((value) => value?.startsWith('R1-H'))).toBe(true);
+  });
+
   it('builds repechage bracket with losers from round 1', () => {
     const participants = buildParticipants(12);
     const result = computeHeats(participants, {
