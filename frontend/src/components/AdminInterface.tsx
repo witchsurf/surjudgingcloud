@@ -1226,6 +1226,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         divisions: allDivisions,
         scores: allScores,
         interferenceCalls: allInterferenceCalls,
+        configuredJudgeCount: config.judges.length,
       });
 
       console.log('✅ PDF complet généré avec', Object.keys(allDivisions).length, 'catégories');

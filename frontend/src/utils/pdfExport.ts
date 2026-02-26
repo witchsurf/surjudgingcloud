@@ -37,6 +37,7 @@ interface FullCompetitionExportPayload {
   divisions: Record<string, RoundSpec[]>;
   scores: Record<string, Score[]>;
   interferenceCalls?: Record<string, InterferenceCall[]>;
+  configuredJudgeCount?: number;
 }
 
 const slugify = (value: string) =>
@@ -543,6 +544,7 @@ export function exportFullCompetitionPDF({
   divisions,
   scores,
   interferenceCalls = {},
+  configuredJudgeCount,
 }: FullCompetitionExportPayload) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
@@ -575,7 +577,7 @@ export function exportFullCompetitionPDF({
       ...heatScores.map((s) => Number(s.wave_number) || 0)
     );
     return {
-      judgeCount: Math.max(judgeCount, 1),
+      judgeCount: Math.max(configuredJudgeCount || 0, judgeCount, 1),
       maxWaves,
     };
   };

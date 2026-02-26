@@ -870,18 +870,25 @@ export async function fetchAllScoresForEvent(eventId: number): Promise<Record<st
   // Fetch all scores for these heats
   const { data: scores, error: scoresError } = await supabase!
     .from('scores')
-    .select('*')
-    .in('heat_id', heatIds);
+    .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
+    .in('heat_id', heatIds)
+    .order('created_at', { ascending: true });
 
   if (scoresError) throw scoresError;
 
   // Group scores by heat_id
   const result: Record<string, Score[]> = {};
-  (scores ?? []).forEach((score) => {
-    if (!result[score.heat_id]) {
-      result[score.heat_id] = [];
+  ((scores ?? []) as RawScoreRow[]).forEach((row) => {
+    const parsed = toParsedScore(row);
+    const key = parsed.heat_id;
+    if (!result[key]) {
+      result[key] = [];
     }
-    result[score.heat_id].push(score as Score);
+    result[key].push(parsed);
+  });
+
+  Object.keys(result).forEach((heatId) => {
+    result[heatId] = canonicalizeScores(result[heatId]);
   });
 
   return result;
@@ -1080,6 +1087,83 @@ interface HeatSequenceRow {
   color_order: string[] | null;
 }
 
+type RawScoreRow = {
+  id?: string;
+  event_id?: number;
+  heat_id: string;
+  competition: string;
+  division: string;
+  round: number;
+  judge_id: string;
+  judge_name: string;
+  surfer: string;
+  wave_number: number;
+  score: number;
+  timestamp?: string;
+  created_at?: string;
+};
+
+const normalizeScoreJudgeId = (judgeId?: string) => {
+  const upper = (judgeId || '').trim().toUpperCase();
+  if (upper === 'KIOSK-J1') return 'J1';
+  if (upper === 'KIOSK-J2') return 'J2';
+  if (upper === 'KIOSK-J3') return 'J3';
+  return upper || judgeId || '';
+};
+
+const SCORE_SURFER_MAP: Record<string, string> = {
+  RED: 'RED',
+  ROUGE: 'RED',
+  WHITE: 'WHITE',
+  BLANC: 'WHITE',
+  YELLOW: 'YELLOW',
+  JAUNE: 'YELLOW',
+  BLUE: 'BLUE',
+  BLEU: 'BLUE',
+  GREEN: 'GREEN',
+  VERT: 'GREEN',
+  BLACK: 'BLACK',
+  NOIR: 'BLACK',
+};
+
+const normalizeScoreSurfer = (surfer?: string) => {
+  const upper = (surfer || '').trim().toUpperCase();
+  return SCORE_SURFER_MAP[upper] || upper || surfer || '';
+};
+
+const scoreTimestampMs = (score: Score) =>
+  new Date(score.created_at || score.timestamp || 0).getTime();
+
+const toParsedScore = (row: RawScoreRow): Score => ({
+  id: row.id,
+  event_id: row.event_id,
+  heat_id: ensureHeatId(row.heat_id),
+  competition: row.competition,
+  division: row.division,
+  round: row.round,
+  judge_id: normalizeScoreJudgeId(row.judge_id),
+  judge_name: normalizeScoreJudgeId(row.judge_name),
+  surfer: normalizeScoreSurfer(row.surfer),
+  wave_number: row.wave_number,
+  score: typeof row.score === 'number' ? row.score : Number(row.score) || 0,
+  timestamp: row.timestamp ?? new Date().toISOString(),
+  created_at: row.created_at ?? undefined,
+  synced: true,
+});
+
+const canonicalizeScores = (scores: Score[]): Score[] => {
+  const latestByLogicalKey = new Map<string, Score>();
+  scores.forEach((score) => {
+    const key = `${score.heat_id}::${normalizeScoreJudgeId(score.judge_id)}::${normalizeScoreSurfer(score.surfer)}::${Number(score.wave_number)}`;
+    const existing = latestByLogicalKey.get(key);
+    if (!existing || scoreTimestampMs(score) >= scoreTimestampMs(existing)) {
+      latestByLogicalKey.set(key, score);
+    }
+  });
+  return Array.from(latestByLogicalKey.values())
+    .sort((a, b) => scoreTimestampMs(a) - scoreTimestampMs(b));
+};
+
 export async function fetchOrderedHeatSequence(eventId: number, category: string): Promise<HeatSequenceRow[]> {
   ensureSupabase();
   const { data, error } = await supabase!
@@ -1104,37 +1188,8 @@ export async function fetchHeatScores(heatId: string): Promise<Score[]> {
     .order('created_at', { ascending: true });
 
   if (error) throw error;
-  const rows = (data ?? []) as Array<{
-    id?: string;
-    event_id?: number;
-    heat_id: string;
-    competition: string;
-    division: string;
-    round: number;
-    judge_id: string;
-    judge_name: string;
-    surfer: string;
-    wave_number: number;
-    score: number;
-    timestamp?: string;
-    created_at?: string;
-  }>;
-
-  return rows.map((row) => ({
-    id: row.id,
-    heat_id: ensureHeatId(row.heat_id),
-    competition: row.competition,
-    division: row.division,
-    round: row.round,
-    judge_id: row.judge_id,
-    judge_name: row.judge_name,
-    surfer: row.surfer,
-    wave_number: row.wave_number,
-    score: typeof row.score === 'number' ? row.score : Number(row.score) || 0,
-    timestamp: row.timestamp ?? new Date().toISOString(),
-    created_at: row.created_at ?? undefined,
-    synced: true,
-  }));
+  const rows = (data ?? []) as RawScoreRow[];
+  return canonicalizeScores(rows.map(toParsedScore));
 }
 
 export async function fetchInterferenceCalls(heatId: string): Promise<InterferenceCall[]> {
@@ -1199,43 +1254,19 @@ export async function fetchScoresForHeats(heatIds: string[]): Promise<Record<str
 
   if (error) throw error;
 
-  const rows = (data ?? []) as Array<{
-    id?: string;
-    event_id?: number;
-    heat_id: string;
-    competition: string;
-    division: string;
-    round: number;
-    judge_id: string;
-    judge_name: string;
-    surfer: string;
-    wave_number: number;
-    score: number;
-    timestamp?: string;
-    created_at?: string;
-  }>;
+  const rows = (data ?? []) as RawScoreRow[];
 
   const grouped: Record<string, Score[]> = {};
   rows.forEach((row) => {
-    const parsed: Score = {
-      id: row.id,
-      heat_id: ensureHeatId(row.heat_id),
-      competition: row.competition,
-      division: row.division,
-      round: row.round,
-      judge_id: row.judge_id,
-      judge_name: row.judge_name,
-      surfer: row.surfer,
-      wave_number: row.wave_number,
-      score: typeof row.score === 'number' ? row.score : Number(row.score) || 0,
-      timestamp: row.timestamp ?? new Date().toISOString(),
-      created_at: row.created_at ?? undefined,
-      synced: true,
-    };
+    const parsed = toParsedScore(row);
     if (!grouped[parsed.heat_id]) {
       grouped[parsed.heat_id] = [];
     }
     grouped[parsed.heat_id].push(parsed);
+  });
+
+  Object.keys(grouped).forEach((heatId) => {
+    grouped[heatId] = canonicalizeScores(grouped[heatId]);
   });
 
   return grouped;
