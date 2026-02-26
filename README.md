@@ -52,6 +52,19 @@ npm install
 npm run dev -- --host
 ```
 
+### Edge Functions source of truth
+
+- Edit functions in `backend/supabase/functions` only.
+- Keep `supabase/functions` as mirror for compatibility.
+- Use:
+
+```bash
+./scripts/sync-supabase-functions.sh
+./scripts/check-supabase-drift.sh
+```
+
+Detailed deployment steps: `DEPLOY_EDGE_FUNCTIONS.md`.
+
 Security note: the migration creates permissive policies so the anon key can read/write for judging convenience; review and tighten policies before production.
 
 

@@ -1,0 +1,12 @@
+{
+  "tasks": {
+    "start": "deno run --allow-env --allow-net --allow-read index.ts"
+  },
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.43.4",
+    "std/http/server": "https://deno.land/std@0.224.0/http/server.ts"
+  },
+  "compilerOptions": {
+    "lib": ["deno.ns", "dom", "deno.unstable"]
+  }
+}
