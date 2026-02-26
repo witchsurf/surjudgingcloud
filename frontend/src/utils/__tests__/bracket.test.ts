@@ -47,7 +47,7 @@ describe('computeHeats', () => {
       preferredHeatSize: 4,
     });
 
-    expect(result.rounds).toHaveLength(3);
+    expect(result.rounds).toHaveLength(4);
     const round2 = result.rounds[1];
     expect(round2.heats).toHaveLength(3);
     round2.heats.forEach((heat) => {
@@ -55,9 +55,35 @@ describe('computeHeats', () => {
       expect(heat.slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE']);
     });
 
-    const final = result.rounds[2];
-    expect(final.heats[0].slots).toHaveLength(3);
-    expect(final.heats[0].slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE', 'YELLOW']);
+    const final = result.rounds[3];
+    expect(final.name).toBe('Finale');
+    expect(final.heats[0].slots).toHaveLength(2);
+    expect(final.heats[0].slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE']);
+  });
+
+  it('advances only winners from round 1 when preferred heat size is man-on-man', () => {
+    const participants = buildParticipants(8);
+    const result = computeHeats(participants, {
+      format: 'single-elim',
+      variant: 'V2',
+      preferredHeatSize: 2,
+    });
+
+    const round1 = result.rounds[0];
+    expect(round1.heats).toHaveLength(4);
+    round1.heats.forEach((heat) => {
+      expect(heat.slots).toHaveLength(2);
+    });
+
+    const round2 = result.rounds[1];
+    const placeholders = round2.heats.flatMap((heat) =>
+      heat.slots.map((slot) => slot.placeholder).filter(Boolean)
+    );
+    expect(placeholders).toContain('R1-H1-P1');
+    expect(placeholders).toContain('R1-H2-P1');
+    expect(placeholders).toContain('R1-H3-P1');
+    expect(placeholders).toContain('R1-H4-P1');
+    expect(placeholders.some((placeholder) => placeholder?.includes('-P2'))).toBe(false);
   });
 
   it('builds repechage bracket with losers from round 1', () => {

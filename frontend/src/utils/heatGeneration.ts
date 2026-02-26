@@ -146,82 +146,43 @@ const distributeHeatSizes = (totalSurfers: number, heatSize: number): number[] =
 
 const buildManOnManBracket = (participants: any[]): HeatPlan[] => {
   const total = participants.length;
-  const heats: HeatPlan[] = [];
+  if (total <= 0) return [];
 
-  if (total >= 6) {
-    const round1: Heat[] = [];
-    let heatNo = 1;
-    for (let i = 0; i < total; i += 2) {
-      const surfers = [normaliseParticipant(participants[i], 0)];
-      if (participants[i + 1]) {
-        surfers.push(normaliseParticipant(participants[i + 1], 1));
-      }
-      if (surfers.length === 2) {
-        round1.push(createHeat(1, heatNo++, surfers));
-      }
-    }
-    heats.push({ round: 1, heats: round1 });
-
-    heats.push({
-      round: 2,
-      heats: [
-        createHeat(2, 1, [
-          placeholderFrom(1, 1, 0, 'Vainqueur'),
-          placeholderFrom(1, 2, 1, 'Vainqueur')
-        ]),
-        createHeat(2, 2, [
-          placeholderFrom(1, 3, 0, 'Vainqueur'),
-          placeholderFrom(1, 4, 1, 'Vainqueur')
-        ])
-      ]
-    });
-
-    heats.push({
-      round: 3,
-      heats: [
-        createHeat(3, 1, [
-          placeholderFrom(2, 1, 0, 'Vainqueur'),
-          placeholderFrom(2, 2, 1, 'Vainqueur')
-        ])
-      ]
-    });
-    return heats;
-  }
-
-  if (total === 4) {
-    const round1: Heat[] = [];
-    let heatNo = 1;
-    for (let i = 0; i < total; i += 2) {
-      const surfers = [normaliseParticipant(participants[i], 0)];
-      if (participants[i + 1]) {
-        surfers.push(normaliseParticipant(participants[i + 1], 1));
-      }
-      round1.push(createHeat(1, heatNo++, surfers));
-    }
-    heats.push({ round: 1, heats: round1 });
-    heats.push({
-      round: 2,
-      heats: [
-        createHeat(2, 1, [
-          placeholderFrom(1, 1, 0, 'Vainqueur'),
-          placeholderFrom(1, 2, 1, 'Vainqueur')
-        ])
-      ]
-    });
-    return heats;
-  }
-
+  const bracket: HeatPlan[] = [];
   const round1: Heat[] = [];
-  let heatNo = 1;
-  for (let i = 0; i < total; i += 2) {
+
+  for (let i = 0, heatNo = 1; i < total; i += 2, heatNo += 1) {
     const surfers = [normaliseParticipant(participants[i], 0)];
     if (participants[i + 1]) {
       surfers.push(normaliseParticipant(participants[i + 1], 1));
     }
-    round1.push(createHeat(1, heatNo++, surfers));
+    round1.push(createHeat(1, heatNo, surfers));
   }
-  heats.push({ round: 1, heats: round1 });
-  return heats;
+
+  bracket.push({ round: 1, heats: round1 });
+
+  let previousRound = 1;
+  let previousHeatCount = round1.length;
+
+  while (previousHeatCount > 1) {
+    const currentRound = previousRound + 1;
+    const currentHeatCount = Math.ceil(previousHeatCount / 2);
+    const heats: Heat[] = [];
+
+    for (let i = 0, heatNo = 1; i < previousHeatCount; i += 2, heatNo += 1) {
+      const slots = [placeholderFrom(previousRound, i + 1, 0, 'Vainqueur')];
+      if (i + 1 < previousHeatCount) {
+        slots.push(placeholderFrom(previousRound, i + 2, 1, 'Vainqueur'));
+      }
+      heats.push(createHeat(currentRound, heatNo, slots));
+    }
+
+    bracket.push({ round: currentRound, heats });
+    previousRound = currentRound;
+    previousHeatCount = currentHeatCount;
+  }
+
+  return bracket;
 };
 
 const buildSixPersonBracket = (participants: any[]): HeatPlan[] => {

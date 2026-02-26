@@ -5,6 +5,8 @@ export interface TournamentStructure {
   surfersPerHeat: number;
 }
 
+const getAdvancingCount = (heatSize: number) => Math.max(1, Math.ceil(heatSize / 2));
+
 export function calculateTournamentStructure(
   totalSurfers: number,
   surfersPerHeat: number,
@@ -29,19 +31,26 @@ export function calculateTournamentStructure(
 function calculateEliminationStructure(totalSurfers: number, surfersPerHeat: number): TournamentStructure {
   const rounds: number[] = [];
   let currentSurfers = totalSurfers;
+  const advancingPerHeat = getAdvancingCount(surfersPerHeat);
 
   // Round 1 : tous les surfeurs
   const round1Heats = Math.ceil(totalSurfers / surfersPerHeat);
   rounds.push(round1Heats);
   
-  // Calculer les qualifiés du round 1 (2 premiers de chaque heat)
-  currentSurfers = round1Heats * 2;
+  // Calculer les qualifiés du round 1
+  currentSurfers = round1Heats * advancingPerHeat;
 
   // Rounds suivants jusqu'à la finale
   while (currentSurfers > surfersPerHeat) {
     const heatsThisRound = Math.ceil(currentSurfers / surfersPerHeat);
     rounds.push(heatsThisRound);
-    currentSurfers = heatsThisRound * 2; // 2 qualifiés par heat
+    const nextSurfers = heatsThisRound * advancingPerHeat;
+    if (nextSurfers >= currentSurfers) {
+      // Safety guard against non-decreasing loops for edge inputs.
+      currentSurfers = heatsThisRound;
+      break;
+    }
+    currentSurfers = nextSurfers;
   }
 
   // Finale
@@ -59,21 +68,22 @@ function calculateEliminationStructure(totalSurfers: number, surfersPerHeat: num
 
 function calculateRepechageStructure(totalSurfers: number, surfersPerHeat: number): TournamentStructure {
   const rounds: number[] = [];
+  const advancingPerHeat = getAdvancingCount(surfersPerHeat);
   
   // Round 1 : tous les surfeurs
   const round1Heats = Math.ceil(totalSurfers / surfersPerHeat);
   rounds.push(round1Heats);
   
   // Round 2 : repêchage des éliminés du round 1
-  const eliminatedRound1 = round1Heats * (surfersPerHeat - 2); // Tous sauf les 2 premiers
+  const eliminatedRound1 = round1Heats * Math.max(0, surfersPerHeat - advancingPerHeat);
   if (eliminatedRound1 > 0) {
     const round2Heats = Math.ceil(eliminatedRound1 / surfersPerHeat);
     rounds.push(round2Heats);
   }
   
   // Demi-finales : qualifiés round 1 + qualifiés repêchage
-  const qualifiedRound1 = round1Heats * 2;
-  const qualifiedRound2 = rounds.length > 1 ? rounds[1] * 2 : 0;
+  const qualifiedRound1 = round1Heats * advancingPerHeat;
+  const qualifiedRound2 = rounds.length > 1 ? rounds[1] * advancingPerHeat : 0;
   const totalQualified = qualifiedRound1 + qualifiedRound2;
   
   if (totalQualified > surfersPerHeat) {

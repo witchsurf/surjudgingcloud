@@ -116,13 +116,30 @@ function distributeReferencesSnake(refs: SlotReference[], heatCount: number, hea
   return heats;
 }
 
+function getAdvancingPositions(heat: HeatSpec): number[] {
+  const nonByePositions = heat.slots
+    .map((slot, idx) => ({ slot, position: idx + 1 }))
+    .filter(({ slot }) => !slot?.bye)
+    .map(({ position }) => position);
+
+  if (!nonByePositions.length) return [];
+  if (nonByePositions.length <= 2) {
+    // Man-on-man (or single-surfer with bye): only winner advances.
+    return [nonByePositions[0]];
+  }
+  // Legacy WSL rule for 3/4-person heats.
+  return nonByePositions.slice(0, Math.min(2, nonByePositions.length));
+}
+
 export function buildSingleElimNextRounds(round1: HeatSpec[], variant: VariantType = 'V1'): RoundSpec[] {
   const results: RoundSpec[] = [];
   const qualifiers: SlotReference[] = [];
 
   round1.forEach((heat) => {
-    qualifiers.push({ sourceRound: 1, heatNumber: heat.heatNumber, position: 1 });
-    qualifiers.push({ sourceRound: 1, heatNumber: heat.heatNumber, position: 2 });
+    const advancingPositions = getAdvancingPositions(heat);
+    advancingPositions.forEach((position) => {
+      qualifiers.push({ sourceRound: 1, heatNumber: heat.heatNumber, position });
+    });
   });
 
   if (qualifiers.length === 0) {
@@ -130,53 +147,41 @@ export function buildSingleElimNextRounds(round1: HeatSpec[], variant: VariantTy
   }
 
   if (variant === 'V2') {
-    const r2HeatSize = 2;
-    const r2HeatCount = Math.max(1, Math.ceil(qualifiers.length / r2HeatSize));
-    const r2Distribution = distributeReferencesSnake(qualifiers, r2HeatCount, r2HeatSize);
+    const heatSize = 2;
+    let currentRefs = qualifiers;
+    let roundNumber = 2;
 
-    const round2: RoundSpec = {
-      name: qualifiers.length <= 2 ? 'Finale' : 'Round 2',
-      roundNumber: 2,
-      heats: r2Distribution.map((refs, idx) => {
-        const colorSet = getColorSet(r2HeatSize);
-        return {
-          heatNumber: idx + 1,
-          slots: refs.map((ref, slotIdx) => {
-            if (ref.sourceRound === 0) {
-              return { bye: true, placeholder: 'BYE', color: colorSet[slotIdx] };
-            }
-            return { placeholder: makePlaceholder(ref), color: colorSet[slotIdx] };
-          }),
-          roundRef: `R2-H${idx + 1}`,
-        };
-      }),
-    };
+    while (currentRefs.length > 0) {
+      const heatCount = Math.max(1, Math.ceil(currentRefs.length / heatSize));
+      const distribution = distributeReferencesSnake(currentRefs, heatCount, heatSize);
 
-    results.push(round2);
+      const round: RoundSpec = {
+        name: heatCount === 1 ? 'Finale' : `Round ${roundNumber}`,
+        roundNumber,
+        heats: distribution.map((refs, idx) => {
+          const colorSet = getColorSet(heatSize);
+          return {
+            heatNumber: idx + 1,
+            slots: refs.map((ref, slotIdx) => {
+              if (ref.sourceRound === 0) {
+                return { bye: true, placeholder: 'BYE', color: colorSet[slotIdx] };
+              }
+              return { placeholder: makePlaceholder(ref), color: colorSet[slotIdx] };
+            }),
+            roundRef: `R${roundNumber}-H${idx + 1}`,
+          };
+        }),
+      };
 
-    if (qualifiers.length > 2) {
-      const finalRefs = round2.heats.map((heat) => ({
-        sourceRound: 2,
+      results.push(round);
+      if (heatCount === 1) break;
+
+      currentRefs = round.heats.map((heat) => ({
+        sourceRound: roundNumber,
         heatNumber: heat.heatNumber,
         position: 1,
       }));
-
-      const finalRound: RoundSpec = {
-        name: 'Finale',
-        roundNumber: 3,
-        heats: [
-          {
-            heatNumber: 1,
-            slots: finalRefs.map((ref, slotIdx) => ({
-              placeholder: makePlaceholder(ref),
-              color: getColorSet(finalRefs.length)[slotIdx],
-            })),
-            roundRef: 'Finale-H1',
-          },
-        ],
-      };
-
-      results.push(finalRound);
+      roundNumber += 1;
     }
 
     return results;
