@@ -26,6 +26,16 @@ supabase functions deploy stripe-webhook
 supabase functions deploy health-check
 ```
 
+Or use the helper script:
+
+```bash
+# deploy only
+./scripts/deploy-supabase-functions.sh
+
+# deploy + push secrets from file
+./scripts/deploy-supabase-functions.sh --with-secrets backend/supabase/.secrets/functions.env
+```
+
 ## 3) Recommended secrets
 
 Set secrets in the target Supabase project before deployment:
