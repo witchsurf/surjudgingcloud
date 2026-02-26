@@ -691,17 +691,22 @@ export function exportFullCompetitionPDF({
     if (!heatScores.length) return;
     const divisionMap = getDivisionQualifierMap(divisionName);
 
-    const surfersWithNames = slots
-      .filter((slot) => slot.color && slot.name && !isPlaceholderLike(slot.name))
-      .map((slot) => ({
-        color: colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color!,
-        name: slot.name!,
-        country: slot.country ?? undefined,
-      }));
+    const slotByColor = new Map<string, { name?: string; placeholder?: string; country?: string }>();
+    const heatSurfers = slots
+      .filter((slot) => slot.color)
+      .map((slot) => {
+        const normalizedColor = normalizeLycraForPdf(
+          colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color!
+        );
+        slotByColor.set(normalizedColor.toUpperCase(), {
+          name: slot.name,
+          placeholder: slot.placeholder,
+          country: slot.country ?? undefined,
+        });
+        return normalizedColor;
+      });
 
-    if (!surfersWithNames.length) return;
-
-    const heatSurfers = surfersWithNames.map((s) => normalizeLycraForPdf(s.color));
+    if (!heatSurfers.length) return;
     const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
     const normalizedHeatScores = heatScores.map((score) => ({
       ...score,
@@ -724,15 +729,18 @@ export function exportFullCompetitionPDF({
       effectiveInterferences
     );
 
-    const statsByColor = new Map(stats.map((stat) => [stat.surfer.toUpperCase(), stat]));
-    const ranked = surfersWithNames
-      .map((surfer) => ({
-        ...surfer,
-        bestTwo: statsByColor.get(surfer.color.toUpperCase())?.bestTwo ?? 0,
-      }))
-      .sort((a, b) => b.bestTwo - a.bestTwo);
+    const orderedStats = [...stats].sort((a, b) => {
+      const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
+      if (rankDiff !== 0) return rankDiff;
+      return getSeedPriority(a.surfer) - getSeedPriority(b.surfer);
+    });
 
-    ranked.forEach((result, index) => {
+    orderedStats.forEach((stat, index) => {
+      const slotInfo = slotByColor.get(stat.surfer.toUpperCase());
+      if (!slotInfo) return;
+
+      const resolvedName = slotInfo.name || slotInfo.placeholder || stat.surfer;
+      const resolvedCountry = slotInfo.country;
       const position = index + 1;
       const keys = buildQualifierKeyVariants(
         divisionName.toUpperCase(),
@@ -742,8 +750,8 @@ export function exportFullCompetitionPDF({
       );
       keys.forEach((key) => {
         divisionMap.set(normalizePlaceholderKey(key), {
-          name: result.name,
-          country: result.country,
+          name: resolvedName,
+          country: resolvedCountry,
         });
       });
     });
