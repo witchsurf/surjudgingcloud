@@ -128,8 +128,10 @@ const buildHeatsFromRefs = (
   return buckets
     .map((bucket, heatIdx) => {
       if (!bucket.length) return null;
-      const slots = bucket.map((ref, slotIdx) =>
-        placeholderFrom(ref.round, ref.heatNumber, slotIdx, label, ref.position)
+      // IMPORTANT: Color index must be the surfer's position WITHIN this heat (0=ROUGE,1=BLANC,2=JAUNE,3=BLEU)
+      // NOT the bucket's internal slot index, which can cause duplicates
+      const slots = bucket.map((ref, surferIdx) =>
+        placeholderFrom(ref.round, ref.heatNumber, surferIdx, label, ref.position)
       );
       return createHeat(roundNumber, heatIdx + 1, slots);
     })
@@ -236,8 +238,10 @@ const buildEightPersonBracket = (participants: any[]): HeatPlan[] => {
 export const generatePreviewHeats = (
   participants: any[],
   format: 'elimination' | 'repechage',
-  seriesSize: number
+  seriesSize: number,
+  options?: { manOnManFromRound?: number }
 ): HeatPlan[] => {
+  const manOnManFromRound = options?.manOnManFromRound ?? 0; // 0 = disabled
   const totalParticipants = participants.length;
 
   // Prepare for Snake Seeding (Universal)
@@ -343,10 +347,14 @@ export const generatePreviewHeats = (
   const finalRepSlots = format === 'repechage' ? Math.max(2, seriesSize - finalMainSlots) : 0;
 
   const runMainRound = () => {
-    if (mainRefs.length <= finalMainSlots) {
+    // Determine effective series size for this round (hybrid format support)
+    const effectiveSize = (manOnManFromRound > 0 && currentRound >= manOnManFromRound) ? 2 : seriesSize;
+    const effectiveFinalSlots = (manOnManFromRound > 0 && currentRound >= manOnManFromRound) ? 2 : finalMainSlots;
+
+    if (mainRefs.length <= effectiveFinalSlots) {
       return false;
     }
-    const mainHeats = buildHeatsFromRefs(mainRefs, currentRound, 'Qualifié', seriesSize);
+    const mainHeats = buildHeatsFromRefs(mainRefs, currentRound, 'Qualifié', effectiveSize);
     if (!mainHeats.length) {
       mainRefs = [];
       return false;
@@ -391,21 +399,31 @@ export const generatePreviewHeats = (
     (round1Heats.length > 1 || rounds.length > 1);
 
   if (shouldCreateFinal) {
-    const mainFinalists = mainRefs.slice(0, Math.min(finalMainSlots, mainRefs.length));
+    // Determine final heat size (man-on-man finals if configured)
+    const finalEffectiveSize = (manOnManFromRound > 0 && currentRound >= manOnManFromRound) ? 2 : seriesSize;
+    const effectiveFinalMainSlots = (manOnManFromRound > 0 && currentRound >= manOnManFromRound)
+      ? Math.min(2, mainRefs.length)
+      : finalMainSlots;
+
+    const mainFinalists = mainRefs.slice(0, Math.min(effectiveFinalMainSlots, mainRefs.length));
+    // Color index = position within the final heat (0=ROUGE,1=BLANC,2=JAUNE,3=BLEU)
     let finalSlots = mainFinalists.map((ref, idx) =>
       placeholderFrom(ref.round, ref.heatNumber, idx, 'Finaliste', ref.position)
     );
 
     if (format === 'repechage') {
-      const repFinalists = repechageRefs.slice(0, Math.min(finalRepSlots, repechageRefs.length));
+      const effectiveFinalRepSlots = (manOnManFromRound > 0 && currentRound >= manOnManFromRound)
+        ? Math.max(0, 2 - mainFinalists.length)
+        : finalRepSlots;
+      const repFinalists = repechageRefs.slice(0, Math.min(effectiveFinalRepSlots, repechageRefs.length));
       const repSlots = repFinalists.map((ref, idx) =>
         placeholderFrom(ref.round, ref.heatNumber, finalSlots.length + idx, 'Repêchage', ref.position)
       );
       finalSlots = finalSlots.concat(repSlots);
 
-      if (finalSlots.length < seriesSize && mainRefs.length > mainFinalists.length) {
+      if (finalSlots.length < finalEffectiveSize && mainRefs.length > mainFinalists.length) {
         const extra = mainRefs
-          .slice(mainFinalists.length, Math.min(seriesSize, mainRefs.length))
+          .slice(mainFinalists.length, Math.min(finalEffectiveSize, mainRefs.length))
           .map((ref, idx) =>
             placeholderFrom(ref.round, ref.heatNumber, finalSlots.length + idx, 'Finaliste', ref.position)
           );
@@ -413,7 +431,7 @@ export const generatePreviewHeats = (
       }
     }
 
-    finalSlots = finalSlots.slice(0, Math.min(seriesSize, finalSlots.length));
+    finalSlots = finalSlots.slice(0, Math.min(finalEffectiveSize, finalSlots.length));
 
     if (finalSlots.length) {
       rounds.push({

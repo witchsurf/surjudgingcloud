@@ -38,7 +38,7 @@ const GenerateHeatsPage = () => {
   const navigate = useNavigate();
   const { setActiveEventId, setConfig, setConfigSaved } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
-  const [roundFormat, setRoundFormat] = useState('heats-3');
+  const [manOnManFromRound, setManOnManFromRound] = useState(0); // 0 = disabled
   const [seriesSize, setSeriesSize] = useState('auto');
   const [previewData, setPreviewData] = useState<CategoryPreview[]>([]);
   const [eventId, setEventId] = useState<string | null>(null);
@@ -68,7 +68,7 @@ const GenerateHeatsPage = () => {
 
   const getSeriesSize = () => {
     if (seriesSize === 'auto') {
-      return roundFormat === 'man-on-man' ? 2 : 4;
+      return 4;
     }
     return Math.max(1, parseInt(seriesSize, 10) || 2);
   };
@@ -104,7 +104,8 @@ const GenerateHeatsPage = () => {
             const rounds = generatePreviewHeats(
               list,
               selectedFormat,
-              computedSeriesSize
+              computedSeriesSize,
+              manOnManFromRound > 0 ? { manOnManFromRound } : undefined
             ).map(round => ({
               round: round.round,
               heats: round.heats.map(heat => ({
@@ -588,15 +589,18 @@ const GenerateHeatsPage = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    Format du Round 2
+                    Man-on-Man à partir du
                   </label>
                   <select
-                    value={roundFormat}
-                    onChange={e => setRoundFormat(e.target.value)}
+                    value={manOnManFromRound}
+                    onChange={e => setManOnManFromRound(parseInt(e.target.value, 10))}
                     className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2"
                   >
-                    <option value="heats-3">Heats de 3 (Finale à 4)</option>
-                    <option value="man-on-man">Man-on-Man (2 surfeurs)</option>
+                    <option value="0">Désactivé</option>
+                    <option value="2">Round 2</option>
+                    <option value="3">Round 3</option>
+                    <option value="4">Round 4</option>
+                    <option value="5">Round 5</option>
                   </select>
                 </div>
               </div>
