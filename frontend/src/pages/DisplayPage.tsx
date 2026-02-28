@@ -211,7 +211,7 @@ const normalizeConfig = (appConfig: AppConfig) => {
 };
 
 export default function DisplayPage() {
-    const { config, configSaved, activeEventId, setConfig } = useConfigStore();
+    const { config, configSaved, activeEventId, setConfig, initializeFromUrl } = useConfigStore();
     const { scores, timer, setTimer, heatStatus, setHeatStatus, setScores } = useJudgingStore();
     const { subscribeToHeat } = useRealtimeSync();
     const { loadScoresFromDatabase } = useSupabaseSync();
@@ -235,7 +235,12 @@ export default function DisplayPage() {
         countriesRef.current = liveHeatCountries;
     }, [liveHeatCountries]);
 
-    // Fetch available heats on mount
+    // Initialize from URL on mount
+    useEffect(() => {
+        initializeFromUrl();
+    }, [initializeFromUrl]);
+
+    // Fetch available heats on mount or when activeEventId changes
     useEffect(() => {
         if (activeEventId) {
             fetchAllEventHeats(activeEventId).then(setHistoryHeats).catch(console.error);

@@ -39,6 +39,7 @@ interface ConfigStore {
     persistConfig: (config: AppConfig) => void;
     resetConfig: () => void;
     initializeFromUrl: () => Promise<void>;
+    saveConfigToDb: (eventId: number, config: AppConfig) => Promise<void>;
 }
 
 // Helper to build config from snapshot

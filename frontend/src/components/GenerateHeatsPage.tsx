@@ -36,7 +36,7 @@ interface CategoryPreview {
 
 const GenerateHeatsPage = () => {
   const navigate = useNavigate();
-  const { setActiveEventId, setConfig, setConfigSaved } = useConfigStore();
+  const { setActiveEventId, setConfig, setConfigSaved, saveConfigToDb } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
   const [categoryManOnManRounds, setCategoryManOnManRounds] = useState<Record<string, number>>({});
   const [seriesSize, setSeriesSize] = useState('auto');
@@ -271,11 +271,12 @@ const GenerateHeatsPage = () => {
       localStorage.setItem('surfJudgingConfigSaved', 'true');
 
       // Set activeEventId in context so ChiefJudgeWrapper loads from DB
-      const numericId = parseInt(currentEventId, 10);
       if (numericId && !isNaN(numericId)) {
         setActiveEventId(numericId);
         setConfig(configPayload);
         setConfigSaved(true);
+        // Sync to cloud so Display page/Judges see the names immediately
+        await saveConfigToDb(numericId, configPayload);
       }
 
       navigate('/chief-judge');
