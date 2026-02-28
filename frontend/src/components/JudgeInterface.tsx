@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { User, Waves, Lock, CreditCard as Edit3 } from 'lucide-react';
+import { User, Waves, Lock, CreditCard as Edit3, Maximize, Minimize } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
@@ -66,6 +66,29 @@ function JudgeInterface({
   const [headJudgeOverride, setHeadJudgeOverride] = useState(false);
   const [interferenceCalls, setInterferenceCalls] = useState<InterferenceCall[]>([]);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.warn(`Error attempting to enable full-screen mode: ${err.message}`);
+      });
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   const normalizeSurferKey = useCallback((value?: string | null): string => {
     const raw = (value || '').toUpperCase().trim();
@@ -536,7 +559,7 @@ function JudgeInterface({
   );
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-6">
       {/* HEADER JUGE */}
       <div className={`bg-gradient-to-r ${isChiefJudge
         ? 'from-purple-600 to-indigo-600'
@@ -563,6 +586,16 @@ function JudgeInterface({
               <span>{config.division}</span>
               <span>R{config.round} - H{config.heatId}</span>
             </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={toggleFullscreen}
+              className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium border border-white/10 shadow-sm"
+              title={isFullscreen ? "Quitter le plein écran" : "Passer en plein écran"}
+            >
+              {isFullscreen ? <Minimize className="w-5 h-5 text-white" /> : <Maximize className="w-5 h-5 text-white" />}
+              <span className="hidden sm:inline font-semibold">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
+            </button>
           </div>
         </div>
       </div>
