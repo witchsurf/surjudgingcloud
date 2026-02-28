@@ -50,7 +50,7 @@ const GenerateHeatsPage = () => {
 
     if (!storedEventId) {
       alert('Aucun événement sélectionné. Veuillez créer ou sélectionner un événement.');
-      navigate('/create-event');
+      navigate('/my-events');
       return;
     }
     setEventId(storedEventId);
@@ -76,7 +76,7 @@ const GenerateHeatsPage = () => {
   const handlePreview = () => {
     if (!eventId) {
       alert('Aucun événement sélectionné. Veuillez créer ou sélectionner un événement.');
-      navigate('/create-event');
+      navigate('/my-events');
       return;
     }
 

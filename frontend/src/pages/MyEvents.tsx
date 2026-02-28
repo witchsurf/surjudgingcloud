@@ -263,8 +263,12 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     navigate(loginRedirectTarget, { replace: true });
   }, [isOfflineMode, user?.id, isLoginRoute, loginRedirectTarget, navigate]);
 
-  // Clear redirect params in dev/offline mode (run once on mount)
+  // Clear redirect params in dev/offline mode + purge stale loginRedirect from localStorage (run once on mount)
   useEffect(() => {
+    // Migration: clear stale loginRedirect that was previously stored in localStorage
+    // This prevents the persistent unwanted redirect to /create-event after magic link login
+    try { localStorage.removeItem('loginRedirect'); } catch { /* ignore */ }
+
     if (isOfflineMode && redirectIntent) {
       const cleanUrl = `${window.location.origin}${window.location.pathname}`;
       window.history.replaceState({}, document.title, cleanUrl);
@@ -309,12 +313,12 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       navigate('/create-event', { replace: true });
     }
 
-    // Check localStorage fallback (more robust for magic links)
+    // Check sessionStorage fallback (scoped to this browser session only)
     if (!shouldRedirect && user) {
-      const storedRedirect = localStorage.getItem('loginRedirect');
+      const storedRedirect = sessionStorage.getItem('loginRedirect');
       if (storedRedirect === 'create-event') {
         shouldRedirect = true;
-        localStorage.removeItem('loginRedirect');
+        sessionStorage.removeItem('loginRedirect');
         setHasRedirected(true);
         navigate('/create-event', { replace: true });
       }
@@ -481,9 +485,9 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       return;
     }
 
-    // Save redirect intent to localStorage to survive the email round-trip
+    // Save redirect intent to sessionStorage (scoped to this browser session only)
     if (redirectIntent) {
-      localStorage.setItem('loginRedirect', redirectIntent);
+      sessionStorage.setItem('loginRedirect', redirectIntent);
     }
 
     setSendingMagicLink(true);

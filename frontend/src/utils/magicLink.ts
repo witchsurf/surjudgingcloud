@@ -44,6 +44,11 @@ export async function processMagicLinkCallback(): Promise<void> {
     sessionStorage.setItem('surfJudgingMagicLinkError', error instanceof Error ? error.message : 'unknown_error');
   } finally {
     cleanUrl();
+    // Clear any stale redirect intent to prevent unwanted redirects after login
+    try {
+      localStorage.removeItem('loginRedirect');
+      sessionStorage.removeItem('loginRedirect');
+    } catch { /* ignore */ }
     if (window.location.pathname !== '/my-events') {
       window.location.replace('/my-events');
     }
