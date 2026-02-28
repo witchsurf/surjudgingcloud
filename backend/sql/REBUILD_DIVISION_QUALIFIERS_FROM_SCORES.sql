@@ -154,7 +154,19 @@ BEGIN
       mws.source_round,
       mws.source_heat,
       mws.source_position,
-      she.id AS source_heat_id
+      she.id AS source_heat_id,
+      COALESCE(
+        th.color_order[mws.position],
+        CASE mws.position
+          WHEN 1 THEN 'RED'
+          WHEN 2 THEN 'WHITE'
+          WHEN 3 THEN 'YELLOW'
+          WHEN 4 THEN 'BLUE'
+          WHEN 5 THEN 'GREEN'
+          WHEN 6 THEN 'BLACK'
+          ELSE NULL
+        END
+      ) AS target_color
     FROM public.heats th
     JOIN mapping_with_source mws ON mws.heat_id = th.id
     JOIN public.heats she
@@ -174,7 +186,7 @@ BEGIN
       ts.target_position,
       sr.participant_id,
       sr.seed,
-      sr.color
+      ts.target_color
     FROM target_slots ts
     LEFT JOIN source_entry_by_rank sr
       ON sr.heat_id = ts.source_heat_id
@@ -185,7 +197,7 @@ BEGIN
     SET
       participant_id = rr.participant_id,
       seed = COALESCE(rr.seed, he.seed, he.position),
-      color = COALESCE(rr.color, he.color)
+      color = COALESCE(rr.target_color, he.color)
     FROM rebuild_rows rr
     WHERE he.heat_id = rr.target_heat_id
       AND he.position = rr.target_position
