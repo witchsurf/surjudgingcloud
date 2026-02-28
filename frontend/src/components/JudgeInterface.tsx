@@ -207,7 +207,7 @@ function JudgeInterface({
   }, [readScoresFromStorage]);
 
   useEffect(() => {
-    refreshInterferenceCalls().catch(() => {});
+    refreshInterferenceCalls().catch(() => { });
   }, [refreshInterferenceCalls]);
 
   // Écouter les changements de scores
@@ -730,28 +730,28 @@ function JudgeInterface({
                                 setInputValue('');
                               }
                             }}
-                            className="w-16 px-2 py-1 text-center border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-20 min-w-[44px] min-h-[44px] px-2 py-2 text-center text-lg font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-4 focus:ring-primary/30 shadow-sm touch-manipulation"
                             placeholder="0.00"
                             autoFocus
                           />
                         ) : scoreData ? (
                           <button
                             onClick={() => handleCellClick(surfer, wave)}
-                            className={`inline-flex items-center px-2 py-1 rounded text-sm font-medium transition-colors ${entryMode === 'interference'
-                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                              : 'bg-green-100 text-green-800 hover:bg-green-200'}`}
+                            className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-3 py-2 rounded-lg text-base font-bold transition-all duration-200 shadow-sm active:scale-95 touch-manipulation flex-1 w-full ${entryMode === 'interference'
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+                              : 'bg-green-100 text-green-900 border border-green-300 hover:bg-green-200'}`}
                             disabled={!timerActive}
                           >
                             {scoreData.score.toFixed(2)}
-                            <Edit3 className="w-3 h-3 ml-1" />
+                            <Edit3 className="w-4 h-4 ml-1.5" />
                           </button>
                         ) : canScore ? (
                           <button
                             onClick={() => handleCellClick(surfer, wave)}
-                            className="w-16 h-8 border-2 border-dashed border-blue-300 rounded text-blue-600 hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center"
+                            className="w-full min-w-[44px] min-h-[44px] border-2 border-dashed border-gray-400 rounded-lg text-gray-500 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-200 flex items-center justify-center active:scale-95 touch-manipulation"
                             title={`Noter la vague ${wave} pour ${surfer}`}
                           >
-                            <Edit3 className="w-4 h-4" />
+                            <Edit3 className="w-5 h-5 flex-shrink-0" />
                           </button>
                         ) : (
                           <span className="text-gray-400">—</span>
