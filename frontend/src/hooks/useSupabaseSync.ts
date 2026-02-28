@@ -665,34 +665,33 @@ export function useSupabaseSync() {
     }
 
     try {
-      console.log('💾 Tentative sauvegarde timer:', {
+      console.log('💾 Tentative sauvegarde timer (via heat_realtime_config):', {
         heat_id: normalizedHeatId,
-        is_running: timer.isRunning,
-        start_time: timer.startTime?.toISOString(),
-        duration: timer.duration
+        status: timer.isRunning ? 'running' : 'waiting',
+        timer_start_time: timer.startTime?.toISOString(),
+        timer_duration_minutes: timer.duration
       });
 
       const { error } = await supabase!
-        .from('heat_timers')
+        .from('heat_realtime_config')
         .upsert({
           heat_id: normalizedHeatId,
-          is_running: timer.isRunning,
-          start_time: timer.startTime?.toISOString(),
-          duration_minutes: timer.duration
+          status: timer.isRunning ? 'running' : 'waiting',
+          timer_start_time: timer.startTime?.toISOString(),
+          timer_duration_minutes: timer.duration,
+          updated_by: 'admin'
         }, {
           onConflict: 'heat_id'
         });
 
       if (error) {
-        console.error('❌ ERREUR SUPABASE heat_timers:', {
+        console.error('❌ ERREUR SUPABASE heat_realtime_config (timer):', {
           message: error.message,
-          details: error.details,
-          hint: error.hint,
           code: error.code
         });
         throw error;
       }
-      console.log('✅ Timer sauvé dans Supabase:', normalizedHeatId);
+      console.log('✅ Timer sauvé dans heat_realtime_config:', normalizedHeatId);
     } catch (error) {
       console.error('❌ EXCEPTION saveTimerState:', error);
       console.log('⚠️ Timer non sauvé dans Supabase (mode local):', error instanceof Error ? error.message : error);
@@ -726,13 +725,22 @@ export function useSupabaseSync() {
 
     try {
       const { data, error } = await supabase!
-        .from('heat_timers')
-        .select('*')
+        .from('heat_realtime_config')
+        .select('heat_id, status, timer_start_time, timer_duration_minutes')
         .eq('heat_id', normalizedHeatId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
-      return data;
+
+      if (!data) return null;
+
+      // Map back to legacy format for compatibility
+      return {
+        heat_id: data.heat_id,
+        is_running: data.status === 'running',
+        start_time: data.timer_start_time,
+        duration_minutes: data.timer_duration_minutes
+      };
     } catch (error) {
       console.error('❌ Erreur chargement timer:', error);
       return null;

@@ -207,22 +207,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     try {
       await ensureAuthenticatedSession();
 
-      // 1. Save to heat_timers table for persistence
-      const { error: timerError } = await supabase!
-        .from('heat_timers')
-        .upsert({
-          heat_id: normalizedHeatId,
-          is_running: true,
-          start_time: new Date().toISOString(),
-          duration_minutes: duration
-        }, {
-          onConflict: 'heat_id'
-        });
-
-      if (timerError) {
-        console.error('❌ Erreur sauvegarde heat_timers:', timerError);
-        throw timerError;
-      }
+      // 1. Timer persistence and broadcasting now consolidated in heat_realtime_config
 
       // 2. Update heat_realtime_config for broadcasting
       const { error } = await supabase!
@@ -260,27 +245,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     try {
       await ensureAuthenticatedSession();
 
-      // 1. Update heat_timers table
-      const pauseTimerUpdate: {
-        is_running: boolean;
-        duration_minutes?: number;
-        start_time?: string | null;
-      } = {
-        is_running: false
-      };
-      if (typeof remainingDuration === 'number' && Number.isFinite(remainingDuration)) {
-        pauseTimerUpdate.duration_minutes = remainingDuration;
-        pauseTimerUpdate.start_time = null;
-      }
-      const { error: timerError } = await supabase!
-        .from('heat_timers')
-        .update(pauseTimerUpdate)
-        .eq('heat_id', normalizedHeatId);
-
-      if (timerError) {
-        console.error('❌ Erreur pause heat_timers:', timerError);
-        throw timerError;
-      }
+      // 1. Timer state update consolidated in heat_realtime_config below
 
       // 2. Update heat_realtime_config for broadcasting
       const realtimePauseUpdate: {
@@ -323,20 +288,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     try {
       await ensureAuthenticatedSession();
 
-      // 1. Update heat_timers table
-      const { error: timerError } = await supabase!
-        .from('heat_timers')
-        .update({
-          is_running: false,
-          start_time: null,
-          duration_minutes: duration
-        })
-        .eq('heat_id', normalizedHeatId);
-
-      if (timerError) {
-        console.error('❌ Erreur reset heat_timers:', timerError);
-        throw timerError;
-      }
+      // 1. Timer state update consolidated in heat_realtime_config below
 
       // 2. Update heat_realtime_config for broadcasting
       const { error } = await supabase!
