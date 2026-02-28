@@ -229,7 +229,7 @@ const GenerateHeatsPage = () => {
         metadata: {
           format: selectedFormat,
           seriesSize,
-          roundFormat,
+          manOnManFromRound,
           createdAt: new Date().toISOString()
         }
       };
