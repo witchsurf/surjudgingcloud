@@ -6,12 +6,24 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Barlow', 'sans-serif'],
+        condensed: ['"Barlow Condensed"', 'sans-serif'],
+      },
       colors: {
         primary: {
-          50: '#eff6ff',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
+          50: '#fef2f2',
+          100: '#fee2e2',
+          500: '#ef4444',
+          600: '#dc2626',
+          700: '#b91c1c',
+          DEFAULT: '#dc2626',
+        },
+        secondary: {
+          DEFAULT: '#ef4444',
+        },
+        accent: {
+          DEFAULT: '#fbbf24',
         },
         success: {
           100: '#dcfce7',
