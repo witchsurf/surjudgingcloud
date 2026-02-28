@@ -38,7 +38,7 @@ const GenerateHeatsPage = () => {
   const navigate = useNavigate();
   const { setActiveEventId, setConfig, setConfigSaved } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
-  const [manOnManFromRound, setManOnManFromRound] = useState(0); // 0 = disabled
+  const [categoryManOnManRounds, setCategoryManOnManRounds] = useState<Record<string, number>>({});
   const [seriesSize, setSeriesSize] = useState('auto');
   const [previewData, setPreviewData] = useState<CategoryPreview[]>([]);
   const [eventId, setEventId] = useState<string | null>(null);
@@ -101,11 +101,15 @@ const GenerateHeatsPage = () => {
               1,
               Math.min(baseSeriesSize, list.length || baseSeriesSize)
             );
+            
+            // Use per-category man-on-man setting if defined
+            const catManOnManRound = categoryManOnManRounds[category] || 0;
+
             const rounds = generatePreviewHeats(
               list,
               selectedFormat,
               computedSeriesSize,
-              manOnManFromRound > 0 ? { manOnManFromRound } : undefined
+              catManOnManRound > 0 ? { manOnManFromRound: catManOnManRound } : undefined
             ).map(round => ({
               round: round.round,
               heats: round.heats.map(heat => ({
@@ -229,7 +233,7 @@ const GenerateHeatsPage = () => {
         metadata: {
           format: selectedFormat,
           seriesSize,
-          manOnManFromRound,
+          categoryManOnManRounds,
           createdAt: new Date().toISOString()
         }
       };
@@ -589,19 +593,11 @@ const GenerateHeatsPage = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    Man-on-Man à partir du
+                    Information
                   </label>
-                  <select
-                    value={manOnManFromRound}
-                    onChange={e => setManOnManFromRound(parseInt(e.target.value, 10))}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2"
-                  >
-                    <option value="0">Désactivé</option>
-                    <option value="2">Round 2</option>
-                    <option value="3">Round 3</option>
-                    <option value="4">Round 4</option>
-                    <option value="5">Round 5</option>
-                  </select>
+                  <div className="text-gray-400 text-sm italic py-2">
+                    Le Man-on-Man est maintenant configurable par catégorie dans la prévisualisation ci-dessous.
+                  </div>
                 </div>
               </div>
             </div>
@@ -629,13 +625,39 @@ const GenerateHeatsPage = () => {
                 <div className="space-y-10">
                   {previewData.map(category => (
                     <div key={category.category} className="space-y-6">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                        <h3 className="text-2xl font-semibold text-blue-400">
-                          Catégorie {category.category}
-                        </h3>
-                        <div className="text-sm text-gray-400">
-                          {category.participants.length} participants • Séries de{' '}
-                          {category.seriesSize}
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-700/30 p-4 rounded-lg">
+                        <div className="mb-4 sm:mb-0">
+                          <h3 className="text-2xl font-semibold text-blue-400">
+                            Catégorie {category.category}
+                          </h3>
+                          <div className="text-sm text-gray-400">
+                            {category.participants.length} participants • Séries de{' '}
+                            {category.seriesSize}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <label className="text-sm font-medium text-gray-300">
+                            Man-on-Man à partir du :
+                          </label>
+                          <select
+                            value={categoryManOnManRounds[category.category] || 0}
+                            onChange={e => {
+                              const newVal = parseInt(e.target.value, 10);
+                              setCategoryManOnManRounds(prev => ({
+                                ...prev,
+                                [category.category]: newVal
+                              }));
+                              // Small delay to allow state to settle before re-previewing
+                              setTimeout(handlePreview, 0);
+                            }}
+                            className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm"
+                          >
+                            <option value="0">Désactivé</option>
+                            <option value="2">Round 2</option>
+                            <option value="3">Round 3</option>
+                            <option value="4">Round 4</option>
+                            <option value="5">Round 5</option>
+                          </select>
                         </div>
                       </div>
                       {category.rounds.map(round => (
