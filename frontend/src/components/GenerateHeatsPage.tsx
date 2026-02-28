@@ -73,91 +73,66 @@ const GenerateHeatsPage = () => {
     return Math.max(1, parseInt(seriesSize, 10) || 2);
   };
 
+  useEffect(() => {
+    if (!eventId || participants.length === 0) return;
+
+    try {
+      const grouped = participants.reduce<Record<string, ParticipantRecord[]>>((acc, participant) => {
+        const rawCategory =
+          (participant.category ||
+            (participant as ParticipantRecord).division ||
+            'OPEN') as string;
+        const category = rawCategory?.trim() || 'OPEN';
+        if (!acc[category]) acc[category] = [];
+        acc[category].push(participant as ParticipantRecord);
+        return acc;
+      }, {});
+
+      const preview = Object.entries(grouped)
+        .map(([category, list]) => {
+          const baseSeriesSize = getSeriesSize();
+          const computedSeriesSize = Math.max(
+            1,
+            Math.min(baseSeriesSize, list.length || baseSeriesSize)
+          );
+          
+          const catManOnManRound = categoryManOnManRounds[category] || 0;
+
+          const rounds = generatePreviewHeats(
+            list,
+            selectedFormat,
+            computedSeriesSize,
+            catManOnManRound > 0 ? { manOnManFromRound: catManOnManRound } : undefined
+          ).map(round => ({
+            round: round.round,
+            heats: round.heats.map(heat => ({
+              ...heat,
+              division: category
+            }))
+          }));
+          return {
+            category,
+            participants: list,
+            rounds,
+            seriesSize: computedSeriesSize
+          };
+        })
+        .sort((a, b) => a.category.localeCompare(b.category, undefined, { sensitivity: 'base' }));
+
+      setPreviewData(preview);
+    } catch (error) {
+      console.error('Erreur lors de la génération des heats:', error);
+    }
+  }, [eventId, participants, selectedFormat, seriesSize, categoryManOnManRounds]);
+
   const handlePreview = () => {
+    // This button is now largely redundant for normal flow but can be kept as a manual refresh
     if (!eventId) {
       alert('Aucun événement sélectionné. Veuillez créer ou sélectionner un événement.');
       navigate('/my-events');
       return;
     }
-
-    try {
-      const stored = JSON.parse(localStorage.getItem('participants') || '[]');
-      if (Array.isArray(stored) && stored.length > 0) {
-        const grouped = stored.reduce<Record<string, ParticipantRecord[]>>((acc, participant) => {
-          const rawCategory =
-            (participant.category ||
-              (participant as ParticipantRecord).division ||
-              'OPEN') as string;
-          const category = rawCategory?.trim() || 'OPEN';
-          if (!acc[category]) acc[category] = [];
-          acc[category].push(participant as ParticipantRecord);
-          return acc;
-        }, {});
-
-        const preview = Object.entries(grouped)
-          .map(([category, list]) => {
-            const baseSeriesSize = getSeriesSize();
-            const computedSeriesSize = Math.max(
-              1,
-              Math.min(baseSeriesSize, list.length || baseSeriesSize)
-            );
-            
-            // Use per-category man-on-man setting if defined
-            const catManOnManRound = categoryManOnManRounds[category] || 0;
-
-            const rounds = generatePreviewHeats(
-              list,
-              selectedFormat,
-              computedSeriesSize,
-              catManOnManRound > 0 ? { manOnManFromRound: catManOnManRound } : undefined
-            ).map(round => ({
-              round: round.round,
-              heats: round.heats.map(heat => ({
-                ...heat,
-                division: category
-              }))
-            }));
-            return {
-              category,
-              participants: list,
-              rounds,
-              seriesSize: computedSeriesSize
-            };
-          })
-          .sort((a, b) => a.category.localeCompare(b.category, undefined, { sensitivity: 'base' }));
-
-        setPreviewData(preview);
-        return;
-      }
-    } catch (error) {
-      console.error('Erreur lors de la génération des heats:', error);
-    }
-
-    setPreviewData([
-      {
-        category: 'DEMO',
-        participants: [],
-        seriesSize: getSeriesSize(),
-        rounds: [
-          {
-            round: 1,
-            heats: [
-              {
-                round: 1,
-                heat_number: 1,
-                division: 'DEMO',
-                surfers: [
-                  { color: 'ROUGE', name: 'Aly', country: 'GABON' },
-                  { color: 'BLANC', name: 'Ouedraogo', country: 'BURKINA' },
-                  { color: 'JAUNE', name: 'Simon', country: 'SIERALEONE' },
-                  { color: 'BLEU', name: 'Noah', country: 'CAP VERT' }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ]);
+    // Logic is now in useEffect
   };
 
   const handleConfirm = async () => {
@@ -647,8 +622,6 @@ const GenerateHeatsPage = () => {
                                 ...prev,
                                 [category.category]: newVal
                               }));
-                              // Small delay to allow state to settle before re-previewing
-                              setTimeout(handlePreview, 0);
                             }}
                             className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm"
                           >
