@@ -1,6 +1,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { RefreshCw, Cloud, Plus, Users, Calendar, Activity } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, isCloudLocked, mode } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
@@ -718,18 +719,20 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               onClick={() => loadEvents(user.id)}
-              className="rounded-full border border-blue-400/40 bg-white/10 px-4 py-2 text-sm text-blue-100 hover:bg-white/20 transition"
+              className="rounded-full border border-blue-400/40 bg-white/10 px-4 py-2 text-sm text-blue-100 hover:bg-white/20 transition flex items-center space-x-2"
             >
-              🔄 Rafraîchir
+              <RefreshCw className="w-4 h-4" />
+              <span>Rafraîchir</span>
             </button>
 
             {/* Cloud Sync Button - Cache events for offline use */}
             <button
               onClick={handleSyncFromCloud}
               disabled={syncing}
-              className="rounded-full border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm text-purple-100 hover:bg-purple-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-full border border-purple-400/40 bg-purple-500/10 px-4 py-2 text-sm text-purple-100 hover:bg-purple-500/20 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
             >
-              {syncing ? '⏳ Synchronisation...' : '🌐 Sync depuis Cloud'}
+              <Cloud className="w-4 h-4" />
+              <span>{syncing ? 'Synchronisation...' : 'Sync depuis Cloud'}</span>
             </button>
 
             <button
@@ -742,9 +745,10 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
                   navigate('/create-event');
                 }, 0);
               }}
-              className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100 hover:bg-emerald-500/20 transition cursor-pointer"
+              className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100 hover:bg-emerald-500/20 transition cursor-pointer flex items-center space-x-2"
             >
-              ➕ Créer un nouvel événement
+              <Plus className="w-4 h-4" />
+              <span>Créer un nouvel événement</span>
             </button>
           </div>
 
@@ -852,51 +856,55 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {events.map((event) => {
               const snapshot = event.event_last_config;
               return (
-                <div key={event.id} className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-black/20">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-2xl font-semibold text-white">{event.name}</h2>
-                      <p className="text-sm text-slate-400">
-                        {event.organizer ? `Organisé par ${event.organizer}` : 'Organisateur non renseigné'}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {event.start_date ? new Date(event.start_date).toLocaleDateString('fr-FR') : 'Dates à confirmer'}
-                        {event.end_date ? ` → ${new Date(event.end_date).toLocaleDateString('fr-FR')}` : ''}
-                      </p>
+                <div key={event.id} className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-black/20 flex flex-col hover:border-blue-500/50 transition-colors duration-300">
+                  <div className="flex-1">
+                    <h2 className="text-2xl font-semibold text-white mb-2 line-clamp-2">{event.name}</h2>
+                    <div className="flex items-center text-sm text-slate-400 mb-2">
+                      <Users className="w-4 h-4 mr-2 text-slate-500 flex-shrink-0" />
+                      <span className="truncate">{event.organizer || 'Organisateur non renseigné'}</span>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center text-xs text-slate-500 mb-6">
+                      <Calendar className="w-4 h-4 mr-2 text-slate-600 flex-shrink-0" />
+                      <span>
+                        {event.start_date ? new Date(event.start_date).toLocaleDateString('fr-FR') : 'Dates à conf.'}
+                        {event.end_date ? ` → ${new Date(event.end_date).toLocaleDateString('fr-FR')}` : ''}
+                      </span>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-800">
                       {snapshot ? (
                         <>
-                          <p className="text-sm text-slate-300">
-                            ↺ Dernière activité : {snapshot.updated_at ? new Date(snapshot.updated_at).toLocaleString('fr-FR') : 'inconnue'}
-                          </p>
-                          <p className="text-xs text-slate-400">
+                          <div className="flex items-center text-sm text-blue-300 mb-1">
+                            <Activity className="w-4 h-4 mr-2" />
+                            <span>Activité : {snapshot.updated_at ? new Date(snapshot.updated_at).toLocaleDateString('fr-FR') : 'Date inconnue'}</span>
+                          </div>
+                          <p className="text-xs text-slate-400 pl-6">
                             Round {snapshot.round ?? '?'} · Heat {snapshot.heat_number ?? '?'} · {snapshot.division ?? 'Division ?'}
                           </p>
                         </>
                       ) : (
-                        <p className="text-sm text-slate-400">Nouvel événement - aucune config sauvegardée</p>
+                        <p className="text-sm text-slate-500 italic">Nouvel événement, configuration en attente</p>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-3">
+                  <div className="mt-6 flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-800">
                     <button
                       onClick={() => handleUseEvent(event)}
                       disabled={continuingId === event.id}
-                      className="inline-flex items-center rounded-full bg-blue-500 px-5 py-2 text-sm font-medium text-white shadow shadow-blue-500/30 transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:bg-blue-300"
+                      className="flex-1 inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow ease-out hover:bg-blue-500 hover:shadow-lg disabled:cursor-not-allowed disabled:bg-blue-800 transition-all active:scale-95 touch-manipulation"
                     >
                       {continuingId === event.id ? 'Chargement...' : 'Continuer'}
                     </button>
                     <Link
                       to={`/participants?event=${event.id}`}
-                      className="inline-flex items-center rounded-full border border-slate-700 bg-transparent px-5 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800/60"
+                      className="flex-1 inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-sm font-medium text-slate-300 ease-out hover:bg-slate-700 hover:text-white transition-all active:scale-95 touch-manipulation"
                     >
-                      Gérer les participants
+                      Participants
                     </Link>
                   </div>
                 </div>
