@@ -1423,6 +1423,97 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
         </div>
 
+        <div className="mt-4 mb-6 p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900">Contexte événement</h3>
+            <span className="text-xs text-gray-500">
+              event_id: {activeEventId ?? 'N/A'} · {loadedFromDb ? 'chargé depuis DB' : 'local only'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Événement</label>
+              <input
+                type="text"
+                value={config.competition}
+                onChange={(e) => handleConfigChange('competition', e.target.value)}
+                placeholder="Nom de l'événement"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Division</label>
+              <select
+                value={config.division}
+                onChange={(e) => handleConfigChange('division', e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {effectiveDivisionOptions.map((division) => (
+                  <option key={division} value={division}>
+                    {division}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Round</label>
+              <select
+                value={config.round}
+                onChange={(e) => handleConfigChange('round', Number(e.target.value))}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {roundOptions.map((round) => (
+                  <option key={round} value={round}>
+                    Round {round}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Heat</label>
+              <select
+                value={config.heatId}
+                onChange={(e) => handleConfigChange('heatId', Number(e.target.value))}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {heatOptionsForRound.map((heat) => (
+                  <option key={heat} value={heat}>
+                    Heat {heat}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {!loadedFromDb && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-3">
+              <p className="text-xs text-amber-900 mb-2">
+                Configuration non liée à la base. Recharge depuis Supabase pour récupérer l’événement actif.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleAutoReconnect}
+                  disabled={reconnectPending || !onReconnectToDb}
+                  className="px-3 py-1.5 text-xs font-medium bg-amber-200 rounded hover:bg-amber-300 disabled:opacity-50"
+                >
+                  {reconnectPending ? 'Reconnexion...' : 'Reconnecter Supabase'}
+                </button>
+                <button
+                  onClick={() => navigate('/my-events')}
+                  className="px-3 py-1.5 text-xs font-medium bg-white border border-amber-300 rounded hover:bg-amber-100"
+                >
+                  Mes événements
+                </button>
+              </div>
+              {reconnectMessage && <p className="text-xs mt-2 text-amber-900">{reconnectMessage}</p>}
+            </div>
+          )}
+        </div>
+
         {/* Nombre de Juges (Mode Kiosk) */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Juges</label>
