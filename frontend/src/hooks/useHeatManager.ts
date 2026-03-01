@@ -3,7 +3,6 @@ import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import { useSupabaseSync } from './useSupabaseSync';
 import { useRealtimeSync } from './useRealtimeSync';
-import { useCompetitionTimer } from './useCompetitionTimer';
 import {
     fetchOrderedHeatSequence,
     fetchHeatEntriesWithParticipants,
@@ -51,6 +50,8 @@ export function useHeatManager() {
     const { config, setConfig, persistConfig, activeEventId } = useConfigStore();
     const {
         scores,
+        timer,
+        setTimer,
         setScores,
         setHeatStatus,
         judgeWorkCount,
@@ -70,8 +71,6 @@ export function useHeatManager() {
         publishConfigUpdate,
         publishTimerReset
     } = useRealtimeSync();
-
-    const { resetTimer } = useCompetitionTimer();
 
     const currentHeatId = getHeatIdentifiers(
         config.competition,
@@ -101,6 +100,19 @@ export function useHeatManager() {
             await markHeatFinished(currentHeatId);
         } catch (error) {
             console.warn('Impossible de marquer le heat comme terminé', error);
+        }
+
+        // Force local stop immediately so admin UI never keeps counting after close.
+        const stoppedCurrentTimer = {
+            ...timer,
+            isRunning: false,
+            startTime: null,
+        };
+        setTimer(stoppedCurrentTimer);
+        try {
+            localStorage.setItem('surfJudgingTimer', JSON.stringify(stoppedCurrentTimer));
+        } catch (error) {
+            console.warn('Impossible de persister le timer arrêté localement', error);
         }
 
         setHeatStatus('finished');
@@ -423,7 +435,14 @@ export function useHeatManager() {
         }
 
 
-        resetTimer(); // This resets timer state and publishes reset
+        // Reset local timer for the next heat view; remote reset is published explicitly for nextHeatKey below.
+        const nextLocalTimer = { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION };
+        setTimer(nextLocalTimer);
+        try {
+            localStorage.setItem('surfJudgingTimer', JSON.stringify(nextLocalTimer));
+        } catch (error) {
+            console.warn('Impossible de persister le timer du prochain heat', error);
+        }
         setScores([]);
         localStorage.setItem('surfJudgingScores', JSON.stringify([]));
 
@@ -480,7 +499,8 @@ export function useHeatManager() {
         setConfig,
         persistConfig,
         setScores,
-        resetTimer,
+        timer,
+        setTimer,
         publishTimerPause,
         updateHeatStatus,
         markHeatFinished,

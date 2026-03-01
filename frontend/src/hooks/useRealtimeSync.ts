@@ -326,6 +326,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
         .from('heat_realtime_config')
         .update({
           status: 'finished',
+          timer_start_time: null,
           updated_by: 'admin'
         })
         .eq('heat_id', normalizedHeatId);
