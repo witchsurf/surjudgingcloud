@@ -367,6 +367,7 @@ export default function ScoreDisplay({
                 const displayName = surferNames?.[stat.surfer] ?? stat.surfer;
                 const country = surferCountries?.[stat.surfer];
                 const neededInfo = neededScores[stat.surfer];
+                const hasPendingScores = stat.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0);
 
                 return (
                   <div
@@ -389,8 +390,11 @@ export default function ScoreDisplay({
                           </div>
                           
                           <div className="space-y-0.5">
-                            <h3 className="text-xl sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none">
+                            <h3 className="text-xl sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
                               {displayName}
+                              {hasPendingScores && (
+                                <span className="text-danger-500 animate-pulse text-2xl leading-none pt-1" title="En attente de notes">*</span>
+                              )}
                             </h3>
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                               {country && (
@@ -464,8 +468,11 @@ export default function ScoreDisplay({
                       <tr key={stat.surfer} className="hover:bg-primary-50/20 transition-colors">
                         <td className="p-4">
                           <div className="flex flex-col">
-                            <span className="text-sm font-bebas tracking-wide text-primary-900">
+                            <span className="text-sm font-bebas tracking-wide text-primary-900 flex items-center gap-1">
                               {displayName}
+                              {stat.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0) && (
+                                <span className="text-danger-500 animate-pulse text-lg leading-none pt-0.5" title="En attente de notes">*</span>
+                              )}
                             </span>
                             <span className="text-[9px] text-primary-300">
                               {stat.surfer}{country ? ` • ${country}` : ''}

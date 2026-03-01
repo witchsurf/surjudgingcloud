@@ -305,7 +305,12 @@ export default function HeatResults({
                   className="hover:bg-primary-50/20 transition-colors"
                 >
                   <td className="px-4 py-4">
-                    <div className="font-bebas text-xl text-primary-900 leading-none">{row.name}</div>
+                    <div className="font-bebas text-xl text-primary-900 leading-none flex items-center gap-1">
+                      {row.name}
+                      {row.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0) && (
+                        <span className="text-danger-500 animate-pulse text-2xl leading-none pt-1" title="En attente de notes">*</span>
+                      )}
+                    </div>
                     {row.country && (
                       <div className="text-[9px] font-bold uppercase tracking-widest text-primary-400 mt-1">{row.country}</div>
                     )}
