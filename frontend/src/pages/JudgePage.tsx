@@ -9,11 +9,11 @@ import { useScoreManager } from '../hooks/useScoreManager';
 import { getHeatIdentifiers } from '../utils/heat';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
-    const { config, configSaved, setConfig, setConfigSaved, loadConfigFromDb } = useConfigStore();
+    const { config, configSaved, setConfig, loadConfigFromDb } = useConfigStore();
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { handleScoreSubmit, handleScoreSync } = useScoreManager();
     const { subscribeToHeat, markHeatFinished, syncHeatViaWebhook, isConnected } = useRealtimeSync();
