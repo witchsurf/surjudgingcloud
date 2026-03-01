@@ -273,7 +273,7 @@ export default function ScoreDisplay({
   return (
     <div className="score-display max-w-7xl mx-auto p-4 sm:p-6 space-y-6 font-sans">
       {/* HEADER WITH TIMER */}
-      <div className="bg-primary-900 border-4 border-primary-950 rounded-2xl p-4 sm:p-5 shadow-block relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-primary-900 border-4 border-primary-950 rounded-2xl p-4 sm:p-5 shadow-block relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 sticky top-4 z-50">
         <div className="absolute top-0 right-0 w-32 h-32 bg-cta-500/10 rounded-full -mr-16 -mt-16 blur-3xl" />
         
         {/* Left: Title & Badges */}
