@@ -38,7 +38,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.http.routers.surfjudging.entrypoints: websecure
-      traefik.http.routers.surfjudging.rule: "Host(`${DOMAIN_NAME}`)"
+      traefik.http.routers.surfjudging.rule: "Host(`${DOMAIN_NAME}`) || Host(`www.${DOMAIN_NAME}`) || Host(`surfjudging.cloud`) || Host(`www.surfjudging.cloud`)"
       traefik.http.routers.surfjudging.tls.certresolver: le
 
   n8n:
