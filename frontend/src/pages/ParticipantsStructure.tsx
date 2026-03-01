@@ -74,6 +74,7 @@ export default function ParticipantsStructure() {
   const [confirming, setConfirming] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [organizerLogoPreviewUrl, setOrganizerLogoPreviewUrl] = useState<string | null>(null);
 
   const selectedEvent = useMemo(
     () => events.find((evt) => evt.id === selectedEventId) ?? null,
@@ -292,6 +293,39 @@ export default function ParticipantsStructure() {
   }, [selectedEventId]);
 
   useEffect(() => {
+    if (!selectedEventId || !supabase) {
+      setOrganizerLogoPreviewUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadEventLogo = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('events')
+          .select('config')
+          .eq('id', selectedEventId)
+          .maybeSingle();
+        if (error) throw error;
+        if (cancelled) return;
+        const config = (data?.config ?? {}) as Record<string, unknown>;
+        const existingLogo = typeof config.organizerLogoDataUrl === 'string' ? config.organizerLogoDataUrl : null;
+        setOrganizerLogoPreviewUrl(existingLogo);
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('Impossible de charger le logo organisateur:', err);
+          setOrganizerLogoPreviewUrl(null);
+        }
+      }
+    };
+
+    void loadEventLogo();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEventId]);
+
+  useEffect(() => {
     if (selectedEventId != null) {
       loadParticipants(selectedEventId);
       setPreview(null);
@@ -358,6 +392,48 @@ export default function ParticipantsStructure() {
       setImporting(false);
     }
   };
+
+  const handleOrganizerLogoUpload = useCallback(async (file: File) => {
+    if (!selectedEventId) {
+      throw new Error('S\u00e9lectionnez un \u00e9v\u00e9nement avant d\u2019ajouter un logo.');
+    }
+    if (!supabase) {
+      throw new Error('Supabase indisponible.');
+    }
+
+    const toDataUrl = (input: File) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+        reader.readAsDataURL(input);
+      });
+
+    const dataUrl = await toDataUrl(file);
+
+    const { data: eventRow, error: readError } = await supabase
+      .from('events')
+      .select('config')
+      .eq('id', selectedEventId)
+      .maybeSingle();
+    if (readError) throw readError;
+
+    const currentConfig = (eventRow?.config ?? {}) as Record<string, unknown>;
+    const nextConfig = {
+      ...currentConfig,
+      organizerLogoDataUrl: dataUrl,
+      organizerLogoUpdatedAt: new Date().toISOString(),
+    };
+
+    const { error: updateError } = await supabase
+      .from('events')
+      .update({ config: nextConfig, updated_at: new Date().toISOString() })
+      .eq('id', selectedEventId);
+    if (updateError) throw updateError;
+
+    setOrganizerLogoPreviewUrl(dataUrl);
+    setSuccess('Logo organisateur enregistr\u00e9.');
+  }, [selectedEventId]);
 
   const handleUpdateParticipant = async (participant: ParticipantRecord) => {
     try {
@@ -580,7 +656,12 @@ export default function ParticipantsStructure() {
           </div>
         )}
 
-        <ImportParticipants onImport={handleImport} disabled={!selectedEventId || importing} />
+        <ImportParticipants
+          onImport={handleImport}
+          onLogoUpload={handleOrganizerLogoUpload}
+          logoPreviewUrl={organizerLogoPreviewUrl}
+          disabled={!selectedEventId || importing}
+        />
 
         <ParticipantsTable
           participants={participants}

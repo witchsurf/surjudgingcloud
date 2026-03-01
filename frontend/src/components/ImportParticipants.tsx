@@ -4,17 +4,21 @@ import { parseCSVParticipants, buildGoogleSheetCsvUrl } from '../utils/csv';
 
 interface ImportParticipantsProps {
   onImport: (rows: ParsedParticipant[]) => Promise<void> | void;
+  onLogoUpload?: (file: File) => Promise<void> | void;
   disabled?: boolean;
+  logoPreviewUrl?: string | null;
 }
 
 type TabKey = 'google' | 'csv';
 
-export default function ImportParticipants({ onImport, disabled }: ImportParticipantsProps) {
+export default function ImportParticipants({ onImport, onLogoUpload, disabled, logoPreviewUrl }: ImportParticipantsProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('google');
   const [sheetUrl, setSheetUrl] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [logoLoading, setLogoLoading] = useState(false);
+  const [logoStatus, setLogoStatus] = useState<string | null>(null);
 
   const handleParsed = async (rows: ParsedParticipant[]) => {
     if (!rows.length) {
@@ -70,6 +74,25 @@ export default function ImportParticipants({ onImport, disabled }: ImportPartici
       setErrors([error instanceof Error ? error.message : 'Lecture du fichier impossible']);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLogoChange = async (file: File | null) => {
+    setLogoStatus(null);
+    if (!file) return;
+    if (!onLogoUpload) {
+      setLogoStatus('Ajout de logo non disponible.');
+      return;
+    }
+
+    try {
+      setLogoLoading(true);
+      await onLogoUpload(file);
+      setLogoStatus('Logo enregistr\u00e9 pour cet \u00e9v\u00e9nement.');
+    } catch (error) {
+      setLogoStatus(error instanceof Error ? error.message : 'Impossible d\u2019enregistrer le logo.');
+    } finally {
+      setLogoLoading(false);
     }
   };
 
@@ -129,6 +152,24 @@ export default function ImportParticipants({ onImport, disabled }: ImportPartici
             <p className="text-xs text-slate-400">Colonnes attendues: seed, name, category, country (optionnel), license (optionnel).</p>
           </div>
         )}
+
+        <div className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-4">
+          <p className="text-sm font-medium text-slate-100">Logo de l\u2019organisateur (optionnel)</p>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            disabled={disabled || logoLoading}
+            onChange={(event) => handleLogoChange(event.target.files?.[0] ?? null)}
+            className="w-full cursor-pointer rounded-2xl border border-dashed border-slate-700 bg-slate-900 px-4 py-3 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/30"
+          />
+          {logoPreviewUrl && (
+            <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3">
+              <p className="mb-2 text-xs text-slate-400">Aper\u00e7u logo actuel</p>
+              <img src={logoPreviewUrl} alt="Logo organisateur" className="max-h-20 max-w-full object-contain" />
+            </div>
+          )}
+          {logoStatus && <p className="text-xs text-emerald-300">{logoStatus}</p>}
+        </div>
 
         {status && <p className="rounded-xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{status}</p>}
         {errors.length > 0 && (

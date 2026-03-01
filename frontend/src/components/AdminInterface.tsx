@@ -1287,10 +1287,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             eventData.logo ||
             eventData.organizer_logo_url ||
             eventData.image_url ||
-            eventData.brand_logo_url
+            eventData.brand_logo_url ||
+            eventData?.config?.organizerLogoDataUrl
           ) as string | undefined;
 
-          if (logoCandidate && /^https?:\/\//i.test(logoCandidate)) {
+          if (logoCandidate && logoCandidate.startsWith('data:image/')) {
+            organizerLogoDataUrl = logoCandidate;
+          } else if (logoCandidate && /^https?:\/\//i.test(logoCandidate)) {
             try {
               const response = await fetch(logoCandidate);
               if (response.ok) {
