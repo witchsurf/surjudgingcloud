@@ -268,97 +268,113 @@ export default function HeatResults({
   const title = `${competition.toUpperCase()} – ${division.toUpperCase()} | ROUND ${round} • HEAT ${heatNumber}`;
 
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900/80 shadow-2xl shadow-blue-900/20">
-      <div className="px-6 py-6 text-center">
-        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{title}</p>
-        <h3 className="mt-2 text-lg font-bold uppercase tracking-widest text-white">Résultats du heat</h3>
+    <div className="bg-white border-4 border-primary-950 rounded-2xl overflow-hidden shadow-block font-sans">
+      <div className="bg-primary-900 px-6 py-6 text-center border-b-4 border-primary-950 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-24 h-24 bg-cta-500/10 rounded-full -mr-12 -mt-12 blur-2xl" />
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary-300 relative z-10">{title}</p>
+        <h3 className="mt-2 text-2xl font-bebas tracking-widest text-white relative z-10">RÉSULTATS OFFICIELS</h3>
         {entriesError && (
-          <p className="mt-2 text-xs text-red-300">
+          <p className="mt-2 text-xs font-bold text-red-400 uppercase tracking-widest">
             {entriesError}
           </p>
         )}
         {loadingEntries && !entriesError && (
-          <p className="mt-2 text-xs text-slate-300">Chargement des concurrents…</p>
+          <p className="mt-2 text-[10px] font-bold text-primary-400 uppercase tracking-widest animate-pulse">Chargement des athlètes...</p>
         )}
       </div>
 
-      <div className="px-4 pb-8 sm:px-6">
+      <div className="p-4 sm:p-6 overflow-hidden">
         <div className="overflow-x-auto">
-          <div className="inline-block min-w-full overflow-hidden rounded-2xl border border-gray-300">
-            <table className="min-w-full table-fixed text-sm text-white">
-              <thead className="bg-blue-600 uppercase tracking-wide">
-                <tr>
-                  <th className="px-4 py-3 text-center font-semibold">Surfeur</th>
-                  <th className="px-4 py-3 text-center font-semibold">Couleur</th>
-                  <th className="px-4 py-3 text-center font-semibold">Total</th>
-                  {Array.from({ length: Math.max(...rows.map((row) => row.waves.length), 0) }, (_, i) => i + 1).map((waveNumber) => (
-                    <th key={`wave-${waveNumber}`} className="px-3 py-3 text-center font-semibold">
-                      V{waveNumber}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, idx) => (
-                  <tr
-                    key={row.key}
-                    className={idx % 2 === 0 ? 'bg-slate-900/50' : 'bg-slate-800/30'}
-                  >
-                    <td className="px-4 py-3 text-center">
-                      <div className="font-semibold text-white">{row.name}</div>
-                      {row.country && (
-                        <div className="text-xs uppercase tracking-widest text-slate-300">{row.country}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="inline-flex min-w-[96px] justify-center rounded-full border border-blue-200 px-3 py-1 text-xs font-bold uppercase tracking-widest text-blue-100">
-                        {row.jersey}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center text-xl font-bold text-white">{row.total.toFixed(2)}</td>
-                    {Array.from({ length: Math.max(...rows.map((r) => r.waves.length), 0) }, (_, i) => i + 1).map((waveNumber) => {
-                      const wave = row.waves.find((w) => w.wave === waveNumber);
-                      return (
-                        <td key={`${row.key}-wave-${waveNumber}`} className="px-3 py-3 text-center">
-                          {wave && wave.score > 0 ? (
-                            <div className="relative group inline-flex justify-center">
-                              <span className={`inline-flex min-w-[64px] justify-center rounded-md px-2 py-1 text-xs font-semibold ${
-                                wave.isComplete ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800 border border-orange-300'
-                              }`}>
-                                {wave.score.toFixed(2)}
-                                {!wave.isComplete && <span className="ml-1 text-[10px]">*</span>}
-                              </span>
-                              <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 min-w-[140px] -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-2 text-xs text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <table className="w-full text-sm">
+            <thead className="bg-primary-50 border-b-2 border-primary-100 uppercase tracking-widest">
+              <tr>
+                <th className="px-4 py-4 text-left font-bebas text-lg text-primary-900">SURFEUR</th>
+                <th className="px-4 py-4 text-center font-bebas text-lg text-primary-900">BIB</th>
+                <th className="px-4 py-4 text-center font-bebas text-lg bg-cta-50 text-cta-600">TOTAL</th>
+                {Array.from({ length: Math.max(...rows.map((row) => row.waves.length), 0) }, (_, i) => i + 1).map((waveNumber) => (
+                  <th key={`wave-${waveNumber}`} className="px-3 py-4 text-center font-bebas text-lg text-primary-300">
+                    V{waveNumber}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y-2 divide-primary-50">
+              {rows.map((row, idx) => (
+                <tr
+                  key={row.key}
+                  className="hover:bg-primary-50/20 transition-colors"
+                >
+                  <td className="px-4 py-4">
+                    <div className="font-bebas text-xl text-primary-900 leading-none">{row.name}</div>
+                    {row.country && (
+                      <div className="text-[9px] font-bold uppercase tracking-widest text-primary-400 mt-1">{row.country}</div>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-center">
+                    <span className="inline-flex min-w-[32px] justify-center rounded-lg border-2 border-primary-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary-900 bg-white shadow-sm">
+                      {row.jersey}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4 text-center bg-cta-50">
+                    <span className="text-3xl font-bebas text-cta-600 leading-none">
+                      {row.total.toFixed(2)}
+                    </span>
+                  </td>
+                  {Array.from({ length: Math.max(...rows.map((r) => r.waves.length), 0) }, (_, i) => i + 1).map((waveNumber) => {
+                    const wave = row.waves.find((w) => w.wave === waveNumber);
+                    return (
+                      <td key={`${row.key}-wave-${waveNumber}`} className="px-3 py-4 text-center">
+                        {wave && wave.score > 0 ? (
+                          <div className="relative group inline-flex justify-center cursor-help">
+                            <span className={`inline-flex min-w-[50px] justify-center rounded-lg border-2 px-2 py-1 font-bebas text-lg transition-transform group-hover:scale-110 ${
+                              wave.isComplete 
+                                ? 'bg-primary-50 border-primary-200 text-primary-800' 
+                                : 'bg-cta-50 border-cta-200 text-cta-600'
+                            }`}>
+                              {wave.score.toFixed(2)}
+                              {!wave.isComplete && <span className="ml-0.5 text-xs text-cta-400">*</span>}
+                            </span>
+                            
+                            {/* Detailed Popover */}
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block bg-primary-900 text-white p-3 rounded-xl border-2 border-primary-950 shadow-block z-50 min-w-max">
+                              <div className="flex gap-4">
                                 {Object.entries(wave.judgeScores)
                                   .sort(([a], [b]) => a.localeCompare(b))
-                                  .map(([judgeId, value], index, arr) => (
-                                    <span key={judgeId}>
-                                      {judgeNames[judgeId] || judgeId}: {value.toFixed(2)}
-                                      {index < arr.length - 1 ? ', ' : ''}
-                                    </span>
+                                  .map(([judgeId, value]) => (
+                                    <div key={judgeId} className="flex flex-col items-center">
+                                      <span className="text-[8px] font-bold text-primary-300 uppercase tracking-widest mb-1">
+                                        {judgeNames[judgeId] || judgeId}
+                                      </span>
+                                      <span className="text-lg font-bebas leading-none">
+                                        {value.toFixed(1)}
+                                      </span>
+                                    </div>
                                   ))}
                               </div>
+                              <div className="w-2 h-2 bg-primary-900 border-r-2 border-b-2 border-primary-950 absolute -bottom-1 left-1/2 -translate-x-1/2 rotate-45" />
                             </div>
-                          ) : (
-                            <span className="text-gray-500">—</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-                {!rows.length && (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-4 text-center text-sm text-slate-400">
-                      Aucun score enregistré pour ce heat pour le moment.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                          </div>
+                        ) : (
+                          <span className="text-primary-100">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {!rows.length && (
+                <tr>
+                  <td colSpan={10} className="px-4 py-12 text-center">
+                    <div className="text-primary-200 font-bebas text-2xl tracking-widest opacity-40">AUCUN SCORE ENREGISTRÉ</div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
+  );
+}
   );
 }

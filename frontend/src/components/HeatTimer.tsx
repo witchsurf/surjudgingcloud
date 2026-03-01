@@ -127,39 +127,38 @@ function HeatTimer({
   };
 
   const getTimerColor = (): string => {
-    if (timeLeft <= 5) return 'text-red-600 animate-pulse'; // 5 dernières secondes - rouge clignotant
-    if (timeLeft <= 60) return 'text-red-600'; // Dernière minute - rouge
-    if (timeLeft <= 300) return 'text-orange-500'; // 5 dernières minutes - orange
-    return 'text-green-600'; // Normal - vert
+    if (timeLeft <= 5) return 'text-red-500 animate-pulse';
+    if (timeLeft <= 60) return 'text-red-600';
+    if (timeLeft <= 300) return 'text-cta-500';
+    return 'text-primary-600';
   };
 
   const getTimerBgColor = (): string => {
-    if (timeLeft <= 5) return 'bg-red-100 border-red-300'; // 5 dernières secondes
-    if (timeLeft <= 60) return 'bg-red-50 border-red-200'; // Dernière minute
-    if (timeLeft <= 300) return 'bg-orange-50 border-orange-200'; // 5 dernières minutes
-    return 'bg-green-50 border-green-200'; // Normal
+    if (timeLeft <= 5) return 'bg-red-50 border-red-500';
+    if (timeLeft <= 300) return 'bg-cta-50 border-cta-500/30';
+    return 'bg-primary-50 border-primary-500/20';
   };
 
   const getSizeClasses = () => {
     switch (size) {
       case 'small':
         return {
-          container: 'p-4',
+          container: 'p-2',
           time: 'text-2xl',
-          button: 'p-2',
-          icon: 'w-4 h-4'
+          button: 'p-1.5',
+          icon: 'w-3.5 h-3.5'
         };
       case 'large':
         return {
           container: 'p-8',
-          time: 'text-6xl',
+          time: 'text-7xl sm:text-8xl',
           button: 'p-4',
           icon: 'w-6 h-6'
         };
       default:
         return {
-          container: 'p-6',
-          time: 'text-4xl',
+          container: 'p-4 sm:p-6',
+          time: 'text-4xl sm:text-6xl',
           button: 'p-3',
           icon: 'w-5 h-5'
         };
@@ -169,17 +168,16 @@ function HeatTimer({
   const classes = getSizeClasses();
 
   return (
-    <div className={`bg-white rounded-xl border-2 ${getTimerBgColor()} ${classes.container} text-center transition-all duration-300`}>
+    <div className={`bg-white rounded-2xl border-4 ${getTimerBgColor()} ${classes.container} text-center transition-all duration-300 shadow-block`}>
       <div className="flex items-center justify-center mb-4">
-        <Clock className={`w-6 h-6 mr-2 ${timeLeft <= 300 ? 'text-orange-600' : 'text-green-600'}`} />
-        <h3 className={`text-lg font-semibold ${timeLeft <= 300 ? 'text-orange-800' : 'text-green-800'}`}>
-          Timer du Heat
+        <Clock className={`w-6 h-6 mr-2 ${timeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`} />
+        <h3 className={`text-lg font-bebas tracking-widest ${timeLeft <= 300 ? 'text-cta-600' : 'text-primary-800'}`}>
+          CHRONO <span className="opacity-60 text-sm">PRO</span>
         </h3>
         {showControls && (
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className={`ml-2 p-1 transition-colors ${timeLeft <= 300 ? 'text-orange-500 hover:text-orange-700' : 'text-gray-500 hover:text-gray-700'
-              }`}
+            className="ml-2 p-1 text-primary-400 hover:text-primary-600 transition-colors"
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -187,87 +185,90 @@ function HeatTimer({
       </div>
 
       {showSettings && showControls && (
-        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Durée (minutes)
-          </label>
+        <div className="mb-4 p-4 bg-primary-50 rounded-xl border-2 border-primary-100 flex items-center justify-center gap-4 animate-fade-in">
+          <label className="text-[10px] font-bold text-primary-900/60 uppercase tracking-widest">Durée (min)</label>
           <input
             type="number"
             min="1"
             max="60"
             value={timer.duration}
             onChange={(e) => onDurationChange(parseInt(e.target.value) || 20)}
-            className="w-20 px-2 py-1 border border-gray-300 rounded text-center"
+            className="w-20 px-3 py-1.5 bg-white border-2 border-primary-200 rounded-lg text-center font-bold text-primary-900 focus:border-primary-600 focus:ring-0"
             disabled={timer.isRunning}
           />
         </div>
       )}
 
-      <div className={`font-mono font-bold mb-6 ${classes.time} ${getTimerColor()}`}>
+      <div className={`font-bebas tracking-[0.1em] leading-none mb-6 ${classes.time} ${getTimerColor()}`}>
         {formatTime(timeLeft)}
       </div>
 
-      {timeLeft <= 5 && timeLeft > 0 && (
-        <div className="mb-4 px-3 py-2 bg-red-200 border border-red-400 rounded-lg animate-pulse">
-          <p className="text-red-900 font-bold">🚨 {timeLeft} SECONDE{timeLeft > 1 ? 'S' : ''} !</p>
-        </div>
-      )}
+      <div className="min-h-[40px] flex items-center justify-center">
+        {timeLeft <= 5 && timeLeft > 0 && (
+          <div className="px-4 py-1.5 bg-red-600 text-white rounded-full border-2 border-primary-950 font-bold text-[10px] uppercase tracking-widest animate-pulse shadow-block">
+            🚨 {timeLeft} SECONDE{timeLeft > 1 ? 'S' : ''} !
+          </div>
+        )}
 
-      {timeLeft <= 60 && timeLeft > 5 && (
-        <div className="mb-4 px-3 py-2 bg-red-100 border border-red-300 rounded-lg">
-          <p className="text-red-800 font-bold">⚠️ Dernière minute !</p>
-        </div>
-      )}
+        {timeLeft <= 60 && timeLeft > 5 && (
+          <div className="px-4 py-1.5 bg-red-100 text-red-600 rounded-full border-2 border-red-200 font-bold text-[10px] uppercase tracking-widest">
+            ⚠️ Dernière minute
+          </div>
+        )}
 
-      {timeLeft <= 300 && timeLeft > 60 && (
-        <div className="mb-4 px-3 py-2 bg-orange-100 border border-orange-300 rounded-lg">
-          <p className="text-orange-800 font-medium">🔔 5 dernières minutes !</p>
-        </div>
-      )}
+        {timeLeft <= 300 && timeLeft > 60 && (
+          <div className="px-4 py-1.5 bg-cta-50 text-cta-600 rounded-full border-2 border-cta-100 font-bold text-[10px] uppercase tracking-widest">
+            🔔 5 dernières minutes
+          </div>
+        )}
 
-      {timeLeft === 0 && timer.startTime && (
-        <div className="mb-4 px-3 py-2 bg-red-600 text-white rounded-lg animate-pulse">
-          <p className="font-bold">🏁 TEMPS ÉCOULÉ !</p>
-        </div>
-      )}
+        {timeLeft === 0 && timer.startTime && (
+          <div className="px-6 py-2 bg-red-600 text-white rounded-full border-4 border-primary-950 font-bebas text-xl tracking-widest animate-pulse shadow-block">
+            🏁 TEMPS ÉCOULÉ !
+          </div>
+        )}
+      </div>
 
       {showControls && (
-        <div className="flex justify-center space-x-3">
+        <div className="flex justify-center space-x-3 mt-4">
           {!timer.isRunning ? (
             <button
               onClick={onStart}
               disabled={!configSaved}
-              className={`${classes.button} bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-all duration-200`}
+              className={`${classes.button} bg-success-500 text-white rounded-xl border-2 border-primary-950 shadow-block hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 font-bebas tracking-widest px-6 disabled:opacity-50`}
             >
-              <Play className={classes.icon} />
-              <span>Start</span>
+              <Play className={classes.icon} fill="currentColor" />
+              <span>START</span>
             </button>
           ) : (
             <button
               onClick={onPause}
-              className={`${classes.button} bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center space-x-2 font-medium transition-all duration-200`}
+              className={`${classes.button} bg-cta-500 text-white rounded-xl border-2 border-primary-950 shadow-block hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 font-bebas tracking-widest px-6`}
             >
-              <Pause className={classes.icon} />
-              <span>Pause</span>
+              <Pause className={classes.icon} fill="currentColor" />
+              <span>PAUSE</span>
             </button>
           )}
 
           <button
             onClick={onReset}
             disabled={!configSaved}
-            className={`${classes.button} bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-all duration-200`}
+            className={`${classes.button} bg-white text-primary-900 rounded-xl border-2 border-primary-950 hover:bg-primary-50 transition-all flex items-center gap-2 font-bebas tracking-widest px-6 disabled:opacity-50`}
           >
             <RotateCcw className={classes.icon} />
-            <span>Reset</span>
+            <span>RESET</span>
           </button>
         </div>
       )}
 
       {!configSaved && showControls && (
-        <p className="mt-3 text-sm text-orange-600">
-          ⚠️ Enregistrez la configuration pour utiliser le timer
+        <p className="mt-4 text-[10px] font-bold text-cta-600 uppercase tracking-widest animate-pulse">
+          ⚠️ Sauvegardez la configuration
         </p>
       )}
+    </div>
+  );
+}
     </div>
   );
 }

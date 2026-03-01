@@ -646,44 +646,52 @@ export default function DisplayPage() {
 
     // -- RENDER --
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
-            {/* HISTORY NAVIGATION BAR - Always visible on Display Page */}
-            <div className="bg-slate-900 border-b border-slate-700 shadow-md p-4 sticky top-0 z-50">
-                <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="min-h-screen bg-primary-50 font-sans selection:bg-cta-100">
+            {/* HISTORY NAVIGATION BAR */}
+            <header className="bg-primary-900 border-b-4 border-primary-950 p-4 sticky top-0 z-50 shadow-block">
+                <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+                    
+                    {/* Mode Indicator & Brand */}
+                    <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-2">
+                             <div className="p-1.5 bg-cta-500 rounded-lg border border-primary-950">
+                                <History className="w-4 h-4 text-white" />
+                             </div>
+                             <h2 className="text-xl font-bebas tracking-wider text-white">
+                                 HEAT <span className="text-cta-500">HISTORY</span>
+                             </h2>
+                        </div>
 
-                    {/* Mode Indicator */}
-                    <div className="flex items-center space-x-3">
                         {viewMode === 'live' ? (
-                            <div className="flex items-center px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full animate-pulse">
-                                <span className="mr-1">●</span> DIRECT
+                            <div className="flex items-center gap-2 px-3 py-1 bg-success-500 text-white text-[10px] font-bold rounded-full border-2 border-primary-950 animate-pulse uppercase tracking-widest">
+                                <div className="w-1.5 h-1.5 rounded-full bg-white" /> DIRECT
                             </div>
                         ) : (
                             <button
                                 onClick={handleReturnToLive}
-                                className="flex items-center px-3 py-1 bg-gray-700 text-gray-300 text-xs font-bold rounded-full hover:bg-gray-600 transition-colors"
+                                className="flex items-center gap-2 px-3 py-1 bg-cta-500 text-white text-[10px] font-bold rounded-full border-2 border-primary-950 hover:bg-cta-600 transition-all uppercase tracking-widest shadow-sm"
                             >
-                                <RotateCcw className="w-3 h-3 mr-1" />
+                                <RotateCcw className="w-3 h-3" />
                                 RETOUR AU DIRECT
                             </button>
                         )}
                     </div>
 
                     {/* Past Results Dropdown */}
-                    <div className="relative group w-full sm:w-auto">
-                        <div className="flex items-center bg-slate-800 rounded-lg border border-slate-600 px-3 py-2 text-slate-300 w-full sm:min-w-[280px]">
-                            <History className="w-4 h-4 mr-2 opacity-50" />
+                    <div className="relative w-full sm:w-auto min-w-[300px]">
+                        <div className="relative group">
                             <select
-                                className="bg-transparent border-none outline-none text-sm w-full appearance-none cursor-pointer"
+                                className="w-full bg-white border-2 border-primary-950 rounded-xl px-4 py-2.5 text-sm font-bold text-primary-900 appearance-none cursor-pointer focus:ring-0 shadow-block hover:-translate-y-0.5 transition-all"
                                 value={selectedHistoryHeatId || ""}
                                 onChange={(e) => handleHeatSelect(e.target.value)}
                                 disabled={isLoadingHistory}
                             >
-                                <option value="" disabled>📅 Consulter un résultat passé...</option>
+                                <option value="" disabled className="text-primary-300">📅 HISTORIQUE DES HEATS...</option>
                                 {Object.entries(historyHeats).map(([category, rounds]) => (
-                                    <optgroup key={category} label={category}>
+                                    <optgroup key={category} label={category} className="font-bebas text-lg tracking-wide bg-primary-50">
                                         {rounds.flatMap(round =>
                                             round.heats.map(heat => (
-                                                <option key={heat.heatId} value={heat.heatId}>
+                                                <option key={heat.heatId} value={heat.heatId} className="font-sans text-sm">
                                                     {round.name} - Heat {heat.heatNumber}
                                                 </option>
                                             ))
@@ -691,51 +699,60 @@ export default function DisplayPage() {
                                     </optgroup>
                                 ))}
                             </select>
-                            <ChevronDown className="w-4 h-4 ml-2 opacity-50 pointer-events-none" />
+                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-primary-400 pointer-events-none" />
                         </div>
                     </div>
                 </div>
-            </div>
+            </header>
 
-            {/* CONTENT */}
-            <div className="flex-grow pt-4">
-                {viewMode === 'live' ? (
-                    <ScoreDisplay
-                        config={liveDisplayConfig}
-                        scores={scores}
-                        timer={timer}
-                        configSaved={configSaved}
-                        heatStatus={heatStatus}
-                    />
-                ) : (
-                    <>
-                        {historyConfig && (
-                            <div className="relative">
-                                {/* Banner for Archive Mode */}
-                                <div className="absolute top-0 left-0 right-0 -mt-6 flex justify-center pointer-events-none">
-                                    <span className="bg-slate-800 text-slate-400 text-[10px] px-3 py-0.5 rounded-b-lg font-mono uppercase tracking-widest">
-                                        Archive
-                                    </span>
+            {/* CONTENT AREA */}
+            <main className="flex-grow py-8 px-4">
+                <div className="max-w-7xl mx-auto">
+                    {viewMode === 'live' ? (
+                        <ScoreDisplay
+                            config={liveDisplayConfig}
+                            scores={scores}
+                            timer={timer}
+                            configSaved={configSaved}
+                            heatStatus={heatStatus}
+                        />
+                    ) : (
+                        <div className="space-y-6">
+                            {historyConfig && (
+                                <div className="relative animate-fade-in">
+                                    {/* ARCHIVE BANNER */}
+                                    <div className="flex justify-center mb-8">
+                                        <div className="bg-primary-900 border-4 border-primary-950 px-6 py-2 rounded-2xl shadow-block-orange inline-flex flex-col items-center">
+                                            <span className="text-cta-500 font-bebas text-2xl tracking-[0.3em]">ARCHIVE</span>
+                                            <span className="text-white text-[10px] font-bold uppercase tracking-widest opacity-60">Consultation uniquement</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <ScoreDisplay
+                                        config={historyConfig}
+                                        scores={historyScores}
+                                        timer={{ isRunning: false, startTime: null, duration: 0 }}
+                                        configSaved={true}
+                                        heatStatus="finished"
+                                    />
                                 </div>
-                                <ScoreDisplay
-                                    config={historyConfig}
-                                    scores={historyScores}
-                                    // Use a dummy finished timer for history
-                                    timer={{ isRunning: false, startTime: null, duration: 0 }}
-                                    configSaved={true}
-                                    heatStatus="finished"
-                                />
-                            </div>
-                        )}
-                        {isLoadingHistory && (
-                            <div className="text-center py-20 text-gray-500 flex flex-col items-center">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mb-4"></div>
-                                Chargement des résultats...
-                            </div>
-                        )}
-                    </>
-                )}
-            </div>
+                            )}
+
+                            {isLoadingHistory && (
+                                <div className="flex flex-col items-center justify-center py-32 space-y-6">
+                                    <div className="relative w-16 h-16">
+                                        <div className="absolute inset-0 border-4 border-primary-200 rounded-full" />
+                                        <div className="absolute inset-0 border-4 border-cta-500 rounded-full border-t-transparent animate-spin" />
+                                    </div>
+                                    <p className="font-bebas text-2xl text-primary-900 tracking-widest animate-pulse">
+                                        Chargement du Heat...
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </main>
         </div>
     );
 }

@@ -271,78 +271,88 @@ export default function ScoreDisplay({
   const winBy = getWinByDiff(surferStats);
 
   return (
-    <div className="score-display max-w-6xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+    <div className="score-display max-w-7xl mx-auto p-4 sm:p-6 space-y-6 font-sans">
       {/* HEADER */}
-      <div className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl p-4 sm:p-6 shadow-lg">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+      <div className="bg-primary-900 border-4 border-primary-950 rounded-2xl p-6 shadow-block relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-cta-500/10 rounded-full -mr-16 -mt-16 blur-3xl" />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 relative z-10">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">
+            <h1 className="text-3xl sm:text-5xl font-bebas tracking-widest text-white leading-none mb-2">
               {config.competition}
             </h1>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-blue-100">
-              <span className="flex items-center gap-1">
-                <Users className="w-4 h-4" />
+            <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-widest text-primary-200">
+              <span className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded border border-white/10">
+                <Users className="w-3.5 h-3.5 text-cta-500" />
                 {config.division}
               </span>
-              <span>Round {config.round}</span>
-              <span>Heat {config.heatId}</span>
+              <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cta-500">Round {config.round}</span>
+              <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cta-500">Heat {config.heatId}</span>
             </div>
           </div>
 
-          <div className="text-left sm:text-right text-xs sm:text-sm">
-            <div className="text-blue-100">Dernière mise à jour</div>
-            <div className="font-mono text-sm sm:text-base">
-              {lastUpdate.toLocaleTimeString('fr-FR')}
+          <div className="text-left sm:text-right space-y-3">
+            <div className="space-y-1">
+              <div className="text-[10px] font-bold text-primary-300 uppercase tracking-[0.2em] leading-none">Dernière mise à jour</div>
+              <div className="font-bebas text-2xl text-white tracking-widest">
+                {lastUpdate.toLocaleTimeString('fr-FR')}
+              </div>
             </div>
 
             <button
               type="button"
               onClick={() => exportHeatScorecardPdf({ config, scores, eventData })}
-              className="mt-2 inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 border border-white/60 rounded-full text-xs sm:text-sm font-semibold hover:bg-white/10 w-full sm:w-auto"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-cta-500 hover:bg-cta-600 text-white rounded-xl border-2 border-primary-950 shadow-block-orange text-xs font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5"
             >
               <FileText className="w-4 h-4" />
-              Exporter le Heat (PDF)
+              PDF Scorecard
             </button>
           </div>
         </div>
       </div>
 
       {/* TIMER */}
-      <div className="flex justify-center">
-        <HeatTimer
-          timer={timer}
-          onStart={() => { }}
-          onPause={() => { }}
-          onReset={() => { }}
-          onDurationChange={() => { }}
-          showControls={false}
-          configSaved={configSaved}
-        />
+      <div className="flex justify-center -my-2">
+        <div className="bg-white border-4 border-primary-950 px-8 py-2 rounded-2xl shadow-block min-w-[240px]">
+          <HeatTimer
+            timer={timer}
+            onStart={() => { }}
+            onPause={() => { }}
+            onReset={() => { }}
+            onDurationChange={() => { }}
+            showControls={false}
+            configSaved={configSaved}
+          />
+        </div>
       </div>
 
       {/* CLASSEMENT */}
-      <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-        <div className="bg-gray-50 px-4 sm:px-6 py-3 sm:py-4 border-b">
-          <h2 className="text-lg sm:text-xl font-bold flex items-center">
-            <Trophy className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-yellow-500" />
-            Classement en temps réel
+      <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden transition-all">
+        <div className="bg-primary-900 px-6 py-4 border-b-4 border-primary-950 flex items-center justify-between">
+          <h2 className="text-xl font-bebas tracking-widest text-white flex items-center gap-3">
+            <Trophy className="w-6 h-6 text-cta-500" />
+            Classement PRO Live
           </h2>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-success-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+            <span className="text-[10px] font-bold text-white uppercase tracking-widest">Temps réel</span>
+          </div>
         </div>
 
         {!hasScores && (
-          <div className="p-4 sm:p-6 text-sm sm:text-base text-gray-500">
-            Aucun score pour le moment…
+          <div className="p-12 text-center space-y-4">
+            <div className="w-16 h-16 bg-primary-50 rounded-full flex items-center justify-center mx-auto border-2 border-primary-100 italic text-2xl">?</div>
+            <p className="font-bebas text-xl text-primary-300 tracking-wider">En attente des premières vagues...</p>
           </div>
         )}
 
         {hasScores && !hasStats && (
-          <div className="p-4 sm:p-6 text-sm sm:text-base text-gray-500">
-            En attente de suffisamment de notes pour établir un classement…
+          <div className="p-12 text-center italic text-primary-400">
+            Calcul des statistiques en cours...
           </div>
         )}
 
         {hasStats && (
-          <div className="divide-y">
+          <div className="divide-y-2 divide-primary-50">
             {surferStats
               .slice()
               .sort(sortStats)
@@ -359,69 +369,63 @@ export default function ScoreDisplay({
                 return (
                   <div
                     key={stat.surfer}
-                    className={`p-4 sm:p-6 ${style.bg} ${style.text}`}
+                    className="p-4 sm:p-6 hover:bg-primary-50/30 transition-colors"
                   >
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
-                      {/* Bloc gauche: couleur + nom + infos */}
-                      <div className="flex items-center gap-3 sm:gap-4">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-black/20 rounded-full text-base sm:text-lg font-bold">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                      {/* Bloc gauche: rang + avatar + nom */}
+                      <div className="flex items-center gap-4 sm:gap-6">
+                        <div className="w-12 h-12 flex items-center justify-center bg-primary-950 text-white rounded-xl border-2 border-primary-950 shadow-block text-2xl font-bebas tracking-tighter">
                           {stat.rank ?? '-'}
                         </div>
 
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-6 h-6 rounded-full border-2 border-white ${style.badge}`}
-                          />
-                          <div className="space-y-0.5 sm:space-y-1">
-                            <div className="text-base sm:text-xl font-bold leading-tight">
-                              {displayName}
+                        <div className="flex items-center gap-4">
+                          <div className="relative">
+                            <div className={`w-10 h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
+                            <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
+                              <div className="w-2.5 h-2.5 bg-cta-500 rounded-full" />
                             </div>
-                            {stat.isDisqualified && (
-                              <div className="text-[0.65rem] sm:text-xs font-semibold uppercase tracking-wide">
-                                DSQ (2 interférences)
-                              </div>
-                            )}
-                            {!stat.isDisqualified && (stat.interferenceType === 'INT1' || stat.interferenceType === 'INT2') && (
-                              <div className="text-[0.65rem] sm:text-xs font-semibold uppercase tracking-wide">
-                                {stat.interferenceType === 'INT1' ? 'Interférence #1 (B/2)' : 'Interférence #2 (B=0)'}
-                              </div>
-                            )}
-                            {country && (
-                              <div className="text-[0.65rem] sm:text-xs opacity-80 uppercase tracking-wide">
-                                {country}
-                              </div>
-                            )}
-                            <div className="text-[0.65rem] sm:text-xs opacity-70">
-                              Lycra: {stat.surfer} • {wavesCount} vague
-                              {wavesCount > 1 ? 's' : ''} complétée
-                              {wavesCount > 1 ? 's' : ''}
+                          </div>
+                          
+                          <div className="space-y-0.5">
+                            <h3 className="text-xl sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none">
+                              {displayName}
+                            </h3>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              {country && (
+                                <span className="text-[10px] font-bold text-primary-400 uppercase tracking-widest">{country}</span>
+                              )}
+                              <span className="text-[10px] font-bold text-primary-300 uppercase tracking-widest">
+                                {wavesCount} VAGUE{wavesCount > 1 ? 'S' : ''}
+                              </span>
+                              {stat.isDisqualified && (
+                                <span className="text-[10px] font-bold bg-danger-600 text-white px-2 py-0.5 rounded uppercase tracking-tighter">DSQ</span>
+                              )}
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Bloc droit: score total + WIN BY + NEED */}
-                      <div className="text-right space-y-0.5 sm:space-y-1">
-                        <div className="text-2xl sm:text-3xl font-bold leading-tight">
-                          {(stat.bestTwo ?? 0).toFixed(2)}
+                      {/* Bloc droit: score total + analytics */}
+                      <div className="flex items-center gap-6 text-right ml-16 sm:ml-0">
+                        <div className="space-y-1">
+                          {stat.rank === 1 && winBy != null && (
+                            <div className="text-[10px] font-bold text-success-600 bg-success-50 px-2 py-0.5 rounded-full border border-success-100 uppercase tracking-widest inline-block">
+                              Lead +{winBy.toFixed(2)}
+                            </div>
+                          )}
+                          {neededInfo && (
+                            <div className="text-[10px] font-bold text-cta-600 bg-cta-50 px-2 py-0.5 rounded-full border border-cta-100 uppercase tracking-widest flex items-center gap-1 justify-end">
+                              Need <span className="font-bebas text-sm">{neededInfo.needed.toFixed(2)}</span>
+                            </div>
+                          )}
                         </div>
-                        <div className="text-[0.7rem] sm:text-xs opacity-80">
-                          Total des 2 meilleures vagues
+                        
+                        <div className="min-w-[80px]">
+                          <div className="text-4xl sm:text-5xl font-bebas text-primary-900 tracking-tighter leading-none">
+                            {(stat.bestTwo ?? 0).toFixed(2)}
+                          </div>
+                          <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">Total (B2)</div>
                         </div>
-                        {stat.rank === 1 && winBy != null && (
-                          <div className="text-[0.7rem] sm:text-xs font-semibold">
-                            WIN BY {winBy.toFixed(2)}
-                          </div>
-                        )}
-                        {neededInfo && (
-                          <div className="text-[0.7rem] sm:text-xs font-semibold">
-                            NEED {neededInfo.needed.toFixed(2)}{' '}
-                            pour{' '}
-                            {neededInfo.targetRank === 1
-                              ? 'passer 1er'
-                              : 'se qualifier'}
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -433,115 +437,112 @@ export default function ScoreDisplay({
 
       {/* TABLEAU DES VAGUES */}
       {hasStats && (
-        <div className="overflow-x-auto border rounded-xl bg-white shadow-sm">
-          <table className="w-full text-xs sm:text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="p-2 sm:p-3 text-left font-semibold">Surfeur</th>
-                {Array.from({ length: maxWaves }).map((_, i) => (
-                  <th
-                    key={i}
-                    className="p-2 sm:p-3 text-center font-semibold"
-                  >
-                    V{i + 1}
-                  </th>
-                ))}
-                <th className="p-2 sm:p-3 text-center font-semibold bg-green-50">
-                  Best 2
-                </th>
-              </tr>
-            </thead>
+        <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs font-bold uppercase tracking-wider">
+              <thead>
+                <tr className="bg-primary-900 text-white border-b-4 border-primary-950">
+                  <th className="p-4 text-left font-bebas tracking-widest text-lg">SURFEUR</th>
+                  {Array.from({ length: maxWaves }).map((_, i) => (
+                    <th key={i} className="p-4 text-center font-bebas tracking-widest text-lg opacity-60">V{i + 1}</th>
+                  ))}
+                  <th className="p-4 text-center font-bebas tracking-widest text-lg bg-cta-600">BEST 2</th>
+                </tr>
+              </thead>
 
-            <tbody className="divide-y">
-              {surferStats
-                .slice()
-                .sort(sortStats)
-                .map((stat, idx) => {
-                  const displayName = surferNames?.[stat.surfer] ?? stat.surfer;
-                  const country = surferCountries?.[stat.surfer];
+              <tbody className="divide-y-2 divide-primary-50">
+                {surferStats
+                  .slice()
+                  .sort(sortStats)
+                  .map((stat, idx) => {
+                    const displayName = surferNames?.[stat.surfer] ?? stat.surfer;
+                    const country = surferCountries?.[stat.surfer];
 
-                  return (
-                    <tr
-                      key={stat.surfer}
-                      className={idx % 2 ? 'bg-gray-50' : 'bg-white'}
-                    >
-                      <td className="p-2 sm:p-3">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-xs sm:text-sm">
-                            {displayName}
-                          </span>
-                          <span className="text-[0.65rem] sm:text-xs text-gray-500">
-                            Lycra: {stat.surfer}
-                            {country ? ` • ${country}` : ''}
-                          </span>
-                        </div>
-                      </td>
+                    return (
+                      <tr key={stat.surfer} className="hover:bg-primary-50/20 transition-colors">
+                        <td className="p-4">
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bebas tracking-wide text-primary-900">
+                              {displayName}
+                            </span>
+                            <span className="text-[9px] text-primary-300">
+                              {stat.surfer}{country ? ` • ${country}` : ''}
+                            </span>
+                          </div>
+                        </td>
 
-                      {Array.from({ length: maxWaves }).map((_, i) => {
-                        const wave = stat.waves.find((w) => w.wave === i + 1);
-                        return (
-                          <td key={i} className="p-2 sm:p-3 text-center">
-                            {wave && wave.score > 0 ? (
-                              <div className="group relative cursor-help inline-block">
-                                <span className="font-semibold">
-                                  {wave.score.toFixed(2)}
-                                </span>
-                                {/* Tooltip notes juges */}
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center bg-gray-900 text-white text-xs p-2 rounded z-50 shadow-lg min-w-max">
-                                  <div className="flex gap-3">
-                                    {config.judges.map((jId, idx) => {
-                                      const s = wave.judgeScores[jId];
-                                      if (s === undefined) return null;
-                                      return (
-                                        <div key={jId} className="flex flex-col items-center">
-                                          <span className="text-[0.6rem] text-gray-400 uppercase tracking-wider font-semibold">
-                                            {config.judgeNames[jId] || `J${idx + 1}`}
-                                          </span>
-                                          <span className="font-mono font-bold text-sm">
-                                            {s.toFixed(1)}
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
+                        {Array.from({ length: maxWaves }).map((_, i) => {
+                          const wave = stat.waves.find((w) => w.wave === i + 1);
+                          return (
+                            <td key={i} className="p-4 text-center">
+                              {wave && wave.score > 0 ? (
+                                <div className="group relative cursor-help inline-block">
+                                  <span className="text-base font-bebas tracking-widest text-primary-900">
+                                    {wave.score.toFixed(2)}
+                                  </span>
+                                  {/* Tooltip notes juges - Simplified style */}
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:flex flex-col items-center bg-primary-900 text-white text-[10px] p-2 rounded-xl z-50 shadow-block min-w-max border-2 border-primary-950">
+                                    <div className="flex gap-4">
+                                      {config.judges.map((jId, idx) => {
+                                        const s = wave.judgeScores[jId];
+                                        if (s === undefined) return null;
+                                        return (
+                                          <div key={jId} className="flex flex-col items-center">
+                                            <span className="text-[8px] text-primary-300 uppercase leading-none mb-1">
+                                              {config.judgeNames[jId] || `J${idx + 1}`}
+                                            </span>
+                                            <span className="font-bebas text-lg leading-none">
+                                              {s.toFixed(1)}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="w-2 h-2 bg-primary-900 rotate-45 absolute -bottom-1 border-r-2 border-b-2 border-primary-950 shadow-block" />
                                   </div>
-                                  {/* Flèche du tooltip */}
-                                  <div className="w-2 h-2 bg-gray-900 rotate-45 absolute -bottom-1"></div>
                                 </div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-300">—</span>
-                            )}
-                          </td>
-                        );
-                      })}
+                              ) : (
+                                <span className="text-primary-100">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
 
-                      <td className="p-2 sm:p-3 text-center font-bold bg-green-50">
-                        {(stat.bestTwo ?? 0).toFixed(2)}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
+                        <td className="p-4 text-center bg-cta-50">
+                          <span className="text-2xl font-bebas tracking-widest text-cta-600">
+                            {(stat.bestTwo ?? 0).toFixed(2)}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* HEAT TERMINÉ */}
       {heatStatus === 'finished' && (
-        <HeatResults
-          heatId={`${config.competition}-${config.division}-${config.round}-${config.heatId}`}
-          competition={config.competition}
-          division={config.division}
-          round={config.round}
-          heatNumber={config.heatId}
-          surfers={config.surfers}
-          judgeIds={config.judges}
-          judgeNames={config.judgeNames}
-          maxWaves={config.waves}
-          scores={scores}
-          visible={true}
-        />
+        <div className="bg-white border-4 border-primary-950 rounded-2xl p-6 shadow-block">
+          <HeatResults
+            heatId={`${config.competition}-${config.division}-${config.round}-${config.heatId}`}
+            competition={config.competition}
+            division={config.division}
+            round={config.round}
+            heatNumber={config.heatId}
+            surfers={config.surfers}
+            judgeIds={config.judges}
+            judgeNames={config.judgeNames}
+            maxWaves={config.waves}
+            scores={scores}
+            visible={true}
+          />
+        </div>
       )}
+    </div>
+  );
+}
     </div>
   );
 }

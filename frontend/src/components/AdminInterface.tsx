@@ -1348,225 +1348,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Database className="w-5 h-5 text-gray-600" />
-            <span className="font-medium text-gray-900">Statut de la base de données</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            {dbStatus === 'checking' && (
-              <>
-                <Wifi className="w-4 h-4 text-yellow-500 animate-pulse" />
-                <span className="text-sm text-yellow-600">Vérification...</span>
-              </>
-            )}
-            {dbStatus === 'connected' && (
-              <>
-                <Wifi className="w-4 h-4 text-green-500" />
-                <span className="text-sm text-green-600">Connecté</span>
-              </>
-            )}
-            {dbStatus === 'disconnected' && (
-              <>
-                <WifiOff className="w-4 h-4 text-red-500" />
-                <span className="text-sm text-red-600">Déconnecté</span>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="mt-4 flex flex-col gap-3 text-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-gray-700">Mode Supabase:</span>
-            <button
-              type="button"
-              onClick={() => handleSupabaseModeChange(null)}
-              className={`px-2.5 py-1 rounded border text-xs ${!supabaseMode ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-            >
-              Auto
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSupabaseModeChange('local')}
-              className={`px-2.5 py-1 rounded border text-xs ${supabaseMode === 'local' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-            >
-              Local (LAN)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSupabaseModeChange('cloud')}
-              className={`px-2.5 py-1 rounded border text-xs ${supabaseMode === 'cloud' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-            >
-              Cloud (Internet)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleCloudLockToggle(!cloudLocked)}
-              className={`px-2.5 py-1 rounded border text-xs ${cloudLocked ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-gray-700 border-gray-300'}`}
-            >
-              {cloudLocked ? '🔒 Cloud bloqué (LAN)' : 'Basculer LAN (bloque cloud)'}
-            </button>
-          </div>
-          <div className="text-xs text-gray-600">
-            URL active : <span className="font-mono">{supabaseConfig.supabaseUrl || '—'}</span>
-          </div>
-          {cloudLocked && (
-            <div className="text-xs text-amber-700">
-              Mode LAN verrouillé : le cloud est désactivé jusqu’à déverrouillage.
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Configuration principale */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="absolute top-4 right-4">
-          <button
-            type="button"
-            onClick={handleOpenDisplay}
-            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Affichage
-          </button>
-        </div>
-        <div className="flex items-center space-x-3 mb-6">
-          <Settings className="w-6 h-6 text-blue-600" />
-          <h2 className="text-xl font-semibold text-gray-900">Configuration de la Compétition</h2>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => navigate('/my-events')}
-              className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-            >
-              ← Mes événements
-            </button>
-            <button
-              onClick={() => {
-                if (confirm('🧹 Nettoyer toutes les données et recommencer ?')) {
-                  localStorage.clear();
-                  sessionStorage.clear();
-                  window.location.reload();
-                }
-              }}
-              className="px-3 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-            >
-              🧹 Reset Complet
-            </button>
-          </div>
-        </div>
-
-        {loadState === 'loading' && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-            <RotateCcw className="h-4 w-4 animate-spin" />
-            <span>Chargement de la configuration en cours…</span>
-          </div>
-        )}
-
-        {loadState === 'loaded' && loadedFromDb && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            <CheckCircle className="h-4 w-4" />
-            <span>✅ Config chargée depuis la base.</span>
-          </div>
-        )}
-
-        {loadState === 'loaded' && !loadedFromDb && loadError && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            <AlertCircle className="h-4 w-4" />
-            <span>{loadError}</span>
-          </div>
-        )}
-
-        {loadState === 'empty' && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            <AlertCircle className="h-4 w-4" />
-            <span>⚠️ Aucune configuration trouvée — veuillez la créer.</span>
-          </div>
-        )}
-
-        {loadState === 'error' && (
-          <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            <span>
-              Erreur lors du chargement de la configuration&nbsp;: {loadError ?? 'Veuillez réessayer.'}
-            </span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nom de la compétition
-            </label>
-            <input
-              type="text"
-              value={config.competition}
-              onChange={(e) => handleConfigChange('competition', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Ex: Championnat de France"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Division
-            </label>
-            <select
-              value={config.division}
-              onChange={(e) => {
-                const nextDivision = e.target.value;
-                onConfigChange({ ...config, division: nextDivision });
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {effectiveDivisionOptions.map((division) => (
-                <option key={division} value={division}>
-                  {division}
-                </option>
-              ))}
-              {!effectiveDivisionOptions.length && (
-                <option value={config.division || ''}>{config.division || 'Aucune division'}</option>
-              )}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Round</label>
-            <select
-              value={config.round}
-              onChange={(e) => {
-                const nextRound = Number.parseInt(e.target.value, 10) || 1;
-                const firstHeat = divisionHeatSequence
-                  .filter((row) => row.round === nextRound)
-                  .map((row) => row.heat_number)
-                  .sort((a, b) => a - b)[0] ?? 1;
-                onConfigChange({ ...config, round: nextRound, heatId: firstHeat });
-              }}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {roundOptions.map((round) => (
-                <option key={round} value={round}>
-                  Round {round}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Heat #</label>
-            <select
-              value={config.heatId}
-              onChange={(e) => handleConfigChange('heatId', Number.parseInt(e.target.value, 10) || 1)}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {heatOptionsForRound.map((heatNumber) => (
-                <option key={heatNumber} value={heatNumber}>
-                  Heat {heatNumber}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Vagues</label>
-            <input
-              type="number"
-              min="1"
-              max="20"
               value={config.waves}
               onChange={(e) => handleConfigChange('waves', parseInt(e.target.value) || 15)}
               className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1820,7 +1601,116 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             </div>
           )}
         </div>
-      )}
+        {/* TIMER SECTION */}
+        <section className="bg-white border-4 border-primary-950 rounded-2xl overflow-hidden shadow-block">
+          <div className="bg-primary-900 border-b-4 border-primary-950 px-6 py-4 flex items-center justify-between">
+            <h2 className="text-xl font-bebas tracking-wider text-white flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Chronomètre de Heat
+            </h2>
+            {timer.isRunning && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-cta-500 text-white rounded-full border-2 border-primary-950 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-white" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">En cours</span>
+              </div>
+            )}
+          </div>
+
+          <div className="p-8 flex flex-col items-center gap-8">
+            <div className="p-8 bg-primary-50 rounded-3xl border-4 border-primary-950 shadow-block w-full max-w-md">
+              <HeatTimer
+                timer={timer}
+                onStart={handleTimerStart}
+                onPause={handleTimerPause}
+                onReset={handleTimerRestartFull}
+                onDurationChange={setPlannedTimerDuration}
+                showControls={false}
+                configSaved={configSaved}
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              {!timer.isRunning && !timer.startTime && (
+                <button
+                  onClick={handleTimerStart}
+                  disabled={!configSaved}
+                  className="px-10 py-4 bg-success-500 text-white font-bebas tracking-widest text-2xl rounded-2xl border-4 border-primary-950 shadow-block hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(76,29,149,1)] active:translate-y-0 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Clock className="w-6 h-6" />
+                  DÉMARRER
+                </button>
+              )}
+
+              {timer.isRunning && (
+                <button
+                  onClick={handleTimerPause}
+                  className="px-10 py-4 bg-cta-500 text-white font-bebas tracking-widest text-2xl rounded-2xl border-4 border-primary-950 shadow-block hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(194,65,12,1)] active:translate-y-0 transition-all flex items-center gap-3"
+                >
+                  <RotateCcw className="w-6 h-6" />
+                  PAUSE
+                </button>
+              )}
+
+              {!timer.isRunning && timer.startTime && (
+                <button
+                  onClick={handleTimerResume}
+                  className="px-10 py-4 bg-success-500 text-white font-bebas tracking-widest text-2xl rounded-2xl border-4 border-primary-950 shadow-block hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(76,29,149,1)] active:translate-y-0 transition-all flex items-center gap-3"
+                >
+                  <Clock className="w-6 h-6" />
+                  REPRENDRE
+                </button>
+              )}
+
+              <button
+                onClick={handleTimerRestartFull}
+                className="px-8 py-4 bg-white text-primary-900 font-bebas tracking-widest text-xl rounded-2xl border-4 border-primary-950 hover:bg-primary-50 transition-all flex items-center gap-2"
+              >
+                <RotateCcw className="w-5 h-5" />
+                RESTART FULL
+              </button>
+
+              <button
+                onClick={onCloseHeat}
+                className="px-8 py-4 bg-danger-600 text-white font-bebas tracking-widest text-xl rounded-2xl border-4 border-primary-950 shadow-block hover:-translate-y-1 hover:bg-danger-700 transition-all flex items-center gap-2"
+              >
+                <CheckCircle className="w-5 h-5" />
+                CLÔTURER LE HEAT
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* REALTIME MONITORING */}
+        <section className="bg-white border-4 border-primary-950 rounded-2xl overflow-hidden shadow-block">
+          <div className="bg-primary-900 border-b-4 border-primary-950 px-6 py-4 flex items-center justify-between">
+            <h2 className="text-xl font-bebas tracking-wider text-white flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Aperçu en temps réel
+            </h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopyDisplayLink}
+                className="px-3 py-1.5 bg-white text-primary-900 text-[10px] font-bold uppercase tracking-widest rounded-lg border-2 border-primary-950 hover:bg-primary-50 transition-all flex items-center gap-2"
+              >
+                <ClipboardCheck className="w-3 h-3" />
+                {displayLinkCopied ? 'Copié !' : 'Copier le lien public'}
+              </button>
+            </div>
+          </div>
+
+          <div className="p-6 bg-primary-950/5">
+            <div className="bg-white border-2 border-primary-950 rounded-xl overflow-hidden shadow-sm aspect-video sm:aspect-[21/9] relative">
+              <ScoreDisplay
+                config={config}
+                scores={mergedScores}
+                timer={timer}
+                configSaved={configSaved}
+                heatStatus={timer.isRunning ? 'running' : 'waiting'}
+              />
+              <div className="absolute inset-0 pointer-events-none border-4 border-primary-500/20" />
+            </div>
+          </div>
+        </section>
 
       {/* Paramètres avancés */}
       <div className="bg-white rounded-lg shadow p-6">
@@ -1837,6 +1727,112 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
         {showAdvanced && (
           <div className="mt-4 space-y-4">
+            {/* JUDGES SECTION */}
+            <div className="pt-8 border-t-4 border-primary-50">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-cta-500" />
+                  Juges / Officiels
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {config.judges.map((judgeId, index) => (
+                  <div key={judgeId} className="bg-primary-50 border-2 border-primary-950 p-4 rounded-xl shadow-block flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-primary-900/60 uppercase tracking-widest">Juge #{index + 1}</span>
+                      <button
+                        onClick={() => handleRemoveJudge(judgeId)}
+                        className="p-1.5 text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      <input
+                        type="text"
+                        value={config.judgeNames[judgeId] || ''}
+                        onChange={(e) => handleJudgeNameChange(judgeId, e.target.value)}
+                        placeholder="Nom du Juge"
+                        className="w-full px-3 py-2 bg-white border-2 border-primary-200 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold"
+                      />
+                      <input
+                        type="email"
+                        value={config.judgeEmails?.[judgeId] || ''}
+                        onChange={(e) => handleJudgeEmailChange(judgeId, e.target.value)}
+                        placeholder="Email (optionnel)"
+                        className="w-full px-3 py-1.5 bg-white/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium"
+                      />
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={handleAddJudge}
+                  className="p-6 border-4 border-dashed border-primary-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-primary-400 hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50 transition-all group"
+                >
+                  <PlusCircle className="w-8 h-8 group-hover:scale-110 transition-transform" />
+                  <span className="font-bebas tracking-widest">Ajouter un Juge</span>
+                </button>
+              </div>
+            </div>
+
+            {/* SURFERS SECTION */}
+            <div className="pt-8 border-t-4 border-primary-50">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-cta-500" />
+                  Surfeurs par Couleur de Lycra
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {(['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const).map((color) => {
+                  const isAssigned = config.surfers.includes(color);
+                  return (
+                    <div key={color} className={`bg-white border-2 border-primary-950 rounded-xl overflow-hidden shadow-block transition-all ${!isAssigned && 'opacity-50 grayscale'}`}>
+                      <div className={`px-4 py-2 border-b-2 border-primary-950 flex items-center justify-between ${
+                        color === 'ROUGE' ? 'bg-red-500 text-white' :
+                        color === 'BLANC' ? 'bg-slate-100 text-slate-900' :
+                        color === 'JAUNE' ? 'bg-yellow-400 text-slate-900' :
+                        color === 'BLEU' ? 'bg-blue-600 text-white' :
+                        color === 'VERT' ? 'bg-green-600 text-white' :
+                        'bg-slate-900 text-white'
+                      }`}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest">{color}</span>
+                        <input
+                          type="checkbox"
+                          checked={isAssigned}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...config.surfers, color]
+                              : config.surfers.filter(s => s !== color);
+                            handleConfigChange('surfers', next);
+                          }}
+                          className="w-4 h-4 rounded border-white text-primary-600 focus:ring-0 cursor-pointer"
+                        />
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <input
+                          type="text"
+                          value={config.surferNames?.[color] || ''}
+                          onChange={(e) => handleSurferNameChange(color, e.target.value)}
+                          placeholder="Nom du Surfeur"
+                          disabled={!isAssigned}
+                          className="w-full px-3 py-2 bg-primary-50 border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold disabled:bg-gray-50 disabled:border-gray-100"
+                        />
+                        <input
+                          type="text"
+                          value={config.surferCountries?.[color] || ''}
+                          onChange={(e) => handleSurferCountryChange(color, e.target.value)}
+                          placeholder="Pays / Club"
+                          disabled={!isAssigned}
+                          className="w-full px-3 py-1.5 bg-primary-50/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={onReloadData}
