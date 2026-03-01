@@ -14,7 +14,7 @@ import { parseActiveHeatId } from '../api/supabaseClient';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
-    const { config, configSaved, activeEventId, setActiveEventId, setConfig, loadConfigFromDb } = useConfigStore();
+    const { config, configSaved, activeEventId, setActiveEventId, setConfig, loadConfigFromDb, loadKioskConfig } = useConfigStore();
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { handleScoreSubmit, handleScoreSync } = useScoreManager();
     const { subscribeToHeat, markHeatFinished, syncHeatViaWebhook, isConnected } = useRealtimeSync();
@@ -52,39 +52,46 @@ export default function JudgePage() {
         }
     };
 
-    // Load event config from DB for kiosk mode.
-    // Force reload when eventId exists in URL and differs from local cache.
+    // Load kiosk configuration:
+    // 1) Prefer explicit eventId from URL (authoritative)
+    // 2) Fallback to active_heat_pointer (works even when URL has only ?position=Jx)
     useEffect(() => {
         if (!isSupabaseConfigured()) {
             setConfigLoading(false);
             return;
         }
 
-        if (!eventIdFromUrl) {
-            setConfigLoading(false);
+        if (eventIdFromUrl) {
+            const numericId = parseInt(eventIdFromUrl, 10);
+            if (Number.isNaN(numericId)) {
+                setConfigLoading(false);
+                return;
+            }
+
+            const shouldReloadFromDb = !configSaved || activeEventId !== numericId;
+            if (!shouldReloadFromDb) {
+                setConfigLoading(false);
+                return;
+            }
+
+            console.log('📥 JudgePage: Forcing config reload from DB for eventId:', numericId, {
+                activeEventId,
+                configSaved
+            });
+
+            setActiveEventId(numericId);
+            loadConfigFromDb(numericId).finally(() => setConfigLoading(false));
             return;
         }
 
-        const numericId = parseInt(eventIdFromUrl, 10);
-        if (Number.isNaN(numericId)) {
-            setConfigLoading(false);
+        if (positionFromUrl && /^J[1-5]$/i.test(positionFromUrl)) {
+            console.log('📥 JudgePage: Loading kiosk config from active_heat_pointer');
+            loadKioskConfig().finally(() => setConfigLoading(false));
             return;
         }
 
-        const shouldReloadFromDb = !configSaved || activeEventId !== numericId;
-        if (!shouldReloadFromDb) {
-            setConfigLoading(false);
-            return;
-        }
-
-        console.log('📥 JudgePage: Forcing config reload from DB for eventId:', numericId, {
-            activeEventId,
-            configSaved
-        });
-
-        setActiveEventId(numericId);
-        loadConfigFromDb(numericId).finally(() => setConfigLoading(false));
-    }, [eventIdFromUrl, configSaved, activeEventId, loadConfigFromDb, setActiveEventId]);
+        setConfigLoading(false);
+    }, [eventIdFromUrl, positionFromUrl, configSaved, activeEventId, loadConfigFromDb, loadKioskConfig, setActiveEventId]);
 
     // Subscribe to realtime timer/config for the current heat
     useEffect(() => {
@@ -140,7 +147,13 @@ export default function JudgePage() {
     useEffect(() => {
         if (!isSupabaseConfigured() || !supabase || configLoading) return;
 
-        const expectedEvent = (config.competition || '').trim().toLowerCase();
+        const normalizeEventKey = (value?: string) =>
+            (value || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[_\s]+/g, ' ');
+
+        const expectedEvent = normalizeEventKey(config.competition);
         const channelName = `judge-active-heat-${expectedEvent || 'global'}`;
 
         const channel = supabase
@@ -153,7 +166,7 @@ export default function JudgePage() {
                     if (!row?.active_heat_id) return;
 
                     const eventName = (row.event_name || '').trim();
-                    if (expectedEvent && eventName.toLowerCase() !== expectedEvent) return;
+                    if (expectedEvent && normalizeEventKey(eventName) !== expectedEvent) return;
 
                     const parsed = parseActiveHeatId(row.active_heat_id);
                     if (!parsed) return;
