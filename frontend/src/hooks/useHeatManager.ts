@@ -11,7 +11,7 @@ import {
     fetchInterferenceCalls,
     replaceHeatEntries,
 } from '../api/supabaseClient';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
@@ -374,6 +374,30 @@ export function useHeatManager() {
         setConfig(newConfig);
         persistConfig(newConfig);
         setHeatStatus(advanced ? 'waiting' : 'finished');
+
+        // Keep kiosk/tablets aligned with the newly selected heat.
+        if (advanced && isSupabaseConfigured() && supabase && newConfig.competition) {
+            try {
+                const nextHeatPointer = getHeatIdentifiers(
+                    newConfig.competition,
+                    newConfig.division,
+                    newConfig.round,
+                    newConfig.heatId
+                ).normalized;
+
+                await supabase.from('active_heat_pointer').upsert({
+                    event_name: newConfig.competition,
+                    active_heat_id: nextHeatPointer,
+                    updated_at: new Date().toISOString(),
+                }, {
+                    onConflict: 'event_name',
+                });
+
+                console.log('✅ active_heat_pointer mis à jour:', nextHeatPointer);
+            } catch (error) {
+                console.warn('⚠️ Impossible de mettre à jour active_heat_pointer:', error);
+            }
+        }
 
         // Save config to database for realtime sync to Display/Judge
         if (activeEventId) {

@@ -9,7 +9,8 @@ import { useScoreManager } from '../hooks/useScoreManager';
 import { getHeatIdentifiers } from '../utils/heat';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { parseActiveHeatId } from '../api/supabaseClient';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
@@ -121,6 +122,58 @@ export default function JudgePage() {
         });
         return unsubscribe;
     }, [configSaved, config.competition, currentHeatId, config.heatId, config.round, config.division, subscribeToHeat, setTimer, setConfig, setHeatStatus, configLoading]);
+
+    // Fallback realtime path: switch tablets when active_heat_pointer changes.
+    useEffect(() => {
+        if (!isSupabaseConfigured() || !supabase || configLoading) return;
+
+        const expectedEvent = (config.competition || '').trim().toLowerCase();
+        const channelName = `judge-active-heat-${expectedEvent || 'global'}`;
+
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'active_heat_pointer' },
+                (payload) => {
+                    const row = payload.new as { event_name?: string; active_heat_id?: string } | null;
+                    if (!row?.active_heat_id) return;
+
+                    const eventName = (row.event_name || '').trim();
+                    if (expectedEvent && eventName.toLowerCase() !== expectedEvent) return;
+
+                    const parsed = parseActiveHeatId(row.active_heat_id);
+                    if (!parsed) return;
+
+                    setConfig((prev) => {
+                        const unchanged =
+                            prev.round === parsed.round &&
+                            prev.heatId === parsed.heatNumber &&
+                            (prev.division || '').toUpperCase() === parsed.division.toUpperCase();
+
+                        if (unchanged) return prev;
+
+                        console.log('🔄 JudgePage: active_heat_pointer update received', {
+                            from: `${prev.division} R${prev.round}H${prev.heatId}`,
+                            to: `${parsed.division} R${parsed.round}H${parsed.heatNumber}`
+                        });
+
+                        return {
+                            ...prev,
+                            competition: eventName || prev.competition,
+                            division: parsed.division,
+                            round: parsed.round,
+                            heatId: parsed.heatNumber
+                        };
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [config.competition, configLoading, setConfig]);
 
     // Purge local scores when a fresh config is saved or heat changes.
     useEffect(() => {
