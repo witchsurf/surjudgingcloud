@@ -272,56 +272,58 @@ export default function ScoreDisplay({
 
   return (
     <div className="score-display max-w-7xl mx-auto p-4 sm:p-6 space-y-6 font-sans">
-      {/* HEADER */}
-      <div className="bg-primary-900 border-4 border-primary-950 rounded-2xl p-6 shadow-block relative overflow-hidden">
+      {/* HEADER WITH TIMER */}
+      <div className="bg-primary-900 border-4 border-primary-950 rounded-2xl p-4 sm:p-5 shadow-block relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="absolute top-0 right-0 w-32 h-32 bg-cta-500/10 rounded-full -mr-16 -mt-16 blur-3xl" />
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 relative z-10">
-          <div>
-            <h1 className="text-3xl sm:text-5xl font-bebas tracking-widest text-white leading-none mb-2">
-              {config.competition}
-            </h1>
-            <div className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-widest text-primary-200">
-              <span className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded border border-white/10">
-                <Users className="w-3.5 h-3.5 text-cta-500" />
-                {config.division}
-              </span>
-              <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cta-500">Round {config.round}</span>
-              <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cta-500">Heat {config.heatId}</span>
-            </div>
-          </div>
-
-          <div className="text-left sm:text-right space-y-3">
-            <div className="space-y-1">
-              <div className="text-[10px] font-bold text-primary-300 uppercase tracking-[0.2em] leading-none">Dernière mise à jour</div>
-              <div className="font-bebas text-2xl text-white tracking-widest">
-                {lastUpdate.toLocaleTimeString('fr-FR')}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => exportHeatScorecardPdf({ config, scores, eventData })}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-cta-500 hover:bg-cta-600 text-white rounded-xl border-2 border-primary-950 shadow-block-orange text-xs font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5"
-            >
-              <FileText className="w-4 h-4" />
-              PDF Scorecard
-            </button>
+        
+        {/* Left: Title & Badges */}
+        <div className="relative z-10 flex-1 w-full md:w-auto text-center md:text-left">
+          <h1 className="text-3xl sm:text-4xl font-bebas tracking-widest text-white leading-none mb-2">
+            {config.competition}
+          </h1>
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-[10px] font-bold uppercase tracking-widest text-primary-200">
+            <span className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded border border-white/10">
+              <Users className="w-3.5 h-3.5 text-cta-500" />
+              {config.division}
+            </span>
+            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cta-500">Round {config.round}</span>
+            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cta-500">Heat {config.heatId}</span>
           </div>
         </div>
-      </div>
 
-      {/* TIMER */}
-      <div className="flex justify-center -my-2">
-        <div className="bg-white border-4 border-primary-950 px-8 py-2 rounded-2xl shadow-block min-w-[240px]">
-          <HeatTimer
-            timer={timer}
-            onStart={() => { }}
-            onPause={() => { }}
-            onReset={() => { }}
-            onDurationChange={() => { }}
-            showControls={false}
-            configSaved={configSaved}
-          />
+        {/* Center: Compact Timer */}
+        <div className="relative z-10 flex-shrink-0 w-full md:w-auto flex justify-center mt-2 md:mt-0">
+          <div className="min-w-[140px] md:min-w-[160px]">
+            <HeatTimer
+              timer={timer}
+              onStart={() => { }}
+              onPause={() => { }}
+              onReset={() => { }}
+              onDurationChange={() => { }}
+              showControls={false}
+              size="small"
+              compact={true}
+              configSaved={configSaved}
+            />
+          </div>
+        </div>
+
+        {/* Right: Actions */}
+        <div className="relative z-10 w-full md:w-auto flex flex-row md:flex-col items-center justify-between md:items-end gap-3 border-t md:border-t-0 border-primary-800/50 pt-3 md:pt-0 mt-2 md:mt-0">
+          <div className="text-left md:text-right space-y-0.5">
+            <div className="text-[9px] font-bold text-primary-300 uppercase tracking-[0.2em] leading-none">Dernière maj</div>
+            <div className="font-bebas text-xl text-white tracking-widest leading-none">
+              {lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => exportHeatScorecardPdf({ config, scores, eventData })}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cta-500 hover:bg-cta-600 text-white rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-sm"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            PDF Scorecard
+          </button>
         </div>
       </div>
 

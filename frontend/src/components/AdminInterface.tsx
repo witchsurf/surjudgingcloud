@@ -1410,18 +1410,26 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Statut de la base de données */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex items-center justify-between">
+      {/* Statut de la base de données & Contexte - Collapsible */}
+      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" open>
+        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
           <div className="flex items-center space-x-3">
-            <Database className={`w-5 h-5 ${isSupabaseConfigured() ? 'text-success-600' : 'text-primary-300'}`} />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">
-              Database: <span className={isSupabaseConfigured() ? 'text-success-600' : 'text-primary-600'}>
-                {isSupabaseConfigured() ? 'CONNECTED' : 'LOCAL ONLY'}
-              </span>
-            </span>
+            <Database className="w-6 h-6 text-cta-500" />
+            <h2 className="text-xl font-bebas tracking-wider text-white">1. CONTEXTE ÉVÉNEMENT & BDD</h2>
           </div>
-        </div>
+          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+        </summary>
+        <div className="p-4 bg-white border-t-4 border-primary-950 flex flex-col space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-3">
+              <Database className={`w-5 h-5 ${isSupabaseConfigured() ? 'text-success-600' : 'text-primary-300'}`} />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">
+                Database: <span className={isSupabaseConfigured() ? 'text-success-600' : 'text-primary-600'}>
+                  {isSupabaseConfigured() ? 'CONNECTED' : 'LOCAL ONLY'}
+                </span>
+              </span>
+            </div>
+          </div>
 
         <div className="mt-4 mb-6 p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-4">
           <div className="flex items-center justify-between">
@@ -1513,6 +1521,19 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             </div>
           )}
         </div>
+      </div>
+    </details>
+
+    {/* Configuration Juges et Surfeurs - Collapsible (Fermé par défaut) */}
+        <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
+          <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+            <div className="flex items-center space-x-3">
+              <Users className="w-6 h-6 text-cta-500" />
+              <h2 className="text-xl font-bebas tracking-wider text-white">2. JUGES ET SURFEURS</h2>
+            </div>
+            <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          </summary>
+          <div className="p-4 bg-white border-t-4 border-primary-950 flex flex-col space-y-6">
 
         {/* Nombre de Juges (Mode Kiosk) */}
         <div className="mb-6">
@@ -1577,28 +1598,40 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         <button
           onClick={handleSaveConfig}
           disabled={configSaved || loadState === 'loading'}
-          className={`w-full py-3 px-4 rounded-lg font-medium text-lg transition-colors ${configSaved
-            ? 'bg-emerald-100 text-emerald-700 cursor-not-allowed'
-            : 'bg-blue-600 text-white hover:bg-blue-700'
+          className={`w-full py-4 px-6 rounded-xl font-bebas text-2xl tracking-widest transition-all border-4 shadow-block flex justify-center items-center gap-2 ${configSaved
+            ? 'bg-success-50 text-success-700 border-success-200 cursor-not-allowed opacity-80'
+            : 'bg-cta-500 text-white border-primary-950 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#172554] active:translate-y-0 active:shadow-none'
             }`}
         >
-          {configSaved ? '✅ Configuration sauvegardée' : 'Sauvegarder la configuration'}
+          {configSaved ? (
+            <>
+              <CheckCircle className="w-6 h-6" /> CONFIGURATION SAUVEGARDÉE
+            </>
+          ) : (
+            <>
+              SAUVEGARDER ET APPLIQUER
+            </>
+          )}
         </button>
-
-      </div>
+        </div>
+        </details>
 
       {/* Timer */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center space-x-3 mb-4">
-          <Clock className="w-6 h-6 text-green-600" />
-          <h2 className="text-xl font-semibold text-gray-900">Timer du Heat</h2>
+      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" open>
+        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+          <div className="flex items-center space-x-3">
+            <Clock className="w-6 h-6 text-cta-500" />
+            <h2 className="text-xl font-bebas tracking-wider text-white">3. CHRONOMÈTRE</h2>
+          </div>
+          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+        </summary>
+        <div className="p-6 bg-white border-t-4 border-primary-950">
           {syncError && (
-            <div className="flex-1 ml-4 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-xs font-bold animate-pulse">
+            <div className="w-full mb-4 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-xs font-bold animate-pulse">
               {syncError}
             </div>
           )}
-        </div>
-        <HeatTimer
+          <HeatTimer
           key={`timer-${config.competition}-${config.division}-R${config.round}-H${config.heatId}`}
           timer={timer}
           onStart={handleTimerStart}
@@ -1625,18 +1658,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             Recommencer (durée complète)
           </button>
         </div>
-      </div>
-
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex items-center space-x-3 mb-4">
-          <Eye className="w-6 h-6 text-blue-600" />
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">Affichage public</h2>
-            <p className="text-sm text-gray-600">
-              Ouvrez ou partagez le tableau de scores en temps réel sur un autre écran.
-            </p>
-          </div>
         </div>
+      </details>
+
+      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
+        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+          <div className="flex items-center space-x-3">
+            <Eye className="w-6 h-6 text-cta-500" />
+            <h2 className="text-xl font-bebas tracking-wider text-white">4. AFFICHAGE PUBLIC</h2>
+          </div>
+          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+        </summary>
+        <div className="p-6 bg-white border-t-4 border-primary-950">
+          <p className="text-sm text-gray-600 mb-4">
+            Ouvrez ou partagez le tableau de scores en temps réel sur un autre écran.
+          </p>
         {publicDisplayUrl ? (
           <div className="space-y-3">
             <button
@@ -1662,12 +1698,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             Impossible de générer le lien pour l’instant. Sauvegardez la configuration puis réessayez.
           </p>
         )}
-      </div>
+        </div>
+      </details>
 
       {/* Close Heat */}
       {configSaved && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
+        <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
+          <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+            <div className="flex items-center space-x-3">
+              <CheckCircle className="w-6 h-6 text-cta-500" />
+              <h2 className="text-xl font-bebas tracking-wider text-white">5. GESTION DU HEAT (CLÔTURE)</h2>
+            </div>
+            <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          </summary>
+          <div className="p-6 bg-white border-t-4 border-primary-950">
+            <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <CheckCircle className="w-6 h-6 text-green-600" />
               <div>
@@ -1760,22 +1805,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             </div>
           )}
         </div>
+        </details>
       )}
       {/* Paramètres avancés */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center justify-between w-full text-left"
-        >
+      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
+        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
           <div className="flex items-center space-x-3">
-            <Settings className="w-5 h-5 text-gray-600" />
-            <h3 className="text-lg font-medium text-gray-900">Paramètres avancés</h3>
+            <Settings className="w-6 h-6 text-cta-500" />
+            <h2 className="text-xl font-bebas tracking-wider text-white">6. PARAMÈTRES AVANCÉS</h2>
           </div>
-          <span className="text-gray-400">{showAdvanced ? '−' : '+'}</span>
-        </button>
-
-        {showAdvanced && (
-          <div className="mt-4 space-y-4">
+          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+        </summary>
+        <div className="p-6 bg-white border-t-4 border-primary-950 space-y-4">
             {/* JUDGES SECTION */}
             <div className="pt-8 border-t-4 border-primary-50">
               <div className="flex items-center justify-between mb-6">
@@ -1982,19 +2023,20 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </details>
 
       {/* Mode Kiosque - Liens Tablettes */}
       {configSaved && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <Users className="w-6 h-6 text-purple-600" />
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Mode Kiosque - Tablettes</h2>
-              <p className="text-sm text-gray-600">Liens directs pour tablettes J1 à J5</p>
+        <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
+          <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+            <div className="flex items-center space-x-3">
+              <Users className="w-6 h-6 text-cta-500" />
+              <h2 className="text-xl font-bebas tracking-wider text-white">7. MODE KIOSQUE - TABLETTES</h2>
             </div>
-          </div>
+            <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          </summary>
+          <div className="p-6 bg-white border-t-4 border-primary-950">
+            <p className="text-sm text-gray-600 mb-4">Liens directs pour tablettes J1 à J5</p>
           <div className="space-y-2">
             {["J1", "J2", "J3", "J4", "J5"].map(position => {
               const env = (import.meta as { env?: Record<string, string> }).env ?? {};
@@ -2046,6 +2088,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             })}
           </div>
         </div>
+      </details>
       )}
 
       {/* Override Chef Juge */}

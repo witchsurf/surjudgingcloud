@@ -11,6 +11,7 @@ interface HeatTimerProps {
   onDurationChange: (duration: number) => void;
   showControls?: boolean;
   size?: 'small' | 'medium' | 'large';
+  compact?: boolean;
   configSaved: boolean;
 }
 
@@ -22,6 +23,7 @@ function HeatTimer({
   onDurationChange,
   showControls = true,
   size = 'medium',
+  compact = false,
   configSaved
 }: HeatTimerProps) {
   const [timeLeft, setTimeLeft] = useState(timer.duration * 60);
@@ -168,23 +170,25 @@ function HeatTimer({
   const classes = getSizeClasses();
 
   return (
-    <div className={`bg-white rounded-2xl border-4 ${getTimerBgColor()} ${classes.container} text-center transition-all duration-300 shadow-block`}>
-      <div className="flex items-center justify-center mb-4">
-        <Clock className={`w-6 h-6 mr-2 ${timeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`} />
-        <h3 className={`text-lg font-bebas tracking-widest ${timeLeft <= 300 ? 'text-cta-600' : 'text-primary-800'}`}>
-          CHRONO <span className="opacity-60 text-sm">PRO</span>
-        </h3>
-        {showControls && (
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="ml-2 p-1 text-primary-400 hover:text-primary-600 transition-colors"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-        )}
-      </div>
+    <div className={`bg-white rounded-2xl border-4 ${getTimerBgColor()} ${classes.container} text-center transition-all duration-300 ${compact ? 'shadow-sm' : 'shadow-block'}`}>
+      {!compact && (
+        <div className="flex items-center justify-center mb-4">
+          <Clock className={`w-6 h-6 mr-2 ${timeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`} />
+          <h3 className={`text-lg font-bebas tracking-widest ${timeLeft <= 300 ? 'text-cta-600' : 'text-primary-800'}`}>
+            CHRONO <span className="opacity-60 text-sm">PRO</span>
+          </h3>
+          {showControls && (
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="ml-2 p-1 text-primary-400 hover:text-primary-600 transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
 
-      {showSettings && showControls && (
+      {showSettings && showControls && !compact && (
         <div className="mb-4 p-4 bg-primary-50 rounded-xl border-2 border-primary-100 flex items-center justify-center gap-4 animate-fade-in">
           <label className="text-[10px] font-bold text-primary-900/60 uppercase tracking-widest">Durée (min)</label>
           <input
@@ -199,11 +203,11 @@ function HeatTimer({
         </div>
       )}
 
-      <div className={`font-bebas tracking-[0.1em] leading-none mb-6 ${classes.time} ${getTimerColor()}`}>
+      <div className={`font-bebas tracking-[0.1em] leading-none ${compact ? 'mb-1' : 'mb-6'} ${classes.time} ${getTimerColor()}`}>
         {formatTime(timeLeft)}
       </div>
 
-      <div className="min-h-[40px] flex items-center justify-center">
+      <div className={`${compact ? 'min-h-[20px] pb-1' : 'min-h-[40px]'} flex items-center justify-center`}>
         {timeLeft <= 5 && timeLeft > 0 && (
           <div className="px-4 py-1.5 bg-red-600 text-white rounded-full border-2 border-primary-950 font-bold text-[10px] uppercase tracking-widest animate-pulse shadow-block">
             🚨 {timeLeft} SECONDE{timeLeft > 1 ? 'S' : ''} !
