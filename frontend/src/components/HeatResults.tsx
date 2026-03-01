@@ -219,6 +219,8 @@ export default function HeatResults({
         country: entryInfo.country ?? undefined,
         total: stat.bestTwo,
         waves: stat.waves,
+        interferenceCount: stat.interferenceCount ?? 0,
+        isDisqualified: stat.isDisqualified ?? false,
       };
     });
 
@@ -311,9 +313,19 @@ export default function HeatResults({
                         <span className="text-danger-500 animate-pulse text-2xl leading-none pt-1" title="En attente de notes">*</span>
                       )}
                     </div>
-                    {row.country && (
-                      <div className="text-[9px] font-bold uppercase tracking-widest text-primary-400 mt-1">{row.country}</div>
-                    )}
+                    <div className="flex items-center gap-2 mt-1">
+                      {row.country && (
+                        <div className="text-[9px] font-bold uppercase tracking-widest text-primary-400">{row.country}</div>
+                      )}
+                      
+                      {row.isDisqualified ? (
+                        <span className="text-[8px] font-bold bg-danger-600 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">DSQ</span>
+                      ) : row.interferenceCount > 0 ? (
+                        <span className="text-[8px] font-bold bg-warning-500 text-primary-900 px-1.5 py-0.5 rounded uppercase tracking-tighter">
+                          INT <span className="opacity-70 text-[7px] ml-px">{row.interferenceCount}</span>
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-4 text-center">
                     <span className="inline-flex min-w-[32px] justify-center rounded-lg border-2 border-primary-950 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-primary-900 bg-white shadow-sm">

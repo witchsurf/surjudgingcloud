@@ -403,9 +403,13 @@ export default function ScoreDisplay({
                               <span className="text-[10px] font-bold text-primary-300 uppercase tracking-widest">
                                 {wavesCount} VAGUE{wavesCount > 1 ? 'S' : ''}
                               </span>
-                              {stat.isDisqualified && (
+                              {stat.isDisqualified ? (
                                 <span className="text-[10px] font-bold bg-danger-600 text-white px-2 py-0.5 rounded uppercase tracking-tighter">DSQ</span>
-                              )}
+                              ) : stat.interferenceCount && stat.interferenceCount > 0 ? (
+                                <span className="text-[10px] font-bold bg-warning-500 text-primary-900 px-2 py-0.5 rounded uppercase tracking-tighter">
+                                  INT <span className="opacity-70 text-[9px] ml-0.5">{stat.interferenceCount}</span>
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         </div>
