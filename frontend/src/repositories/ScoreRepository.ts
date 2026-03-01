@@ -54,6 +54,33 @@ export class ScoreRepository extends BaseRepository {
     }
 
     /**
+     * Extract a readable shape from Supabase/PostgREST errors for actionable logs.
+     */
+    private formatDbError(error: unknown): Record<string, unknown> {
+        if (!error || typeof error !== 'object') {
+            return { raw: error };
+        }
+
+        const candidate = error as {
+            code?: string;
+            message?: string;
+            details?: string;
+            hint?: string;
+            status?: number;
+            statusCode?: number;
+        };
+
+        return {
+            code: candidate.code,
+            message: candidate.message,
+            details: candidate.details,
+            hint: candidate.hint,
+            status: candidate.status ?? candidate.statusCode,
+            raw: error
+        };
+    }
+
+    /**
      * Save a new score
      */
     async saveScore(request: SaveScoreRequest): Promise<Score> {
@@ -97,7 +124,10 @@ export class ScoreRepository extends BaseRepository {
                         created_at: newScore.created_at
                     }, { onConflict: 'id' });
 
-                if (error) throw error;
+                if (error) {
+                    logger.error('ScoreRepository', 'saveScore DB error details', this.formatDbError(error));
+                    throw error;
+                }
 
                 // Mark as synced
                 newScore.synced = true;
@@ -339,9 +369,21 @@ export class ScoreRepository extends BaseRepository {
             const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
             const globalEventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
 
+            // Avoid ON CONFLICT batch cardinality errors when local storage contains duplicated ids.
+            const dedupedScores = Array.from(
+                new Map(scores.map(score => [score.id, score])).values()
+            );
+
+            if (dedupedScores.length !== scores.length) {
+                logger.warn('ScoreRepository', 'Duplicate local score IDs detected before manual sync', {
+                    total: scores.length,
+                    deduped: dedupedScores.length
+                });
+            }
+
             const { error } = await this.supabase!
                 .from('scores')
-                .upsert(scores.map(s => ({
+                .upsert(dedupedScores.map(s => ({
                     id: s.id,
                     heat_id: s.heat_id,
                     event_id: globalEventId || s.event_id || null, // Use score's own event_id if global is missing
@@ -357,7 +399,10 @@ export class ScoreRepository extends BaseRepository {
                     created_at: s.created_at || new Date().toISOString()
                 })), { onConflict: 'id' });
 
-            if (error) throw error;
+            if (error) {
+                logger.error('ScoreRepository', 'syncScores DB error details', this.formatDbError(error));
+                throw error;
+            }
 
             // Mark all as synced in local storage
             const allLocalScores = this.getScoresFromLocalStorage();
@@ -369,8 +414,8 @@ export class ScoreRepository extends BaseRepository {
             });
             localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(updatedScores));
 
-            logger.info('ScoreRepository', 'Manual sync successful', { count: scores.length });
-            return { success: scores.length, failed: 0 };
+            logger.info('ScoreRepository', 'Manual sync successful', { count: dedupedScores.length });
+            return { success: dedupedScores.length, failed: 0 };
         } catch (error) {
             logger.error('ScoreRepository', 'Manual sync failed', error);
             throw error;
