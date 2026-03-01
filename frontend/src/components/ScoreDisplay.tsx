@@ -184,7 +184,13 @@ export default function ScoreDisplay({
       try {
         const calls = await fetchInterferenceCalls(heatId);
         if (cancelled) return;
-        const computed = computeEffectiveInterferences(calls, Math.max(config.judges.length, 1));
+        const observedJudgeCount = new Set(
+          scores
+            .map((score) => (score.judge_id || '').trim().toUpperCase())
+            .filter(Boolean)
+        ).size;
+        const effectiveJudgeCount = observedJudgeCount > 0 ? observedJudgeCount : Math.max(config.judges.length, 1);
+        const computed = computeEffectiveInterferences(calls, effectiveJudgeCount);
         setEffectiveInterferences(computed);
       } catch (error) {
         if (!cancelled) {
@@ -226,7 +232,7 @@ export default function ScoreDisplay({
         supabase.removeChannel(channel);
       }
     };
-  }, [configSaved, heatId, config.judges.length]);
+  }, [configSaved, heatId, config.judges.length, scores]);
 
   // Calcul des stats
   useEffect(() => {
