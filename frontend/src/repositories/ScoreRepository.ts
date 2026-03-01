@@ -108,10 +108,10 @@ export class ScoreRepository extends BaseRepository {
             },
             // Offline fallback
             () => {
-                // Save locally with synced=true to avoid "pending" state when offline
-                newScore.synced = !this.isOnline;
+                // BUG FIX: Mark as NOT synced so it can be picked up by sync worker later
+                newScore.synced = false;
                 this.saveScoreToLocalStorage(newScore);
-                logger.info('ScoreRepository', 'Score saved offline', { scoreId: newScore.id });
+                logger.info('ScoreRepository', 'Score saved offline (pending sync)', { scoreId: newScore.id });
                 return newScore;
             },
             'saveScore'
@@ -311,6 +311,70 @@ export class ScoreRepository extends BaseRepository {
             },
             'fetchOverrideLogs'
         );
+    }
+
+    /**
+     * Synchronize all local scores for a specific heat to Supabase.
+     * This is used for manual recovery if scores are in localStorage but not on server.
+     */
+    async syncScores(heatId: string): Promise<{ success: number; failed: number }> {
+        const normalizedHeatId = ensureHeatId(heatId);
+        
+        if (!this.isOnline) {
+            throw new Error('Impossible de synchroniser : vous êtes hors ligne ou Supabase n\'est pas configuré.');
+        }
+
+        const scores = this.getScoresFromLocalStorage().filter(
+            s => ensureHeatId(s.heat_id) === normalizedHeatId
+        );
+
+        if (scores.length === 0) return { success: 0, failed: 0 };
+
+        logger.info('ScoreRepository', `Manual sync triggered for heat ${normalizedHeatId}`, { total: scores.length });
+
+        try {
+            this.ensureSupabase();
+            
+            // Get event_id from localStorage for context if available
+            const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+            const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
+
+            const { error } = await this.supabase!
+                .from('scores')
+                .upsert(scores.map(s => ({
+                    id: s.id,
+                    heat_id: s.heat_id,
+                    event_id: eventId,
+                    competition: s.competition,
+                    division: s.division,
+                    round: s.round,
+                    judge_id: s.judge_id,
+                    judge_name: s.judge_name,
+                    surfer: s.surfer,
+                    wave_number: s.wave_number,
+                    score: s.score,
+                    timestamp: s.timestamp,
+                    created_at: s.created_at
+                })), { onConflict: 'id' });
+
+            if (error) throw error;
+
+            // Mark all as synced in local storage
+            const allLocalScores = this.getScoresFromLocalStorage();
+            const updatedScores = allLocalScores.map(s => {
+                if (ensureHeatId(s.heat_id) === normalizedHeatId) {
+                    return { ...s, synced: true };
+                }
+                return s;
+            });
+            localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(updatedScores));
+
+            logger.info('ScoreRepository', 'Manual sync successful', { count: scores.length });
+            return { success: scores.length, failed: 0 };
+        } catch (error) {
+            logger.error('ScoreRepository', 'Manual sync failed', error);
+            throw error;
+        }
     }
 
     // ========== Private Helper Methods ==========

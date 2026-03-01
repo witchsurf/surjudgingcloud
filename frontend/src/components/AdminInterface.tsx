@@ -114,6 +114,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [reconnectPending, setReconnectPending] = useState(false);
   const [reconnectMessage, setReconnectMessage] = useState<string | null>(null);
   const [plannedTimerDuration, setPlannedTimerDuration] = useState<number>(timer.duration);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const { normalized: heatId } = React.useMemo(
     () =>
@@ -659,6 +660,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     onTimerChange(newTimer);
     localStorage.setItem('surfJudgingTimer', JSON.stringify(newTimer));
+    setSyncError(null);
 
     // Publier en temps réel via Supabase seulement si configuré
     if (onRealtimeTimerStart && configSaved) {
@@ -667,7 +669,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           console.log('🚀 ADMIN: Timer START publié en temps réel');
         })
         .catch((error) => {
-          console.log('⚠️ ADMIN: Timer START en mode local uniquement', error instanceof Error ? error.message : error);
+          console.error('⚠️ ADMIN: Timer START failed:', error);
+          setSyncError("Échec de synchronisation (START). Les tablettes ne sont peut-être pas synchronisées.");
           // Fallback sur l'ancien système
           window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
         });
@@ -696,6 +699,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     onTimerChange(newTimer);
     localStorage.setItem('surfJudgingTimer', JSON.stringify(newTimer));
+    setSyncError(null);
 
     if (onRealtimeTimerStart) {
       onRealtimeTimerStart(heatId, config, fullDuration)
@@ -703,7 +707,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           console.log('🔁 ADMIN: Timer RESTART publié en temps réel');
         })
         .catch((error) => {
-          console.log('⚠️ ADMIN: Timer RESTART en mode local uniquement', error instanceof Error ? error.message : error);
+          console.error('⚠️ ADMIN: Timer RESTART failed:', error);
+          setSyncError("Échec de synchronisation (RESTART).");
           window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
         });
     } else {
@@ -726,6 +731,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     onTimerChange(newTimer);
     localStorage.setItem('surfJudgingTimer', JSON.stringify(newTimer));
+    setSyncError(null);
 
     // Publier en temps réel via Supabase seulement si configuré
     if (onRealtimeTimerPause && configSaved) {
@@ -734,7 +740,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           console.log('⏸️ ADMIN: Timer PAUSE publié en temps réel');
         })
         .catch((error) => {
-          console.log('⚠️ ADMIN: Timer PAUSE en mode local uniquement', error instanceof Error ? error.message : error);
+          console.error('⚠️ ADMIN: Timer PAUSE failed:', error);
+          setSyncError("⚠️ ERREUR SYNC CLOUD : Le timer s'est arrêté ici mais peut-être pas sur les tablettes ! Vérifiez la connexion.");
           // Fallback sur l'ancien système
           window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
         });
@@ -755,6 +762,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     onTimerChange(newTimer);
     localStorage.setItem('surfJudgingTimer', JSON.stringify(newTimer));
+    setSyncError(null);
 
     // Publier en temps réel via Supabase seulement si configuré
     if (onRealtimeTimerReset && configSaved) {
@@ -763,7 +771,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           console.log('🔄 ADMIN: Timer RESET publié en temps réel');
         })
         .catch((error) => {
-          console.log('⚠️ ADMIN: Timer RESET en mode local uniquement', error instanceof Error ? error.message : error);
+          console.error('⚠️ ADMIN: Timer RESET failed:', error);
+          setSyncError("Échec de synchronisation (RESET).");
           // Fallback sur l'ancien système
           window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
         });
@@ -1557,6 +1566,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         <div className="flex items-center space-x-3 mb-4">
           <Clock className="w-6 h-6 text-green-600" />
           <h2 className="text-xl font-semibold text-gray-900">Timer du Heat</h2>
+          {syncError && (
+            <div className="flex-1 ml-4 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-xs font-bold animate-pulse">
+              {syncError}
+            </div>
+          )}
         </div>
         <HeatTimer
           key={`timer-${config.competition}-${config.division}-R${config.round}-H${config.heatId}`}

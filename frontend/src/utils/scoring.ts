@@ -105,7 +105,11 @@ export function calculateSurferStats(
     const waveScores: Record<number, Record<string, number>> = {};
 
     scores
-      .filter(score => score.surfer === surfer)
+      .filter(score => {
+        const scoreSurfer = (score.surfer || '').trim().toUpperCase();
+        const targetSurfer = (surfer || '').trim().toUpperCase();
+        return scoreSurfer === targetSurfer;
+      })
       .forEach(score => {
         if (score.wave_number < 1 || score.wave_number > maxWaves) {
           return;
@@ -113,7 +117,9 @@ export function calculateSurferStats(
         if (!waveScores[score.wave_number]) {
           waveScores[score.wave_number] = {};
         }
-        waveScores[score.wave_number][score.judge_id] = score.score;
+        // Utiliser une clé normalisée pour le juge pour éviter les doublons/mishaps
+        const judgeKey = (score.judge_id || '').trim().toUpperCase();
+        waveScores[score.wave_number][judgeKey] = score.score;
       });
 
     // Calculer les moyennes pour chaque vague

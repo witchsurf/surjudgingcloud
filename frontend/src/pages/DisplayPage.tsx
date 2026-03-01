@@ -177,13 +177,17 @@ const resolveFromQualifierMap = (text: string, qualifierMap: Map<string, string>
     return resolved;
 };
 
-const normalizeScores = (scores: Score[]) => scores.map(score => ({
-    ...score,
-    surfer: normalizeColorCode(score.surfer) || score.surfer,
-    judge_id: normalizeJudgeId(score.judge_id) || score.judge_id,
-    judge_name: normalizeJudgeName(score.judge_name) || score.judge_name,
-    division: normalizeDivision(score.division) || score.division
-}));
+const normalizeScores = (scores: Score[]) => scores.map(score => {
+    const s = normalizeColorCode(score.surfer) || (score.surfer || '').trim().toUpperCase();
+    const j = normalizeJudgeId(score.judge_id) || (score.judge_id || '').trim().toUpperCase();
+    return {
+        ...score,
+        surfer: s,
+        judge_id: j,
+        judge_name: normalizeJudgeName(score.judge_name) || score.judge_name,
+        division: normalizeDivision(score.division) || (score.division || '').trim().toUpperCase()
+    };
+});
 
 const normalizeConfig = (appConfig: AppConfig) => {
     const normalizedJudges = (appConfig.judges || []).map((judge) =>
@@ -581,6 +585,7 @@ export default function DisplayPage() {
         }
 
         // Charger les scores initiaux pour le heat courant
+        setScores([]); // Reset scores immédiatement pour éviter de montrer des scores périmés
         loadScoresFromDatabase(currentHeatId).then((fetched) => {
             if (fetched && fetched.length) {
                 setScores(normalizeScores(fetched));
@@ -601,6 +606,8 @@ export default function DisplayPage() {
             loadScoresFromDatabase(currentHeatId).then((fetched) => {
                 if (fetched && fetched.length) {
                     setScores(normalizeScores(fetched));
+                } else if (fetched && fetched.length === 0) {
+                    setScores([]); // On vide si aucun score n'est retourné
                 }
             });
         });
@@ -617,13 +624,14 @@ export default function DisplayPage() {
             const currentScores = useJudgingStore.getState().scores;
 
             // Fusionner: supprimer l'ancien score pour ce juge/surfeur/vague s'il existe
+            const normalizedNew = normalizeScores([newScore])[0];
             const otherScores = currentScores.filter(s =>
-                !(s.judge_id === newScore.judge_id &&
-                    s.surfer === newScore.surfer &&
-                    s.wave_number === newScore.wave_number)
+                !(s.judge_id === normalizedNew.judge_id &&
+                    s.surfer === normalizedNew.surfer &&
+                    s.wave_number === normalizedNew.wave_number)
             );
-
-            setScores(normalizeScores([...otherScores, newScore]));
+            
+            setScores([...otherScores, normalizedNew]);
         };
 
         window.addEventListener('newScoreRealtime', handleNewScore);

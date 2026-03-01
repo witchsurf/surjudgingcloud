@@ -21,6 +21,7 @@ interface JudgeInterfaceProps {
   heatStatus?: 'waiting' | 'running' | 'paused' | 'finished' | 'closed';
   onHeatClose?: () => void;
   isConnected?: boolean;
+  onScoreSync?: () => Promise<{ success: number; failed: number }>;
 }
 
 
@@ -56,7 +57,8 @@ function JudgeInterface({
   isChiefJudge = false,
   heatStatus = 'waiting',
   onHeatClose = () => { },
-  isConnected = true
+  isConnected = true,
+  onScoreSync = async () => ({ success: 0, failed: 0 })
 }: JudgeInterfaceProps) {
   const [submittedScores, setSubmittedScores] = useState<Score[]>([]);
   const [activeInput, setActiveInput] = useState<ScoreInputState | null>(null);
@@ -67,6 +69,10 @@ function JudgeInterface({
   const [interferenceCalls, setInterferenceCalls] = useState<InterferenceCall[]>([]);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'error' | null } | null>(null);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -596,8 +602,57 @@ function JudgeInterface({
               {isFullscreen ? <Minimize className="w-5 h-5 text-white" /> : <Maximize className="w-5 h-5 text-white" />}
               <span className="hidden sm:inline font-semibold">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
             </button>
+
+            {/* SYNC BUTTON */}
+            <button
+              onClick={async () => {
+                setIsSyncing(true);
+                setSyncFeedback(null);
+                try {
+                  const result = await onScoreSync();
+                  setSyncFeedback({ 
+                    message: `${result.success} notes synchronisées`, 
+                    type: 'success' 
+                  });
+                  // Auto-clear success message after 3s
+                  setTimeout(() => setSyncFeedback(null), 3000);
+                } catch (error) {
+                  setSyncFeedback({ 
+                    message: error instanceof Error ? error.message : 'Erreur de synchronisation', 
+                    type: 'error' 
+                  });
+                } finally {
+                  setIsSyncing(false);
+                }
+              }}
+              disabled={isSyncing || !isConnected}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-sm ${
+                isSyncing 
+                  ? 'bg-white/10 text-white/50 border-white/5 cursor-not-allowed' 
+                  : 'bg-white/20 hover:bg-white/30 text-white border-white/10 active:scale-95'
+              }`}
+              title="Forcer la synchronisation des notes de cette série vers le cloud"
+            >
+              <div className={`w-5 h-5 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <span className="hidden sm:inline font-semibold">
+                {isSyncing ? 'En cours...' : 'Synchroniser'}
+              </span>
+            </button>
           </div>
         </div>
+        
+        {/* SYNC FEEDBACK BANNER */}
+        {syncFeedback && (
+          <div className={`mt-4 p-2 rounded-lg text-xs font-bold flex items-center justify-center animate-in fade-in slide-in-from-top-2 ${
+            syncFeedback.type === 'success' ? 'bg-green-500/30 text-green-100 border border-green-500/50' : 'bg-red-500/30 text-red-100 border border-red-500/50'
+          }`}>
+            {syncFeedback.type === 'success' ? '✅' : '❌'} {syncFeedback.message}
+          </div>
+        )}
       </div>
 
       {/* TIMER */}

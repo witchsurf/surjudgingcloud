@@ -110,8 +110,18 @@ export function useScoreManager() {
         }
     }, [config, configSaved, setScores, setOverrideLogs]);
 
+    const handleScoreSync = useCallback(async (heatId: string) => {
+        try {
+            return await scoreRepository.syncScores(heatId);
+        } catch (error) {
+            console.error('❌ Erreur synchronisation manuelle:', error);
+            throw error;
+        }
+    }, []);
+
     return {
         handleScoreSubmit,
-        handleScoreOverride
+        handleScoreOverride,
+        handleScoreSync
     };
 }

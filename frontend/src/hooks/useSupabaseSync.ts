@@ -369,10 +369,10 @@ export function useSupabaseSync() {
         console.log('⚠️ Score sauvé localement, synchronisation différée', error instanceof Error ? error.message : error);
       }
     } else {
-      // Supabase non disponible : marquer immédiatement comme synchronisé pour éviter le mode "pending"
-      newScore.synced = true;
-      const syncedScores = updatedScores.map(s => s.id === newScore.id ? newScore : s);
-      persistScores(syncedScores);
+      // BUG FIX: Mark as NOT synced so it can be picked up by sync worker later
+      newScore.synced = false;
+      const unsyncedScores = updatedScores.map(s => s.id === newScore.id ? newScore : s);
+      persistScores(unsyncedScores);
     }
 
     return newScore;

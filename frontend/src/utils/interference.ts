@@ -6,7 +6,7 @@ type SurferInterferenceSummary = {
   isDisqualified: boolean;
 };
 
-const makeTargetKey = (surfer: string, waveNumber: number) => `${surfer.toUpperCase()}::${waveNumber}`;
+const makeTargetKey = (surfer: string, waveNumber: number) => `${(surfer || '').trim().toUpperCase()}::${waveNumber}`;
 
 export function computeEffectiveInterferences(
   calls: InterferenceCall[],

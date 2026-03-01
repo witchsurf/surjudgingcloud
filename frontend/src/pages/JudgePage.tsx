@@ -220,6 +220,7 @@ export default function JudgePage() {
             isChiefJudge={currentJudge?.id === 'CHIEF' || currentJudge?.name === 'CHIEF'}
             onHeatClose={handleHeatClose}
             isConnected={isConnected}
+            onScoreSync={() => handleScoreSync(currentHeatId)}
         />
     );
 }
