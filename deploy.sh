@@ -17,7 +17,7 @@ git reset --hard origin/main
 
 # The containers will be stopped later, right before restarting, to minimize downtime.
 echo "🔨 Building frontend..."
-cd ../frontend
+cd frontend
 rm -rf dist node_modules/.vite
 # Ensure dependencies match lockfile before building
 npm ci
