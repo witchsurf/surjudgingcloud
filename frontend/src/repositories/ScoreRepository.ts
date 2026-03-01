@@ -335,26 +335,26 @@ export class ScoreRepository extends BaseRepository {
         try {
             this.ensureSupabase();
             
-            // Get event_id from localStorage for context if available
+            // Get context from localStorage or fall back to score's own competition
             const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
-            const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
+            const globalEventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
 
             const { error } = await this.supabase!
                 .from('scores')
                 .upsert(scores.map(s => ({
                     id: s.id,
                     heat_id: s.heat_id,
-                    event_id: eventId,
-                    competition: s.competition,
-                    division: s.division,
-                    round: s.round,
+                    event_id: globalEventId || s.event_id || null, // Use score's own event_id if global is missing
+                    competition: s.competition || 'Competition',
+                    division: s.division || 'OPEN',
+                    round: s.round || 1,
                     judge_id: s.judge_id,
                     judge_name: s.judge_name,
                     surfer: s.surfer,
                     wave_number: s.wave_number,
                     score: s.score,
-                    timestamp: s.timestamp,
-                    created_at: s.created_at
+                    timestamp: s.timestamp || new Date().toISOString(),
+                    created_at: s.created_at || new Date().toISOString()
                 })), { onConflict: 'id' });
 
             if (error) throw error;
