@@ -299,7 +299,7 @@ export default function HeatResults({
               </tr>
             </thead>
             <tbody className="divide-y-2 divide-primary-50">
-              {rows.map((row, idx) => (
+              {rows.map((row) => (
                 <tr
                   key={row.key}
                   className="hover:bg-primary-50/20 transition-colors"

@@ -141,7 +141,7 @@ export default function ScoreDisplay({
 }: ScoreDisplayProps) {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [surferStats, setSurferStats] = useState<SurferStats[]>([]);
-  const [eventData, setEventData] = useState<any>(null);
+  const [eventData, setEventData] = useState<Record<string, any> | null>(null);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
   const { normalized: heatId } = getHeatIdentifiers(
     config.competition,
@@ -454,7 +454,7 @@ export default function ScoreDisplay({
                 {surferStats
                   .slice()
                   .sort(sortStats)
-                  .map((stat, idx) => {
+                  .map((stat) => {
                     const displayName = surferNames?.[stat.surfer] ?? stat.surfer;
                     const country = surferCountries?.[stat.surfer];
 
