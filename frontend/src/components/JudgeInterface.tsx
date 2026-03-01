@@ -60,6 +60,21 @@ function JudgeInterface({
   isConnected = true,
   onScoreSync = async () => ({ success: 0, failed: 0 })
 }: JudgeInterfaceProps) {
+  const formatSyncError = useCallback((error: unknown): string => {
+    if (error instanceof Error && error.message) return error.message;
+    if (error && typeof error === 'object') {
+      const candidate = error as { code?: string; message?: string; details?: string; hint?: string };
+      const parts = [
+        candidate.code ? `code=${candidate.code}` : '',
+        candidate.message || '',
+        candidate.details ? `details=${candidate.details}` : '',
+        candidate.hint ? `hint=${candidate.hint}` : '',
+      ].filter(Boolean);
+      if (parts.length) return parts.join(' | ');
+    }
+    return 'Erreur de synchronisation';
+  }, []);
+
   const [submittedScores, setSubmittedScores] = useState<Score[]>([]);
   const [activeInput, setActiveInput] = useState<ScoreInputState | null>(null);
   const [inputValue, setInputValue] = useState('');
@@ -618,7 +633,7 @@ function JudgeInterface({
                   setTimeout(() => setSyncFeedback(null), 3000);
                 } catch (error) {
                   setSyncFeedback({ 
-                    message: error instanceof Error ? error.message : 'Erreur de synchronisation', 
+                    message: formatSyncError(error), 
                     type: 'error' 
                   });
                 } finally {

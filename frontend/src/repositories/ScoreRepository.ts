@@ -80,6 +80,21 @@ export class ScoreRepository extends BaseRepository {
         };
     }
 
+    private errorToMessage(error: unknown): string {
+        if (error instanceof Error && error.message) return error.message;
+        if (error && typeof error === 'object') {
+            const candidate = error as { code?: string; message?: string; details?: string; hint?: string };
+            const parts = [
+                candidate.code ? `code=${candidate.code}` : '',
+                candidate.message || '',
+                candidate.details ? `details=${candidate.details}` : '',
+                candidate.hint ? `hint=${candidate.hint}` : '',
+            ].filter(Boolean);
+            if (parts.length) return parts.join(' | ');
+        }
+        return 'Erreur de synchronisation inconnue';
+    }
+
     /**
      * Save a new score
      */
@@ -418,7 +433,7 @@ export class ScoreRepository extends BaseRepository {
             return { success: dedupedScores.length, failed: 0 };
         } catch (error) {
             logger.error('ScoreRepository', 'Manual sync failed', error);
-            throw error;
+            throw new Error(this.errorToMessage(error));
         }
     }
 
