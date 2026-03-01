@@ -16,6 +16,7 @@ import {
     fetchEventIdByName
 } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import type { AppConfig } from '../types';
 
 export default function AdminPage() {
@@ -170,6 +171,17 @@ export default function AdminPage() {
 
                 // Sauvegarder la config du heat
                 await saveHeatConfig(currentHeatId, config);
+
+                // Keep tablets/kiosks aligned when admin saves a new target heat/category.
+                if (supabase) {
+                    await supabase.from('active_heat_pointer').upsert({
+                        event_name: config.competition,
+                        active_heat_id: currentHeatId,
+                        updated_at: new Date().toISOString()
+                    }, {
+                        onConflict: 'event_name'
+                    });
+                }
 
                 // Publier la config en temps réel
                 await publishConfigUpdate(currentHeatId, config);
