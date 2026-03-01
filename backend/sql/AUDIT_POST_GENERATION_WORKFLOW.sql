@@ -164,9 +164,18 @@ with snapshots as (
     ec.division,
     ec.round,
     ec.heat_number,
-    lower(regexp_replace(ec.event_name, '[^a-z0-9]+', '_', 'g')) || '_' ||
-      lower(regexp_replace(ec.division, '[^a-z0-9]+', '_', 'g')) || '_r' ||
-      ec.round::text || '_h' || ec.heat_number::text as expected_heat_id
+    regexp_replace(
+      regexp_replace(lower(ec.event_name), '[^a-z0-9]+', '_', 'g'),
+      '^_+|_+$',
+      '',
+      'g'
+    ) || '_' ||
+    regexp_replace(
+      regexp_replace(lower(ec.division), '[^a-z0-9]+', '_', 'g'),
+      '^_+|_+$',
+      '',
+      'g'
+    ) || '_r' || ec.round::text || '_h' || ec.heat_number::text as expected_heat_id
   from public.event_last_config ec
 )
 select
@@ -206,4 +215,3 @@ from normalized
 group by normalized_id
 having count(distinct raw_id) > 1
 order by distinct_variants desc, normalized_id;
-
