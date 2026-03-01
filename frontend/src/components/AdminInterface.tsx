@@ -1347,11 +1347,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Database className="w-5 h-5 text-gray-600" />
-              value={config.waves}
-              onChange={(e) => handleConfigChange('waves', parseInt(e.target.value) || 15)}
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+            <Database className={`w-5 h-5 ${isSupabaseConfigured() ? 'text-success-600' : 'text-primary-300'}`} />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">
+              Database: <span className={isSupabaseConfigured() ? 'text-success-600' : 'text-primary-600'}>
+                {isSupabaseConfigured() ? 'CONNECTED' : 'LOCAL ONLY'}
+              </span>
+            </span>
           </div>
         </div>
 
@@ -1601,6 +1602,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             </div>
           )}
         </div>
+      )}
         {/* TIMER SECTION */}
         <section className="bg-white border-4 border-primary-950 rounded-2xl overflow-hidden shadow-block">
           <div className="bg-primary-900 border-b-4 border-primary-950 px-6 py-4 flex items-center justify-between">
