@@ -95,6 +95,73 @@ export class ScoreRepository extends BaseRepository {
         return 'Erreur de synchronisation inconnue';
     }
 
+    private parseHeatNumberFromHeatId(heatId: string): number {
+        const match = ensureHeatId(heatId).match(/_h(\d+)$/i);
+        if (!match) return 1;
+        const value = Number.parseInt(match[1], 10);
+        return Number.isFinite(value) && value > 0 ? value : 1;
+    }
+
+    private async ensureHeatRowsExist(scores: Array<{
+        heat_id: string;
+        competition?: string;
+        division?: string;
+        round?: number;
+        event_id?: number | null;
+    }>): Promise<void> {
+        this.ensureSupabase();
+        if (!scores.length) return;
+
+        const byHeatId = new Map<string, {
+            heat_id: string;
+            competition?: string;
+            division?: string;
+            round?: number;
+            event_id?: number | null;
+        }>();
+
+        scores.forEach((score) => {
+            const normalized = ensureHeatId(score.heat_id);
+            if (!byHeatId.has(normalized)) {
+                byHeatId.set(normalized, { ...score, heat_id: normalized });
+            }
+        });
+
+        const heatIds = Array.from(byHeatId.keys());
+        const { data: existing, error: existingError } = await this.supabase!
+            .from('heats')
+            .select('id')
+            .in('id', heatIds);
+
+        if (existingError) throw existingError;
+
+        const existingIds = new Set((existing || []).map((row) => row.id));
+        const missing = heatIds.filter((id) => !existingIds.has(id));
+        if (!missing.length) return;
+
+        const payload = missing.map((heatId) => {
+            const source = byHeatId.get(heatId)!;
+            return {
+                id: heatId,
+                event_id: source.event_id ?? null,
+                competition: source.competition || 'Competition',
+                division: source.division || 'OPEN',
+                round: source.round || 1,
+                heat_number: this.parseHeatNumberFromHeatId(heatId),
+                status: 'open',
+                created_at: new Date().toISOString(),
+            };
+        });
+
+        const { error: insertError } = await this.supabase!
+            .from('heats')
+            .upsert(payload, { onConflict: 'id' });
+
+        if (insertError) throw insertError;
+
+        logger.warn('ScoreRepository', 'Missing heats auto-created before score sync', { count: payload.length, heatIds: missing });
+    }
+
     /**
      * Save a new score
      */
@@ -121,6 +188,14 @@ export class ScoreRepository extends BaseRepository {
             // Online operation
             async () => {
                 this.ensureSupabase();
+
+                await this.ensureHeatRowsExist([{
+                    heat_id: newScore.heat_id,
+                    competition: newScore.competition,
+                    division: newScore.division,
+                    round: newScore.round,
+                    event_id: newScore.event_id ?? null
+                }]);
 
                 const { error } = await this.supabase!
                     .from('scores')
@@ -395,6 +470,14 @@ export class ScoreRepository extends BaseRepository {
                     deduped: dedupedScores.length
                 });
             }
+
+            await this.ensureHeatRowsExist(dedupedScores.map((s) => ({
+                heat_id: s.heat_id,
+                competition: s.competition,
+                division: s.division,
+                round: s.round,
+                event_id: globalEventId || s.event_id || null
+            })));
 
             const { error } = await this.supabase!
                 .from('scores')
