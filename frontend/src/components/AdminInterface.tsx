@@ -115,6 +115,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [reconnectMessage, setReconnectMessage] = useState<string | null>(null);
   const [plannedTimerDuration, setPlannedTimerDuration] = useState<number>(timer.duration);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [dbHeatScores, setDbHeatScores] = useState<Score[]>([]);
 
   const { normalized: heatId } = React.useMemo(
     () =>
@@ -143,10 +144,65 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return colorLabelMap[(raw as HeatColor)] ?? raw;
   }
 
+  const mergedScores = React.useMemo(() => {
+    const byLogicalKey = new Map<string, Score>();
+    const allScores = [...(scores || []), ...(dbHeatScores || [])];
+
+    allScores.forEach((score) => {
+      const key = `${ensureHeatId(score.heat_id)}::${(score.judge_id || '').trim().toUpperCase()}::${normalizeJerseyLabel(score.surfer)}::${Number(score.wave_number)}`;
+      const existing = byLogicalKey.get(key);
+      if (!existing) {
+        byLogicalKey.set(key, score);
+        return;
+      }
+
+      const existingTs = new Date(existing.created_at || existing.timestamp || 0).getTime();
+      const nextTs = new Date(score.created_at || score.timestamp || 0).getTime();
+      if (nextTs >= existingTs) {
+        byLogicalKey.set(key, score);
+      }
+    });
+
+    return Array.from(byLogicalKey.values());
+  }, [scores, dbHeatScores]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDbScores = async () => {
+      try {
+        const nextScores = await fetchHeatScores(heatId);
+        if (!cancelled) {
+          setDbHeatScores(nextScores);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('⚠️ Impossible de charger les scores DB pour le panel admin:', error);
+          setDbHeatScores([]);
+        }
+      }
+    };
+
+    loadDbScores();
+
+    const handleRealtimeScore = (event: Event) => {
+      const detail = (event as CustomEvent<Partial<Score>>).detail;
+      if (!detail?.heat_id) return;
+      if (ensureHeatId(detail.heat_id) !== heatId) return;
+      void loadDbScores();
+    };
+
+    window.addEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
+    };
+  }, [heatId]);
+
   const currentScore = React.useMemo(() => {
     if (!selectedJudge || !selectedSurfer || !selectedWave) return undefined;
     const selectedSurferKey = normalizeJerseyLabel(selectedSurfer);
-    return scores
+    return mergedScores
       .filter(score =>
         ensureHeatId(score.heat_id) === heatId &&
         score.judge_id === selectedJudge &&
@@ -154,7 +210,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         score.wave_number === Number(selectedWave)
       )
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-  }, [scores, heatId, selectedJudge, selectedSurfer, selectedWave]);
+  }, [mergedScores, heatId, selectedJudge, selectedSurfer, selectedWave]);
 
   const handleOverrideSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -220,7 +276,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
     const moveTargetSurferKey = normalizeJerseyLabel(moveTargetSurfer);
 
-    const targetAlreadyUsed = scores.some(
+    const targetAlreadyUsed = mergedScores.some(
       (score) =>
         ensureHeatId(score.heat_id) === heatId &&
         score.judge_id === selectedJudge &&
@@ -805,11 +861,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     const normalizeText = (value?: string) => (value || '').trim().toUpperCase();
 
-    const exactHeatScores = (scores || []).filter(
+    const exactHeatScores = (mergedScores || []).filter(
       (score) => ensureHeatId(score.heat_id) === heatId && Number(score.score) > 0
     );
 
-    const fallbackByMetaScores = (scores || []).filter((score) => {
+    const fallbackByMetaScores = (mergedScores || []).filter((score) => {
       if (Number(score.score) <= 0) return false;
       const sameCompetition = normalizeText(score.competition) === normalizeText(config.competition);
       const sameDivision = normalizeText(score.division) === normalizeText(config.division);
@@ -1138,12 +1194,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     if (!selectedSurfer) return [];
     const selectedSurferKey = normalizeJerseyLabel(selectedSurfer);
     // Récupérer toutes les vagues notées pour ce surfeur (tous juges confondus)
-    const waves = new Set(scores
+    const waves = new Set(mergedScores
       .filter(s => normalizeJerseyLabel(s.surfer) === selectedSurferKey && ensureHeatId(s.heat_id) === heatId)
       .map(s => s.wave_number)
     );
     return Array.from(waves).sort((a, b) => a - b);
-  }, [scores, selectedSurfer, heatId]);
+  }, [mergedScores, selectedSurfer, heatId]);
 
   React.useEffect(() => {
     if (!selectedWave) return;
