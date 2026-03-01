@@ -263,6 +263,8 @@ export default function AdminPage() {
             if (!nextHeat) {
                 console.log('🏁 Fin de l\'événement - Aucun heat suivant trouvé');
                 alert('✅ C\'était le dernier heat de cette division/round!');
+                // Even on the last heat, we must still close the current heat and stop the timer.
+                closeHeat();
                 return;
             }
 
