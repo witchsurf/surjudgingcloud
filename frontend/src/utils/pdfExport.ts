@@ -550,6 +550,49 @@ export function exportFullCompetitionPDF({
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();
 
+  const normalizeDivisionName = (value: string) =>
+    value
+      .toUpperCase()
+      .trim()
+      .replace(/[_\s]+/g, ' ')
+      .replace(/\s+/g, ' ');
+
+  const mergedDivisions = Object.entries(divisions).reduce<Record<string, RoundSpec[]>>((acc, [rawName, rounds]) => {
+    const key = normalizeDivisionName(rawName);
+    const existing = acc[key] ?? [];
+    const byRound = new Map<number, RoundSpec>();
+
+    [...existing, ...rounds].forEach((round) => {
+      const roundKey = Number(round.roundNumber);
+      const current = byRound.get(roundKey);
+      if (!current) {
+        byRound.set(roundKey, {
+          ...round,
+          name: round.name,
+          heats: [...round.heats],
+        });
+        return;
+      }
+
+      const knownHeatIds = new Set(current.heats.map((h) => (h.heatId || '').toLowerCase()));
+      round.heats.forEach((heat) => {
+        const normalizedHeatId = (heat.heatId || '').toLowerCase();
+        const alreadyPresent = normalizedHeatId
+          ? knownHeatIds.has(normalizedHeatId)
+          : current.heats.some((h) => h.heatNumber === heat.heatNumber);
+        if (!alreadyPresent) {
+          current.heats.push(heat);
+          if (normalizedHeatId) knownHeatIds.add(normalizedHeatId);
+        }
+      });
+
+      current.heats.sort((a, b) => a.heatNumber - b.heatNumber);
+    });
+
+    acc[key] = Array.from(byRound.values()).sort((a, b) => a.roundNumber - b.roundNumber);
+    return acc;
+  }, {});
+
   const normalizePlaceholderKey = (value: string) =>
     value
       .toUpperCase()
@@ -761,7 +804,7 @@ export function exportFullCompetitionPDF({
   // 1) resolve placeholders from previous heats
   // 2) compute current heat ranking from scores
   // 3) write new qualifier keys for next rounds
-  Object.entries(divisions).forEach(([divisionName, rounds]) => {
+  Object.entries(mergedDivisions).forEach(([divisionName, rounds]) => {
     const orderedRounds = [...rounds].sort((a, b) => a.roundNumber - b.roundNumber);
 
     orderedRounds.forEach((round) => {
@@ -808,7 +851,7 @@ export function exportFullCompetitionPDF({
   }
 
   // Liste des catégories sur la page de garde
-  const categoryNames = Object.keys(divisions);
+  const categoryNames = Object.keys(mergedDivisions);
   if (categoryNames.length) {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
@@ -827,7 +870,7 @@ export function exportFullCompetitionPDF({
   doc.setTextColor(0);
 
   // === POUR CHAQUE CATÉGORIE ===
-  Object.entries(divisions).forEach(([categoryName, allRounds]) => {
+  Object.entries(mergedDivisions).forEach(([categoryName, allRounds]) => {
     if (!allRounds.length) return;
 
     // Detect and Shift Repechage Rounds
