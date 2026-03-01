@@ -2092,19 +2092,27 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       )}
 
       {/* Override Chef Juge */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-        <button
-          onClick={() => setShowOverridePanel(!showOverridePanel)}
-          className="flex items-center justify-between w-full mb-4"
+      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" open={showOverridePanel}>
+        <summary 
+          className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none"
+          onClick={(e) => {
+            e.preventDefault();
+            setShowOverridePanel(!showOverridePanel);
+          }}
         >
-          <h2 className="text-xl font-bold text-gray-900 flex items-center">
-            <ClipboardCheck className="w-5 h-5 mr-2 text-amber-500" /> Correction de notes
-          </h2>
-          {!configSaved && <span className="text-sm text-red-600">Configuration non sauvegardée</span>}
-        </button>
+          <div className="flex items-center space-x-3">
+            <ClipboardCheck className="w-6 h-6 text-cta-500" />
+            <h2 className="text-xl font-bebas tracking-wider text-white">8. CORRECTION DE NOTES</h2>
+          </div>
+          <div className="flex items-center space-x-4">
+            {!configSaved && <span className="text-xs text-red-300 font-bold uppercase tracking-widest bg-red-900/50 px-2 py-1 rounded">Non sauvegardé</span>}
+            <span className={`text-white transition-transform opacity-70 ${showOverridePanel ? 'rotate-180' : ''}`}>▼</span>
+          </div>
+        </summary>
 
         {showOverridePanel && (
-          <form className="space-y-4" onSubmit={handleOverrideSubmit}>
+          <div className="p-6 bg-white border-t-4 border-primary-950">
+            <form className="space-y-4" onSubmit={handleOverrideSubmit}>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -2326,12 +2334,20 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               </button>
             )}
           </form>
+          </div>
         )}
-      </div>
+      </details>
 
       {/* Historique des corrections */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-3">Historique des overrides</h3>
+      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
+        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+          <div className="flex items-center space-x-3">
+            <RotateCcw className="w-6 h-6 text-cta-500" />
+            <h2 className="text-xl font-bebas tracking-wider text-white">9. HISTORIQUE DES CORRECTIONS</h2>
+          </div>
+          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+        </summary>
+        <div className="p-6 bg-white border-t-4 border-primary-950">
         {overrideLogs.length === 0 ? (
           <p className="text-sm text-gray-500">Aucune correction enregistrée pour ce heat.</p>
         ) : (
@@ -2355,7 +2371,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             ))}
           </div>
         )}
-      </div>
+        </div>
+      </details>
     </div >
   );
 };
