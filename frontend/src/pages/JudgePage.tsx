@@ -15,7 +15,7 @@ export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
     const { config, configSaved, setConfig, setConfigSaved, loadConfigFromDb } = useConfigStore();
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
-    const { handleScoreSubmit } = useScoreManager();
+    const { handleScoreSubmit, handleScoreSync } = useScoreManager();
     const { subscribeToHeat, markHeatFinished, syncHeatViaWebhook, isConnected } = useRealtimeSync();
     const [configLoading, setConfigLoading] = useState(true);
     const prevHeatIdRef = useRef<string | null>(null);
