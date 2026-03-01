@@ -439,22 +439,20 @@ export function useHeatManager() {
         try {
             await publishConfigUpdate(currentHeatId, newConfig); // Inform current heat subscribers
 
-            const shouldCreateRemoteHeat = !isSupabaseConfigured() || !activeEventId || !nextCandidate;
-
-            if (shouldCreateRemoteHeat) {
-                await createHeat({
-                    competition: newConfig.competition,
-                    division: newConfig.division,
-                    round: newConfig.round,
-                    heat_number: newConfig.heatId,
-                    status: 'open',
-                    surfers: newConfig.surfers.map((surfer) => ({
-                        color: surfer,
-                        name: surfer,
-                        country: 'SENEGAL',
-                    })),
-                });
-            }
+            // Always ensure next heat row exists before saving dependent tables (heat_configs/realtime).
+            // createHeat uses upsert, so calling it systematically is safe and idempotent.
+            await createHeat({
+                competition: newConfig.competition,
+                division: newConfig.division,
+                round: newConfig.round,
+                heat_number: newConfig.heatId,
+                status: 'open',
+                surfers: newConfig.surfers.map((surfer) => ({
+                    color: surfer,
+                    name: surfer,
+                    country: 'SENEGAL',
+                })),
+            });
 
             await saveHeatConfig(nextHeatKey, newConfig);
             await saveTimerState(nextHeatKey, { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION });
