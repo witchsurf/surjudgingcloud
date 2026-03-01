@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Settings, User, Monitor, Waves, AlertTriangle } from 'lucide-react';
+import { Settings, Waves, AlertTriangle } from 'lucide-react';
 import SyncStatus from '../components/SyncStatus';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
@@ -44,26 +44,6 @@ export default function AdminLayout() {
                             >
                                 <Settings className="w-4 h-4" />
                                 <span>Administration</span>
-                            </Link>
-                            <Link
-                                to="/judge"
-                                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${location.pathname === '/judge'
-                                    ? 'bg-green-600 text-white'
-                                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                                    }`}
-                            >
-                                <User className="w-4 h-4" />
-                                <span>Interface Juge</span>
-                            </Link>
-                            <Link
-                                to="/display"
-                                className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${location.pathname === '/display'
-                                    ? 'bg-purple-600 text-white'
-                                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                                    }`}
-                            >
-                                <Monitor className="w-4 h-4" />
-                                <span>Affichage Public</span>
                             </Link>
                         </div>
                     </div>

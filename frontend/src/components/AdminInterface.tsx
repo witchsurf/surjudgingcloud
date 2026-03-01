@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText, PlusCircle, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import HeatTimer from './HeatTimer';
-import ScoreDisplay from './ScoreDisplay';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
 import { validateScore } from '../utils/scoring';
 import { calculateSurferStats } from '../utils/scoring';
@@ -1213,6 +1212,74 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     onResetAllData();
   };
 
+  const handleAddJudge = () => {
+    const nextJudgeNumber = config.judges.length + 1;
+    const nextJudgeId = `J${nextJudgeNumber}`;
+    if (config.judges.includes(nextJudgeId)) return;
+    onConfigChange({
+      ...config,
+      judges: [...config.judges, nextJudgeId],
+      judgeNames: {
+        ...config.judgeNames,
+        [nextJudgeId]: nextJudgeId
+      }
+    });
+  };
+
+  const handleRemoveJudge = (judgeId: string) => {
+    const nextJudgeNames = { ...config.judgeNames };
+    const nextJudgeEmails = { ...(config.judgeEmails || {}) };
+    delete nextJudgeNames[judgeId];
+    delete nextJudgeEmails[judgeId];
+
+    onConfigChange({
+      ...config,
+      judges: config.judges.filter((id) => id !== judgeId),
+      judgeNames: nextJudgeNames,
+      judgeEmails: nextJudgeEmails
+    });
+  };
+
+  const handleJudgeNameChange = (judgeId: string, name: string) => {
+    onConfigChange({
+      ...config,
+      judgeNames: {
+        ...config.judgeNames,
+        [judgeId]: name
+      }
+    });
+  };
+
+  const handleJudgeEmailChange = (judgeId: string, email: string) => {
+    onConfigChange({
+      ...config,
+      judgeEmails: {
+        ...(config.judgeEmails || {}),
+        [judgeId]: email
+      }
+    });
+  };
+
+  const handleSurferNameChange = (color: string, name: string) => {
+    onConfigChange({
+      ...config,
+      surferNames: {
+        ...(config.surferNames || {}),
+        [color]: name
+      }
+    });
+  };
+
+  const handleSurferCountryChange = (color: string, country: string) => {
+    onConfigChange({
+      ...config,
+      surferCountries: {
+        ...(config.surferCountries || {}),
+        [color]: country
+      }
+    });
+  };
+
 
 
   const exportData = () => {
@@ -1603,117 +1670,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           )}
         </div>
       )}
-        {/* TIMER SECTION */}
-        <section className="bg-white border-4 border-primary-950 rounded-2xl overflow-hidden shadow-block">
-          <div className="bg-primary-900 border-b-4 border-primary-950 px-6 py-4 flex items-center justify-between">
-            <h2 className="text-xl font-bebas tracking-wider text-white flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Chronomètre de Heat
-            </h2>
-            {timer.isRunning && (
-              <div className="flex items-center gap-2 px-3 py-1 bg-cta-500 text-white rounded-full border-2 border-primary-950 animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-white" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">En cours</span>
-              </div>
-            )}
-          </div>
-
-          <div className="p-8 flex flex-col items-center gap-8">
-            <div className="p-8 bg-primary-50 rounded-3xl border-4 border-primary-950 shadow-block w-full max-w-md">
-              <HeatTimer
-                timer={timer}
-                onStart={handleTimerStart}
-                onPause={handleTimerPause}
-                onReset={handleTimerRestartFull}
-                onDurationChange={setPlannedTimerDuration}
-                showControls={false}
-                configSaved={configSaved}
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-4">
-              {!timer.isRunning && !timer.startTime && (
-                <button
-                  onClick={handleTimerStart}
-                  disabled={!configSaved}
-                  className="px-10 py-4 bg-success-500 text-white font-bebas tracking-widest text-2xl rounded-2xl border-4 border-primary-950 shadow-block hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(76,29,149,1)] active:translate-y-0 transition-all flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Clock className="w-6 h-6" />
-                  DÉMARRER
-                </button>
-              )}
-
-              {timer.isRunning && (
-                <button
-                  onClick={handleTimerPause}
-                  className="px-10 py-4 bg-cta-500 text-white font-bebas tracking-widest text-2xl rounded-2xl border-4 border-primary-950 shadow-block hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(194,65,12,1)] active:translate-y-0 transition-all flex items-center gap-3"
-                >
-                  <RotateCcw className="w-6 h-6" />
-                  PAUSE
-                </button>
-              )}
-
-              {!timer.isRunning && timer.startTime && (
-                <button
-                  onClick={handleTimerResume}
-                  className="px-10 py-4 bg-success-500 text-white font-bebas tracking-widest text-2xl rounded-2xl border-4 border-primary-950 shadow-block hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(76,29,149,1)] active:translate-y-0 transition-all flex items-center gap-3"
-                >
-                  <Clock className="w-6 h-6" />
-                  REPRENDRE
-                </button>
-              )}
-
-              <button
-                onClick={handleTimerRestartFull}
-                className="px-8 py-4 bg-white text-primary-900 font-bebas tracking-widest text-xl rounded-2xl border-4 border-primary-950 hover:bg-primary-50 transition-all flex items-center gap-2"
-              >
-                <RotateCcw className="w-5 h-5" />
-                RESTART FULL
-              </button>
-
-              <button
-                onClick={onCloseHeat}
-                className="px-8 py-4 bg-danger-600 text-white font-bebas tracking-widest text-xl rounded-2xl border-4 border-primary-950 shadow-block hover:-translate-y-1 hover:bg-danger-700 transition-all flex items-center gap-2"
-              >
-                <CheckCircle className="w-5 h-5" />
-                CLÔTURER LE HEAT
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* REALTIME MONITORING */}
-        <section className="bg-white border-4 border-primary-950 rounded-2xl overflow-hidden shadow-block">
-          <div className="bg-primary-900 border-b-4 border-primary-950 px-6 py-4 flex items-center justify-between">
-            <h2 className="text-xl font-bebas tracking-wider text-white flex items-center gap-2">
-              <Eye className="w-5 h-5" />
-              Aperçu en temps réel
-            </h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopyDisplayLink}
-                className="px-3 py-1.5 bg-white text-primary-900 text-[10px] font-bold uppercase tracking-widest rounded-lg border-2 border-primary-950 hover:bg-primary-50 transition-all flex items-center gap-2"
-              >
-                <ClipboardCheck className="w-3 h-3" />
-                {displayLinkCopied ? 'Copié !' : 'Copier le lien public'}
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6 bg-primary-950/5">
-            <div className="bg-white border-2 border-primary-950 rounded-xl overflow-hidden shadow-sm aspect-video sm:aspect-[21/9] relative">
-              <ScoreDisplay
-                config={config}
-                scores={mergedScores}
-                timer={timer}
-                configSaved={configSaved}
-                heatStatus={timer.isRunning ? 'running' : 'waiting'}
-              />
-              <div className="absolute inset-0 pointer-events-none border-4 border-primary-500/20" />
-            </div>
-          </div>
-        </section>
-
       {/* Paramètres avancés */}
       <div className="bg-white rounded-lg shadow p-6">
         <button
