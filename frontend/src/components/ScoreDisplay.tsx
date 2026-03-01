@@ -372,9 +372,9 @@ export default function ScoreDisplay({
                 return (
                   <div
                     key={stat.surfer}
-                    className="p-4 sm:p-6 hover:bg-primary-50/30 transition-colors"
+                    className="p-3 sm:p-4 hover:bg-primary-50/30 transition-colors"
                   >
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                       {/* Bloc gauche: rang + avatar + nom */}
                       <div className="flex items-center gap-4 sm:gap-6">
                         <div className="w-12 h-12 flex items-center justify-center bg-primary-950 text-white rounded-xl border-2 border-primary-950 shadow-block text-2xl font-bebas tracking-tighter">
