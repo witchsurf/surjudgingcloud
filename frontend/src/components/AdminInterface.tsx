@@ -1,8 +1,8 @@
-import { AlertTriangle } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, Wifi, WifiOff, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText } from 'lucide-react';
+import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText, PlusCircle, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import HeatTimer from './HeatTimer';
+import ScoreDisplay from './ScoreDisplay';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
 import { validateScore } from '../utils/scoring';
 import { calculateSurferStats } from '../utils/scoring';
