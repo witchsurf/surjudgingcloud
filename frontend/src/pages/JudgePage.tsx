@@ -14,7 +14,7 @@ import { parseActiveHeatId } from '../api/supabaseClient';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
-    const { config, configSaved, setConfig, loadConfigFromDb } = useConfigStore();
+    const { config, configSaved, activeEventId, setActiveEventId, setConfig, loadConfigFromDb } = useConfigStore();
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { handleScoreSubmit, handleScoreSync } = useScoreManager();
     const { subscribeToHeat, markHeatFinished, syncHeatViaWebhook, isConnected } = useRealtimeSync();
@@ -52,26 +52,39 @@ export default function JudgePage() {
         }
     };
 
-    // Load event config from DB for anonymous users (kiosk mode)
+    // Load event config from DB for kiosk mode.
+    // Force reload when eventId exists in URL and differs from local cache.
     useEffect(() => {
         if (!isSupabaseConfigured()) {
             setConfigLoading(false);
             return;
         }
 
-        if (eventIdFromUrl && !configSaved) {
-            const numericId = parseInt(eventIdFromUrl, 10);
-            if (!isNaN(numericId)) {
-                console.log('📥 JudgePage: Loading full config from DB for eventId:', numericId);
-                loadConfigFromDb(numericId).finally(() => setConfigLoading(false));
-            } else {
-                setConfigLoading(false);
-            }
-        } else {
-            // Either already saved or no eventId to load
+        if (!eventIdFromUrl) {
             setConfigLoading(false);
+            return;
         }
-    }, [eventIdFromUrl, configSaved, loadConfigFromDb]);
+
+        const numericId = parseInt(eventIdFromUrl, 10);
+        if (Number.isNaN(numericId)) {
+            setConfigLoading(false);
+            return;
+        }
+
+        const shouldReloadFromDb = !configSaved || activeEventId !== numericId;
+        if (!shouldReloadFromDb) {
+            setConfigLoading(false);
+            return;
+        }
+
+        console.log('📥 JudgePage: Forcing config reload from DB for eventId:', numericId, {
+            activeEventId,
+            configSaved
+        });
+
+        setActiveEventId(numericId);
+        loadConfigFromDb(numericId).finally(() => setConfigLoading(false));
+    }, [eventIdFromUrl, configSaved, activeEventId, loadConfigFromDb, setActiveEventId]);
 
     // Subscribe to realtime timer/config for the current heat
     useEffect(() => {
