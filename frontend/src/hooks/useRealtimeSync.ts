@@ -258,7 +258,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
         updated_by: 'admin'
       };
       if (typeof remainingDuration === 'number' && Number.isFinite(remainingDuration)) {
-        realtimePauseUpdate.timer_duration_minutes = remainingDuration;
+        realtimePauseUpdate.timer_duration_minutes = Number(remainingDuration.toFixed(4));
         realtimePauseUpdate.timer_start_time = null;
       }
       const { error } = await supabase!

@@ -120,8 +120,9 @@ function HeatTimer({
   }, [timer.duration, timer.isRunning, timer.startTime, timerAudio]);
 
   const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const roundedSeconds = Math.floor(seconds);
+    const mins = Math.floor(roundedSeconds / 60);
+    const secs = roundedSeconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
