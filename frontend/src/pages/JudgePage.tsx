@@ -201,7 +201,8 @@ export default function JudgePage() {
         };
     }, [config.competition, configLoading, setConfig]);
 
-    // Purge local scores when a fresh config is saved or heat changes.
+    // Purge local scores only when heat changes.
+    // Do NOT purge on generic config reload, otherwise unsynced tablet scores can disappear.
     useEffect(() => {
         if (!configSaved || !config.competition || configLoading) {
             prevConfigSavedRef.current = configSaved;
@@ -210,9 +211,8 @@ export default function JudgePage() {
         }
 
         const heatChanged = prevHeatIdRef.current && currentHeatId && prevHeatIdRef.current !== currentHeatId;
-        const configJustSaved = !prevConfigSavedRef.current && configSaved;
 
-        if (heatChanged || configJustSaved) {
+        if (heatChanged) {
             try {
                 localStorage.removeItem('surfJudgingScores');
             } catch (error) {
