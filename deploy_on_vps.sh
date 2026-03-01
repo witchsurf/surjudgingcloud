@@ -28,16 +28,13 @@ npm run build
 echo -e "${GREEN}✅ Frontend built successfully${NC}"
 echo ""
 
-echo -e "${BLUE}🐳 Step 3/4: Rebuilding Docker containers...${NC}"
+echo -e "${BLUE}🐳 Step 3/3: Rebuilding and Restarting Docker containers...${NC}"
 cd "../$INFRA_DIR"
+echo "⏸️  Stopping old containers..."
 docker compose down
-docker compose build --no-cache surfjudging
-echo -e "${GREEN}✅ Docker images rebuilt${NC}"
-echo ""
-
-echo -e "${BLUE}🚀 Step 4/4: Starting containers...${NC}"
-docker compose up -d
-echo -e "${GREEN}✅ Containers started${NC}"
+echo "🚀 Starting new containers with forced rebuild..."
+docker compose up -d --build
+echo -e "${GREEN}✅ Containers restarted${NC}"
 echo ""
 
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

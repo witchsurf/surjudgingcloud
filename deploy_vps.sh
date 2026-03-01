@@ -24,7 +24,7 @@ ssh ${VPS_USER}@${VPS_IP} "cd ${VPS_PATH}/frontend && rm -rf dist node_modules/.
 echo "✅ Build OK"
 echo ""
 echo "🐳 Rebuild Docker..."
-ssh ${VPS_USER}@${VPS_IP} "cd ${VPS_PATH}/infra && docker compose down && docker compose build --no-cache surfjudging && docker compose up -d"
+ssh ${VPS_USER}@${VPS_IP} "cd ${VPS_PATH}/infra && docker compose down && docker compose up -d --build"
 
 echo ""
 echo "✅ DÉPLOIEMENT TERMINÉ !"

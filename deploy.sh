@@ -15,12 +15,7 @@ echo "📥 Pulling latest changes from GitHub..."
 git fetch origin
 git reset --hard origin/main
 
-# Stop containers
-echo "⏸️  Stopping containers..."
-cd infra
-docker compose down
-
-# Rebuild frontend
+# The containers will be stopped later, right before restarting, to minimize downtime.
 echo "🔨 Building frontend..."
 cd ../frontend
 rm -rf dist node_modules/.vite
@@ -36,8 +31,12 @@ mkdir -p letsencrypt
 touch letsencrypt/acme.json
 chmod 600 letsencrypt/acme.json || true
 chown root:root letsencrypt/acme.json || true
-docker compose build --no-cache surfjudging
-docker compose up -d
+
+echo "⏸️  Stopping old containers..."
+docker compose down
+
+echo "🚀 Starting new containers with forced rebuild..."
+docker compose up -d --build
 
 # Wait for services to start
 echo "⏳ Waiting for services to start..."
