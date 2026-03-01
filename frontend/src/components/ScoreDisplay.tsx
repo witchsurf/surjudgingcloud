@@ -543,8 +543,5 @@ export default function ScoreDisplay({
     </div>
   );
 }
-    </div>
-  );
-}
 
 export { ScoreDisplay };

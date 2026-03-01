@@ -269,8 +269,5 @@ function HeatTimer({
     </div>
   );
 }
-    </div>
-  );
-}
 
 export default HeatTimer;
