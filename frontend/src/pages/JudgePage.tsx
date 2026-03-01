@@ -53,7 +53,7 @@ export default function JudgePage() {
     };
 
     // Load kiosk configuration:
-    // 1) Prefer explicit eventId from URL (authoritative)
+    // 1) Prefer explicit eventId from URL (authoritative, always refresh from DB)
     // 2) Fallback to active_heat_pointer (works even when URL has only ?position=Jx)
     useEffect(() => {
         if (!isSupabaseConfigured()) {
@@ -68,17 +68,7 @@ export default function JudgePage() {
                 return;
             }
 
-            const shouldReloadFromDb = !configSaved || activeEventId !== numericId;
-            if (!shouldReloadFromDb) {
-                setConfigLoading(false);
-                return;
-            }
-
-            console.log('📥 JudgePage: Forcing config reload from DB for eventId:', numericId, {
-                activeEventId,
-                configSaved
-            });
-
+            console.log('📥 JudgePage: Loading config from DB for eventId:', numericId);
             setActiveEventId(numericId);
             loadConfigFromDb(numericId).finally(() => setConfigLoading(false));
             return;
@@ -91,7 +81,51 @@ export default function JudgePage() {
         }
 
         setConfigLoading(false);
-    }, [eventIdFromUrl, positionFromUrl, configSaved, activeEventId, loadConfigFromDb, loadKioskConfig, setActiveEventId]);
+    }, [eventIdFromUrl, positionFromUrl, loadConfigFromDb, loadKioskConfig, setActiveEventId]);
+
+    // Realtime sync for admin config saves (division/round/heat changes).
+    useEffect(() => {
+        if (!isSupabaseConfigured() || !supabase || configLoading) return;
+
+        const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
+        const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
+        if (!targetEventId) return;
+
+        const channel = supabase
+            .channel(`judge-event-config-${targetEventId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'event_last_config',
+                    filter: `event_id=eq.${targetEventId}`
+                },
+                (payload) => {
+                    const row = payload.new as {
+                        event_id?: number;
+                        event_name?: string;
+                        division?: string;
+                        round?: number;
+                        heat_number?: number;
+                    } | null;
+                    if (!row) return;
+
+                    setConfig((prev) => ({
+                        ...prev,
+                        competition: row.event_name || prev.competition,
+                        division: row.division || prev.division,
+                        round: row.round ?? prev.round,
+                        heatId: row.heat_number ?? prev.heatId
+                    }));
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [eventIdFromUrl, activeEventId, configLoading, setConfig]);
 
     // Subscribe to realtime timer/config for the current heat
     useEffect(() => {
