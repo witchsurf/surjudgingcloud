@@ -33,6 +33,7 @@ interface ExportHeatResultsPayload {
 interface FullCompetitionExportPayload {
   eventName: string;
   organizer?: string;
+  organizerLogoDataUrl?: string;
   date?: string;
   divisions: Record<string, RoundSpec[]>;
   scores: Record<string, Score[]>;
@@ -540,6 +541,7 @@ export function exportHeatScorecardPdf({
 export function exportFullCompetitionPDF({
   eventName,
   organizer,
+  organizerLogoDataUrl,
   date,
   divisions,
   scores,
@@ -835,19 +837,41 @@ export function exportFullCompetitionPDF({
   });
 
   // === PAGE DE GARDE ===
+  if (organizerLogoDataUrl) {
+    try {
+      const logoFormat = organizerLogoDataUrl.startsWith('data:image/png')
+        ? 'PNG'
+        : organizerLogoDataUrl.startsWith('data:image/webp')
+          ? 'WEBP'
+          : 'JPEG';
+      const logoWidth = 120;
+      const logoHeight = 120;
+      doc.addImage(
+        organizerLogoDataUrl,
+        logoFormat,
+        (width - logoWidth) / 2,
+        70,
+        logoWidth,
+        logoHeight
+      );
+    } catch (error) {
+      console.warn('Impossible d’ajouter le logo organisateur au PDF:', error);
+    }
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(28);
-  doc.text(eventName.toUpperCase(), width / 2, height / 3, { align: 'center' });
+  doc.text(eventName.toUpperCase(), width / 2, height / 3 + 70, { align: 'center' });
 
   if (organizer) {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Organisé par ${organizer}`, width / 2, height / 3 + 40, { align: 'center' });
+    doc.text(`Organisé par ${organizer}`, width / 2, height / 3 + 110, { align: 'center' });
   }
 
   if (date) {
     doc.setFontSize(12);
-    doc.text(date, width / 2, height / 3 + 65, { align: 'center' });
+    doc.text(date, width / 2, height / 3 + 135, { align: 'center' });
   }
 
   // Liste des catégories sur la page de garde
@@ -855,11 +879,11 @@ export function exportFullCompetitionPDF({
   if (categoryNames.length) {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text('CATÉGORIES', width / 2, height / 2, { align: 'center' });
+    doc.text('CATÉGORIES', width / 2, height / 2 + 60, { align: 'center' });
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
     categoryNames.forEach((cat, idx) => {
-      doc.text(`• ${cat}`, width / 2, height / 2 + 25 + idx * 18, { align: 'center' });
+      doc.text(`• ${cat}`, width / 2, height / 2 + 85 + idx * 18, { align: 'center' });
     });
   }
 

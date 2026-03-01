@@ -1259,14 +1259,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       const allScores = await fetchAllScoresForEvent(eventId);
       const allInterferenceCalls = await fetchAllInterferenceCallsForEvent(eventId);
 
-      // Get event details (organizer, date) if available
+      // Get event details (organizer, date, optional logo) if available
       let organizer: string | undefined;
       let eventDate: string | undefined;
+      let organizerLogoDataUrl: string | undefined;
 
       if (supabase) {
         const { data: eventData } = await supabase
           .from('events')
-          .select('organizer, start_date')
+          .select('*')
           .eq('id', eventId)
           .single();
 
@@ -1280,6 +1281,31 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               day: 'numeric'
             })
             : undefined;
+
+          const logoCandidate = (
+            eventData.logo_url ||
+            eventData.logo ||
+            eventData.organizer_logo_url ||
+            eventData.image_url ||
+            eventData.brand_logo_url
+          ) as string | undefined;
+
+          if (logoCandidate && /^https?:\/\//i.test(logoCandidate)) {
+            try {
+              const response = await fetch(logoCandidate);
+              if (response.ok) {
+                const blob = await response.blob();
+                organizerLogoDataUrl = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(String(reader.result || ''));
+                  reader.onerror = () => reject(new Error('Impossible de lire le logo.'));
+                  reader.readAsDataURL(blob);
+                });
+              }
+            } catch (error) {
+              console.warn('Logo organisateur non chargé pour le PDF:', error);
+            }
+          }
         }
       }
 
@@ -1287,6 +1313,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       exportFullCompetitionPDF({
         eventName: config.competition || 'Compétition',
         organizer,
+        organizerLogoDataUrl,
         date: eventDate,
         divisions: allDivisions,
         scores: allScores,
