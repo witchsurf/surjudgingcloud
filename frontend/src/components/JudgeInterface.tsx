@@ -88,6 +88,23 @@ function JudgeInterface({
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'error' | null } | null>(null);
+  const [isSubmittingScore, setIsSubmittingScore] = useState(false);
+
+  // Unsynced safety check
+  const pendingSyncCount = useMemo(() => submittedScores.filter(s => s.synced === false).length, [submittedScores]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (pendingSyncCount > 0) {
+        const msg = "Vous avez des notes non synchronisées en attente. Ne fermez pas la page !";
+        e.preventDefault();
+        e.returnValue = msg;
+        return msg;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [pendingSyncCount]);
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -454,6 +471,7 @@ function JudgeInterface({
   };
 
   const handleScoreSubmit = async () => {
+    if (isSubmittingScore) return;
     if (!activeInput || !inputValue.trim()) return;
     if (!timerActive) {
       setActiveInput(null);
@@ -468,6 +486,7 @@ function JudgeInterface({
     }
 
     try {
+      setIsSubmittingScore(true);
       const judgeName = config.judgeNames[judgeId] || judgeId;
 
       const savedScore = await onScoreSubmit({
@@ -530,6 +549,8 @@ function JudgeInterface({
       } else {
         alert('Erreur lors de la soumission du score');
       }
+    } finally {
+      setIsSubmittingScore(false);
     }
   };
 
@@ -619,44 +640,54 @@ function JudgeInterface({
             </button>
 
             {/* SYNC BUTTON */}
-            <button
-              onClick={async () => {
-                setIsSyncing(true);
-                setSyncFeedback(null);
-                try {
-                  const result = await onScoreSync();
-                  setSyncFeedback({ 
-                    message: `${result.success} notes synchronisées`, 
-                    type: 'success' 
-                  });
-                  // Auto-clear success message after 3s
-                  setTimeout(() => setSyncFeedback(null), 3000);
-                } catch (error) {
-                  setSyncFeedback({ 
-                    message: formatSyncError(error), 
-                    type: 'error' 
-                  });
-                } finally {
-                  setIsSyncing(false);
-                }
-              }}
-              disabled={isSyncing || !isConnected}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-sm ${
-                isSyncing 
-                  ? 'bg-white/10 text-white/50 border-white/5 cursor-not-allowed' 
-                  : 'bg-white/20 hover:bg-white/30 text-white border-white/10 active:scale-95'
-              }`}
-              title="Forcer la synchronisation des notes de cette série vers le cloud"
-            >
-              <div className={`w-5 h-5 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </div>
-              <span className="hidden sm:inline font-semibold">
-                {isSyncing ? 'En cours...' : 'Synchroniser'}
-              </span>
-            </button>
+            <div className="relative">
+              <button
+                onClick={async () => {
+                  setIsSyncing(true);
+                  setSyncFeedback(null);
+                  try {
+                    const result = await onScoreSync();
+                    setSyncFeedback({ 
+                      message: `${result.success} notes synchronisées`, 
+                      type: 'success' 
+                    });
+                    // Auto-clear success message after 3s
+                    setTimeout(() => setSyncFeedback(null), 3000);
+                  } catch (error) {
+                    setSyncFeedback({ 
+                      message: formatSyncError(error), 
+                      type: 'error' 
+                    });
+                  } finally {
+                    setIsSyncing(false);
+                  }
+                }}
+                disabled={isSyncing || !isConnected}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-sm ${
+                  isSyncing 
+                    ? 'bg-white/10 text-white/50 border-white/5 cursor-not-allowed' 
+                    : 'bg-white/20 hover:bg-white/30 text-white border-white/10 active:scale-95'
+                }`}
+                title="Forcer la synchronisation des notes de cette série vers le cloud"
+              >
+                <div className={`w-5 h-5 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </div>
+                <span className="hidden sm:inline font-semibold">
+                  {isSyncing ? 'En cours...' : 'Synchroniser'}
+                </span>
+              </button>
+              {pendingSyncCount > 0 && (
+                <div 
+                  className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] sm:text-xs font-bold min-w-[20px] sm:min-w-[24px] h-5 sm:h-6 px-1 flex items-center justify-center rounded-full shadow-lg border-2 border-[#1e40af] z-10 animate-pulse"
+                  title={`${pendingSyncCount} note(s) en attente de synchronisation`}
+                >
+                  {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         
