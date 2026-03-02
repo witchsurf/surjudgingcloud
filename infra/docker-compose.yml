@@ -35,11 +35,18 @@ services:
       - traefik
     environment:
       NODE_ENV: production
+    ports:
+      - "8080:80"  # accès direct réseau local (sans HTTPS / sans domaine)
     labels:
       traefik.enable: "true"
+      # Routeur Cloud (HTTPS + domaine)
       traefik.http.routers.surfjudging.entrypoints: websecure
       traefik.http.routers.surfjudging.rule: "Host(`${DOMAIN_NAME}`) || Host(`www.${DOMAIN_NAME}`) || Host(`surfjudging.cloud`) || Host(`www.surfjudging.cloud`)"
       traefik.http.routers.surfjudging.tls.certresolver: le
+      # Routeur Local (HTTP simple — accès par IP sur le réseau local DLINK)
+      traefik.http.routers.surfjudging-local.entrypoints: web
+      traefik.http.routers.surfjudging-local.rule: "PathPrefix(`/`)"
+      traefik.http.routers.surfjudging-local.priority: "1"
 
   n8n:
     image: n8nio/n8n:latest
