@@ -9,6 +9,7 @@ import { BaseRepository } from './BaseRepository';
 import type { Score, ScoreOverrideLog, OverrideReason } from '../types';
 import { ensureHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
+import { saveScoreIDB, saveScoresBatchIDB } from '../lib/idbStorage';
 
 export interface SaveScoreRequest {
     heatId: string;
@@ -511,6 +512,8 @@ export class ScoreRepository extends BaseRepository {
                 return s;
             });
             localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(updatedScores));
+            // Async dual-write synced status to IndexedDB
+            saveScoresBatchIDB(updatedScores.filter(s => ensureHeatId(s.heat_id) === normalizedHeatId)).catch(() => {});
 
             logger.info('ScoreRepository', 'Manual sync successful', { count: dedupedScores.length });
             return { success: dedupedScores.length, failed: 0 };
@@ -526,6 +529,8 @@ export class ScoreRepository extends BaseRepository {
         const scores = this.getScoresFromLocalStorage();
         scores.push(score);
         localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(scores));
+        // Async dual-write to IndexedDB (fire-and-forget)
+        saveScoreIDB(score).catch(() => {});
     }
 
     private updateScoreInLocalStorage(score: Score, matchIndex: number): void {
@@ -536,6 +541,8 @@ export class ScoreRepository extends BaseRepository {
             scores.push(score);
         }
         localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(scores));
+        // Async dual-write to IndexedDB (fire-and-forget)
+        saveScoreIDB(score).catch(() => {});
     }
 
     private getScoresFromLocalStorage(): Score[] {

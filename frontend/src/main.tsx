@@ -1,11 +1,27 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import './index.css';
 // Ensure heat helpers (including global getHeatIdentifiers fallback) are loaded before app bootstrap.
 import './utils/heat';
 import { initStorageCleanup } from './utils/secureStorage';
 import { processMagicLinkCallback } from './utils/magicLink';
+
+// Register the Service Worker for offline PWA support
+const updateSW = registerSW({
+  onNeedRefresh() {
+    console.log('🔄 New version available – app will auto-update on next visit');
+  },
+  onOfflineReady() {
+    console.log('✅ App ready to work offline');
+  },
+});
+// Keep updateSW reference alive to avoid tree-shaking
+if (import.meta.hot) {
+  import.meta.hot.accept();
+}
+void updateSW;
 
 // Bootstrap: await magic-link session before mounting the app to avoid race conditions
 async function bootstrap() {

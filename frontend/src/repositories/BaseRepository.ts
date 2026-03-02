@@ -8,6 +8,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { logger } from '../lib/logger';
+import { retryWithBackoff } from '../lib/retryWithBackoff';
 
 export interface RepositoryOptions {
     enableOffline?: boolean;
@@ -62,9 +63,9 @@ export abstract class BaseRepository {
                 throw new Error('Offline and no fallback provided');
             }
 
-            // Execute online operation
+            // Execute online operation with exponential backoff retry
             logger.debug(repoName, `${operationName} - Executing online`);
-            const result = await operation();
+            const result = await retryWithBackoff(() => operation(), 3);
             logger.debug(repoName, `${operationName} - Success`);
             return result;
 
