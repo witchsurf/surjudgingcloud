@@ -20,8 +20,16 @@ fi
 
 echo "✅ IP Mac détectée : $IP_MAC"
 
-# IP de la VM (fixe selon votre installation)
-IP_VM="192.168.1.69"
+# IP de la VM (dynamique)
+echo "Regardez l'écran de votre machine virtuelle Ubuntu."
+echo "L'adresse IP devrait être affichée (ex: 192.168.1.37 ou 10.0.0.24)."
+read -p "Veuillez entrer l'IP de la VM Supabase : " IP_VM
+
+if [ -z "$IP_VM" ]; then
+    echo "❌ Erreur : L'adresse IP de la VM ne peut pas être vide."
+    exit 1
+fi
+
 echo "ℹ️ IP VM Supabase : $IP_VM"
 
 # 2. Mise à jour du Frontend (.env.local)
@@ -29,6 +37,8 @@ FRONTEND_ENV="frontend/.env.local"
 if [ -f "$FRONTEND_ENV" ]; then
     echo "📝 Mise à jour de $FRONTEND_ENV..."
     # Remplacement des IPs
+    sed -i '' "s/VITE_SUPABASE_URL=http:\/\/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:8000/VITE_SUPABASE_URL=http:\/\/$IP_VM:8000/g" "$FRONTEND_ENV"
+    sed -i '' "s/VITE_SUPABASE_URL_LAN=http:\/\/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:8000/VITE_SUPABASE_URL_LAN=http:\/\/$IP_VM:8000/g" "$FRONTEND_ENV"
     sed -i '' "s/VITE_SITE_URL=http:\/\/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:5173/VITE_SITE_URL=http:\/\/$IP_MAC:5173/g" "$FRONTEND_ENV"
     sed -i '' "s/VITE_SITE_URL_LAN=http:\/\/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:5173/VITE_SITE_URL_LAN=http:\/\/$IP_MAC:5173/g" "$FRONTEND_ENV"
     sed -i '' "s/VITE_KIOSK_BASE_URL_LAN=http:\/\/[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}:5173/VITE_KIOSK_BASE_URL_LAN=http:\/\/$IP_MAC:5173/g" "$FRONTEND_ENV"

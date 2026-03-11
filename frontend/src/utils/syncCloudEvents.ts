@@ -102,7 +102,7 @@ function normalizeHeatStatus(status?: string | null) {
   return 'waiting';
 }
 
-async function withRetry<T>(fn: () => Promise<T>, step: string, maxAttempts = 3): Promise<T> {
+async function withRetry<T>(fn: () => PromiseLike<T>, step: string, maxAttempts = 3): Promise<T> {
   let attempt = 0;
   let lastError: unknown;
   while (attempt < maxAttempts) {
@@ -171,7 +171,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
         cloudSupabase
           .from('events')
           .select(`
-            id, name, organizer, status, start_date, end_date, user_id, created_at, updated_at,
+            id, name, organizer, status, start_date, end_date, user_id, created_at,
             price, currency, method, paid, paid_at, payment_ref, categories, judges, config,
             event_last_config(event_id, event_name, division, round, heat_number, updated_at, judges)
           `)
@@ -184,7 +184,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
     console.log(`✅ Fetched ${events?.length || 0} events from cloud`);
 
     // 3. Fetch Participants & Heats for these events
-    const eventIds = (events || []).map(e => e.id);
+    const eventIds = (events || []).map((e: any) => e.id);
     let allParticipants: CloudParticipant[] = [];
 
     // We will push data to Local DB if configured
@@ -205,7 +205,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
         () =>
           cloudSupabase
             .from('participants')
-            .select('id, event_id, seed, name, category, country, license, created_at, updated_at')
+            .select('id, event_id, seed, name, category, country, license, created_at')
             .in('event_id', eventIds),
         'Fetch cloud participants'
       );
@@ -221,7 +221,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
           cloudSupabase
             .from('heats')
             .select(`
-              id, event_id, competition, division, round, heat_number, heat_size, status, color_order, created_at, updated_at, closed_at, is_active,
+              id, event_id, competition, division, round, heat_number, heat_size, status, color_order, created_at, closed_at, is_active,
               heat_entries(id, heat_id, participant_id, position, seed, color, created_at),
               heat_slot_mappings(id, heat_id, position, placeholder, source_round, source_heat, source_position, created_at)
             `)
@@ -249,7 +249,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
               config: eventData.config ?? {},
             },
             [
-              'id', 'name', 'organizer', 'status', 'start_date', 'end_date', 'user_id', 'created_at', 'updated_at',
+              'id', 'name', 'organizer', 'status', 'start_date', 'end_date', 'user_id', 'created_at',
               'price', 'currency', 'method', 'paid', 'paid_at', 'payment_ref', 'categories', 'judges', 'config'
             ]
           );
@@ -257,7 +257,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
 
         for (const batch of chunkArray(eventsPayload, 100)) {
           const { error } = await withRetry(
-            () => supabase.from('events').upsert(batch, { onConflict: 'id' }),
+            () => supabase!.from('events').upsert(batch, { onConflict: 'id' }),
             'Upsert local events'
           );
           if (error) {
@@ -276,13 +276,13 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
                 category: participant.category ?? 'OPEN',
                 name: participant.name ?? 'UNKNOWN',
               },
-              ['id', 'event_id', 'seed', 'name', 'category', 'country', 'license', 'created_at', 'updated_at']
+              ['id', 'event_id', 'seed', 'name', 'category', 'country', 'license', 'created_at']
             )
           );
 
           for (const batch of chunkArray(participantsPayload, 500)) {
             const { error } = await withRetry(
-              () => supabase.from('participants').upsert(batch, { onConflict: 'id' }),
+              () => supabase!.from('participants').upsert(batch, { onConflict: 'id' }),
               'Upsert local participants'
             );
             if (error) {
@@ -307,14 +307,14 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
               },
               [
                 'id', 'event_id', 'competition', 'division', 'round', 'heat_number', 'heat_size', 'status',
-                'color_order', 'created_at', 'updated_at', 'closed_at', 'is_active'
+                'color_order', 'created_at', 'closed_at', 'is_active'
               ]
             )
           );
 
           for (const batch of chunkArray(heatsPayload, 200)) {
             const { error } = await withRetry(
-              () => supabase.from('heats').upsert(batch, { onConflict: 'id' }),
+              () => supabase!.from('heats').upsert(batch, { onConflict: 'id' }),
               'Upsert local heats'
             );
             if (error) {
@@ -406,7 +406,6 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
             }
           }
         }
-
         // 4d) Scores sync (important for offline continuity)
         const { data: scoresRows, error: scoresFetchError } = await cloudSupabase
           .from('scores')
@@ -417,19 +416,19 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
           syncIssues.push({ step: 'scores_fetch', message: scoresFetchError.message });
         } else if (scoresRows && scoresRows.length > 0) {
           for (const batch of chunkArray(scoresRows, 1000)) {
-            const { error } = await supabase.from('scores').upsert(batch, { onConflict: 'id' });
-            if (error) {
-              syncIssues.push({ step: 'scores_upsert', message: error.message });
+            // Write to the local database, not the cloud database
+            const { error: rpcError } = await supabase.rpc('bulk_sync_scores', { p_scores: batch });
+            if (rpcError) {
+              syncIssues.push({ step: 'scores_upsert', message: rpcError.message });
               localSyncError = true;
-              break;
             }
           }
         }
 
         // 4e) Event Last Config
-        const configsPayload = events!
-          .filter(e => e.event_last_config)
-          .map(e => {
+        const configsPayload = (events || [])
+          .filter((e: any) => e.event_last_config)
+          .map((e: any) => {
             const conf = Array.isArray(e.event_last_config) ? e.event_last_config[0] : e.event_last_config;
             if (!conf) return null;
             return {
@@ -442,7 +441,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
               judges: conf.judges || []
             };
           })
-          .filter((c): c is {
+          .filter((c: any): c is {
             event_id: number;
             event_name: string;
             division: string;
@@ -457,6 +456,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
           if (confErr) {
             console.warn('⚠️ Direct upsert of config failed, trying RPC fallback...');
             for (const conf of configsPayload) {
+              if (!conf) continue;
               const { error: rpcErr } = await supabase.rpc('upsert_event_last_config', {
                 p_event_id: conf.event_id,
                 p_event_name: conf.event_name,

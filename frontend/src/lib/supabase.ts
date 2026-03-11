@@ -80,20 +80,37 @@ export const getSupabaseConfig = () => {
   const overrideUrl = readStored(SUPABASE_URL_OVERRIDE_KEY);
   const overrideAnon = readStored(SUPABASE_ANON_OVERRIDE_KEY);
 
-  // Auto-detect mode if not explicitly set
-  // This is crucial for fixing the "Mode: null" issue
-  if (!mode) {
+  // FORCE local mode when served from a private/local network IP
+  // This takes priority over whatever localStorage may have saved from a previous session
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isServedFromLocalNetwork =
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.') ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1';
+
+  if (isServedFromLocalNetwork) {
+    mode = 'local';
+  } else if (!mode) {
+    // Auto-detect mode from env/override URL only if not already set
     const currentUrl = overrideUrl || resolveEnv('VITE_SUPABASE_URL') || window.location.origin;
-    if (currentUrl.includes('192.168') || currentUrl.includes('localhost') || currentUrl.includes(':8000')) {
+    if (currentUrl.includes('192.168') || currentUrl.includes('10.0.0') || currentUrl.includes('localhost') || currentUrl.includes(':8000') || currentUrl.includes(':8080')) {
       mode = 'local';
     } else {
       mode = 'cloud';
     }
   }
 
+  const isLocalDevice = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+
+  const dynamicLocalUrl = isLocalDevice
+    ? `http://${window.location.hostname}:8000`
+    : (resolveEnv('VITE_SUPABASE_URL_LAN') || resolveEnv('VITE_SUPABASE_URL_LOCAL'));
+
   const urlFromMode =
     mode === 'local'
-      ? resolveEnv('VITE_SUPABASE_URL_LAN') || resolveEnv('VITE_SUPABASE_URL_LOCAL')
+      ? dynamicLocalUrl
       : resolveEnv('VITE_SUPABASE_URL_CLOUD');
 
   const anonFromMode =

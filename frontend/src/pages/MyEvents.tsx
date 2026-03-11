@@ -9,7 +9,7 @@ import type { AppConfig } from '../types';
 import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/supabaseClient';
 import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
 import { OfflineAuthWrapper } from '../components/OfflineAuthWrapper';
-import { isDevMode, saveOfflineCredentials } from '../lib/offlineAuth';
+import { isDevMode, saveOfflineCredentials, loginAsOfflineAdmin } from '../lib/offlineAuth';
 import { syncEventsFromCloud, getCachedCloudEvents, getLastSyncTime, needsCloudSync, getCloudClient } from '../utils/syncCloudEvents';
 
 
@@ -143,6 +143,11 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [cloudLoginRequired, setCloudLoginRequired] = useState(false);
+
+  // Offline PIN State
+  const [offlinePin, setOfflinePin] = useState('');
+  const [offlinePinError, setOfflinePinError] = useState<string | null>(null);
+
   const [cloudEmail, setCloudEmail] = useState(() => (typeof window !== 'undefined' ? window.localStorage.getItem(CLOUD_EMAIL_KEY) ?? '' : ''));
   const [cloudPassword, setCloudPassword] = useState('');
   const [cloudSendingMagicLink, setCloudSendingMagicLink] = useState(false);
@@ -195,7 +200,8 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
 
         // Always filter by user_id to ensure a user only sees their own events.
         // Even in local mode, data isolation is key.
-        if (userId) {
+        // BYPASS for the emergency offline admin so they can see all synced events
+        if (userId && userId !== 'offline-admin') {
           query = query.eq('user_id', userId);
         }
 
@@ -700,6 +706,43 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
               </button>
             </form>
           )}
+
+          <div className="mt-8 border-t border-slate-800 pt-6">
+            <h3 className="text-sm font-medium text-slate-400 mb-4 text-center">🔐 Accès de Secours (Sans Connexion)</h3>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              setOfflinePinError(null);
+              const expectedPin = import.meta.env.VITE_OFFLINE_ADMIN_PIN || '2026';
+              if (offlinePin === expectedPin) {
+                loginAsOfflineAdmin();
+                window.location.reload();
+              } else {
+                setOfflinePinError('Code PIN incorrect.');
+              }
+            }} className="space-y-4">
+              <div>
+                <input
+                  type="password"
+                  value={offlinePin}
+                  onChange={(e) => setOfflinePin(e.target.value)}
+                  placeholder="Code PIN Admin..."
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 shadow-inner shadow-black/20 focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+                />
+              </div>
+              {offlinePinError && (
+                <div className="rounded-xl border border-red-400/80 bg-red-500/10 px-4 py-2 text-sm text-red-200">
+                  {offlinePinError}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={!offlinePin}
+                className="flex w-full items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 px-6 py-3 text-sm font-medium text-amber-200 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Accéder hors-ligne
+              </button>
+            </form>
+          </div>
 
           <div className="mt-6 text-center">
             <Link to="/landing" className="text-sm font-medium text-blue-300 underline-offset-4 hover:underline">

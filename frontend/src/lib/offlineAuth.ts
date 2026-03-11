@@ -251,3 +251,39 @@ export function needsSync(): boolean {
 
   return daysSinceSync > 7;
 }
+
+/**
+ * Bypass Auth: Log in as local network admin for offline use 
+ */
+export function loginAsOfflineAdmin(): void {
+  const offlineUser: OfflineUser = {
+    id: 'offline-admin',
+    email: 'admin@local.network',
+    subscription: {
+      plan: 'pro',
+      validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      isPaid: true,
+    },
+    createdAt: new Date().toISOString(),
+    lastOnlineSync: new Date().toISOString(),
+  };
+
+  localStorage.setItem(OFFLINE_USER_KEY, JSON.stringify(offlineUser));
+
+  // Create dummy credentials to bypass validation completely
+  const credentials = {
+    email: offlineUser.email,
+    accessToken: 'offline-bypass-token',
+    refreshToken: 'offline-bypass-token',
+  };
+  localStorage.setItem(OFFLINE_CREDS_KEY, JSON.stringify(credentials));
+  console.log('🔓 App logged in using Local Offline Admin Bypass');
+}
+
+/**
+ * Check if the current offline user is the bypass admin
+ */
+export function isOfflineAdmin(): boolean {
+  const user = getOfflineUser();
+  return user?.id === 'offline-admin';
+}
