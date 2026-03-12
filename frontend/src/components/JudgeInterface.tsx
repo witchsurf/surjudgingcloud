@@ -56,6 +56,7 @@ function JudgeInterface({
     totalRounds: 4
   },
   judgeId = 'CHIEF',
+  judgeName,
   onScoreSubmit = async () => { },
   configSaved = false,
   timer = { startTime: null, duration: 20, isRunning: false },

@@ -336,47 +336,6 @@ export default function ScoreDisplay({
         </div>
       </div>
 
-      <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden">
-        <div className="bg-primary-900 px-6 py-4 border-b-4 border-primary-950 flex items-center justify-between">
-          <h2 className="text-xl font-bebas tracking-widest text-white">Priorite</h2>
-          <span className="text-[10px] font-bold text-primary-200 uppercase tracking-widest">
-            {priorityState.mode === 'equal' ? 'Debut de serie' : 'Line-up live'}
-          </span>
-        </div>
-        <div className="p-4 flex flex-wrap gap-3">
-          {(priorityState.mode === 'equal' ? config.surfers : priorityState.order).map((surfer) => {
-            const style = lycraStyle(surfer);
-            return (
-              <div
-                key={surfer}
-                className="inline-flex items-center gap-3 rounded-xl border-2 border-primary-950 bg-white px-4 py-3 shadow-sm"
-              >
-                <span className="inline-flex min-w-[2.2rem] justify-center rounded-full bg-primary-950 px-2 py-1 text-sm font-bold text-white">
-                  {priorityLabels[surfer] || '='}
-                </span>
-                <span className={`w-4 h-4 rounded-full border-2 border-primary-950 ${style.badge}`} />
-                <span className="font-bebas text-lg tracking-wide text-primary-900">{surfer}</span>
-              </div>
-            );
-          })}
-          {priorityState.mode === 'ordered' && priorityState.inFlight.map((surfer) => {
-            const style = lycraStyle(surfer);
-            return (
-              <div
-                key={surfer}
-                className="inline-flex items-center gap-3 rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-3 shadow-sm"
-              >
-                <span className="inline-flex min-w-[2.2rem] justify-center rounded-full bg-amber-500 px-2 py-1 text-sm font-bold text-white">
-                  Surf
-                </span>
-                <span className={`w-4 h-4 rounded-full border-2 border-primary-950 ${style.badge}`} />
-                <span className="font-bebas text-lg tracking-wide text-primary-900">{surfer}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
       {/* CLASSEMENT */}
       <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden transition-all">
         <div className="bg-primary-900 px-6 py-4 border-b-4 border-primary-950 flex items-center justify-between">
@@ -418,6 +377,8 @@ export default function ScoreDisplay({
                 const country = surferCountries?.[stat.surfer];
                 const neededInfo = neededScores[stat.surfer];
                 const hasPendingScores = stat.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0);
+                const priorityBadge = priorityLabels[stat.surfer] || (priorityState.mode === 'equal' ? '=' : '');
+                const isInFlight = priorityState.mode === 'ordered' && priorityState.inFlight.includes(stat.surfer);
 
                 return (
                   <div
@@ -427,8 +388,12 @@ export default function ScoreDisplay({
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                       {/* Bloc gauche: rang + avatar + nom */}
                       <div className="flex items-center gap-4 sm:gap-6">
-                        <div className="w-12 h-12 flex items-center justify-center bg-primary-950 text-white rounded-xl border-2 border-primary-950 shadow-block text-2xl font-bebas tracking-tighter">
-                          {stat.rank ?? '-'}
+                        <div className={`w-12 h-12 flex items-center justify-center rounded-xl border-2 shadow-block text-2xl font-bebas tracking-tighter ${
+                          isInFlight
+                            ? 'bg-amber-500 border-amber-600 text-white'
+                            : 'bg-primary-950 border-primary-950 text-white'
+                        }`}>
+                          {isInFlight ? '' : priorityBadge || stat.rank || '-'}
                         </div>
 
                         <div className="flex items-center gap-4">
