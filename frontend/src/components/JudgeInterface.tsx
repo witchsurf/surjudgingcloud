@@ -153,6 +153,8 @@ function JudgeInterface({
   const [isSubmittingName, setIsSubmittingName] = useState(false);
   const canEditPriority = canManagePriority || isChiefJudge;
   const resolvedInterfaceTitle = interfaceTitle || (isChiefJudge ? 'Interface Chef Juge' : 'Interface Juge');
+  const compactGrid = config.waves >= 12;
+  const ultraCompactGrid = config.waves >= 15;
 
   // Check if judge name is set
   useEffect(() => {
@@ -852,6 +854,7 @@ function JudgeInterface({
           onDurationChange={() => { }}
           showControls={isChiefJudge}
           size="medium"
+          landscape={true}
           configSaved={configSaved}
         />
       </div>
@@ -1051,9 +1054,9 @@ function JudgeInterface({
       {/* GRILLE DE NOTATION */}
       {!priorityOnly && (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900 flex items-center">
-            <Waves className="w-6 h-6 mr-2 text-blue-600" />
+        <div className={`bg-gray-50 border-b border-gray-200 ${compactGrid ? 'px-4 py-3' : 'px-6 py-4'}`}>
+          <h2 className={`${compactGrid ? 'text-lg' : 'text-xl'} font-bold text-gray-900 flex items-center`}>
+            <Waves className={`${compactGrid ? 'w-5 h-5 mr-2' : 'w-6 h-6 mr-2'} text-blue-600`} />
             Grille de notation - {config.waves} vagues maximum
           </h2>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1097,17 +1100,17 @@ function JudgeInterface({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className={`w-full table-fixed ${compactGrid ? 'text-sm' : ''}`}>
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-900 min-w-[60px]">
+                <th className={`${compactGrid ? 'px-2 py-2 text-xs min-w-[48px] w-12' : 'px-3 py-3 text-sm min-w-[60px] w-16'} text-center font-semibold text-gray-900`}>
                   Prio
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
+                <th className={`${compactGrid ? 'px-2 py-2 text-xs w-28' : 'px-4 py-3 text-sm w-40'} text-left font-semibold text-gray-900 sticky left-0 bg-gray-50`}>
                   Surfeur
                 </th>
                 {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => (
-                  <th key={wave} className="px-3 py-3 text-center text-sm font-semibold text-gray-900 min-w-[60px]">
+                  <th key={wave} className={`${ultraCompactGrid ? 'px-1 py-2 text-[11px]' : compactGrid ? 'px-1.5 py-2 text-xs' : 'px-3 py-3 text-sm'} text-center font-semibold text-gray-900 ${ultraCompactGrid ? 'min-w-[44px]' : compactGrid ? 'min-w-[52px]' : 'min-w-[60px]'}`}>
                     V{wave}
                   </th>
                 ))}
@@ -1116,22 +1119,22 @@ function JudgeInterface({
             <tbody className="divide-y divide-gray-200">
               {config.surfers.map((surfer, index) => (
                 <tr key={surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="px-3 py-3 text-center">
-                    <div className={`mx-auto flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border text-sm font-bold ${
+                  <td className={`${compactGrid ? 'px-2 py-2' : 'px-3 py-3'} text-center`}>
+                    <div className={`mx-auto flex items-center justify-center rounded-lg border font-bold ${
                       inFlightSurfers.includes(normalizeSurferKey(surfer))
                         ? 'border-gray-200 bg-white text-transparent'
                         : 'border-gray-300 bg-gray-50 text-gray-900'
-                    }`}>
+                    } ${ultraCompactGrid ? 'min-h-[36px] min-w-[36px] text-xs' : compactGrid ? 'min-h-[40px] min-w-[40px] text-sm' : 'min-h-[44px] min-w-[44px] text-sm'}`}>
                       {inFlightSurfers.includes(normalizeSurferKey(surfer)) ? '' : (priorityLabels[normalizeSurferKey(surfer)] || '=')}
                     </div>
                   </td>
-                  <td className="px-4 py-3 sticky left-0 bg-inherit">
-                    <div className="flex items-center space-x-3">
+                  <td className={`${compactGrid ? 'px-2 py-2' : 'px-4 py-3'} sticky left-0 bg-inherit`}>
+                    <div className={`flex items-center ${compactGrid ? 'space-x-2' : 'space-x-3'} min-w-0`}>
                       <div
-                        className="w-4 h-4 rounded-full"
+                        className={`${compactGrid ? 'w-3.5 h-3.5' : 'w-4 h-4'} rounded-full flex-shrink-0`}
                         style={{ backgroundColor: getSurferColor(surfer) }}
                       />
-                      <span className="font-semibold text-gray-900">{surfer}</span>
+                      <span className={`font-semibold text-gray-900 truncate ${compactGrid ? 'text-sm' : ''}`}>{surfer}</span>
                     </div>
                   </td>
                   {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => {
@@ -1141,7 +1144,7 @@ function JudgeInterface({
                     const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
 
                     return (
-                      <td key={wave} className="px-3 py-3 text-center">
+                      <td key={wave} className={`${ultraCompactGrid ? 'px-1 py-2' : compactGrid ? 'px-1.5 py-2' : 'px-3 py-3'} text-center`}>
                         {isActive ? (
                           <input
                             type="number"
@@ -1159,30 +1162,30 @@ function JudgeInterface({
                                 setInputValue('');
                               }
                             }}
-                            className="w-20 min-w-[44px] min-h-[44px] px-2 py-2 text-center text-lg font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-4 focus:ring-primary/30 shadow-sm touch-manipulation"
+                            className={`${ultraCompactGrid ? 'w-full min-w-[38px] min-h-[36px] text-sm px-1 py-1.5' : compactGrid ? 'w-full min-w-[40px] min-h-[40px] text-base px-1.5 py-2' : 'w-20 min-w-[44px] min-h-[44px] text-lg px-2 py-2'} text-center font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-4 focus:ring-primary/30 shadow-sm touch-manipulation`}
                             placeholder="0.00"
                             autoFocus
                           />
                         ) : scoreData ? (
                           <button
                             onClick={() => handleCellClick(surfer, wave)}
-                            className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-3 py-2 rounded-lg text-base font-bold transition-all duration-200 shadow-sm active:scale-95 touch-manipulation flex-1 w-full ${entryMode === 'interference'
+                            className={`inline-flex items-center justify-center rounded-lg font-bold transition-all duration-200 shadow-sm active:scale-95 touch-manipulation flex-1 w-full ${ultraCompactGrid ? 'min-w-[38px] min-h-[36px] px-1 py-1 text-sm' : compactGrid ? 'min-w-[40px] min-h-[40px] px-1.5 py-1.5 text-sm' : 'min-w-[44px] min-h-[44px] px-3 py-2 text-base'} ${entryMode === 'interference'
                               ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
                               : 'bg-green-100 text-green-900 border border-green-300 hover:bg-green-200'}`}
                           >
                             {scoreData.score.toFixed(2)}
-                            <Edit3 className="w-4 h-4 ml-1.5" />
+                            {!ultraCompactGrid && <Edit3 className={`${compactGrid ? 'w-3.5 h-3.5 ml-1' : 'w-4 h-4 ml-1.5'}`} />}
                           </button>
                         ) : canScore ? (
                           <button
                             onClick={() => handleCellClick(surfer, wave)}
-                            className="w-full min-w-[44px] min-h-[44px] border-2 border-dashed border-gray-400 rounded-lg text-gray-500 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-200 flex items-center justify-center active:scale-95 touch-manipulation"
+                            className={`w-full border-2 border-dashed border-gray-400 rounded-lg text-gray-500 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-200 flex items-center justify-center active:scale-95 touch-manipulation ${ultraCompactGrid ? 'min-w-[38px] min-h-[36px]' : compactGrid ? 'min-w-[40px] min-h-[40px]' : 'min-w-[44px] min-h-[44px]'}`}
                             title={`Noter la vague ${wave} pour ${surfer}`}
                           >
-                            <Edit3 className="w-5 h-5 flex-shrink-0" />
+                            <Edit3 className={`${compactGrid ? 'w-4 h-4' : 'w-5 h-5'} flex-shrink-0`} />
                           </button>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className={`${compactGrid ? 'text-sm' : ''} text-gray-400`}>—</span>
                         )}
                         {effective && (
                           <div className="mt-1 text-[10px] font-semibold text-amber-700">

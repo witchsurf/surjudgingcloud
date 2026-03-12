@@ -288,16 +288,18 @@ export default function ScoreDisplay({
     country: surferCountries?.[surfer],
     priorityKey: normalizePriorityKey(surfer),
   }));
+  const compactLayout = maxWaves >= 12;
+  const ultraCompactLayout = maxWaves >= 15;
 
   return (
-    <div className="score-display max-w-7xl mx-auto p-4 sm:p-6 space-y-6 font-sans">
+    <div className="score-display w-full max-w-none mx-auto p-2 sm:p-4 lg:p-5 space-y-4 font-sans">
       {/* HEADER WITH TIMER */}
-      <div className="bg-primary-900 border-4 border-primary-950 rounded-2xl p-4 sm:p-5 shadow-block relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 sticky top-4 z-50">
+      <div className="bg-primary-900 border-4 border-primary-950 rounded-2xl p-3 sm:p-4 shadow-block relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-3 sticky top-2 z-50">
         <div className="absolute top-0 right-0 w-32 h-32 bg-cta-500/10 rounded-full -mr-16 -mt-16 blur-3xl" />
         
         {/* Left: Title & Badges */}
         <div className="relative z-10 flex-1 w-full md:w-auto text-center md:text-left">
-          <h1 className="text-3xl sm:text-4xl font-bebas tracking-widest text-white leading-none mb-2">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bebas tracking-widest text-white leading-none mb-2">
             {config.competition}
           </h1>
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-[10px] font-bold uppercase tracking-widest text-primary-200">
@@ -312,7 +314,7 @@ export default function ScoreDisplay({
 
         {/* Center: Compact Timer */}
         <div className="relative z-10 flex-shrink-0 w-full md:w-auto flex justify-center mt-2 md:mt-0">
-          <div className="min-w-[140px] md:min-w-[160px]">
+          <div className="w-full max-w-[360px] md:max-w-[420px]">
             <HeatTimer
               timer={timer}
               onStart={() => { }}
@@ -322,6 +324,7 @@ export default function ScoreDisplay({
               showControls={false}
               size="small"
               compact={true}
+              landscape={true}
               configSaved={configSaved}
             />
           </div>
@@ -348,9 +351,9 @@ export default function ScoreDisplay({
 
       {/* CLASSEMENT */}
       <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden transition-all">
-        <div className="bg-primary-900 px-6 py-4 border-b-4 border-primary-950 flex items-center justify-between">
-          <h2 className="text-xl font-bebas tracking-widest text-white flex items-center gap-3">
-            <Trophy className="w-6 h-6 text-cta-500" />
+        <div className="bg-primary-900 px-4 sm:px-6 py-3 border-b-4 border-primary-950 flex items-center justify-between">
+          <h2 className="text-lg sm:text-xl font-bebas tracking-widest text-white flex items-center gap-3">
+            <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-cta-500" />
             Classement PRO Live
           </h2>
           <div className="flex items-center gap-2">
@@ -367,10 +370,10 @@ export default function ScoreDisplay({
               const isInFlight = priorityState.mode === 'ordered' && priorityState.inFlight.includes(row.priorityKey);
 
               return (
-                <div key={row.surfer} className="p-3 sm:p-4">
+                <div key={row.surfer} className="p-3">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                     <div className="flex items-center gap-4 sm:gap-6">
-                      <div className={`w-12 h-12 flex items-center justify-center rounded-xl border-2 shadow-block text-2xl font-bebas tracking-tighter ${
+                      <div className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl border-2 shadow-block text-xl sm:text-2xl font-bebas tracking-tighter ${
                         isInFlight
                           ? 'bg-amber-500 border-amber-600 text-white'
                           : 'bg-primary-950 border-primary-950 text-white'
@@ -380,14 +383,14 @@ export default function ScoreDisplay({
 
                       <div className="flex items-center gap-4">
                         <div className="relative">
-                          <div className={`w-10 h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
+                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
                           <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
                             <div className="w-2.5 h-2.5 bg-cta-500 rounded-full" />
                           </div>
                         </div>
 
                         <div className="space-y-0.5">
-                          <h3 className="text-xl sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none">
+                          <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none">
                             {row.displayName}
                           </h3>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -403,7 +406,7 @@ export default function ScoreDisplay({
                     </div>
 
                     <div className="min-w-[80px] text-right ml-16 sm:ml-0">
-                      <div className="text-4xl sm:text-5xl font-bebas text-primary-200 tracking-tighter leading-none">
+                      <div className="text-3xl sm:text-5xl font-bebas text-primary-200 tracking-tighter leading-none">
                         --
                       </div>
                       <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">En attente</div>
@@ -441,14 +444,11 @@ export default function ScoreDisplay({
                 const isInFlight = priorityState.mode === 'ordered' && priorityState.inFlight.includes(priorityKey);
 
                 return (
-                  <div
-                    key={stat.surfer}
-                    className="p-3 sm:p-4 hover:bg-primary-50/30 transition-colors"
-                  >
+                  <div key={stat.surfer} className="p-3 hover:bg-primary-50/30 transition-colors">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                       {/* Bloc gauche: rang + avatar + nom */}
                       <div className="flex items-center gap-4 sm:gap-6">
-                        <div className={`w-12 h-12 flex items-center justify-center rounded-xl border-2 shadow-block text-2xl font-bebas tracking-tighter ${
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl border-2 shadow-block text-xl sm:text-2xl font-bebas tracking-tighter ${
                           isInFlight
                             ? 'bg-amber-500 border-amber-600 text-white'
                             : 'bg-primary-950 border-primary-950 text-white'
@@ -458,14 +458,14 @@ export default function ScoreDisplay({
 
                         <div className="flex items-center gap-4">
                           <div className="relative">
-                            <div className={`w-10 h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
+                            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
                             <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
                               <div className="w-2.5 h-2.5 bg-cta-500 rounded-full" />
                             </div>
                           </div>
                           
                           <div className="space-y-0.5">
-                            <h3 className="text-xl sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
+                            <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
                               {displayName}
                               {hasPendingScores && (
                                 <span className="text-danger-500 animate-pulse text-2xl leading-none pt-1" title="En attente de notes">*</span>
@@ -506,7 +506,7 @@ export default function ScoreDisplay({
                         </div>
                         
                         <div className="min-w-[80px]">
-                          <div className="text-4xl sm:text-5xl font-bebas text-primary-900 tracking-tighter leading-none">
+                          <div className="text-3xl sm:text-5xl font-bebas text-primary-900 tracking-tighter leading-none">
                             {(stat.bestTwo ?? 0).toFixed(2)}
                           </div>
                           <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">Total (B2)</div>
@@ -524,14 +524,14 @@ export default function ScoreDisplay({
       {hasStats && (
         <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs font-bold uppercase tracking-wider">
+            <table className={`w-full table-fixed font-bold uppercase tracking-wider ${ultraCompactLayout ? 'text-[10px]' : compactLayout ? 'text-[11px]' : 'text-xs'}`}>
               <thead>
                 <tr className="bg-primary-900 text-white border-b-4 border-primary-950">
-                  <th className="p-4 text-left font-bebas tracking-widest text-lg">SURFEUR</th>
+                  <th className={`${ultraCompactLayout ? 'p-2 w-32 text-sm' : compactLayout ? 'p-2.5 w-36 text-base' : 'p-4 text-lg'} text-left font-bebas tracking-widest`}>SURFEUR</th>
                   {Array.from({ length: maxWaves }).map((_, i) => (
-                    <th key={i} className="p-4 text-center font-bebas tracking-widest text-lg opacity-60">V{i + 1}</th>
+                    <th key={i} className={`${ultraCompactLayout ? 'p-1.5 text-[11px]' : compactLayout ? 'p-2 text-sm' : 'p-4 text-lg'} text-center font-bebas tracking-widest opacity-60`}>V{i + 1}</th>
                   ))}
-                  <th className="p-4 text-center font-bebas tracking-widest text-lg bg-cta-600">BEST 2</th>
+                  <th className={`${ultraCompactLayout ? 'p-2 w-16 text-sm' : compactLayout ? 'p-2.5 w-20 text-base' : 'p-4 text-lg'} text-center font-bebas tracking-widest bg-cta-600`}>BEST 2</th>
                 </tr>
               </thead>
 
@@ -545,15 +545,15 @@ export default function ScoreDisplay({
 
                     return (
                       <tr key={stat.surfer} className="hover:bg-primary-50/20 transition-colors">
-                        <td className="p-4">
+                        <td className={ultraCompactLayout ? 'p-2' : compactLayout ? 'p-2.5' : 'p-4'}>
                           <div className="flex flex-col">
-                            <span className="text-sm font-bebas tracking-wide text-primary-900 flex items-center gap-1">
+                            <span className={`${compactLayout ? 'text-xs sm:text-sm' : 'text-sm'} font-bebas tracking-wide text-primary-900 flex items-center gap-1`}>
                               {displayName}
                               {stat.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0) && (
                                 <span className="text-danger-500 animate-pulse text-lg leading-none pt-0.5" title="En attente de notes">*</span>
                               )}
                             </span>
-                            <span className="text-[9px] text-primary-300">
+                            <span className={`${compactLayout ? 'text-[8px]' : 'text-[9px]'} text-primary-300`}>
                               {stat.surfer}{country ? ` • ${country}` : ''}
                             </span>
                           </div>
@@ -562,10 +562,10 @@ export default function ScoreDisplay({
                         {Array.from({ length: maxWaves }).map((_, i) => {
                           const wave = stat.waves.find((w) => w.wave === i + 1);
                           return (
-                            <td key={i} className="p-4 text-center">
+                            <td key={i} className={`${ultraCompactLayout ? 'p-1.5' : compactLayout ? 'p-2' : 'p-4'} text-center`}>
                               {wave && wave.score > 0 ? (
                                 <div className="group relative cursor-help inline-block">
-                                  <span className="text-base font-bebas tracking-widest text-primary-900">
+                                  <span className={`${compactLayout ? 'text-sm' : 'text-base'} font-bebas tracking-widest text-primary-900`}>
                                     {wave.score.toFixed(2)}
                                   </span>
                                   {/* Tooltip notes juges - Simplified style */}
@@ -596,8 +596,8 @@ export default function ScoreDisplay({
                           );
                         })}
 
-                        <td className="p-4 text-center bg-cta-50">
-                          <span className="text-2xl font-bebas tracking-widest text-cta-600">
+                        <td className={`${ultraCompactLayout ? 'p-2' : compactLayout ? 'p-2.5' : 'p-4'} text-center bg-cta-50`}>
+                          <span className={`${compactLayout ? 'text-lg' : 'text-2xl'} font-bebas tracking-widest text-cta-600`}>
                             {(stat.bestTwo ?? 0).toFixed(2)}
                           </span>
                         </td>
