@@ -6,7 +6,7 @@ import HeatTimer from './HeatTimer';
 import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
-import { computeEffectiveInterferences, summarizeInterferenceBySurfer } from '../utils/interference';
+import { computeEffectiveInterferences } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, promoteOpeningToOrdered, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
 
@@ -101,6 +101,7 @@ function JudgeInterface({
   const [isSubmittingScore, setIsSubmittingScore] = useState(false);
   const [isPriorityOrdering, setIsPriorityOrdering] = useState(false);
   const [priorityDraft, setPriorityDraft] = useState<string[]>([]);
+  const [interactionWarning, setInteractionWarning] = useState<{ title: string; message: string } | null>(null);
 
   // Unsynced safety check
   const pendingSyncCount = useMemo(() => submittedScores.filter(s => s.synced === false).length, [submittedScores]);
@@ -448,7 +449,15 @@ function JudgeInterface({
   };
 
   const handleCellClick = (surfer: string, wave: number) => {
-    if (!timerActive) return;
+    if (!timerActive) {
+      setInteractionWarning({
+        title: heatStatus === 'waiting' && !timer?.startTime ? 'Timer non démarré' : 'Notation bloquée',
+        message: heatStatus === 'waiting' && !timer?.startTime
+          ? 'Attendez que le chef juge démarre le timer avant de noter.'
+          : 'Le heat est clôturé. La notation est désactivée.',
+      });
+      return;
+    }
     if (entryMode === 'interference') {
       handleInterferenceCall(surfer, wave).catch((error) => {
         console.error('❌ Erreur interférence:', error);
@@ -701,6 +710,12 @@ function JudgeInterface({
     setPriorityDraft([]);
   }, [normalizedSurfers.length, orderedDraft, savePriorityState]);
 
+  useEffect(() => {
+    if (!interactionWarning) return;
+    const timerId = window.setTimeout(() => setInteractionWarning(null), 2600);
+    return () => window.clearTimeout(timerId);
+  }, [interactionWarning]);
+
   if (!configSaved) {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -723,17 +738,6 @@ function JudgeInterface({
     });
     return map;
   }, [effectiveInterferences, normalizeSurferKey]);
-  const interferenceBySurfer = useMemo(
-    () =>
-      summarizeInterferenceBySurfer(
-        effectiveInterferences.map((item) => ({
-          ...item,
-          surfer: normalizeSurferKey(item.surfer),
-        }))
-      ),
-    [effectiveInterferences, normalizeSurferKey]
-  );
-
   return (
     <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-6">
       {/* HEADER JUGE */}
@@ -839,7 +843,7 @@ function JudgeInterface({
       </div>
 
       {/* TIMER */}
-      <div className="flex justify-center">
+      <div className={isFullscreen ? 'sticky top-3 z-40 flex justify-center' : 'flex justify-center'}>
         <HeatTimer
           timer={timer}
           onStart={() => { }}
@@ -852,6 +856,7 @@ function JudgeInterface({
         />
       </div>
 
+      {(priorityOnly || canEditPriority) && (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-4">
           <div>
@@ -1006,6 +1011,7 @@ function JudgeInterface({
           )}
         </div>
       </div>
+      )}
 
       {/* CONTRÔLES CHEF JUGE */}
       {isChiefJudge && !priorityOnly && (
@@ -1032,25 +1038,12 @@ function JudgeInterface({
       )}
 
       {/* STATUT SAISIE */}
-      {!priorityOnly && !timerActive && (
+      {!priorityOnly && interactionWarning && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
           <Lock className="w-6 h-6 text-red-600" />
           <div>
-            {heatStatus === 'waiting' && !timer?.startTime ? (
-              <>
-                <h3 className="font-semibold text-red-800">Timer Non Démarré - Notation Bloquée</h3>
-                <p className="text-red-700 text-sm">
-                  Attendez que le chef juge démarre le timer avant de noter les vagues.
-                </p>
-              </>
-            ) : (
-              <>
-                <h3 className="font-semibold text-red-800">Heat Clos - Notation Bloquée</h3>
-                <p className="text-red-700 text-sm">
-                  La notation est désactivée car le heat a été clôturé par le chef juge.
-                </p>
-              </>
-            )}
+            <h3 className="font-semibold text-red-800">{interactionWarning.title}</h3>
+            <p className="text-red-700 text-sm">{interactionWarning.message}</p>
           </div>
         </div>
       )}
@@ -1063,9 +1056,6 @@ function JudgeInterface({
             <Waves className="w-6 h-6 mr-2 text-blue-600" />
             Grille de notation - {config.waves} vagues maximum
           </h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Cliquez sur une case pour noter. Les vagues doivent être notées dans l'ordre.
-          </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -1110,6 +1100,9 @@ function JudgeInterface({
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
+                <th className="px-3 py-3 text-center text-sm font-semibold text-gray-900 min-w-[60px]">
+                  Prio
+                </th>
                 <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 sticky left-0 bg-gray-50">
                   Surfeur
                 </th>
@@ -1123,6 +1116,15 @@ function JudgeInterface({
             <tbody className="divide-y divide-gray-200">
               {config.surfers.map((surfer, index) => (
                 <tr key={surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-3 py-3 text-center">
+                    <div className={`mx-auto flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border text-sm font-bold ${
+                      inFlightSurfers.includes(normalizeSurferKey(surfer))
+                        ? 'border-gray-200 bg-white text-transparent'
+                        : 'border-gray-300 bg-gray-50 text-gray-900'
+                    }`}>
+                      {inFlightSurfers.includes(normalizeSurferKey(surfer)) ? '' : (priorityLabels[normalizeSurferKey(surfer)] || '=')}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 sticky left-0 bg-inherit">
                     <div className="flex items-center space-x-3">
                       <div
@@ -1134,7 +1136,7 @@ function JudgeInterface({
                   </td>
                   {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => {
                     const scoreData = getScoreForWave(surfer, wave);
-                    const canScore = timerActive && canScoreWave(surfer, wave);
+                    const canScore = canScoreWave(surfer, wave);
                     const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
                     const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
 
@@ -1167,7 +1169,6 @@ function JudgeInterface({
                             className={`inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-3 py-2 rounded-lg text-base font-bold transition-all duration-200 shadow-sm active:scale-95 touch-manipulation flex-1 w-full ${entryMode === 'interference'
                               ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
                               : 'bg-green-100 text-green-900 border border-green-300 hover:bg-green-200'}`}
-                            disabled={!timerActive}
                           >
                             {scoreData.score.toFixed(2)}
                             <Edit3 className="w-4 h-4 ml-1.5" />
@@ -1196,87 +1197,8 @@ function JudgeInterface({
             </tbody>
           </table>
         </div>
-
-        {/* LÉGENDE */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-          <div className="flex items-center justify-center space-x-6 text-sm">
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 border-2 border-dashed border-blue-300 rounded"></div>
-              <span className="text-gray-600">Prochaine vague à noter</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs">7.50</span>
-              <span className="text-gray-600">Score déjà noté (cliquez pour modifier)</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="text-gray-400">—</span>
-              <span className="text-gray-600">Vague non disponible</span>
-            </div>
-          </div>
-          <p className="text-center text-xs text-gray-500 mt-2">
-            {entryMode === 'interference'
-              ? '⚠️ Mode interférence: choisissez le type puis cliquez la note/vague du surfeur fautif.'
-              : '⚠️ Les vagues doivent être notées dans l\'ordre séquentiel pour chaque surfeur'}
-          </p>
-        </div>
       </div>
       )}
-
-      {!priorityOnly && effectiveInterferences.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-amber-900 mb-2">Interférences effectives (majorité / Head Judge)</h3>
-          <ul className="space-y-1 text-sm text-amber-800">
-            {config.surfers.map((surfer) => {
-              const summary = interferenceBySurfer.get(normalizeSurferKey(surfer));
-              if (!summary) return null;
-              return (
-                <li key={surfer}>
-                  <strong>{surfer}</strong>: {summary.isDisqualified
-                    ? 'DSQ (2 interférences confirmées)'
-                    : summary.type === 'INT1'
-                      ? 'Interférence #1 active (B/2)'
-                      : 'Interférence #2 active (B=0)'}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-
-      {/* RÉSUMÉ DES SCORES */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">
-          Mes scores soumis ({submittedScores.length})
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {config.surfers.map(surfer => {
-            const surferScores = submittedScores.filter(
-              (s) => normalizeSurferKey(s.surfer) === normalizeSurferKey(surfer)
-            );
-            const nextWave = getNextAvailableWave(surfer);
-
-            return (
-              <div key={surfer} className="p-4 bg-gray-50 rounded-lg">
-                <div className="flex items-center space-x-2 mb-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: getSurferColor(surfer) }}
-                  />
-                  <span className="font-medium text-gray-900">{surfer}</span>
-                </div>
-                <div className="text-sm text-gray-600">
-                  {surferScores.length} vague{surferScores.length > 1 ? 's' : ''} notée{surferScores.length > 1 ? 's' : ''}
-                </div>
-                {nextWave <= config.waves && (
-                  <div className="text-xs text-blue-600 mt-1">
-                    Prochaine: V{nextWave}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
 
       {/* MODAL NOM DU JUGE */}
       {showNameModal && (
