@@ -903,13 +903,18 @@ export function exportFullCompetitionPDF({
     }
 
     // Category Section Header
-    doc.setFillColor('#F5F7FA'); // Very light grey
-    doc.rect(0, cursorY - 10, width, 30, 'F');
+    doc.setFillColor('#F8FAFC'); // Slate-50
+    doc.rect(0, cursorY - 15, width, 40, 'F');
+    doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+    doc.setLineWidth(0.5);
+    doc.line(0, cursorY - 15, width, cursorY - 15);
+    doc.line(0, cursorY + 25, width, cursorY + 25);
+
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
+    doc.setFontSize(16);
     doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
     doc.text(`CATÉGORIE : ${categoryName.toUpperCase()}`, 40, cursorY + 10);
-    cursorY += 35;
+    cursorY += 45;
 
     // Detect and Sort Rounds
     const mainRounds: typeof allRounds = [];
@@ -937,19 +942,32 @@ export function exportFullCompetitionPDF({
         let displayRoundName = round.name.toUpperCase();
         if (isRepechage) displayRoundName = `REPÊCHAGE ROUND ${roundIdx + 1} (${round.name})`;
 
+        // Round Title Style
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
+        doc.setFontSize(11);
         doc.setTextColor(isRepechage ? COLORS.accent[0] : COLORS.primary[0], isRepechage ? COLORS.accent[1] : COLORS.primary[1], isRepechage ? COLORS.accent[2] : COLORS.primary[2]);
         doc.text(displayRoundName, 40, cursorY);
-        cursorY += 8;
+
+        // Underline for round
+        const titleWidth = doc.getTextWidth(displayRoundName);
+        doc.setDrawColor(isRepechage ? 252 : 203, isRepechage ? 165 : 213, isRepechage ? 165 : 225); // Lighter accent or slate-300
+        doc.setLineWidth(1);
+        doc.line(40, cursorY + 2, 40 + titleWidth, cursorY + 2);
+
+        cursorY += 18;
 
         round.heats.forEach((heat) => {
           const heatScores = heat.heatId ? normalizedScoresByHeat[normalizeHeatKey(heat.heatId)] ?? [] : [];
           const hasResults = heatScores.length > 0;
 
-          if (cursorY > height - 80) {
+          if (cursorY > height - 100) {
             doc.addPage();
             cursorY = drawHeader(false);
+            // Re-draw round title if broken
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.text(`${displayRoundName} (SUITE)`, 40, cursorY);
+            cursorY += 18;
           }
 
           let surferStats: Array<{ surfer: string; bestTwo: number; rank: number }> = [];
@@ -988,23 +1006,39 @@ export function exportFullCompetitionPDF({
           if (hasResults) bodyData.sort((a, b) => b.numericVal - a.numericVal);
 
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(10);
+          doc.setFontSize(9);
           doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-          doc.text(`Heat ${heat.heatNumber} ${hasResults ? '✓' : ''}`, 45, cursorY);
-          cursorY += 2;
+          doc.text(`Heat ${heat.heatNumber} ${hasResults ? '— RÉSULTATS' : '— PRÉVISIONS'}`, 45, cursorY);
+          cursorY += 4;
 
           autoTable(doc, {
             startY: cursorY,
             head: [['#', 'Lycra', 'Score', 'Surfeur', 'Pays']],
             body: bodyData.map((d, i) => [i + 1, d.lycra, d.score, d.name, d.country]),
-            styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, halign: 'center', valign: 'middle' },
-            headStyles: {
-              fillColor: hasResults ? [34, 197, 94] : (isRepechage ? [220, 38, 38] : COLORS.primary) as any,
-              textColor: 255,
-              fontStyle: 'bold'
+            styles: {
+              font: 'helvetica',
+              fontSize: 8,
+              cellPadding: 3,
+              halign: 'center',
+              valign: 'middle',
+              textColor: COLORS.text as any
             },
-            columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 35 }, 2: { cellWidth: 30 }, 3: { halign: 'left', fontStyle: 'bold' }, 4: { halign: 'left' } },
+            headStyles: {
+              fillColor: hasResults ? [151, 215, 178] : (isRepechage ? [252, 165, 165] : [203, 213, 225]) as any, // Softer green/red/slate
+              textColor: hasResults ? [22, 101, 52] : (isRepechage ? [153, 27, 27] : [30, 41, 59]) as any,
+              fontStyle: 'bold',
+              lineWidth: 0
+            },
+            columnStyles: {
+              0: { cellWidth: 20 },
+              1: { cellWidth: 40, fontStyle: 'bold' },
+              2: { cellWidth: 35, fontStyle: 'bold' },
+              3: { halign: 'left', fontStyle: 'bold', cellWidth: 150 },
+              4: { halign: 'left' }
+            },
             margin: { left: 45, right: 45 },
+            tableLineColor: [241, 245, 249],
+            tableLineWidth: 0.1,
             didParseCell: (data) => {
               if (data.section === 'body' && data.column.index === 1) {
                 const label = normalizeLycraForPdf(String(data.cell.raw));
@@ -1014,18 +1048,24 @@ export function exportFullCompetitionPDF({
                   data.cell.styles.textColor = (label === 'JAUNE' || label === 'BLANC') ? [0, 0, 0] : [255, 255, 255];
                 }
               }
+              // Alternating row colors
+              if (data.section === 'body' && data.row.index % 2 === 0) {
+                if (data.column.index !== 1) { // Don't overwrite lycra color
+                  data.cell.styles.fillColor = [251, 252, 253];
+                }
+              }
             }
           });
 
-          cursorY = (doc as any).lastAutoTable.finalY + 10;
+          cursorY = (doc as any).lastAutoTable.finalY + 15;
         });
-        cursorY += 5;
+        cursorY += 10;
       });
     };
 
     renderRounds(mainRounds, false);
     if (repRounds.length > 0) renderRounds(repRounds, true);
-    cursorY += 10;
+    cursorY += 15;
   });
 
   // Footer
