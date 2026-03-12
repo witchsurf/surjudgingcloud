@@ -829,16 +829,16 @@ function JudgeInterface({
       </div>
 
       {(priorityOnly || canEditPriority) && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between gap-3">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-shrink-0">
+          <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-200 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Priorité</h2>
-              <p className="text-sm text-gray-600 mt-1">
+              <h2 className="text-lg font-bold text-gray-900 leading-tight">Priorité</h2>
+              <p className="text-[10px] text-gray-600 leading-tight">
                 {priorityState.mode === 'equal'
                   ? 'Début de série: tous les surfeurs sont égaux.'
                   : priorityState.mode === 'opening'
                     ? 'Phase initiale: chaque premier départ construit la priorité par la fin.'
-                    : 'Touchez un surfeur dans le line-up quand il part. Touchez un surfeur hors line-up quand il revient.'}
+                    : 'Touchez un surfeur quand il part ou revient.'}
               </p>
             </div>
             {canEditPriority && (
@@ -884,7 +884,7 @@ function JudgeInterface({
             )}
           </div>
 
-          <div className="p-4 space-y-4">
+          <div className="p-2 sm:p-3 space-y-3">
             {isPriorityOrdering ? (
               <>
                 <div>
@@ -1083,8 +1083,8 @@ function JudgeInterface({
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {config.surfers.map((surfer, index) => (
-                  <tr key={surfer} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} flex-1`}>
-                    <td className={`${compactGrid ? 'px-1 py-1' : 'px-2 py-2'} text-center h-24 sm:h-32`}>
+                  <tr key={surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className={`${compactGrid ? 'px-1 py-1' : 'px-2 py-2'} text-center h-16 sm:h-20`}>
                       <div className={`mx-auto flex items-center justify-center rounded-lg border font-bold ${inFlightSurfers.includes(normalizeSurferKey(surfer))
                         ? 'border-gray-200 bg-white text-transparent'
                         : 'border-gray-300 bg-gray-50 text-gray-900'
