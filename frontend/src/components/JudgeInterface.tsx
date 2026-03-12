@@ -728,7 +728,7 @@ function JudgeInterface({
     return map;
   }, [effectiveInterferences, normalizeSurferKey]);
   return (
-    <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-3">
+    <div className="h-screen max-w-full mx-auto px-2 sm:px-4 py-2 flex flex-col overflow-hidden">
       {/* HEADER + TIMER */}
       <div className={isFullscreen ? 'sticky top-3 z-40' : ''}>
         <div className="bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl p-2 sm:p-3 shadow-lg">
@@ -1022,7 +1022,7 @@ function JudgeInterface({
 
       {/* GRILLE DE NOTATION */}
       {!priorityOnly && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-2">
           <div className={`bg-gray-50 border-b border-gray-200 ${compactGrid ? 'px-3 py-2' : 'px-4 py-2.5'}`}>
             <div className="flex flex-wrap items-center gap-1.5">
               <button
@@ -1064,7 +1064,7 @@ function JudgeInterface({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="flex-1 overflow-auto">
             <table className={`w-full table-fixed ${compactGrid ? 'text-sm' : ''}`}>
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -1083,8 +1083,8 @@ function JudgeInterface({
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {config.surfers.map((surfer, index) => (
-                  <tr key={surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className={`${compactGrid ? 'px-1 py-1' : 'px-2 py-1.5'} text-center`}>
+                  <tr key={surfer} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} flex-1`}>
+                    <td className={`${compactGrid ? 'px-1 py-1' : 'px-2 py-2'} text-center h-24 sm:h-32`}>
                       <div className={`mx-auto flex items-center justify-center rounded-lg border font-bold ${inFlightSurfers.includes(normalizeSurferKey(surfer))
                         ? 'border-gray-200 bg-white text-transparent'
                         : 'border-gray-300 bg-gray-50 text-gray-900'
