@@ -741,13 +741,10 @@ function JudgeInterface({
     return map;
   }, [effectiveInterferences, normalizeSurferKey]);
   return (
-    <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-4">
+    <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-3">
       {/* HEADER + TIMER */}
       <div className={isFullscreen ? 'sticky top-3 z-40' : ''}>
-        <div className={`bg-gradient-to-r ${isChiefJudge
-          ? 'from-purple-600 to-indigo-600'
-          : 'from-green-600 to-emerald-600'
-          } text-white rounded-xl p-4 sm:p-5 shadow-lg space-y-4`}>
+        <div className="bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl p-4 sm:p-5 shadow-lg space-y-3">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl sm:text-3xl font-bold mb-2">
@@ -759,12 +756,12 @@ function JudgeInterface({
                 </span>
               )}
             </h1>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-green-100">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-violet-100">
               <span className="flex items-center">
                 <User className="w-4 h-4 mr-1" />
                 {config.judgeNames[judgeId] || judgeName || judgeId}
-                {isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-purple-500 rounded-full text-xs">Chef Juge</span>}
-                {priorityOnly && !isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-indigo-500 rounded-full text-xs">Priorité</span>}
+                {isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-white/15 rounded-full text-xs">Chef Juge</span>}
+                {priorityOnly && !isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-white/15 rounded-full text-xs">Priorité</span>}
               </span>
               <span>{config.competition}</span>
               <span>{config.division}</span>
@@ -842,6 +839,7 @@ function JudgeInterface({
             showControls={isChiefJudge}
             size="medium"
             landscape={true}
+            embedded={true}
             configSaved={configSaved}
           />
 
@@ -1050,7 +1048,7 @@ function JudgeInterface({
       {/* GRILLE DE NOTATION */}
       {!priorityOnly && (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className={`bg-gray-50 border-b border-gray-200 ${compactGrid ? 'px-4 py-3' : 'px-6 py-4'}`}>
+        <div className={`bg-gray-50 border-b border-gray-200 ${compactGrid ? 'px-4 py-2.5' : 'px-6 py-3'}`}>
           <h2 className={`${compactGrid ? 'text-lg' : 'text-xl'} font-bold text-gray-900 flex items-center`}>
             <Waves className={`${compactGrid ? 'w-5 h-5 mr-2' : 'w-6 h-6 mr-2'} text-blue-600`} />
             Grille de notation - {config.waves} vagues maximum

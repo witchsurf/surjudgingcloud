@@ -13,6 +13,7 @@ interface HeatTimerProps {
   size?: 'small' | 'medium' | 'large';
   compact?: boolean;
   landscape?: boolean;
+  embedded?: boolean;
   configSaved: boolean;
 }
 
@@ -26,6 +27,7 @@ function HeatTimer({
   size = 'medium',
   compact = false,
   landscape = false,
+  embedded = false,
   configSaved
 }: HeatTimerProps) {
   const [timeLeft, setTimeLeft] = useState(timer.duration * 60);
@@ -138,9 +140,17 @@ function HeatTimer({
   };
 
   const getTimerBgColor = (): string => {
+    if (embedded) return 'bg-primary-950/10 border-primary-200/25';
     if (timeLeft <= 5) return 'bg-red-50 border-red-500';
     if (timeLeft <= 300) return 'bg-cta-50 border-cta-500/30';
     return 'bg-primary-50 border-primary-500/20';
+  };
+
+  const getEmbeddedTimerColor = (): string => {
+    if (timeLeft <= 5) return 'text-red-100 animate-pulse';
+    if (timeLeft <= 60) return 'text-amber-100';
+    if (timeLeft <= 300) return 'text-violet-100';
+    return 'text-white';
   };
 
   const getSizeClasses = () => {
@@ -172,17 +182,17 @@ function HeatTimer({
   const classes = getSizeClasses();
 
   return (
-    <div className={`bg-white rounded-2xl border-4 ${getTimerBgColor()} ${classes.container} ${landscape ? 'w-full max-w-3xl' : ''} text-center transition-all duration-300 ${compact ? 'shadow-sm' : 'shadow-block'}`}>
+    <div className={`${embedded ? 'bg-primary-950/10 backdrop-blur-sm' : 'bg-white'} rounded-2xl border-4 ${getTimerBgColor()} ${classes.container} ${landscape ? 'w-full max-w-3xl' : ''} text-center transition-all duration-300 ${embedded ? 'shadow-none' : compact ? 'shadow-sm' : 'shadow-block'} ${embedded ? 'mb-0' : ''}`}>
       {!compact && (
         <div className={`flex items-center ${landscape ? 'justify-between gap-4 mb-2' : 'justify-center mb-4'}`}>
-          <Clock className={`w-6 h-6 mr-2 ${timeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`} />
-          <h3 className={`text-lg font-bebas tracking-widest ${timeLeft <= 300 ? 'text-cta-600' : 'text-primary-800'} ${landscape ? 'mr-auto' : ''}`}>
+          <Clock className={`w-6 h-6 mr-2 ${embedded ? 'text-violet-100' : timeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`} />
+          <h3 className={`text-lg font-bebas tracking-widest ${embedded ? 'text-violet-50' : timeLeft <= 300 ? 'text-cta-600' : 'text-primary-800'} ${landscape ? 'mr-auto' : ''}`}>
             CHRONO <span className="opacity-60 text-sm">PRO</span>
           </h3>
           {showControls && (
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className="ml-2 p-1 text-primary-400 hover:text-primary-600 transition-colors"
+              className={`ml-2 p-1 transition-colors ${embedded ? 'text-violet-100/80 hover:text-white' : 'text-primary-400 hover:text-primary-600'}`}
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -206,7 +216,7 @@ function HeatTimer({
       )}
 
       <div className={`${landscape ? 'flex items-center justify-between gap-4' : ''}`}>
-        <div className={`font-bebas tracking-[0.1em] leading-none ${compact ? 'mb-1' : landscape ? 'mb-0 text-left' : 'mb-6'} ${classes.time} ${getTimerColor()}`}>
+        <div className={`font-bebas tracking-[0.1em] leading-none ${compact ? 'mb-1' : landscape ? 'mb-0 text-left' : 'mb-6'} ${classes.time} ${embedded ? getEmbeddedTimerColor() : getTimerColor()}`}>
           {formatTime(timeLeft)}
         </div>
 
