@@ -95,7 +95,7 @@ const GenerateHeatsPage = () => {
             1,
             Math.min(baseSeriesSize, list.length || baseSeriesSize)
           );
-          
+
           const catManOnManRound = categoryManOnManRounds[category] || 0;
 
           const rounds = generatePreviewHeats(
@@ -155,6 +155,11 @@ const GenerateHeatsPage = () => {
         );
       }
 
+      const numericId = parseInt(currentEventId || '', 10);
+      if (!numericId || isNaN(numericId) || numericId <= 0) {
+        throw new Error(`ID d'événement invalide (${currentEventId}). Veuillez recharger la page.`);
+      }
+
       for (const categoryPreview of previewData) {
         // Build participants map for the API
         const participantsBySeed = new Map<number, any>();
@@ -164,13 +169,8 @@ const GenerateHeatsPage = () => {
           }
         });
 
-        const numericEventId = parseInt(currentEventId, 10);
-        if (!numericEventId || isNaN(numericEventId) || numericEventId <= 0) {
-          throw new Error(`ID d'événement invalide (${currentEventId}). Veuillez recharger la page.`);
-        }
-
         await createHeatsWithEntries(
-          numericEventId,
+          numericId,
           (() => {
             const ev = JSON.parse(localStorage.getItem('eventData') || 'null');
             return ev?.name || 'Competition';
