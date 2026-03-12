@@ -9,6 +9,7 @@ import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers } from '../utils/heat';
 import { supabase } from '../lib/supabase';
 import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
+import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 
 import type {
   AppConfig,
@@ -55,7 +56,9 @@ function lycraStyle(label: string) {
 }
 
 function normalizePriorityKey(label?: string) {
-  return (label || '').trim().toUpperCase();
+  const raw = (label || '').trim().toUpperCase();
+  if (!raw) return '';
+  return colorLabelMap[raw as HeatColor] ?? raw;
 }
 
 type NeededScoreInfo = {
@@ -367,7 +370,7 @@ export default function ScoreDisplay({
             {fallbackRows.map((row) => {
               const style = lycraStyle(row.surfer);
               const priorityBadge = priorityLabels[row.priorityKey] || (priorityState.mode === 'equal' ? '=' : '');
-              const isInFlight = priorityState.mode === 'ordered' && priorityState.inFlight.includes(row.priorityKey);
+              const isInFlight = (priorityState.mode === 'ordered' || priorityState.mode === 'opening') && priorityState.inFlight.includes(row.priorityKey);
 
               return (
                 <div key={row.surfer} className="p-3">
@@ -441,7 +444,7 @@ export default function ScoreDisplay({
                 const hasPendingScores = stat.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0);
                 const priorityKey = normalizePriorityKey(stat.surfer);
                 const priorityBadge = priorityLabels[priorityKey] || (priorityState.mode === 'equal' ? '=' : '');
-                const isInFlight = priorityState.mode === 'ordered' && priorityState.inFlight.includes(priorityKey);
+                const isInFlight = (priorityState.mode === 'ordered' || priorityState.mode === 'opening') && priorityState.inFlight.includes(priorityKey);
 
                 return (
                   <div key={stat.surfer} className="p-3 hover:bg-primary-50/30 transition-colors">

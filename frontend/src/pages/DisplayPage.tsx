@@ -88,6 +88,15 @@ const normalizeSurferCountries = (map?: Record<string, string>) => {
     }, {});
 };
 
+const normalizePriorityColors = (priorityState?: AppConfig['priorityState']) => {
+    if (!priorityState) return priorityState;
+    return {
+        ...priorityState,
+        order: (priorityState.order || []).map((surfer) => normalizeColorCode(surfer) || surfer),
+        inFlight: (priorityState.inFlight || []).map((surfer) => normalizeColorCode(surfer) || surfer),
+    };
+};
+
 const isLikelyPlaceholder = (name?: string) => {
     if (!name) return false;
     const normalized = name.toUpperCase().trim();
@@ -209,6 +218,7 @@ const normalizeConfig = (appConfig: AppConfig) => {
         surfers: (appConfig.surfers || []).map((surfer) => normalizeColorCode(surfer) || surfer),
         surferNames: normalizeSurferMap(appConfig.surferNames || {}),
         surferCountries: normalizeSurferCountries(appConfig.surferCountries || {}),
+        priorityState: normalizePriorityColors(appConfig.priorityState),
         judges: normalizedJudges,
         judgeNames: normalizedJudgeNames,
     };
