@@ -20,7 +20,7 @@ export interface AppConfig {
 }
 
 export interface PriorityState {
-  mode: 'equal' | 'ordered';
+  mode: 'equal' | 'opening' | 'ordered';
   order: string[];
   inFlight: string[];
   updatedAt?: string;

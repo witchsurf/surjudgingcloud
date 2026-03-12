@@ -8,7 +8,7 @@ import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { computeEffectiveInterferences, summarizeInterferenceBySurfer } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
-import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
+import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, promoteOpeningToOrdered, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
 
 interface JudgeInterfaceProps {
   config?: AppConfig;
@@ -633,7 +633,34 @@ function JudgeInterface({
 
   const handlePrioritySurferTap = useCallback(async (surfer: string) => {
     const normalizedSurfer = normalizeSurferKey(surfer);
-    if (!normalizedSurfer || priorityState.mode !== 'ordered') return;
+    if (!normalizedSurfer) return;
+
+    if (priorityState.mode === 'equal') {
+      const nextState = promoteOpeningToOrdered(
+        removePrioritySurfer(priorityState, normalizedSurfer),
+        normalizedSurfers
+      );
+      await savePriorityState(nextState);
+      return;
+    }
+
+    if (priorityState.mode === 'opening') {
+      if (inFlightSurfers.includes(normalizedSurfer)) {
+        const nextState = promoteOpeningToOrdered(
+          returnPrioritySurfer(priorityState, normalizedSurfer),
+          normalizedSurfers
+        );
+        await savePriorityState(nextState);
+        return;
+      }
+
+      const nextState = promoteOpeningToOrdered(
+        removePrioritySurfer(priorityState, normalizedSurfer),
+        normalizedSurfers
+      );
+      await savePriorityState(nextState);
+      return;
+    }
 
     if (orderedPrioritySurfers.includes(normalizedSurfer)) {
       await savePriorityState(removePrioritySurfer(priorityState, normalizedSurfer));
@@ -643,7 +670,7 @@ function JudgeInterface({
     if (inFlightSurfers.includes(normalizedSurfer)) {
       await savePriorityState(returnPrioritySurfer(priorityState, normalizedSurfer));
     }
-  }, [inFlightSurfers, normalizeSurferKey, orderedPrioritySurfers, priorityState, savePriorityState]);
+  }, [inFlightSurfers, normalizeSurferKey, normalizedSurfers, orderedPrioritySurfers, priorityState, savePriorityState]);
 
   const handlePriorityResetEqual = useCallback(async () => {
     setIsPriorityOrdering(false);
@@ -832,6 +859,8 @@ function JudgeInterface({
             <p className="text-sm text-gray-600 mt-1">
               {priorityState.mode === 'equal'
                 ? 'Début de série: tous les surfeurs sont égaux.'
+                : priorityState.mode === 'opening'
+                  ? 'Phase initiale: chaque premier départ construit la priorité par la fin.'
                 : 'Touchez un surfeur dans le line-up quand il part. Touchez un surfeur hors line-up quand il revient.'}
             </p>
           </div>
@@ -926,15 +955,15 @@ function JudgeInterface({
             <>
               <div>
                 <p className="text-sm font-semibold text-gray-800 mb-3">
-                  {priorityState.mode === 'equal' ? 'Tous egaux' : 'Line-up'}
+                  {priorityState.mode === 'equal' ? 'Tous egaux' : priorityState.mode === 'opening' ? 'Phase initiale' : 'Line-up'}
                 </p>
                 <div className="flex flex-wrap gap-3">
-                  {(priorityState.mode === 'equal' ? normalizedSurfers : orderedPrioritySurfers).map((surfer) => (
+                  {(priorityState.mode === 'equal' ? normalizedSurfers : priorityState.mode === 'opening' ? normalizedSurfers : orderedPrioritySurfers).map((surfer) => (
                     <button
                       key={surfer}
                       type="button"
                       onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
-                      disabled={!canEditPriority || priorityState.mode !== 'ordered'}
+                      disabled={!canEditPriority}
                       className="flex items-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3 shadow-sm disabled:cursor-default"
                     >
                       <span className={`inline-flex min-w-[2rem] justify-center rounded-full px-2 py-1 text-sm font-bold ${priorityState.mode === 'equal' ? 'bg-gray-200 text-gray-700' : 'bg-indigo-600 text-white'}`}>

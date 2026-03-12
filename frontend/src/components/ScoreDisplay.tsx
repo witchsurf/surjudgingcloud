@@ -54,6 +54,10 @@ function lycraStyle(label: string) {
   );
 }
 
+function normalizePriorityKey(label?: string) {
+  return (label || '').trim().toUpperCase();
+}
+
 type NeededScoreInfo = {
   needed: number;
   targetRank: number;
@@ -377,8 +381,9 @@ export default function ScoreDisplay({
                 const country = surferCountries?.[stat.surfer];
                 const neededInfo = neededScores[stat.surfer];
                 const hasPendingScores = stat.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0);
-                const priorityBadge = priorityLabels[stat.surfer] || (priorityState.mode === 'equal' ? '=' : '');
-                const isInFlight = priorityState.mode === 'ordered' && priorityState.inFlight.includes(stat.surfer);
+                const priorityKey = normalizePriorityKey(stat.surfer);
+                const priorityBadge = priorityLabels[priorityKey] || (priorityState.mode === 'equal' ? '=' : '');
+                const isInFlight = priorityState.mode === 'ordered' && priorityState.inFlight.includes(priorityKey);
 
                 return (
                   <div
@@ -393,7 +398,7 @@ export default function ScoreDisplay({
                             ? 'bg-amber-500 border-amber-600 text-white'
                             : 'bg-primary-950 border-primary-950 text-white'
                         }`}>
-                          {isInFlight ? '' : priorityBadge || stat.rank || '-'}
+                          {isInFlight ? '' : priorityBadge}
                         </div>
 
                         <div className="flex items-center gap-4">
