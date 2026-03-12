@@ -48,7 +48,6 @@ interface AdminInterfaceProps {
   onRealtimeTimerReset?: (heatId: string, duration: number) => Promise<void>;
   availableDivisions?: string[];
   loadState?: 'loading' | 'loaded' | 'empty' | 'error';
-  loadError?: string | null;
   loadedFromDb?: boolean;
   activeEventId?: number;
   onReconnectToDb?: () => Promise<void>;
@@ -72,13 +71,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   onRealtimeTimerReset,
   availableDivisions = [],
   loadState = 'loaded',
-  loadError = null,
   loadedFromDb = false,
   activeEventId,
   onReconnectToDb
 }) => {
   const navigate = useNavigate();
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [selectedJudge, setSelectedJudge] = useState('');
   const [selectedSurfer, setSelectedSurfer] = useState('');
@@ -103,7 +100,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [rebuildPending, setRebuildPending] = useState(false);
   const [supabaseMode, setSupabaseModeState] = useState(getSupabaseMode());
-  const supabaseConfig = getSupabaseConfig();
   const [offlineAdminPin, setOfflineAdminPin] = useState(() => {
     try {
       return localStorage.getItem('admin_offline_pin') || '';
@@ -491,26 +487,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       window.removeEventListener('offline', handleOffline);
     };
   }, [configSaved]);
-
-  const handleSupabaseModeChange = (mode: 'local' | 'cloud' | null) => {
-    if (cloudLocked && mode === 'cloud') {
-      alert('Mode Cloud bloqué. Désactivez le verrouillage LAN pour revenir au cloud.');
-      return;
-    }
-    setSupabaseMode(mode);
-    setSupabaseModeState(mode);
-    window.location.reload();
-  };
-
-  const handleCloudLockToggle = (locked: boolean) => {
-    setCloudLocked(locked);
-    setCloudLockedState(locked);
-    if (locked) {
-      setSupabaseMode('local');
-      setSupabaseModeState('local');
-    }
-    window.location.reload();
-  };
 
   const syncDivisionsFromParticipants = useCallback(() => {
     try {
