@@ -6,19 +6,19 @@ Cette interface permet au chef juge de gerer manuellement la priorite pendant un
 
 ## Comment y acceder
 
-La priorite n'a pas sa propre route dediee. Elle est integree dans l'interface juge chef.
+La priorite a maintenant sa propre route dediee.
 
 Chemin d'acces:
 
-1. Ouvrir `/judge`
-2. Se connecter avec le profil `CHIEF`
-3. Verifier que l'entete affiche `Interface Chef Juge`
+1. Ouvrir `/priority`
+2. Utiliser le lien partage depuis l'admin, idealement `/priority?eventId=...`
+3. Entrer le nom du juge priorite sur la tablette
 4. Utiliser le panneau `Priorité`
 
 Important:
 
 - Les URLs kiosque `/judge?position=J1`, `/judge?position=J2`, etc. sont pour les juges de notes, pas pour le juge priorite.
-- Le panneau priorite est reserve au mode chef juge.
+- Le chef juge peut encore voir la priorite depuis `/judge`, mais la tablette dediee recommandee est `/priority`.
 
 ## Fonctionnement
 

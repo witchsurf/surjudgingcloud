@@ -33,6 +33,7 @@ import PublicLayout from './layouts/PublicLayout';
 // Pages
 import AdminPage from './pages/AdminPage';
 import JudgePage from './pages/JudgePage';
+import PriorityJudgePage from './pages/PriorityJudgePage';
 import DisplayPage from './pages/DisplayPage';
 import MyEventsPage from './pages/MyEvents';
 import LandingPage from './components/LandingPage';
@@ -75,6 +76,10 @@ function App() {
                     {/* Judge Routes */}
                     <Route path="/judge" element={<JudgeLayout />}>
                         <Route index element={<JudgePage />} />
+                    </Route>
+
+                    <Route path="/priority" element={<JudgeLayout />}>
+                        <Route index element={<PriorityJudgePage />} />
                     </Route>
 
                     {/* Public Display Routes */}

@@ -193,10 +193,17 @@ La gestion de priorite se fait dans l'interface juge principale, avec les contro
 - Se connecter avec le compte/lien `CHIEF` pour obtenir le mode `Interface Chef Juge`
 - Une fois connecte, le bloc `Priorité` apparait au-dessus des controles chef juge
 
+Ou, plus simplement, utiliser la tablette dediee:
+
+- Ouvrir la page `/priority`
+- Ajouter `?eventId=<id>` si vous voulez forcer l'evenement cible depuis un lien partage
+- Depuis l'admin, copier le `lien juge priorité`
+
 En pratique:
 
 - Tablettes juges classiques: URLs du type `/judge?position=J1&eventId=...`
-- Juge priorite / chef juge: utiliser l'acces chef juge, pas une URL kiosque `J1..J5`
+- Tablette juge priorite: URL dediee `/priority?eventId=...`
+- Le juge priorite n'utilise pas une URL kiosque `J1..J5`
 
 ### Utilisation
 

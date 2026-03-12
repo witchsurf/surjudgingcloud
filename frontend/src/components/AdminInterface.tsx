@@ -99,6 +99,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [eventDivisionOptions, setEventDivisionOptions] = useState<string[]>([]);
   const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number }>>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
+  const [priorityLinkCopied, setPriorityLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [rebuildPending, setRebuildPending] = useState(false);
   const [supabaseMode, setSupabaseModeState] = useState(getSupabaseMode());
@@ -394,6 +395,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return url.toString();
   }, [encodedDisplayPayload, activeEventId]);
 
+  const priorityJudgeUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const url = new URL(window.location.origin);
+    url.pathname = '/priority';
+
+    if (activeEventId) {
+      url.searchParams.set('eventId', activeEventId.toString());
+    }
+
+    return url.toString();
+  }, [activeEventId]);
+
   const handleOpenDisplay = () => {
     if (!publicDisplayUrl) return;
     window.open(publicDisplayUrl, '_blank', 'noopener');
@@ -407,6 +420,17 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       window.setTimeout(() => setDisplayLinkCopied(false), 2000);
     } catch (error) {
       console.warn('Impossible de copier le lien affichage:', error);
+    }
+  };
+
+  const handleCopyPriorityLink = async () => {
+    if (!priorityJudgeUrl || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(priorityJudgeUrl);
+      setPriorityLinkCopied(true);
+      window.setTimeout(() => setPriorityLinkCopied(false), 2000);
+    } catch (error) {
+      console.warn('Impossible de copier le lien priorité:', error);
     }
   };
 
@@ -1691,6 +1715,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             </button>
             <div className="text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
               {publicDisplayUrl}
+            </div>
+            <div className="border-t border-gray-200 pt-3">
+              <p className="text-sm text-gray-600 mb-2">
+                Lien tablette dédié pour le juge priorité.
+              </p>
+              <button
+                type="button"
+                onClick={handleCopyPriorityLink}
+                className="w-full py-2 px-4 rounded-lg border border-indigo-200 text-indigo-700 font-medium hover:bg-indigo-50 transition-colors"
+              >
+                {priorityLinkCopied ? 'Lien priorité copié ✅' : 'Copier le lien juge priorité'}
+              </button>
+              <div className="mt-2 text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
+                {priorityJudgeUrl}
+              </div>
             </div>
           </div>
         ) : (

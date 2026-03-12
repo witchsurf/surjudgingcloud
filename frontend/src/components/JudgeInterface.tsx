@@ -24,6 +24,9 @@ interface JudgeInterfaceProps {
   isConnected?: boolean;
   onScoreSync?: () => Promise<{ success: number; failed: number }>;
   onPriorityConfigChange?: (config: AppConfig) => Promise<void>;
+  canManagePriority?: boolean;
+  priorityOnly?: boolean;
+  interfaceTitle?: string;
 }
 
 
@@ -61,7 +64,10 @@ function JudgeInterface({
   onHeatClose = () => { },
   isConnected = true,
   onScoreSync = async () => ({ success: 0, failed: 0 }),
-  onPriorityConfigChange = async () => { }
+  onPriorityConfigChange = async () => { },
+  canManagePriority = false,
+  priorityOnly = false,
+  interfaceTitle
 }: JudgeInterfaceProps) {
   const formatSyncError = useCallback((error: unknown): string => {
     if (error instanceof Error && error.message) return error.message;
@@ -143,17 +149,20 @@ function JudgeInterface({
   const [showNameModal, setShowNameModal] = useState(false);
   const [judgeNameInput, setJudgeNameInput] = useState('');
   const [isSubmittingName, setIsSubmittingName] = useState(false);
+  const canEditPriority = canManagePriority || isChiefJudge;
+  const resolvedInterfaceTitle = interfaceTitle || (isChiefJudge ? 'Interface Chef Juge' : 'Interface Juge');
 
   // Check if judge name is set
   useEffect(() => {
-    if (configSaved && config.competition && judgeId) {
+    if (priorityOnly) return;
+    if (configSaved && config.competition && judgeId && config.judges.includes(judgeId)) {
       const currentName = config.judgeNames[judgeId];
       // If name is missing or is just the ID (e.g. "J1"), show modal
       if (!currentName || currentName === judgeId) {
         setShowNameModal(true);
       }
     }
-  }, [configSaved, config.competition, config.judgeNames, judgeId]);
+  }, [priorityOnly, configSaved, config.competition, config.judgeNames, config.judges, judgeId]);
 
   const handleNameSubmit = async () => {
     if (!judgeNameInput.trim()) return;
@@ -706,8 +715,8 @@ function JudgeInterface({
         } text-white rounded-xl p-6 shadow-lg`}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2">
-              {isChiefJudge ? 'Interface Chef Juge' : 'Interface Juge'}
+              <h1 className="text-3xl font-bold mb-2">
+              {resolvedInterfaceTitle}
               {!isConnected && (
                 <span className="ml-4 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                   <span className="w-2 h-2 mr-1.5 bg-red-500 rounded-full animate-pulse"></span>
@@ -718,8 +727,9 @@ function JudgeInterface({
             <div className="flex items-center space-x-4 text-green-100">
               <span className="flex items-center">
                 <User className="w-4 h-4 mr-1" />
-                {config.judgeNames[judgeId] || judgeId}
+                {config.judgeNames[judgeId] || judgeName || judgeId}
                 {isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-purple-500 rounded-full text-xs">Chef Juge</span>}
+                {priorityOnly && !isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-indigo-500 rounded-full text-xs">Priorité</span>}
               </span>
               <span>{config.competition}</span>
               <span>{config.division}</span>
@@ -737,6 +747,7 @@ function JudgeInterface({
             </button>
 
             {/* SYNC BUTTON */}
+            {!priorityOnly && (
             <div className="relative">
               <button
                 onClick={async () => {
@@ -785,11 +796,12 @@ function JudgeInterface({
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
         
         {/* SYNC FEEDBACK BANNER */}
-        {syncFeedback && (
+        {!priorityOnly && syncFeedback && (
           <div className={`mt-4 p-2 rounded-lg text-xs font-bold flex items-center justify-center animate-in fade-in slide-in-from-top-2 ${
             syncFeedback.type === 'success' ? 'bg-green-500/30 text-green-100 border border-green-500/50' : 'bg-red-500/30 text-red-100 border border-red-500/50'
           }`}>
@@ -822,7 +834,7 @@ function JudgeInterface({
                 : 'Touchez un surfeur dans le line-up quand il part. Touchez un surfeur hors line-up quand il revient.'}
             </p>
           </div>
-          {isChiefJudge && (
+          {canEditPriority && (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -921,7 +933,7 @@ function JudgeInterface({
                       key={surfer}
                       type="button"
                       onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
-                      disabled={!isChiefJudge || priorityState.mode !== 'ordered'}
+                      disabled={!canEditPriority || priorityState.mode !== 'ordered'}
                       className="flex items-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3 shadow-sm disabled:cursor-default"
                     >
                       <span className={`inline-flex min-w-[2rem] justify-center rounded-full px-2 py-1 text-sm font-bold ${priorityState.mode === 'equal' ? 'bg-gray-200 text-gray-700' : 'bg-indigo-600 text-white'}`}>
@@ -943,7 +955,7 @@ function JudgeInterface({
                         key={surfer}
                         type="button"
                         onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
-                        disabled={!isChiefJudge}
+                        disabled={!canEditPriority}
                         className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm disabled:cursor-default"
                       >
                         <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-amber-500 px-2 py-1 text-sm font-bold text-white">
@@ -966,7 +978,7 @@ function JudgeInterface({
       </div>
 
       {/* CONTRÔLES CHEF JUGE */}
-      {isChiefJudge && (
+      {isChiefJudge && !priorityOnly && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-4">
           <h3 className="text-lg font-semibold text-indigo-900 mb-4">Contrôles Chef Juge</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -990,7 +1002,7 @@ function JudgeInterface({
       )}
 
       {/* STATUT SAISIE */}
-      {!timerActive && (
+      {!priorityOnly && !timerActive && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
           <Lock className="w-6 h-6 text-red-600" />
           <div>
@@ -1014,6 +1026,7 @@ function JudgeInterface({
       )}
 
       {/* GRILLE DE NOTATION */}
+      {!priorityOnly && (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-900 flex items-center">
@@ -1177,8 +1190,9 @@ function JudgeInterface({
           </p>
         </div>
       </div>
+      )}
 
-      {effectiveInterferences.length > 0 && (
+      {!priorityOnly && effectiveInterferences.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-amber-900 mb-2">Interférences effectives (majorité / Head Judge)</h3>
           <ul className="space-y-1 text-sm text-amber-800">
