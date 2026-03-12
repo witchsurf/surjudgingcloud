@@ -741,15 +741,16 @@ function JudgeInterface({
     return map;
   }, [effectiveInterferences, normalizeSurferKey]);
   return (
-    <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-6">
-      {/* HEADER JUGE */}
-      <div className={`bg-gradient-to-r ${isChiefJudge
-        ? 'from-purple-600 to-indigo-600'
-        : 'from-green-600 to-emerald-600'
-        } text-white rounded-xl p-6 shadow-lg`}>
-        <div className="flex items-center justify-between">
-          <div>
-              <h1 className="text-3xl font-bold mb-2">
+    <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-4">
+      {/* HEADER + TIMER */}
+      <div className={isFullscreen ? 'sticky top-3 z-40' : ''}>
+        <div className={`bg-gradient-to-r ${isChiefJudge
+          ? 'from-purple-600 to-indigo-600'
+          : 'from-green-600 to-emerald-600'
+          } text-white rounded-xl p-4 sm:p-5 shadow-lg space-y-4`}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">
               {resolvedInterfaceTitle}
               {!isConnected && (
                 <span className="ml-4 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
@@ -758,7 +759,7 @@ function JudgeInterface({
                 </span>
               )}
             </h1>
-            <div className="flex items-center space-x-4 text-green-100">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-green-100">
               <span className="flex items-center">
                 <User className="w-4 h-4 mr-1" />
                 {config.judgeNames[judgeId] || judgeName || judgeId}
@@ -769,94 +770,89 @@ function JudgeInterface({
               <span>{config.division}</span>
               <span>R{config.round} - H{config.heatId}</span>
             </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={toggleFullscreen}
-              className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium border border-white/10 shadow-sm"
-              title={isFullscreen ? "Quitter le plein écran" : "Passer en plein écran"}
-            >
-              {isFullscreen ? <Minimize className="w-5 h-5 text-white" /> : <Maximize className="w-5 h-5 text-white" />}
-              <span className="hidden sm:inline font-semibold">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
-            </button>
-
-            {/* SYNC BUTTON */}
-            {!priorityOnly && (
-            <div className="relative">
+            </div>
+            <div className="flex items-center gap-3 self-start sm:self-center">
               <button
-                onClick={async () => {
-                  setIsSyncing(true);
-                  setSyncFeedback(null);
-                  try {
-                    const result = await onScoreSync();
-                    setSyncFeedback({ 
-                      message: `${result.success} notes synchronisées`, 
-                      type: 'success' 
-                    });
-                    // Auto-clear success message after 3s
-                    setTimeout(() => setSyncFeedback(null), 3000);
-                  } catch (error) {
-                    setSyncFeedback({ 
-                      message: formatSyncError(error), 
-                      type: 'error' 
-                    });
-                  } finally {
-                    setIsSyncing(false);
-                  }
-                }}
-                disabled={isSyncing || !isConnected}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-sm ${
-                  isSyncing 
-                    ? 'bg-white/10 text-white/50 border-white/5 cursor-not-allowed' 
-                    : 'bg-white/20 hover:bg-white/30 text-white border-white/10 active:scale-95'
-                }`}
-                title="Forcer la synchronisation des notes de cette série vers le cloud"
+                onClick={toggleFullscreen}
+                className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium border border-white/10 shadow-sm"
+                title={isFullscreen ? "Quitter le plein écran" : "Passer en plein écran"}
               >
-                <div className={`w-5 h-5 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </div>
-                <span className="hidden sm:inline font-semibold">
-                  {isSyncing ? 'En cours...' : 'Synchroniser'}
-                </span>
+                {isFullscreen ? <Minimize className="w-5 h-5 text-white" /> : <Maximize className="w-5 h-5 text-white" />}
+                <span className="hidden sm:inline font-semibold">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
               </button>
-              {pendingSyncCount > 0 && (
-                <div 
-                  className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] sm:text-xs font-bold min-w-[20px] sm:min-w-[24px] h-5 sm:h-6 px-1 flex items-center justify-center rounded-full shadow-lg border-2 border-[#1e40af] z-10 animate-pulse"
-                  title={`${pendingSyncCount} note(s) en attente de synchronisation`}
+
+              {!priorityOnly && (
+              <div className="relative">
+                <button
+                  onClick={async () => {
+                    setIsSyncing(true);
+                    setSyncFeedback(null);
+                    try {
+                      const result = await onScoreSync();
+                      setSyncFeedback({
+                        message: `${result.success} notes synchronisées`,
+                        type: 'success'
+                      });
+                      setTimeout(() => setSyncFeedback(null), 3000);
+                    } catch (error) {
+                      setSyncFeedback({
+                        message: formatSyncError(error),
+                        type: 'error'
+                      });
+                    } finally {
+                      setIsSyncing(false);
+                    }
+                  }}
+                  disabled={isSyncing || !isConnected}
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-sm ${
+                    isSyncing
+                      ? 'bg-white/10 text-white/50 border-white/5 cursor-not-allowed'
+                      : 'bg-white/20 hover:bg-white/30 text-white border-white/10 active:scale-95'
+                  }`}
+                  title="Forcer la synchronisation des notes de cette série vers le cloud"
                 >
-                  {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
-                </div>
+                  <div className={`w-5 h-5 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </div>
+                  <span className="hidden sm:inline font-semibold">
+                    {isSyncing ? 'En cours...' : 'Synchroniser'}
+                  </span>
+                </button>
+                {pendingSyncCount > 0 && (
+                  <div
+                    className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] sm:text-xs font-bold min-w-[20px] sm:min-w-[24px] h-5 sm:h-6 px-1 flex items-center justify-center rounded-full shadow-lg border-2 border-[#1e40af] z-10 animate-pulse"
+                    title={`${pendingSyncCount} note(s) en attente de synchronisation`}
+                  >
+                    {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
+                  </div>
+                )}
+              </div>
               )}
             </div>
-            )}
           </div>
-        </div>
-        
-        {/* SYNC FEEDBACK BANNER */}
-        {!priorityOnly && syncFeedback && (
-          <div className={`mt-4 p-2 rounded-lg text-xs font-bold flex items-center justify-center animate-in fade-in slide-in-from-top-2 ${
-            syncFeedback.type === 'success' ? 'bg-green-500/30 text-green-100 border border-green-500/50' : 'bg-red-500/30 text-red-100 border border-red-500/50'
-          }`}>
-            {syncFeedback.type === 'success' ? '✅' : '❌'} {syncFeedback.message}
-          </div>
-        )}
-      </div>
 
-      {/* TIMER */}
-      <div className={isFullscreen ? 'sticky top-3 z-40 flex justify-center' : 'flex justify-center'}>
-        <HeatTimer
-          timer={timer}
-          onStart={() => { }}
-          onPause={() => { }}
-          onReset={() => { }}
-          onDurationChange={() => { }}
-          showControls={isChiefJudge}
-          size="medium"
-          landscape={true}
-          configSaved={configSaved}
-        />
+          <HeatTimer
+            timer={timer}
+            onStart={() => { }}
+            onPause={() => { }}
+            onReset={() => { }}
+            onDurationChange={() => { }}
+            showControls={isChiefJudge}
+            size="medium"
+            landscape={true}
+            configSaved={configSaved}
+          />
+
+          {!priorityOnly && syncFeedback && (
+            <div className={`p-2 rounded-lg text-xs font-bold flex items-center justify-center animate-in fade-in slide-in-from-top-2 ${
+              syncFeedback.type === 'success' ? 'bg-green-500/30 text-green-100 border border-green-500/50' : 'bg-red-500/30 text-red-100 border border-red-500/50'
+            }`}>
+              {syncFeedback.type === 'success' ? '✅' : '❌'} {syncFeedback.message}
+            </div>
+          )}
+        </div>
       </div>
 
       {(priorityOnly || canEditPriority) && (
