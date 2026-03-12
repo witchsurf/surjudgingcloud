@@ -744,40 +744,41 @@ function JudgeInterface({
     <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-3">
       {/* HEADER + TIMER */}
       <div className={isFullscreen ? 'sticky top-3 z-40' : ''}>
-        <div className="bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl p-3 sm:p-4 shadow-lg space-y-2">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-                {resolvedInterfaceTitle}
-                {!isConnected && (
-                  <span className="ml-4 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                    <span className="w-2 h-2 mr-1.5 bg-red-500 rounded-full animate-pulse"></span>
-                    Hors Ligne
-                  </span>
-                )}
-              </h1>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-violet-100">
-                <span className="flex items-center">
-                  <User className="w-4 h-4 mr-1" />
-                  {config.judgeNames[judgeId] || judgeName || judgeId}
-                  {isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-white/15 rounded-full text-xs">Chef Juge</span>}
-                  {priorityOnly && !isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-white/15 rounded-full text-xs">Priorité</span>}
-                </span>
-                <span>{config.competition}</span>
-                <span>{config.division}</span>
-                <span>R{config.round} - H{config.heatId}</span>
+        <div className="bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl p-2 sm:p-3 shadow-lg">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between flex-1 gap-4 min-w-0">
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-bold flex items-center gap-2 truncate">
+                  {resolvedInterfaceTitle}
+                  {!isConnected && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-red-100 text-red-800">
+                      Hors Ligne
+                    </span>
+                  )}
+                </h1>
+                <div className="flex items-center gap-x-3 text-violet-100 text-[10px] opacity-90">
+                  <span className="font-semibold truncate max-w-[100px]">{config.judgeNames[judgeId] || judgeName || judgeId}</span>
+                  <span className="max-w-[100px] truncate">{config.competition}</span>
+                  <span className="font-bold">R{config.round} H{config.heatId}</span>
+                </div>
+              </div>
+
+              <div className="flex-shrink-0">
+                <HeatTimer
+                  timer={timer}
+                  onStart={() => { }}
+                  onPause={() => { }}
+                  onReset={() => { }}
+                  onDurationChange={() => { }}
+                  showControls={isChiefJudge}
+                  size="small"
+                  landscape={true}
+                  embedded={true}
+                  configSaved={configSaved}
+                />
               </div>
             </div>
-            <div className="flex items-center gap-3 self-start sm:self-center">
-              <button
-                onClick={toggleFullscreen}
-                className="flex items-center space-x-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium border border-white/10 shadow-sm"
-                title={isFullscreen ? "Quitter le plein écran" : "Passer en plein écran"}
-              >
-                {isFullscreen ? <Minimize className="w-5 h-5 text-white" /> : <Maximize className="w-5 h-5 text-white" />}
-                <span className="hidden sm:inline font-semibold">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
-              </button>
-
+            <div className="flex items-center gap-2">
               {!priorityOnly && (
                 <div className="relative">
                   <button
@@ -787,13 +788,13 @@ function JudgeInterface({
                       try {
                         const result = await onScoreSync();
                         setSyncFeedback({
-                          message: `${result.success} notes synchronisées`,
+                          message: `${result.success} synchronisés`,
                           type: 'success'
                         });
                         setTimeout(() => setSyncFeedback(null), 3000);
                       } catch (error) {
                         setSyncFeedback({
-                          message: formatSyncError(error),
+                          message: 'Erreur',
                           type: 'error'
                         });
                       } finally {
@@ -801,49 +802,38 @@ function JudgeInterface({
                       }
                     }}
                     disabled={isSyncing || !isConnected}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-sm ${isSyncing
-                      ? 'bg-white/10 text-white/50 border-white/5 cursor-not-allowed'
+                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-all text-xs font-medium border shadow-sm ${isSyncing
+                      ? 'bg-white/10 text-white/50 border-white/5'
                       : 'bg-white/20 hover:bg-white/30 text-white border-white/10 active:scale-95'
                       }`}
-                    title="Forcer la synchronisation des notes de cette série vers le cloud"
                   >
-                    <div className={`w-5 h-5 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className={`w-4 h-4 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                     </div>
-                    <span className="hidden sm:inline font-semibold">
-                      {isSyncing ? 'En cours...' : 'Synchroniser'}
-                    </span>
+                    <span>{isSyncing ? '...' : 'Sync'}</span>
                   </button>
                   {pendingSyncCount > 0 && (
-                    <div
-                      className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] sm:text-xs font-bold min-w-[20px] sm:min-w-[24px] h-5 sm:h-6 px-1 flex items-center justify-center rounded-full shadow-lg border-2 border-[#1e40af] z-10 animate-pulse"
-                      title={`${pendingSyncCount} note(s) en attente de synchronisation`}
-                    >
-                      {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
+                    <div className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full border border-white animate-pulse">
+                      {pendingSyncCount}
                     </div>
                   )}
                 </div>
               )}
+
+              <button
+                onClick={toggleFullscreen}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-xs font-medium border border-white/10"
+              >
+                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                <span className="hidden sm:inline">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
+              </button>
             </div>
           </div>
 
-          <HeatTimer
-            timer={timer}
-            onStart={() => { }}
-            onPause={() => { }}
-            onReset={() => { }}
-            onDurationChange={() => { }}
-            showControls={isChiefJudge}
-            size="medium"
-            landscape={true}
-            embedded={true}
-            configSaved={configSaved}
-          />
-
           {!priorityOnly && syncFeedback && (
-            <div className={`p-2 rounded-lg text-xs font-bold flex items-center justify-center animate-in fade-in slide-in-from-top-2 ${syncFeedback.type === 'success' ? 'bg-green-500/30 text-green-100 border border-green-500/50' : 'bg-red-500/30 text-red-100 border border-red-500/50'
+            <div className={`px-3 py-1 rounded bg-white/10 text-[10px] font-bold inline-flex items-center absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-50 ${syncFeedback.type === 'success' ? 'text-green-300' : 'text-red-300'
               }`}>
               {syncFeedback.type === 'success' ? '✅' : '❌'} {syncFeedback.message}
             </div>
