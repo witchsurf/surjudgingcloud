@@ -16,6 +16,14 @@ export interface AppConfig {
   surfersPerHeat: number;
   totalHeats: number;
   totalRounds: number;
+  priorityState?: PriorityState;
+}
+
+export interface PriorityState {
+  mode: 'equal' | 'ordered';
+  order: string[];
+  inFlight: string[];
+  updatedAt?: string;
 }
 
 export interface HeatTimer {

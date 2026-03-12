@@ -183,4 +183,35 @@ Les meilleurs seeds héritent automatiquement des byes lorsque le nombre de part
 - `heat_entries` : `heat_id` (texte, aligné sur `heats.id`), `participant_id`, `position`, `seed`.
 - `heats` reçoit une colonne `heat_size` (ajoutée via migration) et conserve `status='planned'` tant que la série n’est pas lancée.
 
+## Juge Priorite
+
+La gestion de priorite se fait dans l'interface juge principale, avec les controles `Chef Juge`.
+
+### Acces
+
+- Ouvrir la page juge: `/judge`
+- Se connecter avec le compte/lien `CHIEF` pour obtenir le mode `Interface Chef Juge`
+- Une fois connecte, le bloc `Priorité` apparait au-dessus des controles chef juge
+
+En pratique:
+
+- Tablettes juges classiques: URLs du type `/judge?position=J1&eventId=...`
+- Juge priorite / chef juge: utiliser l'acces chef juge, pas une URL kiosque `J1..J5`
+
+### Utilisation
+
+- Debut de serie: cliquer sur `Egalite` si personne n'a encore la priorite
+- Premiere attribution: cliquer sur `Definir l'ordre`, puis toucher les couleurs dans l'ordre `P`, `2`, `3`, `4`
+- Quand le surfeur prioritaire part sur sa vague: toucher sa couleur dans `Line-up`
+- L'app le retire de la file et remonte automatiquement `2`, `3`, `4`
+- Quand ce surfeur revient au lineup: toucher sa couleur dans `En vague / hors line-up`
+- L'app le replace automatiquement en derniere priorite
+
+### Affichage public
+
+- Le display live affiche `P`, `2`, `3`, `4`
+- Un surfeur actuellement en vague / pas encore revenu au lineup apparait en `Surf`
+
+Voir aussi: [docs/priority-judge.md](/Users/sandy/Desktop/judging/docs/priority-judge.md)
+
 # Test

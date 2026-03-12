@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Users, Trophy, FileText } from 'lucide-react';
 import HeatTimer from './HeatTimer';
 import HeatResults from './HeatResults';
@@ -8,6 +8,7 @@ import { fetchInterferenceCalls } from '../api/supabaseClient';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers } from '../utils/heat';
 import { supabase } from '../lib/supabase';
+import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 
 import type {
   AppConfig,
@@ -165,6 +166,14 @@ export default function ScoreDisplay({
   // Pour les noms et pays, on lit des champs optionnels du config si présents
   const surferNames = config.surferNames ?? {};
   const surferCountries = config.surferCountries ?? {};
+  const priorityState = useMemo(
+    () => normalizePriorityState(config.priorityState, config.surfers || []),
+    [config.priorityState, config.surfers]
+  );
+  const priorityLabels = useMemo(
+    () => getPriorityLabels(priorityState, config.surfers || []),
+    [priorityState, config.surfers]
+  );
 
   // Mise à jour horodatage
   useEffect(() => {
@@ -324,6 +333,47 @@ export default function ScoreDisplay({
             <FileText className="w-3.5 h-3.5" />
             PDF Scorecard
           </button>
+        </div>
+      </div>
+
+      <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden">
+        <div className="bg-primary-900 px-6 py-4 border-b-4 border-primary-950 flex items-center justify-between">
+          <h2 className="text-xl font-bebas tracking-widest text-white">Priorite</h2>
+          <span className="text-[10px] font-bold text-primary-200 uppercase tracking-widest">
+            {priorityState.mode === 'equal' ? 'Debut de serie' : 'Line-up live'}
+          </span>
+        </div>
+        <div className="p-4 flex flex-wrap gap-3">
+          {(priorityState.mode === 'equal' ? config.surfers : priorityState.order).map((surfer) => {
+            const style = lycraStyle(surfer);
+            return (
+              <div
+                key={surfer}
+                className="inline-flex items-center gap-3 rounded-xl border-2 border-primary-950 bg-white px-4 py-3 shadow-sm"
+              >
+                <span className="inline-flex min-w-[2.2rem] justify-center rounded-full bg-primary-950 px-2 py-1 text-sm font-bold text-white">
+                  {priorityLabels[surfer] || '='}
+                </span>
+                <span className={`w-4 h-4 rounded-full border-2 border-primary-950 ${style.badge}`} />
+                <span className="font-bebas text-lg tracking-wide text-primary-900">{surfer}</span>
+              </div>
+            );
+          })}
+          {priorityState.mode === 'ordered' && priorityState.inFlight.map((surfer) => {
+            const style = lycraStyle(surfer);
+            return (
+              <div
+                key={surfer}
+                className="inline-flex items-center gap-3 rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-3 shadow-sm"
+              >
+                <span className="inline-flex min-w-[2.2rem] justify-center rounded-full bg-amber-500 px-2 py-1 text-sm font-bold text-white">
+                  Surf
+                </span>
+                <span className={`w-4 h-4 rounded-full border-2 border-primary-950 ${style.badge}`} />
+                <span className="font-bebas text-lg tracking-wide text-primary-900">{surfer}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 

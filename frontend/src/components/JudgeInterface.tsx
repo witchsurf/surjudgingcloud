@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, Waves, Lock, CreditCard as Edit3, Maximize, Minimize } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
-import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, Score, HeatTimer as HeatTimerType } from '../types';
+import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
 import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { computeEffectiveInterferences, summarizeInterferenceBySurfer } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
+import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
 
 interface JudgeInterfaceProps {
   config?: AppConfig;
@@ -22,6 +23,7 @@ interface JudgeInterfaceProps {
   onHeatClose?: () => void;
   isConnected?: boolean;
   onScoreSync?: () => Promise<{ success: number; failed: number }>;
+  onPriorityConfigChange?: (config: AppConfig) => Promise<void>;
 }
 
 
@@ -58,7 +60,8 @@ function JudgeInterface({
   heatStatus = 'waiting',
   onHeatClose = () => { },
   isConnected = true,
-  onScoreSync = async () => ({ success: 0, failed: 0 })
+  onScoreSync = async () => ({ success: 0, failed: 0 }),
+  onPriorityConfigChange = async () => { }
 }: JudgeInterfaceProps) {
   const formatSyncError = useCallback((error: unknown): string => {
     if (error instanceof Error && error.message) return error.message;
@@ -89,6 +92,8 @@ function JudgeInterface({
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'error' | null } | null>(null);
   const [isSubmittingScore, setIsSubmittingScore] = useState(false);
+  const [isPriorityOrdering, setIsPriorityOrdering] = useState(false);
+  const [priorityDraft, setPriorityDraft] = useState<string[]>([]);
 
   // Unsynced safety check
   const pendingSyncCount = useMemo(() => submittedScores.filter(s => s.synced === false).length, [submittedScores]);
@@ -567,6 +572,98 @@ function JudgeInterface({
     return SURFER_COLORS[normalizeSurferKey(surfer)] || '#6B7280';
   };
 
+  const normalizedSurfers = useMemo(
+    () => config.surfers.map(normalizeSurferKey).filter(Boolean),
+    [config.surfers, normalizeSurferKey]
+  );
+
+  const priorityState = useMemo(
+    () => normalizePriorityState(config.priorityState, normalizedSurfers),
+    [config.priorityState, normalizedSurfers]
+  );
+
+  const priorityLabels = useMemo(
+    () => getPriorityLabels(priorityState, normalizedSurfers),
+    [priorityState, normalizedSurfers]
+  );
+
+  const orderedPrioritySurfers = useMemo(
+    () => priorityState.order.map(normalizeSurferKey),
+    [priorityState.order, normalizeSurferKey]
+  );
+
+  const inFlightSurfers = useMemo(
+    () => priorityState.inFlight.map(normalizeSurferKey),
+    [priorityState.inFlight, normalizeSurferKey]
+  );
+
+  const orderedDraft = useMemo(
+    () => priorityDraft.map(normalizeSurferKey).filter(Boolean),
+    [priorityDraft, normalizeSurferKey]
+  );
+
+  const availableDraftSurfers = useMemo(
+    () => normalizedSurfers.filter((surfer) => !orderedDraft.includes(surfer)),
+    [normalizedSurfers, orderedDraft]
+  );
+
+  const savePriorityState = useCallback(async (nextPriorityState: PriorityState) => {
+    const nextConfig: AppConfig = {
+      ...config,
+      priorityState: nextPriorityState,
+    };
+
+    try {
+      await onPriorityConfigChange(nextConfig);
+    } catch (error) {
+      console.error('Erreur mise à jour priorité:', error);
+      alert('Impossible de mettre à jour la priorité.');
+    }
+  }, [config, onPriorityConfigChange]);
+
+  const handlePrioritySurferTap = useCallback(async (surfer: string) => {
+    const normalizedSurfer = normalizeSurferKey(surfer);
+    if (!normalizedSurfer || priorityState.mode !== 'ordered') return;
+
+    if (orderedPrioritySurfers.includes(normalizedSurfer)) {
+      await savePriorityState(removePrioritySurfer(priorityState, normalizedSurfer));
+      return;
+    }
+
+    if (inFlightSurfers.includes(normalizedSurfer)) {
+      await savePriorityState(returnPrioritySurfer(priorityState, normalizedSurfer));
+    }
+  }, [inFlightSurfers, normalizeSurferKey, orderedPrioritySurfers, priorityState, savePriorityState]);
+
+  const handlePriorityResetEqual = useCallback(async () => {
+    setIsPriorityOrdering(false);
+    setPriorityDraft([]);
+    await savePriorityState(buildEqualPriorityState());
+  }, [savePriorityState]);
+
+  const handlePriorityOrderStart = useCallback(() => {
+    setIsPriorityOrdering(true);
+    setPriorityDraft([]);
+  }, []);
+
+  const handlePriorityDraftAdd = useCallback((surfer: string) => {
+    const normalizedSurfer = normalizeSurferKey(surfer);
+    if (!normalizedSurfer || orderedDraft.includes(normalizedSurfer)) return;
+    setPriorityDraft((prev) => [...prev, normalizedSurfer]);
+  }, [normalizeSurferKey, orderedDraft]);
+
+  const handlePriorityDraftRemove = useCallback((surfer: string) => {
+    const normalizedSurfer = normalizeSurferKey(surfer);
+    setPriorityDraft((prev) => prev.filter((item) => item !== normalizedSurfer));
+  }, [normalizeSurferKey]);
+
+  const handlePriorityOrderSave = useCallback(async () => {
+    if (orderedDraft.length !== normalizedSurfers.length) return;
+    await savePriorityState(setPriorityOrder(orderedDraft));
+    setIsPriorityOrdering(false);
+    setPriorityDraft([]);
+  }, [normalizedSurfers.length, orderedDraft, savePriorityState]);
+
   if (!configSaved) {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -713,6 +810,159 @@ function JudgeInterface({
           size="medium"
           configSaved={configSaved}
         />
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Priorité</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {priorityState.mode === 'equal'
+                ? 'Début de série: tous les surfeurs sont égaux.'
+                : 'Touchez un surfeur dans le line-up quand il part. Touchez un surfeur hors line-up quand il revient.'}
+            </p>
+          </div>
+          {isChiefJudge && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handlePriorityResetEqual().catch(() => { })}
+                className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Egalite
+              </button>
+              {isPriorityOrdering ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPriorityOrdering(false);
+                      setPriorityDraft([]);
+                    }}
+                    className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePriorityOrderSave().catch(() => { })}
+                    disabled={orderedDraft.length !== normalizedSurfers.length}
+                    className="px-3 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Valider l&apos;ordre
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handlePriorityOrderStart}
+                  className="px-3 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700"
+                >
+                  Definir l&apos;ordre
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 space-y-5">
+          {isPriorityOrdering ? (
+            <>
+              <div>
+                <p className="text-sm font-semibold text-gray-800 mb-3">Touchez les surfeurs dans l&apos;ordre P, 2, 3, 4.</p>
+                <div className="flex flex-wrap gap-3">
+                  {availableDraftSurfers.map((surfer) => (
+                    <button
+                      key={surfer}
+                      type="button"
+                      onClick={() => handlePriorityDraftAdd(surfer)}
+                      className="flex items-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3 shadow-sm hover:border-indigo-400 hover:bg-indigo-50"
+                    >
+                      <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                      <span className="font-semibold text-gray-900">{surfer}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-semibold text-gray-800 mb-3">Ordre en cours</p>
+                <div className="flex flex-wrap gap-3">
+                  {orderedDraft.length > 0 ? orderedDraft.map((surfer, index) => (
+                    <button
+                      key={surfer}
+                      type="button"
+                      onClick={() => handlePriorityDraftRemove(surfer)}
+                      className="flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 shadow-sm"
+                    >
+                      <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-indigo-600 px-2 py-1 text-sm font-bold text-white">
+                        {index === 0 ? 'P' : index + 1}
+                      </span>
+                      <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                      <span className="font-semibold text-gray-900">{surfer}</span>
+                    </button>
+                  )) : (
+                    <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
+                      Aucun ordre defini pour l&apos;instant.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <p className="text-sm font-semibold text-gray-800 mb-3">
+                  {priorityState.mode === 'equal' ? 'Tous egaux' : 'Line-up'}
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  {(priorityState.mode === 'equal' ? normalizedSurfers : orderedPrioritySurfers).map((surfer) => (
+                    <button
+                      key={surfer}
+                      type="button"
+                      onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
+                      disabled={!isChiefJudge || priorityState.mode !== 'ordered'}
+                      className="flex items-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3 shadow-sm disabled:cursor-default"
+                    >
+                      <span className={`inline-flex min-w-[2rem] justify-center rounded-full px-2 py-1 text-sm font-bold ${priorityState.mode === 'equal' ? 'bg-gray-200 text-gray-700' : 'bg-indigo-600 text-white'}`}>
+                        {priorityLabels[surfer] || '='}
+                      </span>
+                      <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                      <span className="font-semibold text-gray-900">{surfer}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {priorityState.mode === 'ordered' && (
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 mb-3">En vague / hors line-up</p>
+                  <div className="flex flex-wrap gap-3">
+                    {inFlightSurfers.length > 0 ? inFlightSurfers.map((surfer) => (
+                      <button
+                        key={surfer}
+                        type="button"
+                        onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
+                        disabled={!isChiefJudge}
+                        className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm disabled:cursor-default"
+                      >
+                        <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-amber-500 px-2 py-1 text-sm font-bold text-white">
+                          Surf
+                        </span>
+                        <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className="font-semibold text-gray-900">{surfer}</span>
+                      </button>
+                    )) : (
+                      <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
+                        Aucun surfeur hors line-up.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* CONTRÔLES CHEF JUGE */}

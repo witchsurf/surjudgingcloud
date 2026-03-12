@@ -11,6 +11,7 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { parseActiveHeatId } from '../api/supabaseClient';
+import type { AppConfig } from '../types';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
@@ -49,6 +50,28 @@ export default function JudgePage() {
         } catch (error) {
             console.error('Erreur lors de la clôture de la série:', error);
             alert('Erreur lors de la clôture de la série.');
+        }
+    };
+
+    const handlePriorityConfigChange = async (nextConfig: AppConfig) => {
+        setConfig(nextConfig);
+
+        if (!isSupabaseConfigured() || !supabase || !currentHeatId) {
+            return;
+        }
+
+        const { error } = await supabase
+            .from('heat_realtime_config')
+            .upsert({
+                heat_id: currentHeatId,
+                config_data: nextConfig,
+                updated_by: 'priority_judge'
+            }, {
+                onConflict: 'heat_id'
+            });
+
+        if (error) {
+            throw error;
         }
     };
 
@@ -334,6 +357,7 @@ export default function JudgePage() {
             onHeatClose={handleHeatClose}
             isConnected={isConnected}
             onScoreSync={() => handleScoreSync(currentHeatId)}
+            onPriorityConfigChange={handlePriorityConfigChange}
         />
     );
 }
