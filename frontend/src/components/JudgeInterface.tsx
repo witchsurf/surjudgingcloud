@@ -70,20 +70,7 @@ function JudgeInterface({
   priorityOnly = false,
   interfaceTitle
 }: JudgeInterfaceProps) {
-  const formatSyncError = useCallback((error: unknown): string => {
-    if (error instanceof Error && error.message) return error.message;
-    if (error && typeof error === 'object') {
-      const candidate = error as { code?: string; message?: string; details?: string; hint?: string };
-      const parts = [
-        candidate.code ? `code=${candidate.code}` : '',
-        candidate.message || '',
-        candidate.details ? `details=${candidate.details}` : '',
-        candidate.hint ? `hint=${candidate.hint}` : '',
-      ].filter(Boolean);
-      if (parts.length) return parts.join(' | ');
-    }
-    return 'Erreur de synchronisation';
-  }, []);
+
 
   const [submittedScores, setSubmittedScores] = useState<Score[]>([]);
   const [activeInput, setActiveInput] = useState<ScoreInputState | null>(null);
@@ -91,7 +78,7 @@ function JudgeInterface({
   const [entryMode, setEntryMode] = useState<'score' | 'interference'>('score');
   const [interferenceType, setInterferenceType] = useState<InterferenceType>('INT1');
   const [headJudgeOverride, setHeadJudgeOverride] = useState(false);
-  const [interferenceCalls, setInterferenceCalls] = useState<InterferenceCall[]>([]);
+  const [, setInterferenceCalls] = useState<InterferenceCall[]>([]);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
