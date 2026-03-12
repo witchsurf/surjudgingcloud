@@ -894,7 +894,7 @@ export function exportFullCompetitionPDF({
   let cursorY = drawHeader(true);
 
   // === CONTENT RENDERING ===
-  Object.entries(mergedDivisions).forEach(([categoryName, allRounds], catIdx) => {
+  Object.entries(mergedDivisions).forEach(([categoryName, allRounds]) => {
     if (!allRounds.length) return;
 
     if (cursorY > height - 100) {
@@ -903,7 +903,7 @@ export function exportFullCompetitionPDF({
     }
 
     // Category Section Header
-    doc.setFillColor(F5F7FA); // Very light grey
+    doc.setFillColor('#F5F7FA'); // Very light grey
     doc.rect(0, cursorY - 10, width, 30, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
@@ -943,7 +943,7 @@ export function exportFullCompetitionPDF({
         doc.text(displayRoundName, 40, cursorY);
         cursorY += 8;
 
-        round.heats.forEach((heat, heatIdx) => {
+        round.heats.forEach((heat) => {
           const heatScores = heat.heatId ? normalizedScoresByHeat[normalizeHeatKey(heat.heatId)] ?? [] : [];
           const hasResults = heatScores.length > 0;
 
