@@ -744,29 +744,29 @@ function JudgeInterface({
     <div className="max-w-full mx-auto px-2 sm:px-6 py-4 space-y-3">
       {/* HEADER + TIMER */}
       <div className={isFullscreen ? 'sticky top-3 z-40' : ''}>
-        <div className="bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl p-4 sm:p-5 shadow-lg space-y-3">
+        <div className="bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl p-3 sm:p-4 shadow-lg space-y-2">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-              {resolvedInterfaceTitle}
-              {!isConnected && (
-                <span className="ml-4 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                  <span className="w-2 h-2 mr-1.5 bg-red-500 rounded-full animate-pulse"></span>
-                  Hors Ligne
-                </span>
-              )}
-            </h1>
+                {resolvedInterfaceTitle}
+                {!isConnected && (
+                  <span className="ml-4 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                    <span className="w-2 h-2 mr-1.5 bg-red-500 rounded-full animate-pulse"></span>
+                    Hors Ligne
+                  </span>
+                )}
+              </h1>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-violet-100">
-              <span className="flex items-center">
-                <User className="w-4 h-4 mr-1" />
-                {config.judgeNames[judgeId] || judgeName || judgeId}
-                {isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-white/15 rounded-full text-xs">Chef Juge</span>}
-                {priorityOnly && !isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-white/15 rounded-full text-xs">Priorité</span>}
-              </span>
-              <span>{config.competition}</span>
-              <span>{config.division}</span>
-              <span>R{config.round} - H{config.heatId}</span>
-            </div>
+                <span className="flex items-center">
+                  <User className="w-4 h-4 mr-1" />
+                  {config.judgeNames[judgeId] || judgeName || judgeId}
+                  {isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-white/15 rounded-full text-xs">Chef Juge</span>}
+                  {priorityOnly && !isChiefJudge && <span className="ml-2 px-2 py-0.5 bg-white/15 rounded-full text-xs">Priorité</span>}
+                </span>
+                <span>{config.competition}</span>
+                <span>{config.division}</span>
+                <span>R{config.round} - H{config.heatId}</span>
+              </div>
             </div>
             <div className="flex items-center gap-3 self-start sm:self-center">
               <button
@@ -779,53 +779,52 @@ function JudgeInterface({
               </button>
 
               {!priorityOnly && (
-              <div className="relative">
-                <button
-                  onClick={async () => {
-                    setIsSyncing(true);
-                    setSyncFeedback(null);
-                    try {
-                      const result = await onScoreSync();
-                      setSyncFeedback({
-                        message: `${result.success} notes synchronisées`,
-                        type: 'success'
-                      });
-                      setTimeout(() => setSyncFeedback(null), 3000);
-                    } catch (error) {
-                      setSyncFeedback({
-                        message: formatSyncError(error),
-                        type: 'error'
-                      });
-                    } finally {
-                      setIsSyncing(false);
-                    }
-                  }}
-                  disabled={isSyncing || !isConnected}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-sm ${
-                    isSyncing
+                <div className="relative">
+                  <button
+                    onClick={async () => {
+                      setIsSyncing(true);
+                      setSyncFeedback(null);
+                      try {
+                        const result = await onScoreSync();
+                        setSyncFeedback({
+                          message: `${result.success} notes synchronisées`,
+                          type: 'success'
+                        });
+                        setTimeout(() => setSyncFeedback(null), 3000);
+                      } catch (error) {
+                        setSyncFeedback({
+                          message: formatSyncError(error),
+                          type: 'error'
+                        });
+                      } finally {
+                        setIsSyncing(false);
+                      }
+                    }}
+                    disabled={isSyncing || !isConnected}
+                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all text-sm font-medium border shadow-sm ${isSyncing
                       ? 'bg-white/10 text-white/50 border-white/5 cursor-not-allowed'
                       : 'bg-white/20 hover:bg-white/30 text-white border-white/10 active:scale-95'
-                  }`}
-                  title="Forcer la synchronisation des notes de cette série vers le cloud"
-                >
-                  <div className={`w-5 h-5 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  </div>
-                  <span className="hidden sm:inline font-semibold">
-                    {isSyncing ? 'En cours...' : 'Synchroniser'}
-                  </span>
-                </button>
-                {pendingSyncCount > 0 && (
-                  <div
-                    className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] sm:text-xs font-bold min-w-[20px] sm:min-w-[24px] h-5 sm:h-6 px-1 flex items-center justify-center rounded-full shadow-lg border-2 border-[#1e40af] z-10 animate-pulse"
-                    title={`${pendingSyncCount} note(s) en attente de synchronisation`}
+                      }`}
+                    title="Forcer la synchronisation des notes de cette série vers le cloud"
                   >
-                    {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
-                  </div>
-                )}
-              </div>
+                    <div className={`w-5 h-5 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </div>
+                    <span className="hidden sm:inline font-semibold">
+                      {isSyncing ? 'En cours...' : 'Synchroniser'}
+                    </span>
+                  </button>
+                  {pendingSyncCount > 0 && (
+                    <div
+                      className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] sm:text-xs font-bold min-w-[20px] sm:min-w-[24px] h-5 sm:h-6 px-1 flex items-center justify-center rounded-full shadow-lg border-2 border-[#1e40af] z-10 animate-pulse"
+                      title={`${pendingSyncCount} note(s) en attente de synchronisation`}
+                    >
+                      {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -844,9 +843,8 @@ function JudgeInterface({
           />
 
           {!priorityOnly && syncFeedback && (
-            <div className={`p-2 rounded-lg text-xs font-bold flex items-center justify-center animate-in fade-in slide-in-from-top-2 ${
-              syncFeedback.type === 'success' ? 'bg-green-500/30 text-green-100 border border-green-500/50' : 'bg-red-500/30 text-red-100 border border-red-500/50'
-            }`}>
+            <div className={`p-2 rounded-lg text-xs font-bold flex items-center justify-center animate-in fade-in slide-in-from-top-2 ${syncFeedback.type === 'success' ? 'bg-green-500/30 text-green-100 border border-green-500/50' : 'bg-red-500/30 text-red-100 border border-red-500/50'
+              }`}>
               {syncFeedback.type === 'success' ? '✅' : '❌'} {syncFeedback.message}
             </div>
           )}
@@ -854,160 +852,160 @@ function JudgeInterface({
       </div>
 
       {(priorityOnly || canEditPriority) && (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Priorité</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {priorityState.mode === 'equal'
-                ? 'Début de série: tous les surfeurs sont égaux.'
-                : priorityState.mode === 'opening'
-                  ? 'Phase initiale: chaque premier départ construit la priorité par la fin.'
-                : 'Touchez un surfeur dans le line-up quand il part. Touchez un surfeur hors line-up quand il revient.'}
-            </p>
-          </div>
-          {canEditPriority && (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handlePriorityResetEqual().catch(() => { })}
-                className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Egalite
-              </button>
-              {isPriorityOrdering ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsPriorityOrdering(false);
-                      setPriorityDraft([]);
-                    }}
-                    className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handlePriorityOrderSave().catch(() => { })}
-                    disabled={orderedDraft.length !== normalizedSurfers.length}
-                    className="px-3 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Valider l&apos;ordre
-                  </button>
-                </>
-              ) : (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Priorité</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {priorityState.mode === 'equal'
+                  ? 'Début de série: tous les surfeurs sont égaux.'
+                  : priorityState.mode === 'opening'
+                    ? 'Phase initiale: chaque premier départ construit la priorité par la fin.'
+                    : 'Touchez un surfeur dans le line-up quand il part. Touchez un surfeur hors line-up quand il revient.'}
+              </p>
+            </div>
+            {canEditPriority && (
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={handlePriorityOrderStart}
-                  className="px-3 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700"
+                  onClick={() => handlePriorityResetEqual().catch(() => { })}
+                  className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
-                  Definir l&apos;ordre
+                  Egalite
                 </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 space-y-5">
-          {isPriorityOrdering ? (
-            <>
-              <div>
-                <p className="text-sm font-semibold text-gray-800 mb-3">Touchez les surfeurs dans l&apos;ordre P, 2, 3, 4.</p>
-                <div className="flex flex-wrap gap-3">
-                  {availableDraftSurfers.map((surfer) => (
+                {isPriorityOrdering ? (
+                  <>
                     <button
-                      key={surfer}
                       type="button"
-                      onClick={() => handlePriorityDraftAdd(surfer)}
-                      className="flex items-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3 shadow-sm hover:border-indigo-400 hover:bg-indigo-50"
+                      onClick={() => {
+                        setIsPriorityOrdering(false);
+                        setPriorityDraft([]);
+                      }}
+                      className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
                     >
-                      <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
-                      <span className="font-semibold text-gray-900">{surfer}</span>
+                      Annuler
                     </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold text-gray-800 mb-3">Ordre en cours</p>
-                <div className="flex flex-wrap gap-3">
-                  {orderedDraft.length > 0 ? orderedDraft.map((surfer, index) => (
                     <button
-                      key={surfer}
                       type="button"
-                      onClick={() => handlePriorityDraftRemove(surfer)}
-                      className="flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 shadow-sm"
+                      onClick={() => handlePriorityOrderSave().catch(() => { })}
+                      disabled={orderedDraft.length !== normalizedSurfers.length}
+                      className="px-3 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-indigo-600 px-2 py-1 text-sm font-bold text-white">
-                        {index === 0 ? 'P' : index + 1}
-                      </span>
-                      <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
-                      <span className="font-semibold text-gray-900">{surfer}</span>
+                      Valider l&apos;ordre
                     </button>
-                  )) : (
-                    <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
-                      Aucun ordre defini pour l&apos;instant.
-                    </div>
-                  )}
-                </div>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handlePriorityOrderStart}
+                    className="px-3 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700"
+                  >
+                    Definir l&apos;ordre
+                  </button>
+                )}
               </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <p className="text-sm font-semibold text-gray-800 mb-3">
-                  {priorityState.mode === 'equal' ? 'Tous egaux' : priorityState.mode === 'opening' ? 'Phase initiale' : 'Line-up'}
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  {(priorityState.mode === 'equal' ? normalizedSurfers : priorityState.mode === 'opening' ? normalizedSurfers : orderedPrioritySurfers).map((surfer) => (
-                    <button
-                      key={surfer}
-                      type="button"
-                      onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
-                      disabled={!canEditPriority}
-                      className="flex items-center gap-3 rounded-xl border border-gray-300 bg-white px-4 py-3 shadow-sm disabled:cursor-default"
-                    >
-                      <span className={`inline-flex min-w-[2rem] justify-center rounded-full px-2 py-1 text-sm font-bold ${priorityState.mode === 'equal' ? 'bg-gray-200 text-gray-700' : 'bg-indigo-600 text-white'}`}>
-                        {priorityLabels[surfer] || '='}
-                      </span>
-                      <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
-                      <span className="font-semibold text-gray-900">{surfer}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+            )}
+          </div>
 
-              {priorityState.mode === 'ordered' && (
+          <div className="p-4 space-y-4">
+            {isPriorityOrdering ? (
+              <>
                 <div>
-                  <p className="text-sm font-semibold text-gray-800 mb-3">En vague / hors line-up</p>
+                  <p className="text-sm font-semibold text-gray-800 mb-3">Touchez les surfeurs dans l&apos;ordre P, 2, 3, 4.</p>
                   <div className="flex flex-wrap gap-3">
-                    {inFlightSurfers.length > 0 ? inFlightSurfers.map((surfer) => (
+                    {availableDraftSurfers.map((surfer) => (
                       <button
                         key={surfer}
                         type="button"
-                        onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
-                        disabled={!canEditPriority}
-                        className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm disabled:cursor-default"
+                        onClick={() => handlePriorityDraftAdd(surfer)}
+                        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
                       >
-                        <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-amber-500 px-2 py-1 text-sm font-bold text-white">
-                          Surf
+                        <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className="font-semibold text-gray-900">{surfer}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 mb-3">Ordre en cours</p>
+                  <div className="flex flex-wrap gap-3">
+                    {orderedDraft.length > 0 ? orderedDraft.map((surfer, index) => (
+                      <button
+                        key={surfer}
+                        type="button"
+                        onClick={() => handlePriorityDraftRemove(surfer)}
+                        className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 shadow-sm"
+                      >
+                        <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-indigo-600 px-2 py-1 text-sm font-bold text-white">
+                          {index === 0 ? 'P' : index + 1}
                         </span>
                         <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
                         <span className="font-semibold text-gray-900">{surfer}</span>
                       </button>
                     )) : (
                       <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
-                        Aucun surfeur hors line-up.
+                        Aucun ordre defini pour l&apos;instant.
                       </div>
                     )}
                   </div>
                 </div>
-              )}
-            </>
-          )}
+              </>
+            ) : (
+              <>
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 mb-3">
+                    {priorityState.mode === 'equal' ? 'Tous egaux' : priorityState.mode === 'opening' ? 'Phase initiale' : 'Line-up'}
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {(priorityState.mode === 'equal' ? normalizedSurfers : priorityState.mode === 'opening' ? normalizedSurfers : orderedPrioritySurfers).map((surfer) => (
+                      <button
+                        key={surfer}
+                        type="button"
+                        onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
+                        disabled={!canEditPriority}
+                        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 shadow-sm disabled:cursor-default"
+                      >
+                        <span className={`inline-flex min-w-[2rem] justify-center rounded-full px-2 py-1 text-sm font-bold ${priorityState.mode === 'equal' ? 'bg-gray-200 text-gray-700' : 'bg-indigo-600 text-white'}`}>
+                          {priorityLabels[surfer] || '='}
+                        </span>
+                        <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className="font-semibold text-gray-900">{surfer}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {priorityState.mode === 'ordered' && (
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800 mb-3">En vague / hors line-up</p>
+                    <div className="flex flex-wrap gap-3">
+                      {inFlightSurfers.length > 0 ? inFlightSurfers.map((surfer) => (
+                        <button
+                          key={surfer}
+                          type="button"
+                          onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
+                          disabled={!canEditPriority}
+                          className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shadow-sm disabled:cursor-default"
+                        >
+                          <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-amber-500 px-2 py-1 text-sm font-bold text-white">
+                            Surf
+                          </span>
+                          <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                          <span className="font-semibold text-gray-900">{surfer}</span>
+                        </button>
+                      )) : (
+                        <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
+                          Aucun surfeur hors line-up.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* CONTRÔLES CHEF JUGE */}
@@ -1047,154 +1045,149 @@ function JudgeInterface({
 
       {/* GRILLE DE NOTATION */}
       {!priorityOnly && (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className={`bg-gray-50 border-b border-gray-200 ${compactGrid ? 'px-4 py-2.5' : 'px-6 py-3'}`}>
-          <h2 className={`${compactGrid ? 'text-lg' : 'text-xl'} font-bold text-gray-900 flex items-center`}>
-            <Waves className={`${compactGrid ? 'w-5 h-5 mr-2' : 'w-6 h-6 mr-2'} text-blue-600`} />
-            Grille de notation - {config.waves} vagues maximum
-          </h2>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setEntryMode('score')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${entryMode === 'score' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
-            >
-              Mode notes
-            </button>
-            <button
-              type="button"
-              onClick={() => setEntryMode('interference')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${entryMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
-            >
-              Mode interférence
-            </button>
-            {entryMode === 'interference' && (
-              <>
-                <select
-                  value={interferenceType}
-                  onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
-                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
-                >
-                  <option value="INT1">Interférence #1 (B/2)</option>
-                  <option value="INT2">Interférence #2 (B=0)</option>
-                </select>
-                {isChiefJudge && (
-                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={headJudgeOverride}
-                      onChange={(e) => setHeadJudgeOverride(e.target.checked)}
-                    />
-                    Arbitrage Head Judge
-                  </label>
-                )}
-              </>
-            )}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className={`bg-gray-50 border-b border-gray-200 ${compactGrid ? 'px-3 py-2' : 'px-4 py-2.5'}`}>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setEntryMode('score')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${entryMode === 'score' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
+              >
+                Mode notes
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryMode('interference')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${entryMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
+              >
+                Mode interférence
+              </button>
+              {entryMode === 'interference' && (
+                <>
+                  <select
+                    value={interferenceType}
+                    onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
+                    className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
+                  >
+                    <option value="INT1">Interférence #1 (B/2)</option>
+                    <option value="INT2">Interférence #2 (B=0)</option>
+                  </select>
+                  {isChiefJudge && (
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={headJudgeOverride}
+                        onChange={(e) => setHeadJudgeOverride(e.target.checked)}
+                      />
+                      Arbitrage Head Judge
+                    </label>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className={`w-full table-fixed ${compactGrid ? 'text-sm' : ''}`}>
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className={`${compactGrid ? 'px-2 py-2 text-xs min-w-[48px] w-12' : 'px-3 py-3 text-sm min-w-[60px] w-16'} text-center font-semibold text-gray-900`}>
-                  Prio
-                </th>
-                <th className={`${compactGrid ? 'px-2 py-2 text-xs w-28' : 'px-4 py-3 text-sm w-40'} text-left font-semibold text-gray-900 sticky left-0 bg-gray-50`}>
-                  Surfeur
-                </th>
-                {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => (
-                  <th key={wave} className={`${ultraCompactGrid ? 'px-1 py-2 text-[11px]' : compactGrid ? 'px-1.5 py-2 text-xs' : 'px-3 py-3 text-sm'} text-center font-semibold text-gray-900 ${ultraCompactGrid ? 'min-w-[44px]' : compactGrid ? 'min-w-[52px]' : 'min-w-[60px]'}`}>
-                    V{wave}
+          <div className="overflow-x-auto">
+            <table className={`w-full table-fixed ${compactGrid ? 'text-sm' : ''}`}>
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className={`${compactGrid ? 'px-1 py-1 text-[10px] min-w-[36px] w-9' : 'px-2 py-2 text-xs min-w-[48px] w-12'} text-center font-bold text-gray-500 uppercase tracking-wider`}>
+                    Prio
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {config.surfers.map((surfer, index) => (
-                <tr key={surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className={`${compactGrid ? 'px-2 py-2' : 'px-3 py-3'} text-center`}>
-                    <div className={`mx-auto flex items-center justify-center rounded-lg border font-bold ${
-                      inFlightSurfers.includes(normalizeSurferKey(surfer))
+                  <th className={`${compactGrid ? 'px-2 py-1.5 text-xs w-24' : 'px-3 py-2 text-sm w-32'} text-left font-bold text-gray-900 sticky left-0 bg-gray-50 z-10`}>
+                    Surfeur
+                  </th>
+                  {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => (
+                    <th key={wave} className={`${ultraCompactGrid ? 'px-0.5 py-1 text-[10px]' : compactGrid ? 'px-1 py-1.5 text-xs' : 'px-2 py-2 text-sm'} text-center font-bold text-gray-900 ${ultraCompactGrid ? 'min-w-[34px]' : compactGrid ? 'min-w-[42px]' : 'min-w-[50px]'}`}>
+                      V{wave}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {config.surfers.map((surfer, index) => (
+                  <tr key={surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className={`${compactGrid ? 'px-1 py-1' : 'px-2 py-1.5'} text-center`}>
+                      <div className={`mx-auto flex items-center justify-center rounded-lg border font-bold ${inFlightSurfers.includes(normalizeSurferKey(surfer))
                         ? 'border-gray-200 bg-white text-transparent'
                         : 'border-gray-300 bg-gray-50 text-gray-900'
-                    } ${ultraCompactGrid ? 'min-h-[36px] min-w-[36px] text-xs' : compactGrid ? 'min-h-[40px] min-w-[40px] text-sm' : 'min-h-[44px] min-w-[44px] text-sm'}`}>
-                      {inFlightSurfers.includes(normalizeSurferKey(surfer)) ? '' : (priorityLabels[normalizeSurferKey(surfer)] || '=')}
-                    </div>
-                  </td>
-                  <td className={`${compactGrid ? 'px-2 py-2' : 'px-4 py-3'} sticky left-0 bg-inherit`}>
-                    <div className={`flex items-center ${compactGrid ? 'space-x-2' : 'space-x-3'} min-w-0`}>
-                      <div
-                        className={`${compactGrid ? 'w-3.5 h-3.5' : 'w-4 h-4'} rounded-full flex-shrink-0`}
-                        style={{ backgroundColor: getSurferColor(surfer) }}
-                      />
-                      <span className={`font-semibold text-gray-900 truncate ${compactGrid ? 'text-sm' : ''}`}>{surfer}</span>
-                    </div>
-                  </td>
-                  {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => {
-                    const scoreData = getScoreForWave(surfer, wave);
-                    const canScore = canScoreWave(surfer, wave);
-                    const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
-                    const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
+                        } ${ultraCompactGrid ? 'min-h-[32px] min-w-[32px] text-[10px]' : compactGrid ? 'min-h-[36px] min-w-[36px] text-xs' : 'min-h-[40px] min-w-[40px] text-sm'}`}>
+                        {inFlightSurfers.includes(normalizeSurferKey(surfer)) ? '' : (priorityLabels[normalizeSurferKey(surfer)] || '=')}
+                      </div>
+                    </td>
+                    <td className={`${compactGrid ? 'px-2 py-1.5' : 'px-3 py-2'} sticky left-0 bg-inherit z-10 border-r border-gray-100`}>
+                      <div className={`flex items-center ${compactGrid ? 'space-x-1.5' : 'space-x-2'} min-w-0`}>
+                        <div
+                          className={`${compactGrid ? 'w-3.5 h-3.5' : 'w-4 h-4'} rounded-full flex-shrink-0`}
+                          style={{ backgroundColor: getSurferColor(surfer) }}
+                        />
+                        <span className={`font-semibold text-gray-900 truncate ${compactGrid ? 'text-sm' : ''}`}>{surfer}</span>
+                      </div>
+                    </td>
+                    {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => {
+                      const scoreData = getScoreForWave(surfer, wave);
+                      const canScore = canScoreWave(surfer, wave);
+                      const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
+                      const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
 
-                    return (
-                      <td key={wave} className={`${ultraCompactGrid ? 'px-1 py-2' : compactGrid ? 'px-1.5 py-2' : 'px-3 py-3'} text-center`}>
-                        {isActive ? (
-                          <input
-                            type="number"
-                            min="0"
-                            max="10"
-                            step="0.01"
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={handleKeyPress}
-                            onBlur={() => {
-                              if (inputValue.trim()) {
-                                handleScoreSubmit();
-                              } else {
-                                setActiveInput(null);
-                                setInputValue('');
-                              }
-                            }}
-                            className={`${ultraCompactGrid ? 'w-full min-w-[38px] min-h-[36px] text-sm px-1 py-1.5' : compactGrid ? 'w-full min-w-[40px] min-h-[40px] text-base px-1.5 py-2' : 'w-20 min-w-[44px] min-h-[44px] text-lg px-2 py-2'} text-center font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-4 focus:ring-primary/30 shadow-sm touch-manipulation`}
-                            placeholder="0.00"
-                            autoFocus
-                          />
-                        ) : scoreData ? (
-                          <button
-                            onClick={() => handleCellClick(surfer, wave)}
-                            className={`inline-flex items-center justify-center rounded-lg font-bold transition-all duration-200 shadow-sm active:scale-95 touch-manipulation flex-1 w-full ${ultraCompactGrid ? 'min-w-[38px] min-h-[36px] px-1 py-1 text-sm' : compactGrid ? 'min-w-[40px] min-h-[40px] px-1.5 py-1.5 text-sm' : 'min-w-[44px] min-h-[44px] px-3 py-2 text-base'} ${entryMode === 'interference'
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
-                              : 'bg-green-100 text-green-900 border border-green-300 hover:bg-green-200'}`}
-                          >
-                            {scoreData.score.toFixed(2)}
-                            {!ultraCompactGrid && <Edit3 className={`${compactGrid ? 'w-3.5 h-3.5 ml-1' : 'w-4 h-4 ml-1.5'}`} />}
-                          </button>
-                        ) : canScore ? (
-                          <button
-                            onClick={() => handleCellClick(surfer, wave)}
-                            className={`w-full border-2 border-dashed border-gray-400 rounded-lg text-gray-500 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-200 flex items-center justify-center active:scale-95 touch-manipulation ${ultraCompactGrid ? 'min-w-[38px] min-h-[36px]' : compactGrid ? 'min-w-[40px] min-h-[40px]' : 'min-w-[44px] min-h-[44px]'}`}
-                            title={`Noter la vague ${wave} pour ${surfer}`}
-                          >
-                            <Edit3 className={`${compactGrid ? 'w-4 h-4' : 'w-5 h-5'} flex-shrink-0`} />
-                          </button>
-                        ) : (
-                          <span className={`${compactGrid ? 'text-sm' : ''} text-gray-400`}>—</span>
-                        )}
-                        {effective && (
-                          <div className="mt-1 text-[10px] font-semibold text-amber-700">
-                            {effective.type === 'INT1' ? 'INT#1' : 'INT#2'} {effective.source === 'head_judge' ? '(HJ)' : ''}
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      return (
+                        <td key={wave} className={`${ultraCompactGrid ? 'px-0.5 py-1' : compactGrid ? 'px-1 py-1.5' : 'px-2 py-2'} text-center`}>
+                          {isActive ? (
+                            <input
+                              type="number"
+                              min="0"
+                              max="10"
+                              step="0.01"
+                              value={inputValue}
+                              onChange={(e) => setInputValue(e.target.value)}
+                              onKeyDown={handleKeyPress}
+                              onBlur={() => {
+                                if (inputValue.trim()) {
+                                  handleScoreSubmit();
+                                } else {
+                                  setActiveInput(null);
+                                  setInputValue('');
+                                }
+                              }}
+                              className={`${ultraCompactGrid ? 'w-full min-w-[34px] min-h-[32px] text-sm px-1 py-1' : compactGrid ? 'w-full min-w-[38px] min-h-[36px] text-base px-1 py-1.5' : 'w-16 min-w-[42px] min-h-[40px] text-lg px-1.5 py-2'} text-center font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-4 focus:ring-primary/30 shadow-sm touch-manipulation`}
+                              placeholder="0.00"
+                              autoFocus
+                            />
+                          ) : scoreData ? (
+                            <button
+                              onClick={() => handleCellClick(surfer, wave)}
+                              className={`inline-flex items-center justify-center rounded-lg font-bold transition-all duration-200 shadow-sm active:scale-95 touch-manipulation flex-1 w-full ${ultraCompactGrid ? 'min-w-[34px] min-h-[32px] px-0.5 py-0.5 text-xs' : compactGrid ? 'min-w-[38px] min-h-[36px] px-1 py-1 text-sm' : 'min-w-[42px] min-h-[40px] px-2 py-1.5 text-sm'} ${entryMode === 'interference'
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+                                : 'bg-green-100 text-green-900 border border-green-300 hover:bg-green-200'}`}
+                            >
+                              {scoreData.score.toFixed(2)}
+                              {!ultraCompactGrid && !compactGrid && <Edit3 className="w-4 h-4 ml-1" />}
+                            </button>
+                          ) : canScore ? (
+                            <button
+                              onClick={() => handleCellClick(surfer, wave)}
+                              className={`w-full border-2 border-dashed border-gray-400 rounded-lg text-gray-500 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-200 flex items-center justify-center active:scale-95 touch-manipulation ${ultraCompactGrid ? 'min-w-[34px] min-h-[32px]' : compactGrid ? 'min-w-[38px] min-h-[36px]' : 'min-w-[42px] min-h-[40px]'}`}
+                              title={`Noter la vague ${wave} pour ${surfer}`}
+                            >
+                              <Edit3 className={`${compactGrid ? 'w-3.5 h-3.5' : 'w-4 h-4'} flex-shrink-0`} />
+                            </button>
+                          ) : (
+                            <span className={`${compactGrid ? 'text-xs' : 'text-sm'} text-gray-400`}>—</span>
+                          )}
+                          {effective && (
+                            <div className="mt-1 text-[10px] font-semibold text-amber-700">
+                              {effective.type === 'INT1' ? 'INT#1' : 'INT#2'} {effective.source === 'head_judge' ? '(HJ)' : ''}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       )}
 
       {/* MODAL NOM DU JUGE */}
