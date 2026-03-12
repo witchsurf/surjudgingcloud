@@ -84,6 +84,19 @@ const CreateEvent = () => {
     }
   }, [searchParams, participantsReset]);
 
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setLogoDataUrl(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitError(null);
@@ -100,6 +113,7 @@ const CreateEvent = () => {
       organizer: formData.organizer.trim(),
       startDate: formData.startDate,
       endDate: formData.endDate,
+      organizerLogoDataUrl: logoDataUrl,
       createdAt: new Date().toISOString()
     };
 
@@ -227,6 +241,28 @@ const CreateEvent = () => {
               className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               required
             />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium">
+              Logo de l'organisateur (Optionnel)
+            </label>
+            <div className="flex items-center space-x-4">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleLogoChange}
+                className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-400 file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer"
+              />
+              {logoDataUrl && (
+                <div className="h-12 w-12 rounded-lg bg-white p-1 overflow-hidden border border-gray-600">
+                  <img src={logoDataUrl} alt="Preview" className="h-full w-full object-contain" />
+                </div>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              Format recommandé : PNG ou JPG carré (ex: 200x200px)
+            </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

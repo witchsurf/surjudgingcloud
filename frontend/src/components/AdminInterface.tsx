@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText, PlusCircle, Trophy } from 'lucide-react';
+import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText, PlusCircle, Trophy, Image as ImageIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
@@ -125,7 +125,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         config.round,
         config.heatId
       ),
-      [config.competition, config.division, config.round, config.heatId]
+    [config.competition, config.division, config.round, config.heatId]
   );
 
   useEffect(() => {
@@ -1455,190 +1455,229 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             </div>
           </div>
 
-        <div className="mt-4 mb-6 p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Contexte événement</h3>
-            <span className="text-xs text-gray-500">
-              event_id: {activeEventId ?? 'N/A'} · {loadedFromDb ? 'chargé depuis DB' : 'local only'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Événement</label>
-              <input
-                type="text"
-                value={config.competition}
-                onChange={(e) => handleConfigChange('competition', e.target.value)}
-                placeholder="Nom de l'événement"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          <div className="mt-4 mb-6 p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Contexte événement</h3>
+              <span className="text-xs text-gray-500">
+                event_id: {activeEventId ?? 'N/A'} · {loadedFromDb ? 'chargé depuis DB' : 'local only'}
+              </span>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Division</label>
-              <select
-                value={config.division}
-                onChange={(e) => handleConfigChange('division', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {effectiveDivisionOptions.map((division) => (
-                  <option key={division} value={division}>
-                    {division}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Round</label>
-              <select
-                value={config.round}
-                onChange={(e) => handleConfigChange('round', Number(e.target.value))}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {roundOptions.map((round) => (
-                  <option key={round} value={round}>
-                    Round {round}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Heat</label>
-              <select
-                value={config.heatId}
-                onChange={(e) => handleConfigChange('heatId', Number(e.target.value))}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {heatOptionsForRound.map((heat) => (
-                  <option key={heat} value={heat}>
-                    Heat {heat}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {!loadedFromDb && (
-            <div className="rounded border border-amber-300 bg-amber-50 p-3">
-              <p className="text-xs text-amber-900 mb-2">
-                Configuration non liée à la base. Recharge depuis Supabase pour récupérer l’événement actif.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={handleAutoReconnect}
-                  disabled={reconnectPending || !onReconnectToDb}
-                  className="px-3 py-1.5 text-xs font-medium bg-amber-200 rounded hover:bg-amber-300 disabled:opacity-50"
-                >
-                  {reconnectPending ? 'Reconnexion...' : 'Reconnecter Supabase'}
-                </button>
-                <button
-                  onClick={() => navigate('/my-events')}
-                  className="px-3 py-1.5 text-xs font-medium bg-white border border-amber-300 rounded hover:bg-amber-100"
-                >
-                  Mes événements
-                </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Événement</label>
+                <input
+                  type="text"
+                  value={config.competition}
+                  onChange={(e) => handleConfigChange('competition', e.target.value)}
+                  placeholder="Nom de l'événement"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
-              {reconnectMessage && <p className="text-xs mt-2 text-amber-900">{reconnectMessage}</p>}
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Division</label>
+                <select
+                  value={config.division}
+                  onChange={(e) => handleConfigChange('division', e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {effectiveDivisionOptions.map((division) => (
+                    <option key={division} value={division}>
+                      {division}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-2 pt-2 border-t border-gray-100">
+                <label className="block text-xs font-medium text-gray-600 mb-2">Logo de l'organisateur</label>
+                <div className="flex items-center space-x-4">
+                  <div className="flex-shrink-0 h-16 w-16 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden">
+                    {(() => {
+                      const eventData = JSON.parse(localStorage.getItem('eventData') || '{}');
+                      const logo = eventData.organizerLogoDataUrl || eventData.image_url || eventData.brand_logo_url;
+                      return logo ? (
+                        <img src={logo} alt="Logo" className="h-full w-full object-contain" />
+                      ) : (
+                        <ImageIcon className="w-6 h-6 text-gray-300" />
+                      );
+                    })()}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          const base64 = ev.target?.result as string;
+                          const eventData = JSON.parse(localStorage.getItem('eventData') || '{}');
+                          eventData.organizerLogoDataUrl = base64;
+                          localStorage.setItem('eventData', JSON.stringify(eventData));
+                          // Force a re-render or notification if needed
+                          window.dispatchEvent(new Event('storage'));
+                        };
+                        reader.readAsDataURL(file);
+                      }}
+                      className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                    />
+                    <p className="mt-1 text-[10px] text-gray-400">PNG/JPG recommandé. Apparaîtra sur les exports PDF.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Round</label>
+                <select
+                  value={config.round}
+                  onChange={(e) => handleConfigChange('round', Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {roundOptions.map((round) => (
+                    <option key={round} value={round}>
+                      Round {round}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Heat</label>
+                <select
+                  value={config.heatId}
+                  onChange={(e) => handleConfigChange('heatId', Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {heatOptionsForRound.map((heat) => (
+                    <option key={heat} value={heat}>
+                      Heat {heat}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          )}
+
+            {!loadedFromDb && (
+              <div className="rounded border border-amber-300 bg-amber-50 p-3">
+                <p className="text-xs text-amber-900 mb-2">
+                  Configuration non liée à la base. Recharge depuis Supabase pour récupérer l’événement actif.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleAutoReconnect}
+                    disabled={reconnectPending || !onReconnectToDb}
+                    className="px-3 py-1.5 text-xs font-medium bg-amber-200 rounded hover:bg-amber-300 disabled:opacity-50"
+                  >
+                    {reconnectPending ? 'Reconnexion...' : 'Reconnecter Supabase'}
+                  </button>
+                  <button
+                    onClick={() => navigate('/my-events')}
+                    className="px-3 py-1.5 text-xs font-medium bg-white border border-amber-300 rounded hover:bg-amber-100"
+                  >
+                    Mes événements
+                  </button>
+                </div>
+                {reconnectMessage && <p className="text-xs mt-2 text-amber-900">{reconnectMessage}</p>}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </details>
+      </details>
 
-    {/* Configuration Juges et Surfeurs - Collapsible (Fermé par défaut) */}
-        <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
-          <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
-            <div className="flex items-center space-x-3">
-              <Users className="w-6 h-6 text-cta-500" />
-              <h2 className="text-xl font-bebas tracking-wider text-white">2. JUGES ET SURFEURS</h2>
-            </div>
-            <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
-          </summary>
-          <div className="p-4 bg-white border-t-4 border-primary-950 flex flex-col space-y-6">
+      {/* Configuration Juges et Surfeurs - Collapsible (Fermé par défaut) */}
+      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
+        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+          <div className="flex items-center space-x-3">
+            <Users className="w-6 h-6 text-cta-500" />
+            <h2 className="text-xl font-bebas tracking-wider text-white">2. JUGES ET SURFEURS</h2>
+          </div>
+          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+        </summary>
+        <div className="p-4 bg-white border-t-4 border-primary-950 flex flex-col space-y-6">
 
-        {/* Nombre de Juges (Mode Kiosk) */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Juges</label>
-          <select
-            value={config.judges.length}
-            onChange={(e) => {
-              const numJudges = parseInt(e.target.value);
-              const judgeIds = Array.from({ length: numJudges }, (_, i) => `J${i + 1}`);
-              const judgeNames = judgeIds.reduce((acc, id) => ({ ...acc, [id]: id }), {} as Record<string, string>);
-              onConfigChange({
-                ...config,
-                judges: judgeIds,
-                judgeNames: judgeNames
-              });
-            }}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="3">3 Juges (J1, J2, J3)</option>
-            <option value="4">4 Juges (J1, J2, J3, J4)</option>
-            <option value="5">5 Juges (J1, J2, J3, J4, J5)</option>
-          </select>
-          <p className="mt-2 text-xs text-gray-500">
-            Les juges utiliseront le mode kiosque avec leurs positions (J1, J2, etc.)
-          </p>
-        </div>
-
-        {/* Surfeurs (lecture seule depuis Supabase) */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700">Surfeurs du heat</label>
-          <div className="mt-1 mb-4 flex items-start space-x-2 text-sm text-gray-600">
-            <InfoIcon className="w-4 h-4 text-gray-500 mt-0.5" />
-            <p>
-              Cette liste est synchronisée automatiquement à partir des heats planifiés dans la base.
-              Modifiez les participants directement dans l’outil de planification si nécessaire.
+          {/* Nombre de Juges (Mode Kiosk) */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Juges</label>
+            <select
+              value={config.judges.length}
+              onChange={(e) => {
+                const numJudges = parseInt(e.target.value);
+                const judgeIds = Array.from({ length: numJudges }, (_, i) => `J${i + 1}`);
+                const judgeNames = judgeIds.reduce((acc, id) => ({ ...acc, [id]: id }), {} as Record<string, string>);
+                onConfigChange({
+                  ...config,
+                  judges: judgeIds,
+                  judgeNames: judgeNames
+                });
+              }}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="3">3 Juges (J1, J2, J3)</option>
+              <option value="4">4 Juges (J1, J2, J3, J4)</option>
+              <option value="5">5 Juges (J1, J2, J3, J4, J5)</option>
+            </select>
+            <p className="mt-2 text-xs text-gray-500">
+              Les juges utiliseront le mode kiosque avec leurs positions (J1, J2, etc.)
             </p>
           </div>
 
-          {config.surfers.length ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {config.surfers.map((surfer, index) => {
-                const surferKey = normalizeJerseyLabel(surfer);
-                const color = SURFER_COLOR_MAP[surferKey as keyof typeof SURFER_COLOR_MAP] ?? '#6b7280';
-                return (
-                  <div key={`${surfer}-${index}`} className="flex items-center space-x-2 p-2 bg-gray-50 rounded">
-                    <div
-                      className="w-4 h-4 rounded-full border border-gray-300"
-                      style={{ backgroundColor: color }}
-                    />
-                    <span className="text-sm font-medium text-gray-900">{surfer}</span>
-                  </div>
-                );
-              })}
+          {/* Surfeurs (lecture seule depuis Supabase) */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700">Surfeurs du heat</label>
+            <div className="mt-1 mb-4 flex items-start space-x-2 text-sm text-gray-600">
+              <InfoIcon className="w-4 h-4 text-gray-500 mt-0.5" />
+              <p>
+                Cette liste est synchronisée automatiquement à partir des heats planifiés dans la base.
+                Modifiez les participants directement dans l’outil de planification si nécessaire.
+              </p>
             </div>
-          ) : (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-              Aucun surfeur détecté pour ce heat. Vérifiez les entrées dans Supabase puis rechargez la configuration.
-            </div>
-          )}
-        </div>
 
-        <button
-          onClick={handleSaveConfig}
-          disabled={configSaved || loadState === 'loading'}
-          className={`w-full py-4 px-6 rounded-xl font-bebas text-2xl tracking-widest transition-all border-4 shadow-block flex justify-center items-center gap-2 ${configSaved
-            ? 'bg-success-50 text-success-700 border-success-200 cursor-not-allowed opacity-80'
-            : 'bg-cta-500 text-white border-primary-950 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#172554] active:translate-y-0 active:shadow-none'
-            }`}
-        >
-          {configSaved ? (
-            <>
-              <CheckCircle className="w-6 h-6" /> CONFIGURATION SAUVEGARDÉE
-            </>
-          ) : (
-            <>
-              SAUVEGARDER ET APPLIQUER
-            </>
-          )}
-        </button>
+            {config.surfers.length ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {config.surfers.map((surfer, index) => {
+                  const surferKey = normalizeJerseyLabel(surfer);
+                  const color = SURFER_COLOR_MAP[surferKey as keyof typeof SURFER_COLOR_MAP] ?? '#6b7280';
+                  return (
+                    <div key={`${surfer}-${index}`} className="flex items-center space-x-2 p-2 bg-gray-50 rounded">
+                      <div
+                        className="w-4 h-4 rounded-full border border-gray-300"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="text-sm font-medium text-gray-900">{surfer}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                Aucun surfeur détecté pour ce heat. Vérifiez les entrées dans Supabase puis rechargez la configuration.
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleSaveConfig}
+            disabled={configSaved || loadState === 'loading'}
+            className={`w-full py-4 px-6 rounded-xl font-bebas text-2xl tracking-widest transition-all border-4 shadow-block flex justify-center items-center gap-2 ${configSaved
+              ? 'bg-success-50 text-success-700 border-success-200 cursor-not-allowed opacity-80'
+              : 'bg-cta-500 text-white border-primary-950 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#172554] active:translate-y-0 active:shadow-none'
+              }`}
+          >
+            {configSaved ? (
+              <>
+                <CheckCircle className="w-6 h-6" /> CONFIGURATION SAUVEGARDÉE
+              </>
+            ) : (
+              <>
+                SAUVEGARDER ET APPLIQUER
+              </>
+            )}
+          </button>
         </div>
-        </details>
+      </details>
 
       {/* Timer */}
       <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" open>
@@ -1656,32 +1695,32 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             </div>
           )}
           <HeatTimer
-          key={`timer-${config.competition}-${config.division}-R${config.round}-H${config.heatId}`}
-          timer={timer}
-          onStart={handleTimerStart}
-          onPause={handleTimerPause}
-          onReset={handleTimerReset}
-          onDurationChange={handleTimerDurationChange}
-          configSaved={configSaved}
-        />
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={handleTimerResume}
-            disabled={!configSaved || timer.isRunning}
-            className="py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Reprendre (temps restant)
-          </button>
-          <button
-            type="button"
-            onClick={handleTimerRestartFull}
-            disabled={!configSaved}
-            className="py-2 px-4 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            Recommencer (durée complète)
-          </button>
-        </div>
+            key={`timer-${config.competition}-${config.division}-R${config.round}-H${config.heatId}`}
+            timer={timer}
+            onStart={handleTimerStart}
+            onPause={handleTimerPause}
+            onReset={handleTimerReset}
+            onDurationChange={handleTimerDurationChange}
+            configSaved={configSaved}
+          />
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={handleTimerResume}
+              disabled={!configSaved || timer.isRunning}
+              className="py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Reprendre (temps restant)
+            </button>
+            <button
+              type="button"
+              onClick={handleTimerRestartFull}
+              disabled={!configSaved}
+              className="py-2 px-4 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Recommencer (durée complète)
+            </button>
+          </div>
         </div>
       </details>
 
@@ -1697,46 +1736,46 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           <p className="text-sm text-gray-600 mb-4">
             Ouvrez ou partagez le tableau de scores en temps réel sur un autre écran.
           </p>
-        {publicDisplayUrl ? (
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={handleOpenDisplay}
-              className="w-full py-2 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
-            >
-              Ouvrir l’affichage public
-            </button>
-            <button
-              type="button"
-              onClick={handleCopyDisplayLink}
-              className="w-full py-2 px-4 rounded-lg border border-blue-200 text-blue-700 font-medium hover:bg-blue-50 transition-colors"
-            >
-              {displayLinkCopied ? 'Lien copié ✅' : 'Copier le lien'}
-            </button>
-            <div className="text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
-              {publicDisplayUrl}
-            </div>
-            <div className="border-t border-gray-200 pt-3">
-              <p className="text-sm text-gray-600 mb-2">
-                Lien tablette dédié pour le juge priorité.
-              </p>
+          {publicDisplayUrl ? (
+            <div className="space-y-3">
               <button
                 type="button"
-                onClick={handleCopyPriorityLink}
-                className="w-full py-2 px-4 rounded-lg border border-indigo-200 text-indigo-700 font-medium hover:bg-indigo-50 transition-colors"
+                onClick={handleOpenDisplay}
+                className="w-full py-2 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
               >
-                {priorityLinkCopied ? 'Lien priorité copié ✅' : 'Copier le lien juge priorité'}
+                Ouvrir l’affichage public
               </button>
-              <div className="mt-2 text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
-                {priorityJudgeUrl}
+              <button
+                type="button"
+                onClick={handleCopyDisplayLink}
+                className="w-full py-2 px-4 rounded-lg border border-blue-200 text-blue-700 font-medium hover:bg-blue-50 transition-colors"
+              >
+                {displayLinkCopied ? 'Lien copié ✅' : 'Copier le lien'}
+              </button>
+              <div className="text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
+                {publicDisplayUrl}
+              </div>
+              <div className="border-t border-gray-200 pt-3">
+                <p className="text-sm text-gray-600 mb-2">
+                  Lien tablette dédié pour le juge priorité.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCopyPriorityLink}
+                  className="w-full py-2 px-4 rounded-lg border border-indigo-200 text-indigo-700 font-medium hover:bg-indigo-50 transition-colors"
+                >
+                  {priorityLinkCopied ? 'Lien priorité copié ✅' : 'Copier le lien juge priorité'}
+                </button>
+                <div className="mt-2 text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
+                  {priorityJudgeUrl}
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <p className="text-sm text-red-600">
-            Impossible de générer le lien pour l’instant. Sauvegardez la configuration puis réessayez.
-          </p>
-        )}
+          ) : (
+            <p className="text-sm text-red-600">
+              Impossible de générer le lien pour l’instant. Sauvegardez la configuration puis réessayez.
+            </p>
+          )}
         </div>
       </details>
 
@@ -1752,98 +1791,98 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </summary>
           <div className="p-6 bg-white border-t-4 border-primary-950">
             <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <CheckCircle className="w-6 h-6 text-green-600" />
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Gestion du Heat</h2>
-                <p className="text-sm text-gray-600">
-                  Heat actuel: {config.competition} - {config.division} - R{config.round} H{config.heatId}
+              <div className="flex items-center space-x-3">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Gestion du Heat</h2>
+                  <p className="text-sm text-gray-600">
+                    Heat actuel: {config.competition} - {config.division} - R{config.round} H{config.heatId}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleCloseHeat}
+                className="flex items-center space-x-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-lg transform transition hover:scale-105"
+              >
+                <CheckCircle className="w-5 h-5" />
+                <span>Fermer le Heat</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              {/* DEBUG PANEL */}
+              <div className="mt-4 p-4 bg-gray-100 rounded text-xs font-mono text-gray-600 overflow-auto max-h-40">
+                <p className="font-bold mb-1">🔧 DEBUG INFO:</p>
+                <p>Heat: {config.competition} / {config.division} / R{config.round} H{config.heatId}</p>
+                <p>Surfers: {config.surfers.join(', ')}</p>
+                <p>Loaded from DB: {loadedFromDb ? 'YES' : 'NO'}</p>
+                <p>Supabase mode: {supabaseMode || 'auto'}</p>
+                <p>DB status: {dbStatus}</p>
+                {!loadedFromDb && (
+                  <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+                    <p className="font-semibold">⚠️ Configuration non chargée depuis la base.</p>
+                    <p>Action recommandée: reconnecter à Supabase puis recharger la config.</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        onClick={handleAutoReconnect}
+                        disabled={reconnectPending || !onReconnectToDb}
+                        className="px-2 py-1 bg-amber-200 rounded hover:bg-amber-300 disabled:opacity-50"
+                      >
+                        {reconnectPending ? 'Reconnexion...' : 'Reconnect to Supabase'}
+                      </button>
+                      <button
+                        onClick={() => navigate('/my-events')}
+                        className="px-2 py-1 bg-white border border-amber-300 rounded hover:bg-amber-100"
+                      >
+                        Ouvrir Mes événements
+                      </button>
+                    </div>
+                    {reconnectMessage && <p className="mt-2">{reconnectMessage}</p>}
+                  </div>
+                )}
+                <button
+                  onClick={async () => {
+                    try {
+                      const eventId = await fetchEventIdByName(config.competition);
+                      if (eventId) {
+                        const seq = await fetchOrderedHeatSequence(eventId, config.division);
+                        console.log('🔥 Heat Sequence:', seq);
+                        alert(`Sequence Length: ${seq.length}\nSee console for details.`);
+                      } else {
+                        alert('Event ID not found');
+                      }
+                    } catch (e) { alert('Error: ' + e); }
+                  }}
+                  className="mt-2 px-2 py-1 bg-gray-300 rounded hover:bg-gray-400"
+                >
+                  Inspect Sequence
+                </button>
+              </div>
+            </div>
+
+            {/* Statistiques des juges */}
+            {Object.keys(judgeWorkCount).length > 0 && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Heats consécutifs par juge:</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {Object.entries(judgeWorkCount).map(([judgeId, count]) => (
+                    <div key={judgeId} className={`flex items-center justify-between p-2 rounded ${count >= 4 ? 'bg-red-100 text-red-800' :
+                      count >= 3 ? 'bg-orange-100 text-orange-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                      <span className="text-sm font-medium">
+                        {config.judgeNames[judgeId] || judgeId}
+                      </span>
+                      <span className="text-sm font-bold">{count}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  🟢 Normal • 🟠 Attention (3+) • 🔴 Fatigue (4+)
                 </p>
               </div>
-            </div>
-
-            <button
-              onClick={handleCloseHeat}
-              className="flex items-center space-x-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-lg transform transition hover:scale-105"
-            >
-              <CheckCircle className="w-5 h-5" />
-              <span>Fermer le Heat</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-
-            {/* DEBUG PANEL */}
-            <div className="mt-4 p-4 bg-gray-100 rounded text-xs font-mono text-gray-600 overflow-auto max-h-40">
-              <p className="font-bold mb-1">🔧 DEBUG INFO:</p>
-              <p>Heat: {config.competition} / {config.division} / R{config.round} H{config.heatId}</p>
-              <p>Surfers: {config.surfers.join(', ')}</p>
-              <p>Loaded from DB: {loadedFromDb ? 'YES' : 'NO'}</p>
-              <p>Supabase mode: {supabaseMode || 'auto'}</p>
-              <p>DB status: {dbStatus}</p>
-              {!loadedFromDb && (
-                <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
-                  <p className="font-semibold">⚠️ Configuration non chargée depuis la base.</p>
-                  <p>Action recommandée: reconnecter à Supabase puis recharger la config.</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      onClick={handleAutoReconnect}
-                      disabled={reconnectPending || !onReconnectToDb}
-                      className="px-2 py-1 bg-amber-200 rounded hover:bg-amber-300 disabled:opacity-50"
-                    >
-                      {reconnectPending ? 'Reconnexion...' : 'Reconnect to Supabase'}
-                    </button>
-                    <button
-                      onClick={() => navigate('/my-events')}
-                      className="px-2 py-1 bg-white border border-amber-300 rounded hover:bg-amber-100"
-                    >
-                      Ouvrir Mes événements
-                    </button>
-                  </div>
-                  {reconnectMessage && <p className="mt-2">{reconnectMessage}</p>}
-                </div>
-              )}
-              <button
-                onClick={async () => {
-                  try {
-                    const eventId = await fetchEventIdByName(config.competition);
-                    if (eventId) {
-                      const seq = await fetchOrderedHeatSequence(eventId, config.division);
-                      console.log('🔥 Heat Sequence:', seq);
-                      alert(`Sequence Length: ${seq.length}\nSee console for details.`);
-                    } else {
-                      alert('Event ID not found');
-                    }
-                  } catch (e) { alert('Error: ' + e); }
-                }}
-                className="mt-2 px-2 py-1 bg-gray-300 rounded hover:bg-gray-400"
-              >
-                Inspect Sequence
-              </button>
-            </div>
+            )}
           </div>
-
-          {/* Statistiques des juges */}
-          {Object.keys(judgeWorkCount).length > 0 && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Heats consécutifs par juge:</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {Object.entries(judgeWorkCount).map(([judgeId, count]) => (
-                  <div key={judgeId} className={`flex items-center justify-between p-2 rounded ${count >= 4 ? 'bg-red-100 text-red-800' :
-                    count >= 3 ? 'bg-orange-100 text-orange-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
-                    <span className="text-sm font-medium">
-                      {config.judgeNames[judgeId] || judgeId}
-                    </span>
-                    <span className="text-sm font-bold">{count}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                🟢 Normal • 🟠 Attention (3+) • 🔴 Fatigue (4+)
-              </p>
-            </div>
-          )}
-        </div>
         </details>
       )}
       {/* Paramètres avancés */}
@@ -1856,213 +1895,212 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
         <div className="p-6 bg-white border-t-4 border-primary-950 space-y-4">
-            {/* JUDGES SECTION */}
-            <div className="pt-8 border-t-4 border-primary-50">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-cta-500" />
-                  Juges / Officiels
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {config.judges.map((judgeId, index) => (
-                  <div key={judgeId} className="bg-primary-50 border-2 border-primary-950 p-4 rounded-xl shadow-block flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-primary-900/60 uppercase tracking-widest">Juge #{index + 1}</span>
-                      <button
-                        onClick={() => handleRemoveJudge(judgeId)}
-                        className="p-1.5 text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+          {/* JUDGES SECTION */}
+          <div className="pt-8 border-t-4 border-primary-50">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-cta-500" />
+                Juges / Officiels
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {config.judges.map((judgeId, index) => (
+                <div key={judgeId} className="bg-primary-50 border-2 border-primary-950 p-4 rounded-xl shadow-block flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-primary-900/60 uppercase tracking-widest">Juge #{index + 1}</span>
+                    <button
+                      onClick={() => handleRemoveJudge(judgeId)}
+                      className="p-1.5 text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      value={config.judgeNames[judgeId] || ''}
+                      onChange={(e) => handleJudgeNameChange(judgeId, e.target.value)}
+                      placeholder="Nom du Juge"
+                      className="w-full px-3 py-2 bg-white border-2 border-primary-200 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold"
+                    />
+                    <input
+                      type="email"
+                      value={config.judgeEmails?.[judgeId] || ''}
+                      onChange={(e) => handleJudgeEmailChange(judgeId, e.target.value)}
+                      placeholder="Email (optionnel)"
+                      className="w-full px-3 py-1.5 bg-white/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium"
+                    />
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={handleAddJudge}
+                className="p-6 border-4 border-dashed border-primary-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-primary-400 hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50 transition-all group"
+              >
+                <PlusCircle className="w-8 h-8 group-hover:scale-110 transition-transform" />
+                <span className="font-bebas tracking-widest">Ajouter un Juge</span>
+              </button>
+            </div>
+          </div>
+
+          {/* SURFERS SECTION */}
+          <div className="pt-8 border-t-4 border-primary-50">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-cta-500" />
+                Surfeurs par Couleur de Lycra
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {(['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const).map((color) => {
+                const isAssigned = config.surfers.includes(color);
+                return (
+                  <div key={color} className={`bg-white border-2 border-primary-950 rounded-xl overflow-hidden shadow-block transition-all ${!isAssigned && 'opacity-50 grayscale'}`}>
+                    <div className={`px-4 py-2 border-b-2 border-primary-950 flex items-center justify-between ${color === 'ROUGE' ? 'bg-red-500 text-white' :
+                      color === 'BLANC' ? 'bg-slate-100 text-slate-900' :
+                        color === 'JAUNE' ? 'bg-yellow-400 text-slate-900' :
+                          color === 'BLEU' ? 'bg-blue-600 text-white' :
+                            color === 'VERT' ? 'bg-green-600 text-white' :
+                              'bg-slate-900 text-white'
+                      }`}>
+                      <span className="text-[10px] font-bold uppercase tracking-widest">{color}</span>
+                      <input
+                        type="checkbox"
+                        checked={isAssigned}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...config.surfers, color]
+                            : config.surfers.filter(s => s !== color);
+                          handleConfigChange('surfers', next);
+                        }}
+                        className="w-4 h-4 rounded border-white text-primary-600 focus:ring-0 cursor-pointer"
+                      />
                     </div>
-                    <div className="space-y-1">
+                    <div className="p-4 space-y-3">
                       <input
                         type="text"
-                        value={config.judgeNames[judgeId] || ''}
-                        onChange={(e) => handleJudgeNameChange(judgeId, e.target.value)}
-                        placeholder="Nom du Juge"
-                        className="w-full px-3 py-2 bg-white border-2 border-primary-200 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold"
+                        value={config.surferNames?.[color] || ''}
+                        onChange={(e) => handleSurferNameChange(color, e.target.value)}
+                        placeholder="Nom du Surfeur"
+                        disabled={!isAssigned}
+                        className="w-full px-3 py-2 bg-primary-50 border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold disabled:bg-gray-50 disabled:border-gray-100"
                       />
                       <input
-                        type="email"
-                        value={config.judgeEmails?.[judgeId] || ''}
-                        onChange={(e) => handleJudgeEmailChange(judgeId, e.target.value)}
-                        placeholder="Email (optionnel)"
-                        className="w-full px-3 py-1.5 bg-white/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium"
+                        type="text"
+                        value={config.surferCountries?.[color] || ''}
+                        onChange={(e) => handleSurferCountryChange(color, e.target.value)}
+                        placeholder="Pays / Club"
+                        disabled={!isAssigned}
+                        className="w-full px-3 py-1.5 bg-primary-50/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium disabled:opacity-50"
                       />
                     </div>
                   </div>
-                ))}
-                <button
-                  onClick={handleAddJudge}
-                  className="p-6 border-4 border-dashed border-primary-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-primary-400 hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50 transition-all group"
-                >
-                  <PlusCircle className="w-8 h-8 group-hover:scale-110 transition-transform" />
-                  <span className="font-bebas tracking-widest">Ajouter un Juge</span>
-                </button>
-              </div>
-            </div>
-
-            {/* SURFERS SECTION */}
-            <div className="pt-8 border-t-4 border-primary-50">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-cta-500" />
-                  Surfeurs par Couleur de Lycra
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {(['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const).map((color) => {
-                  const isAssigned = config.surfers.includes(color);
-                  return (
-                    <div key={color} className={`bg-white border-2 border-primary-950 rounded-xl overflow-hidden shadow-block transition-all ${!isAssigned && 'opacity-50 grayscale'}`}>
-                      <div className={`px-4 py-2 border-b-2 border-primary-950 flex items-center justify-between ${
-                        color === 'ROUGE' ? 'bg-red-500 text-white' :
-                        color === 'BLANC' ? 'bg-slate-100 text-slate-900' :
-                        color === 'JAUNE' ? 'bg-yellow-400 text-slate-900' :
-                        color === 'BLEU' ? 'bg-blue-600 text-white' :
-                        color === 'VERT' ? 'bg-green-600 text-white' :
-                        'bg-slate-900 text-white'
-                      }`}>
-                        <span className="text-[10px] font-bold uppercase tracking-widest">{color}</span>
-                        <input
-                          type="checkbox"
-                          checked={isAssigned}
-                          onChange={(e) => {
-                            const next = e.target.checked
-                              ? [...config.surfers, color]
-                              : config.surfers.filter(s => s !== color);
-                            handleConfigChange('surfers', next);
-                          }}
-                          className="w-4 h-4 rounded border-white text-primary-600 focus:ring-0 cursor-pointer"
-                        />
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <input
-                          type="text"
-                          value={config.surferNames?.[color] || ''}
-                          onChange={(e) => handleSurferNameChange(color, e.target.value)}
-                          placeholder="Nom du Surfeur"
-                          disabled={!isAssigned}
-                          className="w-full px-3 py-2 bg-primary-50 border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold disabled:bg-gray-50 disabled:border-gray-100"
-                        />
-                        <input
-                          type="text"
-                          value={config.surferCountries?.[color] || ''}
-                          onChange={(e) => handleSurferCountryChange(color, e.target.value)}
-                          placeholder="Pays / Club"
-                          disabled={!isAssigned}
-                          className="w-full px-3 py-1.5 bg-primary-50/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium disabled:opacity-50"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                onClick={onReloadData}
-                className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>Recharger</span>
-              </button>
-
-              <button
-                onClick={handleResetAllData}
-                className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-bold"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>🚀 RESET NUCLÉAIRE</span>
-              </button>
-
-              <button
-                onClick={handleExportPdf}
-                className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-              >
-                <FileText className="w-4 h-4" />
-                <span>Export PDF</span>
-              </button>
-
-              <button
-                onClick={handleExportEventPdf}
-                disabled={eventPdfPending}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${eventPdfPending
-                  ? 'bg-purple-300 cursor-not-allowed'
-                  : 'bg-purple-600 hover:bg-purple-700'
-                  }`}
-              >
-                <FileText className="w-4 h-4" />
-                <span>{eventPdfPending ? 'Export évènement…' : 'Export complet (PDF)'}</span>
-              </button>
-
-              <button
-                onClick={handleRebuildDivisionQualifiers}
-                disabled={rebuildPending || !configSaved}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${rebuildPending || !configSaved
-                  ? 'bg-amber-300 cursor-not-allowed'
-                  : 'bg-amber-600 hover:bg-amber-700'
-                  }`}
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>{rebuildPending ? 'Recalcul en cours…' : 'Recalculer qualifiés (division)'}</span>
-              </button>
-
-              <button
-                onClick={exportData}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export JSON</span>
-              </button>
-            </div>
-
-            <div className="pt-4 border-t border-gray-200">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Code Secret (PIN) pour les Juges
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={config.secretKey || ''}
-                  onChange={(e) => handleConfigChange('secretKey', e.target.value)}
-                  placeholder="Ex: 1234"
-                  className="w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="text-xs text-gray-500">
-                  Définissez un code simple (ex: 1234) pour permettre aux juges de se connecter sans email.
-                </span>
-              </div>
-            </div>
-            <div className="pt-4 border-t border-gray-200">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Code Admin Hors-ligne (LAN)
-              </label>
-              <div className="flex flex-col md:flex-row md:items-center gap-2">
-                <input
-                  type="text"
-                  value={offlineAdminPin}
-                  onChange={(e) => setOfflineAdminPin(e.target.value)}
-                  placeholder="Ex: 7890"
-                  className="w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveOfflineAdminPin}
-                  className="px-3 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900"
-                >
-                  Enregistrer
-                </button>
-                <span className="text-xs text-gray-500">
-                  Permet d’accéder à /admin sans magic link quand Internet est indisponible.
-                </span>
-              </div>
+                );
+              })}
             </div>
           </div>
-        </details>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={onReloadData}
+              className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Recharger</span>
+            </button>
+
+            <button
+              onClick={handleResetAllData}
+              className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-bold"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>🚀 RESET NUCLÉAIRE</span>
+            </button>
+
+            <button
+              onClick={handleExportPdf}
+              className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Export PDF</span>
+            </button>
+
+            <button
+              onClick={handleExportEventPdf}
+              disabled={eventPdfPending}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${eventPdfPending
+                ? 'bg-purple-300 cursor-not-allowed'
+                : 'bg-purple-600 hover:bg-purple-700'
+                }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>{eventPdfPending ? 'Export évènement…' : 'Export complet (PDF)'}</span>
+            </button>
+
+            <button
+              onClick={handleRebuildDivisionQualifiers}
+              disabled={rebuildPending || !configSaved}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${rebuildPending || !configSaved
+                ? 'bg-amber-300 cursor-not-allowed'
+                : 'bg-amber-600 hover:bg-amber-700'
+                }`}
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>{rebuildPending ? 'Recalcul en cours…' : 'Recalculer qualifiés (division)'}</span>
+            </button>
+
+            <button
+              onClick={exportData}
+              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export JSON</span>
+            </button>
+          </div>
+
+          <div className="pt-4 border-t border-gray-200">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Code Secret (PIN) pour les Juges
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={config.secretKey || ''}
+                onChange={(e) => handleConfigChange('secretKey', e.target.value)}
+                placeholder="Ex: 1234"
+                className="w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-500">
+                Définissez un code simple (ex: 1234) pour permettre aux juges de se connecter sans email.
+              </span>
+            </div>
+          </div>
+          <div className="pt-4 border-t border-gray-200">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Code Admin Hors-ligne (LAN)
+            </label>
+            <div className="flex flex-col md:flex-row md:items-center gap-2">
+              <input
+                type="text"
+                value={offlineAdminPin}
+                onChange={(e) => setOfflineAdminPin(e.target.value)}
+                placeholder="Ex: 7890"
+                className="w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={handleSaveOfflineAdminPin}
+                className="px-3 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900"
+              >
+                Enregistrer
+              </button>
+              <span className="text-xs text-gray-500">
+                Permet d’accéder à /admin sans magic link quand Internet est indisponible.
+              </span>
+            </div>
+          </div>
+        </div>
+      </details>
 
       {/* Mode Kiosque - Liens Tablettes */}
       {configSaved && (
@@ -2076,63 +2114,63 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </summary>
           <div className="p-6 bg-white border-t-4 border-primary-950">
             <p className="text-sm text-gray-600 mb-4">Liens directs pour tablettes J1 à J5</p>
-          <div className="space-y-2">
-            {["J1", "J2", "J3", "J4", "J5"].map(position => {
-              const env = (import.meta as { env?: Record<string, string> }).env ?? {};
-              const envBase =
-                supabaseMode === 'local'
-                  ? env.VITE_KIOSK_BASE_URL_LAN ||
-                  env.VITE_KIOSK_BASE_URL_LOCAL ||
-                  env.VITE_SITE_URL_LAN ||
-                  env.VITE_SITE_URL_LOCAL ||
-                  env.VITE_SITE_URL ||
-                  env.VITE_KIOSK_BASE_URL
-                  : supabaseMode === 'cloud'
-                    ? env.VITE_KIOSK_BASE_URL_CLOUD ||
-                    env.VITE_SITE_URL_CLOUD ||
-                    env.VITE_KIOSK_BASE_URL ||
-                    env.VITE_SITE_URL
-                    : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
-              const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-              const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
-              // Prefer envBase (LAN/Cloud config) over current origin if we are on localhost
-              // or if we are explicitly in local mode.
-              let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost' && supabaseMode !== 'local') ? currentOrigin : '';
-              if (!kioskBase && envBase) {
-                try {
-                  const url = new URL(envBase);
-                  const trimmedPath = url.pathname.replace(/\/+$/, '');
-                  kioskBase = `${url.origin}${trimmedPath}`;
-                } catch {
-                  kioskBase = envBase.replace(/\/+$/, '');
+            <div className="space-y-2">
+              {["J1", "J2", "J3", "J4", "J5"].map(position => {
+                const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+                const envBase =
+                  supabaseMode === 'local'
+                    ? env.VITE_KIOSK_BASE_URL_LAN ||
+                    env.VITE_KIOSK_BASE_URL_LOCAL ||
+                    env.VITE_SITE_URL_LAN ||
+                    env.VITE_SITE_URL_LOCAL ||
+                    env.VITE_SITE_URL ||
+                    env.VITE_KIOSK_BASE_URL
+                    : supabaseMode === 'cloud'
+                      ? env.VITE_KIOSK_BASE_URL_CLOUD ||
+                      env.VITE_SITE_URL_CLOUD ||
+                      env.VITE_KIOSK_BASE_URL ||
+                      env.VITE_SITE_URL
+                      : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
+                const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+                const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+                // Prefer envBase (LAN/Cloud config) over current origin if we are on localhost
+                // or if we are explicitly in local mode.
+                let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost' && supabaseMode !== 'local') ? currentOrigin : '';
+                if (!kioskBase && envBase) {
+                  try {
+                    const url = new URL(envBase);
+                    const trimmedPath = url.pathname.replace(/\/+$/, '');
+                    kioskBase = `${url.origin}${trimmedPath}`;
+                  } catch {
+                    kioskBase = envBase.replace(/\/+$/, '');
+                  }
                 }
-              }
-              if (!kioskBase) {
-                kioskBase = currentOrigin;
-              }
+                if (!kioskBase) {
+                  kioskBase = currentOrigin;
+                }
 
-              const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem('surfJudgingActiveEventId') : null;
-              const eventIdCandidate = activeEventId ?? (eventIdRaw ? Number(eventIdRaw) : null);
-              const eventId = Number.isFinite(Number(eventIdCandidate)) ? Number(eventIdCandidate) : null;
-              const kioskUrl = eventId
-                ? `${kioskBase}/judge?position=${position}&eventId=${eventId}`
-                : `${kioskBase}/judge?position=${position}`;
-              return (
-                <div key={position} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                  <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">{position.replace("J", "")}</div>
-                  <input value={kioskUrl} readOnly className="flex-1 px-2 py-1 text-xs font-mono border rounded" />
-                  <button onClick={() => navigator.clipboard.writeText(kioskUrl)} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded">Copier</button>
-                </div>
-              );
-            })}
+                const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem('surfJudgingActiveEventId') : null;
+                const eventIdCandidate = activeEventId ?? (eventIdRaw ? Number(eventIdRaw) : null);
+                const eventId = Number.isFinite(Number(eventIdCandidate)) ? Number(eventIdCandidate) : null;
+                const kioskUrl = eventId
+                  ? `${kioskBase}/judge?position=${position}&eventId=${eventId}`
+                  : `${kioskBase}/judge?position=${position}`;
+                return (
+                  <div key={position} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
+                    <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">{position.replace("J", "")}</div>
+                    <input value={kioskUrl} readOnly className="flex-1 px-2 py-1 text-xs font-mono border rounded" />
+                    <button onClick={() => navigator.clipboard.writeText(kioskUrl)} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded">Copier</button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </details>
+        </details>
       )}
 
       {/* Override Chef Juge */}
       <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" open={showOverridePanel}>
-        <summary 
+        <summary
           className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none"
           onClick={(e) => {
             e.preventDefault();
@@ -2152,227 +2190,227 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         {showOverridePanel && (
           <div className="p-6 bg-white border-t-4 border-primary-950">
             <form className="space-y-4" onSubmit={handleOverrideSubmit}>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCorrectionMode('score')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${correctionMode === 'score' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
-              >
-                Mode note
-              </button>
-              <button
-                type="button"
-                onClick={() => setCorrectionMode('interference')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${correctionMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
-              >
-                Mode interférence
-              </button>
-            </div>
-
-            {/* Juge selection */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Juge</label>
-                <select
-                  value={selectedJudge}
-                  onChange={(e) => { setSelectedJudge(e.target.value); setOverrideStatus(null); }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  required
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCorrectionMode('score')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${correctionMode === 'score' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
                 >
-                  <option value="">Sélectionner un juge</option>
-                  {config.judges.map((judgeId) => (
-                    <option key={judgeId} value={judgeId}>
-                      {config.judgeNames[judgeId] || judgeId}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Surfer selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Surfeur</label>
-                <select
-                  value={selectedSurfer}
-                  onChange={(e) => { setSelectedSurfer(e.target.value); setSelectedWave(''); setOverrideStatus(null); }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  required
+                  Mode note
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCorrectionMode('interference')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${correctionMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
                 >
-                  <option value="">Sélectionner un surfeur</option>
-                  {config.surfers.map((surfer) => (
-                    <option key={surfer} value={surfer}>{surfer}</option>
-                  ))}
-                </select>
+                  Mode interférence
+                </button>
               </div>
 
-              {/* Wave selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Vague</label>
-                <select
-                  value={selectedWave}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSelectedWave(value ? Number(value) : '');
-                    setOverrideStatus(null);
-                  }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  required
-                >
-                  <option value="">Sélectionner une vague</option>
-                  {surferScoredWaves.map((wave) => (
-                    <option key={wave} value={wave}>Vague {wave}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Seules les vagues surfées/notées pour ce surfeur sont affichées.
-                </p>
-                {selectedSurfer && surferScoredWaves.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Aucune vague notée trouvée pour ce surfeur sur ce heat.
-                  </p>
-                )}
-              </div>
-
-              {correctionMode === 'score' ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nouvelle note</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={scoreInput}
-                    onChange={(e) => { setScoreInput(e.target.value); setOverrideStatus(null); }}
-                    placeholder="0.00"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                    required
-                  />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type d’interférence</label>
-                  <select
-                    value={interferenceType}
-                    onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  >
-                    <option value="INT1">Interférence #1 (B/2)</option>
-                    <option value="INT2">Interférence #2 (B=0)</option>
-                  </select>
-                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={headJudgeOverride}
-                      onChange={(e) => setHeadJudgeOverride(e.target.checked)}
-                    />
-                    Arbitrage Head Judge
-                  </label>
-                </div>
-              )}
-            </div>
-
-            {currentScore && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 text-amber-500" />
-                <span>
-                  Note actuelle : <strong>{currentScore.score.toFixed(2)}</strong> donnée par {currentScore.judge_name} pour {currentScore.surfer} (Vague {currentScore.wave_number})
-                </span>
-              </div>
-            )}
-
-            {correctionMode === 'score' && (
+              {/* Juge selection */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Motif</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Juge</label>
                   <select
-                    value={overrideReason}
-                    onChange={(e) => setOverrideReason(e.target.value as any)}
+                    value={selectedJudge}
+                    onChange={(e) => { setSelectedJudge(e.target.value); setOverrideStatus(null); }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    required
                   >
-                    {Object.keys(reasonLabels).map((r) => (
-                      <option key={r} value={r}>{reasonLabels[r as keyof typeof reasonLabels]}</option>
+                    <option value="">Sélectionner un juge</option>
+                    {config.judges.map((judgeId) => (
+                      <option key={judgeId} value={judgeId}>
+                        {config.judgeNames[judgeId] || judgeId}
+                      </option>
                     ))}
                   </select>
                 </div>
 
+                {/* Surfer selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
-                  <input
-                    type="text"
-                    value={overrideComment}
-                    onChange={(e) => setOverrideComment(e.target.value)}
-                    placeholder="Optionnel"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                  />
-                </div>
-              </div>
-            )}
-
-            {correctionMode === 'score' && currentScore && (
-              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
-                <p className="text-sm font-medium text-indigo-900">
-                  Déplacer une note (mauvais surfeur / mauvaise vague)
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Surfeur</label>
                   <select
-                    value={moveTargetSurfer}
-                    onChange={(e) => setMoveTargetSurfer(e.target.value)}
-                    className="w-full border border-indigo-300 rounded-lg px-3 py-2 bg-white"
+                    value={selectedSurfer}
+                    onChange={(e) => { setSelectedSurfer(e.target.value); setSelectedWave(''); setOverrideStatus(null); }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    required
                   >
-                    <option value="">Surfeur destination</option>
+                    <option value="">Sélectionner un surfeur</option>
                     {config.surfers.map((surfer) => (
                       <option key={surfer} value={surfer}>{surfer}</option>
                     ))}
                   </select>
+                </div>
+
+                {/* Wave selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vague</label>
                   <select
-                    value={moveTargetWave}
-                    onChange={(e) => setMoveTargetWave(Number(e.target.value))}
-                    className="w-full border border-indigo-300 rounded-lg px-3 py-2 bg-white"
+                    value={selectedWave}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSelectedWave(value ? Number(value) : '');
+                      setOverrideStatus(null);
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    required
                   >
-                    <option value="">Vague destination</option>
-                    {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => (
+                    <option value="">Sélectionner une vague</option>
+                    {surferScoredWaves.map((wave) => (
                       <option key={wave} value={wave}>Vague {wave}</option>
                     ))}
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Seules les vagues surfées/notées pour ce surfeur sont affichées.
+                  </p>
+                  {selectedSurfer && surferScoredWaves.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Aucune vague notée trouvée pour ce surfeur sur ce heat.
+                    </p>
+                  )}
                 </div>
+
+                {correctionMode === 'score' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nouvelle note</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={scoreInput}
+                      onChange={(e) => { setScoreInput(e.target.value); setOverrideStatus(null); }}
+                      placeholder="0.00"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      required
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Type d’interférence</label>
+                    <select
+                      value={interferenceType}
+                      onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    >
+                      <option value="INT1">Interférence #1 (B/2)</option>
+                      <option value="INT2">Interférence #2 (B=0)</option>
+                    </select>
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={headJudgeOverride}
+                        onChange={(e) => setHeadJudgeOverride(e.target.checked)}
+                      />
+                      Arbitrage Head Judge
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {currentScore && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                  <span>
+                    Note actuelle : <strong>{currentScore.score.toFixed(2)}</strong> donnée par {currentScore.judge_name} pour {currentScore.surfer} (Vague {currentScore.wave_number})
+                  </span>
+                </div>
+              )}
+
+              {correctionMode === 'score' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Motif</label>
+                    <select
+                      value={overrideReason}
+                      onChange={(e) => setOverrideReason(e.target.value as any)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    >
+                      {Object.keys(reasonLabels).map((r) => (
+                        <option key={r} value={r}>{reasonLabels[r as keyof typeof reasonLabels]}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                    <input
+                      type="text"
+                      value={overrideComment}
+                      onChange={(e) => setOverrideComment(e.target.value)}
+                      placeholder="Optionnel"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {correctionMode === 'score' && currentScore && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
+                  <p className="text-sm font-medium text-indigo-900">
+                    Déplacer une note (mauvais surfeur / mauvaise vague)
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <select
+                      value={moveTargetSurfer}
+                      onChange={(e) => setMoveTargetSurfer(e.target.value)}
+                      className="w-full border border-indigo-300 rounded-lg px-3 py-2 bg-white"
+                    >
+                      <option value="">Surfeur destination</option>
+                      {config.surfers.map((surfer) => (
+                        <option key={surfer} value={surfer}>{surfer}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={moveTargetWave}
+                      onChange={(e) => setMoveTargetWave(Number(e.target.value))}
+                      className="w-full border border-indigo-300 rounded-lg px-3 py-2 bg-white"
+                    >
+                      <option value="">Vague destination</option>
+                      {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => (
+                        <option key={wave} value={wave}>Vague {wave}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleMoveScore}
+                    disabled={overridePending || !configSaved}
+                    className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'} ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    Déplacer la note sélectionnée
+                  </button>
+                </div>
+              )}
+
+              {overrideStatus && (
+                <div className={`rounded-lg px-4 py-3 text-sm ${overrideStatus.type === 'success'
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}>
+                  {overrideStatus.message}
+                </div>
+              )}
+
+              {correctionMode === 'score' ? (
+                <button
+                  type="submit"
+                  disabled={overridePending || !configSaved}
+                  className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
+                    } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {overridePending ? 'Application…' : 'Appliquer la correction'}
+                </button>
+              ) : (
                 <button
                   type="button"
-                  onClick={handleMoveScore}
+                  onClick={handleInterferenceSubmit}
                   disabled={overridePending || !configSaved}
-                  className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'} ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
+                    } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                  Déplacer la note sélectionnée
+                  {overridePending ? 'Application…' : 'Poser l’interférence'}
                 </button>
-              </div>
-            )}
-
-            {overrideStatus && (
-              <div className={`rounded-lg px-4 py-3 text-sm ${overrideStatus.type === 'success'
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-red-50 text-red-700 border border-red-200'
-                }`}>
-                {overrideStatus.message}
-              </div>
-            )}
-
-            {correctionMode === 'score' ? (
-              <button
-                type="submit"
-                disabled={overridePending || !configSaved}
-                className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
-                  } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
-              >
-                {overridePending ? 'Application…' : 'Appliquer la correction'}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleInterferenceSubmit}
-                disabled={overridePending || !configSaved}
-                className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
-                  } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
-              >
-                {overridePending ? 'Application…' : 'Poser l’interférence'}
-              </button>
-            )}
-          </form>
+              )}
+            </form>
           </div>
         )}
       </details>
@@ -2387,29 +2425,29 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
         <div className="p-6 bg-white border-t-4 border-primary-950">
-        {overrideLogs.length === 0 ? (
-          <p className="text-sm text-gray-500">Aucune correction enregistrée pour ce heat.</p>
-        ) : (
-          <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-            {overrideLogs.map(log => (
-              <div key={log.id} className="border border-gray-200 rounded-lg px-4 py-3 text-sm bg-gray-50">
-                <div className="flex justify-between">
-                  <span className="font-medium text-gray-900">{config.judgeNames[log.judge_id] || log.judge_name}</span>
-                  <span className="text-xs text-gray-500">{new Date(log.created_at).toLocaleTimeString('fr-FR')}</span>
+          {overrideLogs.length === 0 ? (
+            <p className="text-sm text-gray-500">Aucune correction enregistrée pour ce heat.</p>
+          ) : (
+            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+              {overrideLogs.map(log => (
+                <div key={log.id} className="border border-gray-200 rounded-lg px-4 py-3 text-sm bg-gray-50">
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-900">{config.judgeNames[log.judge_id] || log.judge_name}</span>
+                    <span className="text-xs text-gray-500">{new Date(log.created_at).toLocaleTimeString('fr-FR')}</span>
+                  </div>
+                  <div className="mt-1 text-gray-700">
+                    {log.surfer} · Vague {log.wave_number}
+                  </div>
+                  <div className="mt-1 text-gray-700">
+                    <span className="font-semibold">{reasonLabels[log.reason]}</span> — {log.previous_score !== null ? `ancien ${log.previous_score.toFixed(2)} → ` : ''}{log.new_score.toFixed(2)}
+                  </div>
+                  {log.comment && (
+                    <div className="mt-1 text-gray-500 italic">{log.comment}</div>
+                  )}
                 </div>
-                <div className="mt-1 text-gray-700">
-                  {log.surfer} · Vague {log.wave_number}
-                </div>
-                <div className="mt-1 text-gray-700">
-                  <span className="font-semibold">{reasonLabels[log.reason]}</span> — {log.previous_score !== null ? `ancien ${log.previous_score.toFixed(2)} → ` : ''}{log.new_score.toFixed(2)}
-                </div>
-                {log.comment && (
-                  <div className="mt-1 text-gray-500 italic">{log.comment}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
         </div>
       </details>
     </div >
