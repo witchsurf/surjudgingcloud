@@ -299,180 +299,220 @@ const GenerateHeatsPage = () => {
     [previewData]
   );
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (previewData.length === 0) return;
 
-    // Récupération des données de l'événement
+    // --- DATA RETRIEVAL ---
     const eventData = JSON.parse(localStorage.getItem('eventData') || '{}');
     const eventName = eventData.name || 'Compétition de Surf';
-    const organizer = eventData.organizer || 'Organisateur non spécifié';
+    const organizer = eventData.organizer || 'Fédération de Surf';
     const startDate = eventData.start_date ? new Date(eventData.start_date).toLocaleDateString('fr-FR') : '';
     const endDate = eventData.end_date ? new Date(eventData.end_date).toLocaleDateString('fr-FR') : '';
     const dateRange = startDate ? (endDate && startDate !== endDate ? `${startDate} au ${endDate}` : startDate) : 'Date non définie';
 
-    const doc = new jsPDF();
+    // Logo Retrieval (supporting multiple candidate fields)
+    let logoBase64: string | null = null;
+    const logoCandidate = (eventData.image_url || eventData.brand_logo_url || eventData?.config?.organizerLogoDataUrl) as string | undefined;
+
+    if (logoCandidate) {
+      if (logoCandidate.startsWith('data:image/')) {
+        logoBase64 = logoCandidate;
+      } else if (/^https?:\/\//i.test(logoCandidate)) {
+        try {
+          const resp = await fetch(logoCandidate);
+          const blob = await resp.blob();
+          logoBase64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          console.warn('Could not load logo for PDF:', e);
+        }
+      }
+    }
+
+    // --- PDF INITIALIZATION ---
+    // @ts-ignore
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm' });
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;
+    const margin = 14;
+    const contentWidth = pageWidth - (margin * 2);
 
-    // Helper pour centrer le texte
-    const centerText = (text: string, y: number) => {
-      const textWidth = doc.getTextWidth(text);
-      doc.text(text, (pageWidth - textWidth) / 2, y);
+    // --- STYLING CONSTANTS ---
+    const COLORS = {
+      primary: [15, 23, 42],   // Slate-900
+      accent: [220, 38, 38],   // Red-600
+      gold: [251, 191, 36],    // Gold-500
+      text: [51, 65, 85],      // Slate-700
+      muted: [148, 163, 184],  // Slate-400
+      border: [226, 232, 240]  // Slate-200
     };
 
-    // --- EN-TÊTE (Header) ---
-    const drawHeader = () => {
-      doc.setFillColor(245, 247, 250); // Gris très clair / bleuté
-      doc.rect(0, 0, pageWidth, 45, 'F');
+    // --- HEADER RENDERER ---
+    const drawHeader = (isFirstPage: boolean) => {
+      if (isFirstPage) {
+        // Background Bar
+        doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        doc.rect(0, 0, pageWidth, 40, 'F');
 
-      doc.setFontSize(20);
-      doc.setTextColor(26, 86, 219); // Bleu primaire
-      doc.setFont('helvetica', 'bold');
-      centerText(eventName.toUpperCase(), 18);
-
-      doc.setFontSize(12);
-      doc.setTextColor(75, 85, 99); // Gris foncé
-      doc.setFont('helvetica', 'bold');
-      centerText('PLAN DES SÉRIES (HEATS)', 26);
-
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(107, 114, 128); // Gris moyen
-      centerText(`Organisé par : ${organizer}`, 33);
-      centerText(`Dates : ${dateRange}`, 38);
-
-      // Ligne de séparation décorative
-      doc.setDrawColor(26, 86, 219);
-      doc.setLineWidth(0.5);
-      doc.line(20, 45, pageWidth - 20, 45);
-    };
-
-    let cursorY = 55; // Démarrage sous le header
-
-    // Dessiner le header sur la première page
-    drawHeader();
-
-    previewData.forEach((category) => {
-      // Saut de page si pas assez de place pour le titre de catégorie
-      if (cursorY > pageHeight - 40) {
-        doc.addPage();
-        drawHeader(); // Optionnel : remettre le header ou juste le titre
-        cursorY = 55;
-      }
-
-      // Titre Catégorie
-      doc.setFontSize(16);
-      doc.setTextColor(26, 86, 219);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`CATÉGORIE : ${category.category.toUpperCase()}`, 14, cursorY);
-
-      cursorY += 8;
-      doc.setFontSize(10);
-      doc.setTextColor(100);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`${category.participants.length} participants • Séries de ${category.seriesSize}`, 14, cursorY);
-
-      cursorY += 10;
-
-      category.rounds.forEach(round => {
-        // Vérification espace pour le titre du round
-        if (cursorY > pageHeight - 30) {
-          doc.addPage();
-          cursorY = 20;
+        // Logo
+        let textStartX = margin;
+        if (logoBase64) {
+          try {
+            doc.addImage(logoBase64, 'PNG', margin, 8, 24, 24);
+            textStartX = margin + 30;
+          } catch (e) {
+            console.warn('Failed to add logo to PDF:', e);
+          }
         }
 
-        doc.setFillColor(240, 240, 240);
-        doc.rect(14, cursorY - 5, pageWidth - 28, 8, 'F');
-
-        doc.setFontSize(11);
-        doc.setTextColor(0);
+        // Event Titles
+        doc.setTextColor(255, 255, 255);
         doc.setFont('helvetica', 'bold');
-        doc.text(`ROUND ${round.round}`, 18, cursorY);
-        cursorY += 10;
+        doc.setFontSize(18);
+        doc.text(eventName.toUpperCase(), textStartX, 18);
 
-        round.heats.forEach(heat => {
-          // Vérification espace pour le heat + un peu du tableau
-          if (cursorY > pageHeight - 40) {
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(200, 200, 200);
+        doc.text('PLAN OFFICIEL DES SÉRIES', textStartX, 24);
+
+        // Organizer & Date Info (Right aligned)
+        doc.setFontSize(9);
+        doc.setTextColor(255, 255, 255);
+        const organizerText = `Organisé par : ${organizer}`;
+        const dateText = `Dates : ${dateRange}`;
+        doc.text(organizerText, pageWidth - margin, 18, { align: 'right' });
+        doc.text(dateText, pageWidth - margin, 24, { align: 'right' });
+
+        return 48; // cursorY after header
+      } else {
+        // Minimal header for subsequent pages
+        doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+        doc.setLineWidth(0.2);
+        doc.line(margin, 15, pageWidth - margin, 15);
+
+        doc.setFontSize(8);
+        doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+        doc.text(`${eventName.toUpperCase()} — PLAN DES SÉRIES`, margin, 12);
+        return 22;
+      }
+    };
+
+    let cursorY = drawHeader(true);
+
+    // --- CONTENT RENDERING ---
+    previewData.forEach((category, catIdx) => {
+      // Category Title Block
+      if (cursorY > pageHeight - 50) {
+        doc.addPage();
+        cursorY = drawHeader(false);
+      }
+
+      // Decorative category separator
+      if (catIdx > 0) {
+        cursorY += 5;
+        doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
+        doc.line(margin, cursorY, pageWidth - margin, cursorY);
+        cursorY += 8;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+      doc.text(`CATÉGORIE : ${category.category.toUpperCase()}`, margin, cursorY);
+
+      cursorY += 6;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
+      doc.text(`${category.participants.length} participants • Séries de ${category.seriesSize}`, margin, cursorY);
+      cursorY += 8;
+
+      category.rounds.forEach((round) => {
+        // Round Heading
+        if (cursorY > pageHeight - 40) {
+          doc.addPage();
+          cursorY = drawHeader(false);
+        }
+
+        doc.setFillColor(248, 250, 252); // Slate-50
+        doc.rect(margin, cursorY - 4, contentWidth, 7, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+        doc.text(`ROUND ${round.round}`, margin + 2, cursorY + 1);
+        cursorY += 8;
+
+        round.heats.forEach((heat) => {
+          // Heat Check
+          if (cursorY > pageHeight - 35) {
             doc.addPage();
-            cursorY = 20;
+            cursorY = drawHeader(false);
           }
 
-          doc.setFontSize(10);
-          doc.setTextColor(50);
-          doc.setFont('helvetica', 'bold');
-          doc.text(
-            `Heat ${heat.heat_number} (${heat.surfers.length} surfeurs)`,
-            14,
-            cursorY
-          );
+          doc.setFontSize(9);
+          doc.setTextColor(COLORS.accent[0], COLORS.accent[1], COLORS.accent[2]);
+          doc.text(`Heat ${heat.heat_number}`, margin, cursorY);
           cursorY += 2;
 
           autoTable(doc, {
             startY: cursorY,
-            head: [['Couleur', 'Nom', 'Pays']],
-            body: heat.surfers.map(surfer => [
-              surfer.color,
-              surfer.name,
-              surfer.country
-            ]),
+            head: [['#', 'Lycra', 'Nom du Surfeur', 'Pays / Club']],
+            body: heat.surfers.map((s, i) => [i + 1, s.color, s.name, s.country]),
             theme: 'grid',
+            styles: { fontSize: 8, cellPadding: 1.5, font: 'helvetica' },
             headStyles: {
-              fillColor: [55, 65, 81],
+              fillColor: COLORS.primary as any,
               textColor: 255,
-              fontSize: 9,
               fontStyle: 'bold'
             },
-            bodyStyles: {
-              fontSize: 9,
-              textColor: 50
-            },
-            alternateRowStyles: {
-              fillColor: [249, 250, 251]
-            },
             columnStyles: {
-              0: { cellWidth: 30, fontStyle: 'bold' },
-              1: { cellWidth: 'auto' },
-              2: { cellWidth: 40 }
+              0: { cellWidth: 8 },
+              1: { cellWidth: 20, fontStyle: 'bold' },
+              2: { cellWidth: 'auto' },
+              3: { cellWidth: 35 }
             },
-            margin: { left: 14, right: 14 },
-            didParseCell: function (data) {
-              // Coloration du texte de la couleur (optionnel)
-              if (data.section === 'body' && data.column.index === 0) {
-                const colorMap: Record<string, [number, number, number]> = {
-                  'ROUGE': [220, 38, 38],
-                  'BLANC': [100, 100, 100], // Gris foncé pour lisibilité
-                  'JAUNE': [202, 138, 4],
-                  'BLEU': [37, 99, 235],
-                  'VERT': [22, 163, 74],
-                  'NOIR': [0, 0, 0]
+            margin: { left: margin, right: margin },
+            didParseCell: (data) => {
+              if (data.section === 'body' && data.column.index === 1) {
+                const colorMap: Record<string, { bg: [number, number, number], text: [number, number, number] }> = {
+                  'ROUGE': { bg: [220, 38, 38], text: [255, 255, 255] },
+                  'BLANC': { bg: [255, 255, 255], text: [15, 23, 42] },
+                  'JAUNE': { bg: [251, 191, 36], text: [15, 23, 42] },
+                  'BLEU': { bg: [37, 99, 235], text: [255, 255, 255] },
+                  'VERT': { bg: [22, 163, 74], text: [255, 255, 255] },
+                  'NOIR': { bg: [15, 23, 42], text: [255, 255, 255] }
                 };
-                const colorName = (data.cell.raw as string).toUpperCase();
-                if (colorMap[colorName]) {
-                  data.cell.styles.textColor = colorMap[colorName];
+                const val = (data.cell.raw as string).toUpperCase();
+                if (colorMap[val]) {
+                  data.cell.styles.fillColor = colorMap[val].bg;
+                  data.cell.styles.textColor = colorMap[val].text;
                 }
               }
             }
           });
 
-          const lastY = (doc as any).lastAutoTable?.finalY ?? cursorY;
-          cursorY = lastY + 10;
+          cursorY = (doc as any).lastAutoTable.finalY + 6;
         });
-        cursorY += 5;
+        cursorY += 4;
       });
-      cursorY += 10;
+      cursorY += 6;
     });
 
-    // --- PIED DE PAGE (Footer) ---
+    // --- FOOTER ---
     const pageCount = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(156, 163, 175); // Gris clair
-      const footerText = `Généré par KIOSK Surf Judging le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')} - Page ${i}/${pageCount}`;
-      doc.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
+      doc.setFontSize(7);
+      doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
+      const footerText = `Généré par KIOSK Surf Judging le ${new Date().toLocaleDateString('fr-FR')} — Page ${i} sur ${pageCount}`;
+      doc.text(footerText, pageWidth / 2, pageHeight - 8, { align: 'center' });
     }
 
-    const filename = `Heats_${(eventName || 'Event').replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+    const filename = `Heats_Plan_${(eventName || 'Event').replace(/[^a-z0-9]/gi, '_')}.pdf`;
     doc.save(filename);
   };
 
