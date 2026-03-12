@@ -282,6 +282,12 @@ export default function ScoreDisplay({
 
   const neededScores = computeNeededScores(surferStats);
   const winBy = getWinByDiff(surferStats);
+  const fallbackRows = (config.surfers || []).map((surfer) => ({
+    surfer,
+    displayName: surferNames?.[surfer] ?? surfer,
+    country: surferCountries?.[surfer],
+    priorityKey: normalizePriorityKey(surfer),
+  }));
 
   return (
     <div className="score-display max-w-7xl mx-auto p-4 sm:p-6 space-y-6 font-sans">
@@ -353,10 +359,59 @@ export default function ScoreDisplay({
           </div>
         </div>
 
-        {!hasScores && (
-          <div className="p-12 text-center space-y-4">
-            <div className="w-16 h-16 bg-primary-50 rounded-full flex items-center justify-center mx-auto border-2 border-primary-100 italic text-2xl">?</div>
-            <p className="font-bebas text-xl text-primary-300 tracking-wider">En attente des premières vagues...</p>
+        {!hasScores && !hasStats && fallbackRows.length > 0 && (
+          <div className="divide-y-2 divide-primary-50">
+            {fallbackRows.map((row) => {
+              const style = lycraStyle(row.surfer);
+              const priorityBadge = priorityLabels[row.priorityKey] || (priorityState.mode === 'equal' ? '=' : '');
+              const isInFlight = priorityState.mode === 'ordered' && priorityState.inFlight.includes(row.priorityKey);
+
+              return (
+                <div key={row.surfer} className="p-3 sm:p-4">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
+                    <div className="flex items-center gap-4 sm:gap-6">
+                      <div className={`w-12 h-12 flex items-center justify-center rounded-xl border-2 shadow-block text-2xl font-bebas tracking-tighter ${
+                        isInFlight
+                          ? 'bg-amber-500 border-amber-600 text-white'
+                          : 'bg-primary-950 border-primary-950 text-white'
+                      }`}>
+                        {isInFlight ? '' : priorityBadge}
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <div className="relative">
+                          <div className={`w-10 h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
+                          <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
+                            <div className="w-2.5 h-2.5 bg-cta-500 rounded-full" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <h3 className="text-xl sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none">
+                            {row.displayName}
+                          </h3>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {row.country && (
+                              <span className="text-[10px] font-bold text-primary-400 uppercase tracking-widest">{row.country}</span>
+                            )}
+                            <span className="text-[10px] font-bold text-primary-300 uppercase tracking-widest">
+                              {row.surfer}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="min-w-[80px] text-right ml-16 sm:ml-0">
+                      <div className="text-4xl sm:text-5xl font-bebas text-primary-200 tracking-tighter leading-none">
+                        --
+                      </div>
+                      <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">En attente</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
