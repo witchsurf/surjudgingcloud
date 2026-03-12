@@ -34,6 +34,18 @@ type OwnedEvent = {
 const CLOUD_SYNC_AFTER_LOGIN_KEY = 'surfjudging_cloud_sync_after_login';
 const CLOUD_EMAIL_KEY = 'surfjudging_cloud_email';
 
+const formatAuthError = (message?: string | null) => {
+  const normalized = (message || '').toLowerCase().trim();
+  if (!normalized) return 'Impossible de vous connecter pour le moment.';
+  if (normalized.includes('email rate limit exceeded')) {
+    return 'Trop de liens email ont été demandés en peu de temps. Attendez quelques minutes ou connectez-vous avec votre mot de passe.';
+  }
+  if (normalized.includes('invalid login credentials')) {
+    return 'Email ou mot de passe incorrect.';
+  }
+  return message || 'Impossible de vous connecter pour le moment.';
+};
+
 const DEFAULT_APP_CONFIG: AppConfig = {
   competition: '',
   division: 'OPEN',
@@ -137,6 +149,8 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [email, setEmail] = useState('');
   const [sendingMagicLink, setSendingMagicLink] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   // Cloud Sync State
   const [syncing, setSyncing] = useState(false);
@@ -393,7 +407,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       if (signInError) throw signInError;
       setCloudLinkSent(true);
     } catch (err: any) {
-      setCloudLoginError(err?.message ?? 'Impossible d’envoyer le lien cloud.');
+      setCloudLoginError(formatAuthError(err?.message) ?? 'Impossible d’envoyer le lien cloud.');
     } finally {
       setCloudSendingMagicLink(false);
     }
@@ -431,7 +445,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       if (msg === 'Failed to fetch') {
         msg = 'Erreur réseau : Vérifiez que votre Mac a accès à Internet (Cloud) ET au réseau de la VM (.69).';
       }
-      setCloudLoginError(msg);
+      setCloudLoginError(formatAuthError(msg));
     } finally {
       setIsCloudLoading(false);
     }
@@ -508,9 +522,36 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       if (signInError) throw signInError;
       setLinkSent(true);
     } catch (err: any) {
-      setError(err?.message ?? "Impossible d'envoyer le lien de connexion.");
+      setError(formatAuthError(err?.message));
     } finally {
       setSendingMagicLink(false);
+    }
+  };
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password.trim()) {
+      setError('Email et mot de passe requis.');
+      return;
+    }
+    if (!supabase || !isSupabaseConfigured()) {
+      setError("Supabase n'est pas configuré.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    setError(null);
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
+
+      if (signInError) throw signInError;
+    } catch (err: any) {
+      setError(formatAuthError(err?.message));
+    } finally {
+      setPasswordLoading(false);
     }
   };
 
@@ -678,33 +719,62 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
               </p>
             </div>
           ) : (
-            <form onSubmit={handleSendMagicLink} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-200">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="votre@email.com"
-                  className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 shadow-inner shadow-black/20 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/40"
-                />
-              </div>
-
-              {error && (
-                <div className="rounded-xl border border-red-400/80 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {error}
+            <>
+              <form onSubmit={handleSendMagicLink} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-200">Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="votre@email.com"
+                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 shadow-inner shadow-black/20 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/40"
+                  />
                 </div>
-              )}
 
-              <button
-                type="submit"
-                disabled={sendingMagicLink}
-                className="flex w-full items-center justify-center rounded-full bg-blue-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-200 disabled:cursor-not-allowed disabled:bg-blue-300"
-              >
-                {sendingMagicLink ? 'Envoi en cours...' : 'Envoyer le lien de connexion'}
-              </button>
-            </form>
+                {error && (
+                  <div className="rounded-xl border border-red-400/80 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={sendingMagicLink}
+                  className="flex w-full items-center justify-center rounded-full bg-blue-500 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:bg-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-200 disabled:cursor-not-allowed disabled:bg-blue-300"
+                >
+                  {sendingMagicLink ? 'Envoi en cours...' : 'Envoyer le lien de connexion'}
+                </button>
+              </form>
+
+              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                <p className="text-center text-sm font-medium text-slate-300">
+                  Ou connectez-vous avec votre mot de passe
+                </p>
+                <form onSubmit={handlePasswordLogin} className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-200">Mot de passe</label>
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Votre mot de passe"
+                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-slate-100 shadow-inner shadow-black/20 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/40"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={passwordLoading}
+                    className="flex w-full items-center justify-center rounded-full border border-slate-600 bg-slate-800 px-6 py-3 text-base font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {passwordLoading ? 'Connexion...' : 'Se connecter avec mot de passe'}
+                  </button>
+                </form>
+              </div>
+            </>
           )}
 
           <div className="mt-8 border-t border-slate-800 pt-6">
