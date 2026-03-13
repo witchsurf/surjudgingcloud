@@ -11,7 +11,7 @@ import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
 import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchAllInterferenceCallsForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall } from '../api/supabaseClient';
-import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, setSupabaseMode, isCloudLocked, setCloudLocked } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isCloudLocked } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
@@ -79,7 +79,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [dbStatus, setDbStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [selectedJudge, setSelectedJudge] = useState('');
   const [selectedSurfer, setSelectedSurfer] = useState('');
-  const [cloudLocked, setCloudLockedState] = useState(isCloudLocked());
   const [selectedWave, setSelectedWave] = useState<number | ''>('');
   const [moveTargetSurfer, setMoveTargetSurfer] = useState('');
   const [moveTargetWave, setMoveTargetWave] = useState<number | ''>('');
@@ -99,7 +98,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [priorityLinkCopied, setPriorityLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [rebuildPending, setRebuildPending] = useState(false);
-  const [supabaseMode, setSupabaseModeState] = useState(getSupabaseMode());
   const [offlineAdminPin, setOfflineAdminPin] = useState(() => {
     try {
       return localStorage.getItem('admin_offline_pin') || '';
