@@ -854,7 +854,8 @@ export function exportFullCompetitionPDF({
       let textStartX = 40;
       if (organizerLogoDataUrl) {
         try {
-          doc.addImage(organizerLogoDataUrl, 'PNG', 40, 15, 50, 50);
+          const format = organizerLogoDataUrl.toLowerCase().includes('png') ? 'PNG' : 'JPEG';
+          doc.addImage(organizerLogoDataUrl, format, 40, 15, 50, 50);
           textStartX = 105;
         } catch (e) {
           console.warn('Logo error:', e);

@@ -1332,13 +1332,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       let organizerLogoDataUrl: string | undefined;
 
       if (supabase) {
-        const { data: eventData } = await supabase
+        const { data: dbEventData } = await supabase
           .from('events')
           .select('*')
           .eq('id', eventId)
           .single();
 
-        if (eventData) {
+        const localEventData = JSON.parse(localStorage.getItem('eventData') || '{}');
+        const eventData = { ...localEventData, ...(dbEventData || {}) };
+
+        if (dbEventData || localEventData.id) {
           organizer = eventData.organizer ?? undefined;
           eventDate = eventData.start_date
             ? new Date(eventData.start_date).toLocaleDateString('fr-FR', {
@@ -1350,6 +1353,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             : undefined;
 
           const logoCandidate = (
+            eventData.organizerLogoDataUrl ||
             eventData.logo_url ||
             eventData.logo ||
             eventData.organizer_logo_url ||

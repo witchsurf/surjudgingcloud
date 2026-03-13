@@ -312,7 +312,12 @@ const GenerateHeatsPage = () => {
 
     // Logo Retrieval (supporting multiple candidate fields)
     let logoBase64: string | null = null;
-    const logoCandidate = (eventData.image_url || eventData.brand_logo_url || eventData?.config?.organizerLogoDataUrl) as string | undefined;
+    const logoCandidate = (
+      eventData.organizerLogoDataUrl ||
+      eventData.image_url ||
+      eventData.brand_logo_url ||
+      eventData?.config?.organizerLogoDataUrl
+    ) as string | undefined;
 
     if (logoCandidate) {
       if (logoCandidate.startsWith('data:image/')) {
@@ -361,7 +366,8 @@ const GenerateHeatsPage = () => {
         let textStartX = margin;
         if (logoBase64) {
           try {
-            doc.addImage(logoBase64, 'PNG', margin, 8, 24, 24);
+            const format = logoBase64.toLowerCase().includes('png') ? 'PNG' : 'JPEG';
+            doc.addImage(logoBase64, format, margin, 8, 24, 24);
             textStartX = margin + 30;
           } catch (e) {
             console.warn('Failed to add logo to PDF:', e);
