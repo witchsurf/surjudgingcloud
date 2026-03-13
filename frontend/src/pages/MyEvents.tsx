@@ -212,10 +212,14 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           .from('events')
           .select('id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)');
 
-        // Always filter by user_id to ensure a user only sees their own events.
-        // Even in local mode, data isolation is key.
-        // BYPASS for the emergency offline admin so they can see all synced events
-        if (userId && userId !== 'offline-admin') {
+        const shouldFilterByUser =
+          Boolean(userId) &&
+          userId !== 'offline-admin' &&
+          mode !== 'local';
+
+        // In LAN/local mode, browser origin changes (192.168.x.y) can reset localStorage identity.
+        // The local DB is the source of truth there, so we must not hide synced events behind a stale user_id.
+        if (shouldFilterByUser) {
           query = query.eq('user_id', userId);
         }
 
