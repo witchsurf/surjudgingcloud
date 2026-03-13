@@ -12,6 +12,8 @@ PIN_APP="2026"
 APP_PORT="8080"
 API_PORT="8000"
 SSH_OPTIONS="-o BatchMode=yes -o ConnectTimeout=4"
+SERVICE_WAIT_SECONDS="25"
+SERVICE_RETRY_DELAY="2"
 
 # IP de la machine virtuelle locale (détectée d'après ton Docker context)
 VM_USER="laraise"
@@ -45,6 +47,28 @@ function check_port() {
     return 1
 }
 
+function wait_for_port() {
+    local host="$1"
+    local port="$2"
+    local label="$3"
+    local waited=0
+
+    while [ "$waited" -lt "$SERVICE_WAIT_SECONDS" ]; do
+        if check_port "$host" "$port"; then
+            return 0
+        fi
+
+        if [ "$waited" -eq 0 ]; then
+            echo -e "${YELLOW}⏳ Attente du démarrage de ${label} sur ${host}:${port}...${NC}"
+        fi
+
+        sleep "$SERVICE_RETRY_DELAY"
+        waited=$((waited + SERVICE_RETRY_DELAY))
+    done
+
+    return 1
+}
+
 function can_ssh_vm() {
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "echo ok" >/dev/null 2>&1
 }
@@ -60,11 +84,17 @@ function auto_repair_services() {
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
         set -e
         cd ${VM_DIR}/infra
-        echo "===== Docker compose down ====="
-        docker compose down || true
+        echo "===== Vérification image locale ====="
+        if ! docker image inspect infra-surfjudging:latest >/dev/null 2>&1; then
+            echo "Image infra-surfjudging:latest introuvable localement."
+            echo "Relancez l'étape 1 avec Internet avant de tenter une réparation terrain."
+            exit 1
+        fi
         echo
-        echo "===== Docker compose up -d --build ====="
-        docker compose up -d --build
+        echo "===== Redémarrage ciblé sans rebuild ====="
+        docker compose stop surfjudging || true
+        docker compose rm -f surfjudging || true
+        docker compose up -d --no-build surfjudging
         echo
         echo "===== Docker compose ps ====="
         docker compose ps
@@ -119,7 +149,7 @@ function verify_services() {
 
     echo -e "${BLUE}🔎 Vérification des services Surf Judging sur ${VM_IP}...${NC}"
 
-    if check_port "$VM_IP" "$APP_PORT"; then
+    if wait_for_port "$VM_IP" "$APP_PORT" "Frontend"; then
         echo -e "${GREEN}✅ Frontend accessible sur http://${VM_IP}:${APP_PORT}${NC}"
     else
         echo -e "${RED}❌ Frontend inaccessible sur http://${VM_IP}:${APP_PORT}${NC}"
@@ -127,7 +157,7 @@ function verify_services() {
         failed=1
     fi
 
-    if check_port "$VM_IP" "$API_PORT"; then
+    if wait_for_port "$VM_IP" "$API_PORT" "API locale"; then
         echo -e "${GREEN}✅ API locale accessible sur http://${VM_IP}:${API_PORT}${NC}"
     else
         echo -e "${RED}❌ API locale inaccessible sur http://${VM_IP}:${API_PORT}${NC}"
@@ -283,7 +313,7 @@ function etape_2_plage() {
 function etape_3_reparation() {
     show_header
     echo -e "${RED}▶ ÉTAPE 3 : AUTO-RÉPARATION TERRAIN${NC}"
-    echo -e "Cette étape tente de redémarrer complètement Docker et Surf Judging sur la VM."
+    echo -e "Cette étape relance le frontend déjà présent sur la VM, sans rebuild Internet."
     echo ""
 
     verify_vm || return
