@@ -9,6 +9,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 PIN_APP="2026"
+APP_PORT="8080"
+API_PORT="8000"
+SSH_OPTIONS="-o BatchMode=yes -o ConnectTimeout=4"
 
 # IP de la machine virtuelle locale (détectée d'après ton Docker context)
 VM_USER="laraise"
@@ -23,6 +26,140 @@ function show_header() {
     echo -e " Version ${VERSION} | Machine Régie Visée : ${VM_USER}@${VM_IP}"
     echo -e "${BLUE}======================================================${NC}"
     echo ""
+}
+
+function check_port() {
+    local host="$1"
+    local port="$2"
+
+    if command -v nc >/dev/null 2>&1; then
+        nc -z -G 2 "$host" "$port" >/dev/null 2>&1
+        return $?
+    fi
+
+    if command -v curl >/dev/null 2>&1; then
+        curl --connect-timeout 2 -s "http://${host}:${port}" >/dev/null 2>&1
+        return $?
+    fi
+
+    return 1
+}
+
+function can_ssh_vm() {
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "echo ok" >/dev/null 2>&1
+}
+
+function auto_repair_services() {
+    echo -e "${BLUE}🚑 Tentative d'auto-réparation des services sur ${VM_USER}@${VM_IP}...${NC}"
+
+    if ! can_ssh_vm; then
+        echo -e "${RED}❌ Auto-réparation impossible : SSH inaccessible.${NC}"
+        return 1
+    fi
+
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
+        set -e
+        cd ${VM_DIR}/infra
+        echo "===== Docker compose down ====="
+        docker compose down || true
+        echo
+        echo "===== Docker compose up -d --build ====="
+        docker compose up -d --build
+        echo
+        echo "===== Docker compose ps ====="
+        docker compose ps
+EOF
+
+    echo ""
+    echo -e "${BLUE}⏳ Attente de redémarrage des services...${NC}"
+    sleep 8
+
+    if verify_services; then
+        echo -e "${GREEN}✅ Auto-réparation réussie.${NC}"
+        return 0
+    fi
+
+    echo -e "${RED}❌ Auto-réparation terminée mais les services restent indisponibles.${NC}"
+    return 1
+}
+
+function run_remote_diagnostics() {
+    echo -e "${BLUE}🛠️  Diagnostic distant sur ${VM_USER}@${VM_IP}...${NC}"
+
+    if ! can_ssh_vm; then
+        echo -e "${YELLOW}⚠️ SSH indisponible vers ${VM_USER}@${VM_IP}.${NC}"
+        echo -e "   Impossible de lire l'état Docker automatiquement."
+        echo -e "   Vérifiez OpenSSH dans la VM ou testez : ssh ${VM_USER}@${VM_IP}"
+        return 1
+    fi
+
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
+        set +e
+        echo "===== IP VM ====="
+        hostname -I 2>/dev/null || ip a | grep "inet " | grep -v 127.0.0.1
+        echo
+        echo "===== Docker compose ps ====="
+        cd ${VM_DIR}/infra 2>/dev/null && docker compose ps || echo "Impossible de lire docker compose ps dans ${VM_DIR}/infra"
+        echo
+        echo "===== Docker ps ====="
+        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "docker ps indisponible"
+        echo
+        echo "===== Ports à l'écoute ====="
+        ss -ltnp 2>/dev/null | grep -E ":(${APP_PORT}|${API_PORT})\\b" || echo "Aucun process visible sur ${APP_PORT}/${API_PORT}"
+        echo
+        echo "===== Logs récents surfjudging ====="
+        cd ${VM_DIR}/infra 2>/dev/null && docker compose logs --tail=40 surfjudging 2>/dev/null || echo "Logs surfjudging indisponibles"
+EOF
+
+    return 0
+}
+
+function verify_services() {
+    local failed=0
+
+    echo -e "${BLUE}🔎 Vérification des services Surf Judging sur ${VM_IP}...${NC}"
+
+    if check_port "$VM_IP" "$APP_PORT"; then
+        echo -e "${GREEN}✅ Frontend accessible sur http://${VM_IP}:${APP_PORT}${NC}"
+    else
+        echo -e "${RED}❌ Frontend inaccessible sur http://${VM_IP}:${APP_PORT}${NC}"
+        echo -e "   Le réseau répond, mais l'application web ne répond pas sur le port ${APP_PORT}."
+        failed=1
+    fi
+
+    if check_port "$VM_IP" "$API_PORT"; then
+        echo -e "${GREEN}✅ API locale accessible sur http://${VM_IP}:${API_PORT}${NC}"
+    else
+        echo -e "${RED}❌ API locale inaccessible sur http://${VM_IP}:${API_PORT}${NC}"
+        echo -e "   L'interface admin risque de ne pas charger les données locales."
+        failed=1
+    fi
+
+    if [ "$failed" -ne 0 ]; then
+        echo ""
+        echo -e "${YELLOW}Pistes de correction :${NC}"
+        echo -e "1. Vérifiez que Docker tourne bien dans la VM."
+        echo -e "2. Dans la VM : cd ${VM_DIR}/infra && docker compose ps"
+        echo -e "3. Si besoin : cd ${VM_DIR}/infra && docker compose up -d"
+        echo -e "4. Vérifiez que la VM est bien en mode bridge sur le réseau D-Link."
+        echo ""
+        run_remote_diagnostics || true
+        echo ""
+        if can_ssh_vm; then
+            read -p "Voulez-vous tenter l'auto-réparation Docker maintenant ? (o/N) : " repair_now
+            if [[ "$repair_now" =~ ^[OoYy]$ ]]; then
+                if auto_repair_services; then
+                    return 0
+                fi
+                echo ""
+                run_remote_diagnostics || true
+                echo ""
+            fi
+        fi
+        return 1
+    fi
+
+    return 0
 }
 
 function verify_vm() {
@@ -41,6 +178,18 @@ function verify_vm() {
     if ping -c 1 -W 2 "$manually_entered_ip" >/dev/null 2>&1; then
         VM_IP="$manually_entered_ip"
         echo -e "${GREEN}✅ Connexion réussie à la machine virtuelle sur ${VM_IP}${NC}"
+        if can_ssh_vm; then
+            echo -e "${GREEN}✅ SSH accessible sur ${VM_USER}@${VM_IP}${NC}"
+        else
+            echo -e "${YELLOW}⚠️ SSH non accessible sur ${VM_USER}@${VM_IP}${NC}"
+            echo -e "   Le script pourra vérifier les ports, mais pas diagnostiquer Docker automatiquement."
+        fi
+        echo ""
+        if ! verify_services; then
+            echo ""
+            read -p "Appuyez sur Entrée pour revenir au menu..."
+            return 1
+        fi
         return 0
     else
         echo -e "${RED}❌ ERREUR : La machine virtuelle n'est pas joignable à cette adresse (${manually_entered_ip}).${NC}"
@@ -88,8 +237,10 @@ EOF
     echo ""
     echo -e "${GREEN}✅ DÉPLOIEMENT TERMINÉ !${NC}"
     echo ""
+    verify_services || true
+    echo ""
     echo -e "${YELLOW}⚠️ ACTION REQUISE MAINTENANT :${NC}"
-    echo -e "1. Ouvre Chrome et va sur : http://${VM_IP}:8080/my-events"
+    echo -e "1. Ouvre Chrome et va sur : http://${VM_IP}:${APP_PORT}/my-events"
     echo -e "2. Connecte-toi au Cloud avec Magic Link (puisque tu as internet)."
     echo -e "3. Clique sur le bouton violet [Sync depuis Cloud]."
     echo -e "4. Vérifie que tes événements apparaissent."
@@ -116,7 +267,7 @@ function etape_2_plage() {
     echo -e "2. Ouvrez Chrome ou Safari"
     echo -e "3. Allez sur l'adresse exacte suivante :"
     echo -e ""
-    echo -e "   👉 ${BLUE}http://${VM_IP}:8080/my-events${NC}"
+    echo -e "   👉 ${BLUE}http://${VM_IP}:${APP_PORT}/my-events${NC}"
     echo -e ""
     echo -e "4. Descendez en bas de la page sur 'Accès Secours'"
     echo -e "5. Entrez le CODE PIN ADMINISTRATEUR :"
@@ -125,6 +276,28 @@ function etape_2_plage() {
     echo -e ""
     echo -e "6. Sélectionnez l'événement en cours."
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    read -p "Appuyez sur Entrée pour revenir au menu..."
+}
+
+function etape_3_reparation() {
+    show_header
+    echo -e "${RED}▶ ÉTAPE 3 : AUTO-RÉPARATION TERRAIN${NC}"
+    echo -e "Cette étape tente de redémarrer complètement Docker et Surf Judging sur la VM."
+    echo ""
+
+    verify_vm || return
+
+    echo ""
+    read -p "Confirmer la tentative d'auto-réparation sur ${VM_USER}@${VM_IP} ? (o/N) : " confirm_repair
+    if [[ ! "$confirm_repair" =~ ^[OoYy]$ ]]; then
+        echo "Annulé."
+        sleep 1
+        return
+    fi
+
+    echo ""
+    auto_repair_services || true
     echo ""
     read -p "Appuyez sur Entrée pour revenir au menu..."
 }
@@ -139,9 +312,12 @@ while true; do
     echo -e "  ${YELLOW}2)${NC} 🏖️ ÉTAPE 2 : Lancer le Mode Plage (Sans Internet)"
     echo -e "     -> Affiche les URL et les codes pour les tablettes."
     echo ""
-    echo -e "  ${RED}3)${NC} Quitter"
+    echo -e "  ${BLUE}3)${NC} 🚑 Auto-réparation VM"
+    echo -e "     -> Tente un redémarrage Docker complet et revérifie 8080/8000."
     echo ""
-    read -p "Entrez votre choix (1, 2 ou 3) : " choice
+    echo -e "  ${RED}4)${NC} Quitter"
+    echo ""
+    read -p "Entrez votre choix (1, 2, 3 ou 4) : " choice
 
     case $choice in
         1)
@@ -151,6 +327,9 @@ while true; do
             etape_2_plage
             ;;
         3)
+            etape_3_reparation
+            ;;
+        4)
             echo "Au revoir !"
             exit 0
             ;;

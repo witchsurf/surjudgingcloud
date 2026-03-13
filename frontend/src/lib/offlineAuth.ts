@@ -277,6 +277,11 @@ export function loginAsOfflineAdmin(): void {
     refreshToken: 'offline-bypass-token',
   };
   localStorage.setItem(OFFLINE_CREDS_KEY, JSON.stringify(credentials));
+  try {
+    sessionStorage.setItem('admin_offline_auth', 'true');
+  } catch {
+    // ignore sessionStorage errors in restricted contexts
+  }
   console.log('🔓 App logged in using Local Offline Admin Bypass');
 }
 

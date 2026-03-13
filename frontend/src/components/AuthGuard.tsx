@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { isOfflineAdmin } from '../lib/offlineAuth';
 
 interface AuthGuardProps {
     children: React.ReactNode;
@@ -45,6 +46,8 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
         }
     };
 
+    const hasEmergencyOfflineAdmin = () => isOfflineAdmin();
+
     useEffect(() => {
         setOfflinePinAvailable(Boolean(getOfflinePin()));
 
@@ -61,6 +64,11 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
                 const { data: { session } } = await supabase.auth.getSession();
 
                 if (requireAuth && !session) {
+                    if (hasEmergencyOfflineAdmin()) {
+                        setOfflineAuth();
+                        setIsAuthenticated(true);
+                        return;
+                    }
                     if (hasOfflineAuth()) {
                         setIsAuthenticated(true);
                         return;
@@ -79,6 +87,11 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
             } catch (error) {
                 console.error('Auth check failed:', error);
                 if (requireAuth) {
+                    if (hasEmergencyOfflineAdmin()) {
+                        setOfflineAuth();
+                        setIsAuthenticated(true);
+                        return;
+                    }
                     if (!getOfflinePin()) {
                         navigate('/my-events', { replace: true });
                     }
@@ -95,6 +108,10 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
             setIsAuthenticated(!!session);
 
             if (requireAuth && !session) {
+                if (hasEmergencyOfflineAdmin() || hasOfflineAuth()) {
+                    setIsAuthenticated(true);
+                    return;
+                }
                 if (!getOfflinePin()) {
                     console.warn('⚠️ Session expired. Redirecting to /my-events...');
                     navigate('/my-events', { replace: true });
