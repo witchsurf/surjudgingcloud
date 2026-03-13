@@ -1794,7 +1794,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 <p>Heat: {config.competition} / {config.division} / R{config.round} H{config.heatId}</p>
                 <p>Surfers: {config.surfers.join(', ')}</p>
                 <p>Loaded from DB: {loadedFromDb ? 'YES' : 'NO'}</p>
-                <p>Supabase mode: {supabaseMode || 'auto'}</p>
+                <p>Supabase mode: {getSupabaseMode() || 'auto'}</p>
                 <p>DB status: {dbStatus}</p>
                 {!loadedFromDb && (
                   <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
@@ -2096,14 +2096,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               {["J1", "J2", "J3", "J4", "J5"].map(position => {
                 const env = (import.meta as { env?: Record<string, string> }).env ?? {};
                 const envBase =
-                  supabaseMode === 'local'
+                  getSupabaseMode() === 'local'
                     ? env.VITE_KIOSK_BASE_URL_LAN ||
                     env.VITE_KIOSK_BASE_URL_LOCAL ||
                     env.VITE_SITE_URL_LAN ||
                     env.VITE_SITE_URL_LOCAL ||
                     env.VITE_SITE_URL ||
                     env.VITE_KIOSK_BASE_URL
-                    : supabaseMode === 'cloud'
+                    : getSupabaseMode() === 'cloud'
                       ? env.VITE_KIOSK_BASE_URL_CLOUD ||
                       env.VITE_SITE_URL_CLOUD ||
                       env.VITE_KIOSK_BASE_URL ||
@@ -2113,7 +2113,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
                 // Prefer envBase (LAN/Cloud config) over current origin if we are on localhost
                 // or if we are explicitly in local mode.
-                let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost' && supabaseMode !== 'local') ? currentOrigin : '';
+                let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost' && getSupabaseMode() !== 'local') ? currentOrigin : '';
                 if (!kioskBase && envBase) {
                   try {
                     const url = new URL(envBase);
