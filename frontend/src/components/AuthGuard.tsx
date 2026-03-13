@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { isOfflineAdmin } from '../lib/offlineAuth';
+import { isDevMode, isOfflineAdmin } from '../lib/offlineAuth';
 
 interface AuthGuardProps {
     children: React.ReactNode;
@@ -50,6 +50,12 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
 
     useEffect(() => {
         setOfflinePinAvailable(Boolean(getOfflinePin()));
+
+        if (isDevMode()) {
+            setIsAuthenticated(true);
+            setIsChecking(false);
+            return;
+        }
 
         if (!isSupabaseConfigured() || !supabase) {
             // Supabase not configured - allow access in offline mode
