@@ -75,7 +75,39 @@ type CloudInterferenceCall = {
   updated_at?: string | null;
 };
 
+let cloudClientSingleton: ReturnType<typeof createClient> | null = null;
+
+const isMissingInterferenceTableError = (error: unknown) => {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as {
+    code?: string;
+    message?: string;
+    details?: string;
+    status?: number;
+    statusCode?: number;
+    hint?: string;
+  };
+  const text = [
+    candidate.code,
+    candidate.message,
+    candidate.details,
+    candidate.hint,
+    String(candidate.status ?? ''),
+    String(candidate.statusCode ?? ''),
+    JSON.stringify(candidate),
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  return (
+    text.includes('interference_calls') &&
+    (text.includes('404') || text.includes('not found') || text.includes('pgrst'))
+  );
+};
+
 export function getCloudClient() {
+  if (cloudClientSingleton) return cloudClientSingleton;
+
   const url = import.meta.env.VITE_SUPABASE_URL_CLOUD;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY_CLOUD;
 
@@ -83,7 +115,7 @@ export function getCloudClient() {
     throw new Error('Cloud Supabase credentials not configured');
   }
 
-  return createClient(url, key, {
+  cloudClientSingleton = createClient(url, key, {
     auth: {
       storageKey: 'surfjudging-cloud-auth-token',
       persistSession: true,
@@ -91,6 +123,8 @@ export function getCloudClient() {
       detectSessionInUrl: true
     }
   });
+
+  return cloudClientSingleton;
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -483,12 +517,11 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
                 .upsert(payload, { onConflict: 'heat_id,judge_id,surfer,wave_number' });
 
               if (error) {
-                const message = error.message || '';
-                if (message.includes('interference_calls') || message.includes('404') || message.includes('PGRST')) {
+                if (isMissingInterferenceTableError(error)) {
                   console.warn('⚠️ Local DB missing interference_calls table, skipping interference sync.');
                   break;
                 }
-                syncIssues.push({ step: 'interference_upsert', message: message });
+                syncIssues.push({ step: 'interference_upsert', message: error.message || JSON.stringify(error) });
                 localSyncError = true;
               }
             }
