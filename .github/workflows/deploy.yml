@@ -9,6 +9,7 @@ on:
       - 'infra/**'
       - 'backend/**'
       - 'deploy.sh'
+      - 'surf-beach-mode.sh'
       - '.github/workflows/**'
   workflow_dispatch: # Allow manual trigger
 
