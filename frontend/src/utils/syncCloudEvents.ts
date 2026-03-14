@@ -1,7 +1,7 @@
 /**
  * Sync Cloud Events to Local Storage AND Local Database
  * 
- * This utility syncs events, participants, and heats from cloud Supabase 
+ * This utility syncs events, participants, heats, scores, and related runtime data from cloud Supabase
  * to the Local Supabase instance, allowing offline clients (like Kiosk tablets)
  * to access the data via the local network.
  */
@@ -56,6 +56,23 @@ type CloudHeat = {
 type SyncIssue = {
   step: string;
   message: string;
+};
+
+type CloudInterferenceCall = {
+  id?: string;
+  event_id?: number | null;
+  heat_id: string;
+  competition?: string | null;
+  division?: string | null;
+  round?: number | null;
+  judge_id?: string | null;
+  judge_name?: string | null;
+  surfer?: string | null;
+  wave_number?: number | null;
+  call_type?: string | null;
+  is_head_judge_override?: boolean | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 export function getCloudClient() {
@@ -407,10 +424,12 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
           }
         }
         // 4d) Scores sync (important for offline continuity)
+        // Fetch by heat_id, not event_id, because some historical rows may not carry event_id reliably.
+        const heatIds = cloudHeats.map((heat) => heat.id).filter(Boolean);
         const { data: scoresRows, error: scoresFetchError } = await cloudSupabase
           .from('scores')
           .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
-          .in('event_id', eventIds);
+          .in('heat_id', heatIds);
 
         if (scoresFetchError) {
           syncIssues.push({ step: 'scores_fetch', message: scoresFetchError.message });
@@ -425,7 +444,58 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
           }
         }
 
-        // 4e) Event Last Config
+        // 4e) Interference calls sync (optional; should not block sync if the local table is absent)
+        if (heatIds.length > 0) {
+          const { data: interferenceRows, error: interferenceFetchError } = await cloudSupabase
+            .from('interference_calls')
+            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
+            .in('heat_id', heatIds);
+
+          if (interferenceFetchError) {
+            syncIssues.push({ step: 'interference_fetch', message: interferenceFetchError.message });
+          } else if (interferenceRows && interferenceRows.length > 0) {
+            for (const batch of chunkArray(interferenceRows as CloudInterferenceCall[], 500)) {
+              const payload = batch.map((row) =>
+                pickDefined(
+                  {
+                    ...row,
+                    event_id: row.event_id ?? null,
+                    competition: row.competition ?? '',
+                    division: row.division ?? '',
+                    round: row.round ?? null,
+                    judge_id: row.judge_id ?? '',
+                    judge_name: row.judge_name ?? '',
+                    surfer: row.surfer ?? '',
+                    wave_number: row.wave_number ?? 0,
+                    call_type: row.call_type ?? 'interference',
+                    is_head_judge_override: Boolean(row.is_head_judge_override),
+                  } as Record<string, unknown>,
+                  [
+                    'id', 'event_id', 'heat_id', 'competition', 'division', 'round',
+                    'judge_id', 'judge_name', 'surfer', 'wave_number', 'call_type',
+                    'is_head_judge_override', 'created_at', 'updated_at'
+                  ]
+                )
+              );
+
+              const { error } = await supabase!
+                .from('interference_calls')
+                .upsert(payload, { onConflict: 'heat_id,judge_id,surfer,wave_number' });
+
+              if (error) {
+                const message = error.message || '';
+                if (message.includes('interference_calls') || message.includes('404') || message.includes('PGRST')) {
+                  console.warn('⚠️ Local DB missing interference_calls table, skipping interference sync.');
+                  break;
+                }
+                syncIssues.push({ step: 'interference_upsert', message: message });
+                localSyncError = true;
+              }
+            }
+          }
+        }
+
+        // 4f) Event Last Config
         const configsPayload = (events || [])
           .filter((e: any) => e.event_last_config)
           .map((e: any) => {
