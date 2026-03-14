@@ -12,8 +12,12 @@ PIN_APP="2026"
 APP_PORT="8080"
 API_PORT="8000"
 SSH_OPTIONS="-o BatchMode=yes -o ConnectTimeout=4"
+RSYNC_SSH_OPTIONS="-o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=3"
 SERVICE_WAIT_SECONDS="25"
 SERVICE_RETRY_DELAY="2"
+SSH_STABILITY_CHECKS="3"
+SSH_STABILITY_DELAY="2"
+FRONTEND_DEPS_STAMP=".deploy-deps.sha256"
 
 # IP de la machine virtuelle locale (détectée d'après ton Docker context)
 VM_USER="laraise"
@@ -23,12 +27,48 @@ DEPLOY_ITEMS=(
     ".dockerignore"
     "surf-beach-mode.sh"
     "vm-cleanup.sh"
+    "vm-network.sh"
     "vm-zombies.sh"
     "infra/Dockerfile"
     "infra/docker-compose.yml"
     "infra/nginx.conf"
     "frontend/dist/"
 )
+
+function sync_deploy_items() {
+    local remote="${VM_USER}@${VM_IP}"
+
+    run_rsync() {
+        if ! rsync "$@"; then
+            echo -e "${RED}❌ Transfert interrompu vers ${remote}.${NC}"
+            echo -e "   La connexion SSH est devenue indisponible pendant la copie."
+            echo -e "   Vérifiez l'IP actuelle de la VM puis relancez l'étape 1."
+            return 1
+        fi
+    }
+
+    echo -e "${BLUE}📡 Pré-vérification SSH avant transfert...${NC}"
+    if ! can_ssh_vm; then
+        echo -e "${RED}❌ SSH inaccessible juste avant le transfert vers ${remote}.${NC}"
+        echo -e "   Réessayez avec l'IP actuelle de la VM affichée dans Ubuntu."
+        return 1
+    fi
+
+    if ! ssh ${SSH_OPTIONS} "${remote}" "mkdir -p '${VM_DIR}/infra' '${VM_DIR}/frontend/dist/assets'"; then
+        echo -e "${RED}❌ Impossible de préparer l'arborescence distante sur ${remote}.${NC}"
+        return 1
+    fi
+
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" .dockerignore "${remote}:${VM_DIR}/.dockerignore" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" surf-beach-mode.sh "${remote}:${VM_DIR}/surf-beach-mode.sh" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" vm-cleanup.sh "${remote}:${VM_DIR}/vm-cleanup.sh" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" vm-network.sh "${remote}:${VM_DIR}/vm-network.sh" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" vm-zombies.sh "${remote}:${VM_DIR}/vm-zombies.sh" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/Dockerfile "${remote}:${VM_DIR}/infra/Dockerfile" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/docker-compose.yml "${remote}:${VM_DIR}/infra/docker-compose.yml" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/nginx.conf "${remote}:${VM_DIR}/infra/nginx.conf" || return 1
+    run_rsync -avz --delete -e "ssh ${RSYNC_SSH_OPTIONS}" frontend/dist/ "${remote}:${VM_DIR}/frontend/dist/" || return 1
+}
 
 function show_header() {
     clear
@@ -81,6 +121,72 @@ function wait_for_port() {
 
 function can_ssh_vm() {
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "echo ok" >/dev/null 2>&1
+}
+
+function get_remote_primary_ip() {
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} \
+        "hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^(10\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.|192\\.168\\.)' | head -n 1" \
+        2>/dev/null
+}
+
+function verify_ssh_stability() {
+    local attempt=1
+
+    while [ "$attempt" -le "$SSH_STABILITY_CHECKS" ]; do
+        if ! can_ssh_vm; then
+            echo -e "${RED}❌ SSH instable vers ${VM_USER}@${VM_IP} (échec au test ${attempt}/${SSH_STABILITY_CHECKS}).${NC}"
+            return 1
+        fi
+
+        if [ "$attempt" -lt "$SSH_STABILITY_CHECKS" ]; then
+            sleep "$SSH_STABILITY_DELAY"
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    return 0
+}
+
+function preflight_deploy_network() {
+    local detected_ip=""
+
+    echo -e "${BLUE}🧭 Préflight réseau/SSH avant compilation...${NC}"
+
+    if ! verify_ssh_stability; then
+        echo -e "${YELLOW}⚠️ La VM répond, mais la session SSH n'est pas suffisamment stable pour lancer un déploiement long.${NC}"
+        echo -e "   Re-vérifiez l'IP affichée dans Ubuntu et stabilisez le bridge réseau avant de continuer."
+        return 1
+    fi
+
+    detected_ip="$(get_remote_primary_ip || true)"
+    if [ -n "$detected_ip" ] && [ "$detected_ip" != "$VM_IP" ]; then
+        echo -e "${YELLOW}⚠️ Incohérence IP détectée :${NC}"
+        echo -e "   IP saisie     : ${VM_IP}"
+        echo -e "   IP primaire VM: ${detected_ip}"
+        echo -e "   Continuez avec l'IP réellement affichée dans Ubuntu."
+        return 1
+    fi
+
+    echo -e "${GREEN}✅ SSH stable et IP cohérente pour ${VM_USER}@${VM_IP}${NC}"
+    return 0
+}
+
+function ensure_frontend_dependencies() {
+    local current_stamp=""
+    local cached_stamp=""
+
+    current_stamp="$(shasum -a 256 package.json package-lock.json | shasum -a 256 | awk '{print $1}')"
+    if [ -f "${FRONTEND_DEPS_STAMP}" ]; then
+        cached_stamp="$(cat "${FRONTEND_DEPS_STAMP}")"
+    fi
+
+    if [ -d node_modules ] && [ "$current_stamp" = "$cached_stamp" ]; then
+        echo -e "${GREEN}✅ Dépendances frontend déjà à jour, npm ci ignoré.${NC}"
+        return 0
+    fi
+
+    npm ci --no-audit
+    printf '%s\n' "$current_stamp" > "${FRONTEND_DEPS_STAMP}"
 }
 
 function auto_repair_services() {
@@ -247,25 +353,22 @@ function etape_1_preparation() {
     echo ""
     
     verify_vm || return
+    preflight_deploy_network || return
     
     echo -e "${BLUE}📦 1. Compilation front-end locale...${NC}"
     cd frontend || exit
-    npm ci --no-audit
+    ensure_frontend_dependencies
     rm -rf dist
     npm run build
     cd ..
     
     echo ""
     echo -e "${BLUE}🔄 2. Envoi du nouveau code vers le Serveur (${VM_IP})...${NC}"
-    # Runtime-only deploy: sync only the files required by nginx/docker on the VM.
-    rsync -avz --delete \
-        --relative \
-        "${DEPLOY_ITEMS[@]}" \
-        ${VM_USER}@${VM_IP}:${VM_DIR}/
+    sync_deploy_items || return
     
     echo ""
     echo -e "${BLUE}🐳 3. Re-création des serveurs Docker sur le Serveur Ubuntu...${NC}"
-    ssh ${VM_USER}@${VM_IP} << EOF
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
         cd ${VM_DIR}/infra
         echo "Arrêt de l'ancien système..."
         docker compose stop surfjudging || true
@@ -344,14 +447,17 @@ function etape_3_reparation() {
 function etape_4_maintenance() {
     show_header
     echo -e "${BLUE}▶ ÉTAPE 4 : MAINTENANCE VM${NC}"
-    echo -e "Nettoyage Docker et diagnostic des processus zombies."
+    echo -e "Nettoyage Docker, diagnostic réseau/SSH et processus zombies."
     echo ""
 
     verify_vm || return
 
     echo ""
+    echo -e "${BLUE}🌐 Diagnostic réseau/SSH...${NC}"
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "cd ${VM_DIR} && chmod +x vm-network.sh vm-cleanup.sh vm-zombies.sh && ./vm-network.sh"
+    echo ""
     echo -e "${BLUE}🧹 Nettoyage Docker...${NC}"
-    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "cd ${VM_DIR} && chmod +x vm-cleanup.sh vm-zombies.sh && ./vm-cleanup.sh"
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "cd ${VM_DIR} && ./vm-cleanup.sh"
     echo ""
     echo -e "${BLUE}🧟 Diagnostic zombies...${NC}"
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "cd ${VM_DIR} && ./vm-zombies.sh"
@@ -373,7 +479,7 @@ while true; do
     echo -e "     -> Tente un redémarrage Docker complet et revérifie 8080/8000."
     echo ""
     echo -e "  ${BLUE}4)${NC} 🧹 Maintenance VM"
-    echo -e "     -> Nettoie Docker et diagnostique les processus zombies."
+    echo -e "     -> Diagnostique réseau/SSH, nettoie Docker et analyse les zombies."
     echo ""
     echo -e "  ${RED}5)${NC} Quitter"
     echo ""
