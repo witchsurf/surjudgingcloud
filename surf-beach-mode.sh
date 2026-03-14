@@ -240,7 +240,7 @@ function etape_1_preparation() {
     
     echo -e "${BLUE}📦 1. Compilation front-end locale...${NC}"
     cd frontend || exit
-    npm i --no-audit
+    npm ci --no-audit
     rm -rf dist
     npm run build
     cd ..
@@ -248,7 +248,7 @@ function etape_1_preparation() {
     echo ""
     echo -e "${BLUE}🔄 2. Envoi du nouveau code vers le Serveur (${VM_IP})...${NC}"
     # rsync over ssh (excluding paths that require root permissions or shouldn't be overridden)
-    rsync -avz \
+    rsync -avz --delete \
         --exclude 'node_modules' \
         --exclude '.git' \
         --exclude 'infra/letsencrypt' \
@@ -260,7 +260,7 @@ function etape_1_preparation() {
         cd ${VM_DIR}/infra
         echo "Arrêt de l'ancien système..."
         docker compose stop surfjudging || true
-        echo "Lancement avec compilation..."
+        echo "Lancement avec build runtime-only..."
         docker compose up -d --build surfjudging
 EOF
     
@@ -332,6 +332,24 @@ function etape_3_reparation() {
     read -p "Appuyez sur Entrée pour revenir au menu..."
 }
 
+function etape_4_maintenance() {
+    show_header
+    echo -e "${BLUE}▶ ÉTAPE 4 : MAINTENANCE VM${NC}"
+    echo -e "Nettoyage Docker et diagnostic des processus zombies."
+    echo ""
+
+    verify_vm || return
+
+    echo ""
+    echo -e "${BLUE}🧹 Nettoyage Docker...${NC}"
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "cd ${VM_DIR} && chmod +x vm-cleanup.sh vm-zombies.sh && ./vm-cleanup.sh"
+    echo ""
+    echo -e "${BLUE}🧟 Diagnostic zombies...${NC}"
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "cd ${VM_DIR} && ./vm-zombies.sh"
+    echo ""
+    read -p "Appuyez sur Entrée pour revenir au menu..."
+}
+
 while true; do
     show_header
     echo -e "Que souhaitez-vous faire ?"
@@ -345,9 +363,12 @@ while true; do
     echo -e "  ${BLUE}3)${NC} 🚑 Auto-réparation VM"
     echo -e "     -> Tente un redémarrage Docker complet et revérifie 8080/8000."
     echo ""
-    echo -e "  ${RED}4)${NC} Quitter"
+    echo -e "  ${BLUE}4)${NC} 🧹 Maintenance VM"
+    echo -e "     -> Nettoie Docker et diagnostique les processus zombies."
     echo ""
-    read -p "Entrez votre choix (1, 2, 3 ou 4) : " choice
+    echo -e "  ${RED}5)${NC} Quitter"
+    echo ""
+    read -p "Entrez votre choix (1, 2, 3, 4 ou 5) : " choice
 
     case $choice in
         1)
@@ -360,6 +381,9 @@ while true; do
             etape_3_reparation
             ;;
         4)
+            etape_4_maintenance
+            ;;
+        5)
             echo "Au revoir !"
             exit 0
             ;;

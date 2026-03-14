@@ -1,0 +1,11 @@
+# Keep the Docker build context tiny.
+# The VM image only needs the nginx config and the prebuilt frontend/dist folder.
+*
+
+!.dockerignore
+!infra/
+!infra/Dockerfile
+!infra/nginx.conf
+!frontend/
+!frontend/dist/
+!frontend/dist/**
