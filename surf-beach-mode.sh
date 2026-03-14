@@ -18,6 +18,8 @@ SERVICE_RETRY_DELAY="2"
 SSH_STABILITY_CHECKS="3"
 SSH_STABILITY_DELAY="2"
 FRONTEND_DEPS_STAMP=".deploy-deps.sha256"
+BEACH_SUPABASE_SERVICES="postgres kong auth realtime storage rest"
+BEACH_DISABLED_SERVICES="meta studio"
 
 # IP de la machine virtuelle locale (détectée d'après ton Docker context)
 VM_USER="laraise"
@@ -31,6 +33,8 @@ DEPLOY_ITEMS=(
     "vm-zombies.sh"
     "infra/Dockerfile"
     "infra/docker-compose.yml"
+    "infra/docker-compose-local.yml"
+    "infra/kong.yml"
     "infra/nginx.conf"
     "frontend/dist/"
 )
@@ -66,6 +70,8 @@ function sync_deploy_items() {
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" vm-zombies.sh "${remote}:${VM_DIR}/vm-zombies.sh" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/Dockerfile "${remote}:${VM_DIR}/infra/Dockerfile" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/docker-compose.yml "${remote}:${VM_DIR}/infra/docker-compose.yml" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/docker-compose-local.yml "${remote}:${VM_DIR}/infra/docker-compose-local.yml" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/kong.yml "${remote}:${VM_DIR}/infra/kong.yml" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/nginx.conf "${remote}:${VM_DIR}/infra/nginx.conf" || return 1
     run_rsync -avz --delete -e "ssh ${RSYNC_SSH_OPTIONS}" frontend/dist/ "${remote}:${VM_DIR}/frontend/dist/" || return 1
 }
@@ -189,6 +195,22 @@ function ensure_frontend_dependencies() {
     printf '%s\n' "$current_stamp" > "${FRONTEND_DEPS_STAMP}"
 }
 
+function ensure_beach_stack_remote() {
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
+        set -e
+        cd ${VM_DIR}/infra
+        echo "===== Démarrage stack plage minimale ====="
+        docker compose -f docker-compose-local.yml up -d ${BEACH_SUPABASE_SERVICES}
+        echo
+        echo "===== Arrêt des services non essentiels ====="
+        docker compose -f docker-compose-local.yml stop ${BEACH_DISABLED_SERVICES} || true
+        docker compose -f docker-compose-local.yml rm -f ${BEACH_DISABLED_SERVICES} || true
+        echo
+        echo "===== État Supabase plage ====="
+        docker compose -f docker-compose-local.yml ps
+EOF
+}
+
 function auto_repair_services() {
     echo -e "${BLUE}🚑 Tentative d'auto-réparation des services sur ${VM_USER}@${VM_IP}...${NC}"
 
@@ -196,6 +218,9 @@ function auto_repair_services() {
         echo -e "${RED}❌ Auto-réparation impossible : SSH inaccessible.${NC}"
         return 1
     fi
+
+    echo -e "${BLUE}🏖️ Réactivation de la stack plage minimale...${NC}"
+    ensure_beach_stack_remote
 
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
         set -e
@@ -371,7 +396,11 @@ function etape_1_preparation() {
     sync_deploy_items || return
     
     echo ""
-    echo -e "${BLUE}🐳 3. Re-création des serveurs Docker sur le Serveur Ubuntu...${NC}"
+    echo -e "${BLUE}🗄️ 3. Activation de la stack plage minimale...${NC}"
+    ensure_beach_stack_remote
+
+    echo ""
+    echo -e "${BLUE}🐳 4. Re-création du frontend sur le Serveur Ubuntu...${NC}"
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
         cd ${VM_DIR}/infra
         echo "Arrêt de l'ancien système..."
@@ -466,6 +495,12 @@ function etape_4_maintenance() {
         read -p "Appuyez sur Entrée pour revenir au menu..."
         return
     fi
+
+    echo -e "${BLUE}📤 Envoi des scripts de maintenance...${NC}"
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "mkdir -p '${VM_DIR}'"
+    rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" vm-network.sh "${VM_USER}@${VM_IP}:${VM_DIR}/vm-network.sh"
+    rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" vm-cleanup.sh "${VM_USER}@${VM_IP}:${VM_DIR}/vm-cleanup.sh"
+    rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" vm-zombies.sh "${VM_USER}@${VM_IP}:${VM_DIR}/vm-zombies.sh"
 
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "cd ${VM_DIR} && chmod +x vm-network.sh vm-cleanup.sh vm-zombies.sh && ./vm-network.sh"
     echo ""
