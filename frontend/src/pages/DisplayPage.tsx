@@ -286,8 +286,11 @@ export default function DisplayPage() {
             });
 
             // History fallback: resolve qualifier placeholders from division rounds + event scores
-            const hasRealNames = Object.values(surferNames).some((name) => !isLikelyPlaceholder(name));
-            if (!hasRealNames && activeEventId) {
+            const needsQualifierResolution = entries.some((entry) => {
+                const name = entry.participant?.name;
+                return !name || isLikelyPlaceholder(name);
+            });
+            if (needsQualifierResolution && activeEventId) {
                 const divisionKey = Object.keys(historyHeats).find(
                     (key) => normalizeDivision(key) === normalizeDivision(metadata.division)
                 );
@@ -362,7 +365,9 @@ export default function DisplayPage() {
                             const resolved = isLikelyPlaceholder(candidate)
                                 ? resolveFromQualifierMap(candidate, qualifierMap)
                                 : candidate;
-                            if (resolved) surferNames[color] = resolved;
+                            if (resolved && (!surferNames[color] || isLikelyPlaceholder(surferNames[color]))) {
+                                surferNames[color] = resolved;
+                            }
                         });
                     }
                 }
@@ -520,6 +525,65 @@ export default function DisplayPage() {
     useEffect(() => {
         if (!activeEventId) return;
 
+        const applySnapshot = async () => {
+            const snapshot = await fetchEventConfigSnapshot(activeEventId);
+            if (snapshot) {
+                const currentConfig = configRef.current;
+                const currentCountries = countriesRef.current;
+                const heatChanged = snapshot.heat_number !== currentConfig.heatId;
+                const roundChanged = snapshot.round !== currentConfig.round;
+
+                if (heatChanged || roundChanged) {
+                    setIsReloading(true);
+                    setTimeout(() => window.location.reload(), 100);
+                    return;
+                }
+
+                try {
+                    setConfig((prev) => {
+                        const snapshotNames = normalizeSurferMap(snapshot.surferNames || {});
+                        const mergedNames = mergeSurferNames(prev.surferNames, snapshotNames);
+                        const snapshotCountries = normalizeSurferCountries(snapshot.surferCountries || {});
+                        const mergedCountries = Object.keys(currentCountries).length > 0
+                            ? currentCountries
+                            : (Object.keys(snapshotCountries).length > 0 ? snapshotCountries : (prev.surferCountries || {}));
+
+                        const newConfig = {
+                            ...prev,
+                            competition: snapshot.event_name || prev.competition || '',
+                            division: snapshot.division || prev.division || 'OPEN',
+                            round: snapshot.round || prev.round || 1,
+                            heatId: snapshot.heat_number || prev.heatId || 1,
+                            judges: snapshot.judges?.map(j => j.id) || prev.judges || [],
+                            judgeNames: snapshot.judges?.reduce((acc, j) => ({ ...acc, [j.id]: j.name || j.id }), {}) || prev.judgeNames || {},
+                            surfers: snapshot.surfers || prev.surfers,
+                            surferNames: mergedNames,
+                            surferCountries: mergedCountries,
+                            surfersPerHeat: snapshot.surfers?.length || prev.surfersPerHeat || 4,
+                            waves: prev.waves,
+                            tournamentType: prev.tournamentType,
+                            totalSurfers: prev.totalSurfers,
+                            totalHeats: prev.totalHeats,
+                            totalRounds: prev.totalRounds
+                        };
+                        return normalizeConfig(newConfig as AppConfig);
+                    });
+                } catch (error) {
+                    console.error('❌ Display: failed to update config:', error);
+                }
+            }
+        };
+
+        if (isLocalSupabaseMode()) {
+            const pollingInterval = setInterval(() => {
+                void applySnapshot();
+            }, 2500);
+
+            return () => {
+                clearInterval(pollingInterval);
+            };
+        }
+
         const channel = supabase
             ?.channel(`event-config-${activeEventId}`)
             .on('postgres_changes', {
@@ -528,55 +592,7 @@ export default function DisplayPage() {
                 table: 'event_last_config',
                 filter: `event_id=eq.${activeEventId}`
             }, async () => {
-                // Check if heat/round changed
-                const snapshot = await fetchEventConfigSnapshot(activeEventId);
-                if (snapshot) {
-                    const currentConfig = configRef.current;
-                    const currentCountries = countriesRef.current;
-                    const heatChanged = snapshot.heat_number !== currentConfig.heatId;
-                    const roundChanged = snapshot.round !== currentConfig.round;
-
-                    if (heatChanged || roundChanged) {
-                        setIsReloading(true);
-                        // Force reload to ensure clean state
-                        setTimeout(() => window.location.reload(), 100);
-                        return;
-                    }
-
-                    // Minor config changes only - update without reload
-                    try {
-                        setConfig((prev) => {
-                            const snapshotNames = normalizeSurferMap(snapshot.surferNames || {});
-                            const mergedNames = mergeSurferNames(prev.surferNames, snapshotNames);
-                            const snapshotCountries = normalizeSurferCountries(snapshot.surferCountries || {});
-                            const mergedCountries = Object.keys(currentCountries).length > 0
-                                ? currentCountries
-                                : (Object.keys(snapshotCountries).length > 0 ? snapshotCountries : (prev.surferCountries || {}));
-
-                            const newConfig = {
-                                ...prev,
-                                competition: snapshot.event_name || prev.competition || '',
-                                division: snapshot.division || prev.division || 'OPEN',
-                                round: snapshot.round || prev.round || 1,
-                                heatId: snapshot.heat_number || prev.heatId || 1,
-                                judges: snapshot.judges?.map(j => j.id) || prev.judges || [],
-                                judgeNames: snapshot.judges?.reduce((acc, j) => ({ ...acc, [j.id]: j.name || j.id }), {}) || prev.judgeNames || {},
-                                surfers: snapshot.surfers || prev.surfers,
-                                surferNames: mergedNames,
-                                surferCountries: mergedCountries,
-                                surfersPerHeat: snapshot.surfers?.length || prev.surfersPerHeat || 4,
-                                waves: prev.waves,
-                                tournamentType: prev.tournamentType,
-                                totalSurfers: prev.totalSurfers,
-                                totalHeats: prev.totalHeats,
-                                totalRounds: prev.totalRounds
-                            };
-                            return normalizeConfig(newConfig as AppConfig);
-                        });
-                    } catch (error) {
-                        console.error('❌ Display: failed to update config:', error);
-                    }
-                }
+                await applySnapshot();
             })
             .subscribe();
 

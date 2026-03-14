@@ -3,7 +3,7 @@ import type { EffectiveInterference, Score } from '../types';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { fetchHeatEntriesWithParticipants, fetchInterferenceCalls } from '../api/supabaseClient';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, isLocalSupabaseMode, supabase } from '../lib/supabase';
 import { HEAT_RESULTS_CACHE_KEY } from '../utils/constants';
 import { computeEffectiveInterferences } from '../utils/interference';
 
@@ -136,6 +136,7 @@ export default function HeatResults({
     if (!visible || !heatId || !isSupabaseConfigured()) return;
 
     let cancelled = false;
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadScores = async () => {
       try {
@@ -163,7 +164,7 @@ export default function HeatResults({
 
     void loadScores();
 
-    const channel = isSupabaseConfigured()
+    const channel = isSupabaseConfigured() && !isLocalSupabaseMode()
       ? supabase!
           .channel(`heat-results-${heatId}`)
           .on(
@@ -176,8 +177,17 @@ export default function HeatResults({
           .subscribe()
       : null;
 
+    if (!channel && isLocalSupabaseMode()) {
+      pollingInterval = setInterval(() => {
+        void loadScores();
+      }, 2500);
+    }
+
     return () => {
       cancelled = true;
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
       channel?.unsubscribe?.();
     };
   }, [visible, heatId]);

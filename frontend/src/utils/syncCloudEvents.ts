@@ -467,7 +467,19 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
 
         if (scoresFetchError) {
           syncIssues.push({ step: 'scores_fetch', message: scoresFetchError.message });
-        } else if (scoresRows && scoresRows.length > 0) {
+        } else {
+          for (const heatBatch of chunkArray(heatIds, 200)) {
+            const { error: deleteScoresError } = await supabase!
+              .from('scores')
+              .delete()
+              .in('heat_id', heatBatch);
+            if (deleteScoresError) {
+              syncIssues.push({ step: 'scores_delete', message: deleteScoresError.message });
+              localSyncError = true;
+            }
+          }
+
+          if (scoresRows && scoresRows.length > 0) {
           for (const batch of chunkArray(scoresRows, 1000)) {
             // Write to the local database, not the cloud database
             const { error: rpcError } = await supabase.rpc('bulk_sync_scores', { p_scores: batch });
@@ -475,6 +487,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
               syncIssues.push({ step: 'scores_upsert', message: rpcError.message });
               localSyncError = true;
             }
+          }
           }
         }
 
@@ -487,8 +500,28 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
 
           if (interferenceFetchError) {
             syncIssues.push({ step: 'interference_fetch', message: interferenceFetchError.message });
-          } else if (interferenceRows && interferenceRows.length > 0) {
-            for (const batch of chunkArray(interferenceRows as CloudInterferenceCall[], 500)) {
+          } else {
+            const deleteCallsInBatches = async () => {
+              for (const heatBatch of chunkArray(heatIds, 200)) {
+                const { error: deleteCallsError } = await supabase!
+                  .from('interference_calls')
+                  .delete()
+                  .in('heat_id', heatBatch);
+                if (deleteCallsError) {
+                  if (isMissingInterferenceTableError(deleteCallsError)) {
+                    console.warn('⚠️ Local DB missing interference_calls table, skipping interference sync.');
+                    return false;
+                  }
+                  syncIssues.push({ step: 'interference_delete', message: deleteCallsError.message || JSON.stringify(deleteCallsError) });
+                  localSyncError = true;
+                }
+              }
+              return true;
+            };
+
+            const canSyncInterference = await deleteCallsInBatches();
+            if (canSyncInterference && interferenceRows && interferenceRows.length > 0) {
+              for (const batch of chunkArray(interferenceRows as CloudInterferenceCall[], 500)) {
               const payload = batch.map((row) =>
                 pickDefined(
                   {
@@ -524,6 +557,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
                 syncIssues.push({ step: 'interference_upsert', message: error.message || JSON.stringify(error) });
                 localSyncError = true;
               }
+            }
             }
           }
         }

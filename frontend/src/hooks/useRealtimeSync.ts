@@ -407,6 +407,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     let listenerId: string | null = null;
     let pollingInterval: ReturnType<typeof setInterval> | null = null;
     let lastSnapshotKey: string | null = null;
+    let missingRealtimeStateLogged = false;
 
     if (!usePollingOnly) {
       listenerId = `listener-${++heatListenerSequence}`;
@@ -478,13 +479,20 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
           console.log('📋 État initial chargé:', { timer, config });
           onUpdate(timer, config, data.status);
         } else {
+          if (options?.skipIfUnchanged && lastSnapshotKey === '__missing__') {
+            return;
+          }
+          lastSnapshotKey = '__missing__';
           // Aucune donnée trouvée, utiliser des valeurs par défaut
           const defaultTimer: HeatTimer = {
             isRunning: false,
             startTime: null,
             duration: DEFAULT_TIMER_DURATION
           };
-          console.log('⚠️ Aucune config temps réel trouvée, utilisation des valeurs par défaut');
+          if (!missingRealtimeStateLogged) {
+            console.log('⚠️ Aucune config temps réel trouvée, utilisation des valeurs par défaut');
+            missingRealtimeStateLogged = true;
+          }
           onUpdate(defaultTimer, null, 'waiting');
         }
       } catch (err) {

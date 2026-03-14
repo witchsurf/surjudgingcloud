@@ -9,8 +9,23 @@ const interferenceInflight = new Map<string, Promise<InterferenceCall[]>>();
 
 const isMissingInterferenceTableError = (error: unknown) => {
     if (!error || typeof error !== 'object') return false;
-    const candidate = error as { code?: string; message?: string; details?: string };
-    const text = `${candidate.code || ''} ${candidate.message || ''} ${candidate.details || ''}`.toLowerCase();
+    const candidate = error as {
+        code?: string;
+        message?: string;
+        details?: string;
+        status?: number;
+        statusCode?: number;
+        hint?: string;
+    };
+    const text = [
+        candidate.code,
+        candidate.message,
+        candidate.details,
+        candidate.hint,
+        String(candidate.status ?? ''),
+        String(candidate.statusCode ?? ''),
+        JSON.stringify(candidate),
+    ].join(' ').toLowerCase();
     return text.includes('interference_calls') && (text.includes('404') || text.includes('not found') || text.includes('pgrst'));
 };
 
