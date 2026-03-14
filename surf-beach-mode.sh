@@ -19,6 +19,16 @@ SERVICE_RETRY_DELAY="2"
 VM_USER="laraise"
 VM_IP="192.168.1.78"
 VM_DIR="/home/laraise/surjudgingcloud"
+DEPLOY_ITEMS=(
+    ".dockerignore"
+    "surf-beach-mode.sh"
+    "vm-cleanup.sh"
+    "vm-zombies.sh"
+    "infra/Dockerfile"
+    "infra/docker-compose.yml"
+    "infra/nginx.conf"
+    "frontend/dist/"
+)
 
 function show_header() {
     clear
@@ -247,12 +257,11 @@ function etape_1_preparation() {
     
     echo ""
     echo -e "${BLUE}🔄 2. Envoi du nouveau code vers le Serveur (${VM_IP})...${NC}"
-    # rsync over ssh (excluding paths that require root permissions or shouldn't be overridden)
+    # Runtime-only deploy: sync only the files required by nginx/docker on the VM.
     rsync -avz --delete \
-        --exclude 'node_modules' \
-        --exclude '.git' \
-        --exclude 'infra/letsencrypt' \
-        ./ ${VM_USER}@${VM_IP}:${VM_DIR}/
+        --relative \
+        "${DEPLOY_ITEMS[@]}" \
+        ${VM_USER}@${VM_IP}:${VM_DIR}/
     
     echo ""
     echo -e "${BLUE}🐳 3. Re-création des serveurs Docker sur le Serveur Ubuntu...${NC}"
