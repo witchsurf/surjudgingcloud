@@ -6,7 +6,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { retryWithBackoff } from '../lib/retryWithBackoff';
 
@@ -34,7 +34,7 @@ export abstract class BaseRepository {
      * Check if Supabase is configured and online
      */
     protected get isOnline(): boolean {
-        return navigator.onLine && isSupabaseConfigured() && this.supabase !== null;
+        return canUseSupabaseConnection() && this.supabase !== null;
     }
 
     /**

@@ -137,6 +137,16 @@ export const getSupabaseConfig = () => {
 
 export const { supabaseUrl, supabaseAnonKey, mode } = getSupabaseConfig();
 
+export const isLocalSupabaseMode = (): boolean => {
+  return getSupabaseConfig().mode === 'local';
+};
+
+export const canUseSupabaseConnection = (): boolean => {
+  if (!isSupabaseConfigured() || !supabase) return false;
+  if (typeof window === 'undefined') return true;
+  return isLocalSupabaseMode() || window.navigator.onLine;
+};
+
 console.log(`🔌 Supabase Mode: ${mode}`);
 console.log(`🔗 Supabase URL: ${supabaseUrl}`);
 console.log(`🔑 Supabase Key (local): ${mode === 'local' ? (supabaseAnonKey?.substring(0, 15) + '...') : 'N/A'}`);

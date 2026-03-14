@@ -7,9 +7,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Source Sans 3"', 'sans-serif'],
-        bebas: ['"Bebas Neue"', 'cursive'],
-        condensed: ['"Barlow Condensed"', 'sans-serif'],
+        sans: ['"Aptos"', '"Segoe UI"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        bebas: ['Impact', '"Arial Narrow Bold"', '"Helvetica Inserat"', '"Haettenschweiler"', 'sans-serif'],
+        condensed: ['"Arial Narrow"', '"Roboto Condensed"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
       },
       colors: {
         primary: {

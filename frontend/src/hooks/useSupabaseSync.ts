@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, canUseSupabaseConnection, isLocalSupabaseMode } from '../lib/supabase';
 import type { Score, Heat, ScoreOverrideLog, OverrideReason } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
 import { ensureHeatId, buildHeatId } from '../utils/heat';
@@ -32,9 +32,10 @@ interface SyncStatus {
 
 export function useSupabaseSync() {
   const supabaseEnabled = isSupabaseConfigured();
+  const canReachSupabase = () => canUseSupabaseConnection();
   const OVERRIDE_LOGS_KEY = 'surfJudgingOverrideLogs';
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({
-    isOnline: navigator.onLine,
+    isOnline: canReachSupabase(),
     supabaseEnabled,
     lastSync: null,
     pendingScores: 0,
@@ -91,7 +92,7 @@ export function useSupabaseSync() {
     round: number
   ) => {
     const normalizedHeatId = ensureHeatId(heatId);
-    if (!navigator.onLine || !supabaseEnabled || !isSupabaseConfigured()) {
+    if (!canReachSupabase() || !supabaseEnabled || !isSupabaseConfigured()) {
       return;
     }
 
@@ -165,7 +166,7 @@ export function useSupabaseSync() {
   }, [persistScores, updatePendingCount]);
 
   const syncOverrideLogs = useCallback(async () => {
-    if (!navigator.onLine || !supabaseEnabled) return;
+    if (!canReachSupabase() || !supabaseEnabled) return;
 
     const localLogs = readLocalOverrideLogs();
     const pendingLogs = localLogs.filter(log => !log.synced);
@@ -204,7 +205,7 @@ export function useSupabaseSync() {
 
   // Synchroniser les scores en attente
   const syncPendingScores = useCallback(async () => {
-    if (!navigator.onLine || !supabaseEnabled) {
+    if (!canReachSupabase() || !supabaseEnabled) {
       markAllScoresSynced();
       return;
     }
@@ -288,13 +289,13 @@ export function useSupabaseSync() {
   // Détecter les changements de connexion
   useEffect(() => {
     const handleOnline = () => {
-      setSyncStatus(prev => ({ ...prev, isOnline: true, supabaseEnabled, syncError: null }));
+      setSyncStatus(prev => ({ ...prev, isOnline: canReachSupabase(), supabaseEnabled, syncError: null }));
       syncPendingScores();
       syncOverrideLogs();
     };
 
     const handleOffline = () => {
-      setSyncStatus(prev => ({ ...prev, isOnline: false }));
+      setSyncStatus(prev => ({ ...prev, isOnline: isLocalSupabaseMode() ? true : false }));
     };
 
     window.addEventListener('online', handleOnline);
@@ -332,7 +333,7 @@ export function useSupabaseSync() {
     persistScores(updatedScores);
 
     // Essayer de synchroniser immédiatement si en ligne
-    if (navigator.onLine && supabaseEnabled) {
+    if (canReachSupabase() && supabaseEnabled) {
       try {
         await ensureHeatRecord(newScore.heat_id, newScore.competition, newScore.division, newScore.round);
 
@@ -446,7 +447,7 @@ export function useSupabaseSync() {
       score: newScore,
       timestamp: now.toISOString(),
       created_at: existingScore?.created_at ?? now.toISOString(),
-      synced: supabaseEnabled && navigator.onLine ? existingScore?.synced ?? true : true
+      synced: supabaseEnabled && canReachSupabase() ? existingScore?.synced ?? true : true
     };
 
     if (matchIndex >= 0) {
@@ -474,7 +475,7 @@ export function useSupabaseSync() {
       synced: false
     };
 
-    if (navigator.onLine && supabaseEnabled) {
+    if (canReachSupabase() && supabaseEnabled) {
       try {
         await ensureHeatRecord(normalizedHeatId, competition, division, round);
 
@@ -542,7 +543,7 @@ export function useSupabaseSync() {
     const localLogs = readLocalOverrideLogs().filter(log => log.heat_id === normalizedHeatId);
     let remoteLogs: ScoreOverrideLog[] = [];
 
-    if (navigator.onLine && supabaseEnabled) {
+    if (canReachSupabase() && supabaseEnabled) {
       try {
         const { data, error } = await supabase!
           .from('score_overrides')
@@ -587,7 +588,7 @@ export function useSupabaseSync() {
     const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
     const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : null;
 
-    if (navigator.onLine && isSupabaseConfigured()) {
+    if (canReachSupabase() && isSupabaseConfigured()) {
       try {
         const { error } = await supabase!
           .from('heats')
@@ -625,7 +626,7 @@ export function useSupabaseSync() {
   // Sauvegarder la configuration du heat
   const saveHeatConfig = useCallback(async (heatId: string, config: AppConfig) => {
     const normalizedHeatId = ensureHeatId(heatId);
-    if (!navigator.onLine || !isSupabaseConfigured()) {
+    if (!canReachSupabase() || !isSupabaseConfigured()) {
       console.log('⚠️ Config heat non sauvée: hors ligne ou Supabase non configuré');
       return;
     }
@@ -654,7 +655,7 @@ export function useSupabaseSync() {
   // Sauvegarder l'état du timer
   const saveTimerState = useCallback(async (heatId: string, timer: HeatTimer) => {
     const normalizedHeatId = ensureHeatId(heatId);
-    if (!navigator.onLine) {
+    if (!canReachSupabase()) {
       console.log('⚠️ Timer non sauvé: hors ligne');
       return;
     }
@@ -701,7 +702,7 @@ export function useSupabaseSync() {
   // Charger la configuration d'un heat
   const loadHeatConfig = useCallback(async (heatId: string) => {
     const normalizedHeatId = ensureHeatId(heatId);
-    if (!navigator.onLine || !isSupabaseConfigured()) return null;
+    if (!canReachSupabase() || !isSupabaseConfigured()) return null;
 
     try {
       const { data, error } = await supabase!
@@ -721,7 +722,7 @@ export function useSupabaseSync() {
   // Charger l'état du timer
   const loadTimerState = useCallback(async (heatId: string) => {
     const normalizedHeatId = ensureHeatId(heatId);
-    if (!navigator.onLine || !isSupabaseConfigured()) return null;
+    if (!canReachSupabase() || !isSupabaseConfigured()) return null;
 
     try {
       const { data, error } = await supabase!
@@ -750,7 +751,7 @@ export function useSupabaseSync() {
   // Mettre à jour le statut d'un heat
   const updateHeatStatus = useCallback(async (heatId: string, status: 'open' | 'closed', closedAt?: string) => {
     const normalizedHeatId = ensureHeatId(heatId);
-    if (!navigator.onLine || !isSupabaseConfigured()) return;
+    if (!canReachSupabase() || !isSupabaseConfigured()) return;
 
     try {
       const updateData: { status: 'open' | 'closed'; closed_at?: string } = { status };
@@ -772,7 +773,7 @@ export function useSupabaseSync() {
 
   // Charger les scores depuis Supabase
   const loadScoresFromDatabase = useCallback(async (heatId: string, legacyHeatId?: string) => {
-    if (!navigator.onLine) {
+    if (!canReachSupabase()) {
       console.log('⚠️ Scores non chargés: hors ligne');
       return [];
     }
@@ -807,7 +808,7 @@ export function useSupabaseSync() {
 
   // Initialiser la synchronisation au démarrage
   useEffect(() => {
-    if (navigator.onLine && isSupabaseConfigured()) {
+    if (canReachSupabase() && isSupabaseConfigured()) {
       syncPendingScores();
       syncOverrideLogs();
     }

@@ -15,7 +15,7 @@ import {
     fetchOrderedHeatSequence,
     fetchEventIdByName
 } from '../api/supabaseClient';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
 import type { AppConfig } from '../types';
 
@@ -125,7 +125,7 @@ export default function AdminPage() {
                 name: config.judgeNames[id] || id,
             }));
 
-            if (navigator.onLine && isSupabaseConfigured() && activeEventId) {
+            if (canUseSupabaseConnection() && isSupabaseConfigured() && activeEventId) {
                 try {
                     await updateEventConfiguration(activeEventId, {
                         config,
@@ -148,7 +148,7 @@ export default function AdminPage() {
                 }
             } else {
                 setLoadState('loaded');
-                if (!navigator.onLine) {
+                if (!canUseSupabaseConnection()) {
                     setLoadError('Configuration enregistrée localement (mode hors ligne).');
                 } else {
                     setLoadError(null);
