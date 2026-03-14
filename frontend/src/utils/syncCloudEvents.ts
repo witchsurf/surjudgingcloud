@@ -554,8 +554,8 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
                   console.warn('⚠️ Local DB missing interference_calls table, skipping interference sync.');
                   break;
                 }
-                syncIssues.push({ step: 'interference_upsert', message: error.message || JSON.stringify(error) });
-                localSyncError = true;
+                console.warn('⚠️ Local interference sync unavailable for now, continuing without blocking event sync.', error);
+                break;
               }
             }
             }

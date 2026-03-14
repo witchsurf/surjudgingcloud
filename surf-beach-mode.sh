@@ -235,6 +235,9 @@ function apply_local_schema_fixes_remote() {
                 docker exec -i surfjudging_postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "\${sql_file}"
             fi
         done
+        echo "===== Rechargement API locale ====="
+        cd ${VM_DIR}/infra
+        docker compose -f docker-compose-local.yml restart rest kong >/dev/null 2>&1 || true
 EOF
 }
 
