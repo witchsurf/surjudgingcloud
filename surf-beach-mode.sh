@@ -36,6 +36,9 @@ DEPLOY_ITEMS=(
     "infra/docker-compose-local.yml"
     "infra/kong.yml"
     "infra/nginx.conf"
+    "backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql"
+    "backend/sql/FIX_SYNC_SCORING.sql"
+    "backend/sql/14_ADD_INTERFERENCE_CALLS.sql"
     "frontend/dist/"
 )
 
@@ -58,7 +61,7 @@ function sync_deploy_items() {
         return 1
     fi
 
-    if ! ssh ${SSH_OPTIONS} "${remote}" "mkdir -p '${VM_DIR}/infra' '${VM_DIR}/frontend/dist/assets'"; then
+    if ! ssh ${SSH_OPTIONS} "${remote}" "mkdir -p '${VM_DIR}/infra' '${VM_DIR}/backend/sql' '${VM_DIR}/frontend/dist/assets'"; then
         echo -e "${RED}❌ Impossible de préparer l'arborescence distante sur ${remote}.${NC}"
         return 1
     fi
@@ -73,6 +76,9 @@ function sync_deploy_items() {
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/docker-compose-local.yml "${remote}:${VM_DIR}/infra/docker-compose-local.yml" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/kong.yml "${remote}:${VM_DIR}/infra/kong.yml" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/nginx.conf "${remote}:${VM_DIR}/infra/nginx.conf" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql "${remote}:${VM_DIR}/backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" backend/sql/FIX_SYNC_SCORING.sql "${remote}:${VM_DIR}/backend/sql/FIX_SYNC_SCORING.sql" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" backend/sql/14_ADD_INTERFERENCE_CALLS.sql "${remote}:${VM_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql" || return 1
     run_rsync -avz --delete -e "ssh ${RSYNC_SSH_OPTIONS}" frontend/dist/ "${remote}:${VM_DIR}/frontend/dist/" || return 1
 }
 
@@ -211,6 +217,27 @@ function ensure_beach_stack_remote() {
 EOF
 }
 
+function apply_local_schema_fixes_remote() {
+    ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
+        set -e
+        echo "===== Migration schéma DB locale ====="
+        until docker exec surfjudging_postgres pg_isready -U postgres >/dev/null 2>&1; do
+            echo "Attente PostgreSQL local..."
+            sleep 2
+        done
+        for sql_file in \
+            "${VM_DIR}/backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql" \
+            "${VM_DIR}/backend/sql/FIX_SYNC_SCORING.sql" \
+            "${VM_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql"
+        do
+            if [ -f "\${sql_file}" ]; then
+                echo "Application de \$(basename "\${sql_file}")"
+                docker exec -i surfjudging_postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "\${sql_file}"
+            fi
+        done
+EOF
+}
+
 function auto_repair_services() {
     echo -e "${BLUE}🚑 Tentative d'auto-réparation des services sur ${VM_USER}@${VM_IP}...${NC}"
 
@@ -221,6 +248,7 @@ function auto_repair_services() {
 
     echo -e "${BLUE}🏖️ Réactivation de la stack plage minimale...${NC}"
     ensure_beach_stack_remote
+    apply_local_schema_fixes_remote
 
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} << EOF
         set -e
@@ -398,6 +426,7 @@ function etape_1_preparation() {
     echo ""
     echo -e "${BLUE}🗄️ 3. Activation de la stack plage minimale...${NC}"
     ensure_beach_stack_remote
+    apply_local_schema_fixes_remote
 
     echo ""
     echo -e "${BLUE}🐳 4. Re-création du frontend sur le Serveur Ubuntu...${NC}"
