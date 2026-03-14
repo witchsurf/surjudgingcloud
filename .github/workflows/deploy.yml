@@ -17,21 +17,51 @@ jobs:
   deploy:
     name: Deploy to Production VPS
     runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
 
     steps:
+      - name: 🔐 Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/github_actions_vps
+          chmod 600 ~/.ssh/github_actions_vps
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
       - name: 🚀 Deploy to VPS
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
-          script_stop: false
-          command_timeout: 30m
-          script: |
-            cd /opt/judging
-            chmod +x deploy.sh
-            ./deploy.sh
+        run: |
+          set -eu
+
+          for attempt in 1 2 3; do
+            echo "SSH deploy attempt $attempt/3..."
+
+            if ssh \
+              -i ~/.ssh/github_actions_vps \
+              -o BatchMode=yes \
+              -o ConnectTimeout=20 \
+              -o ServerAliveInterval=15 \
+              -o ServerAliveCountMax=4 \
+              -o StrictHostKeyChecking=accept-new \
+              "$VPS_USER@$VPS_HOST" \
+              'cd /opt/judging && chmod +x deploy.sh && ./deploy.sh'
+            then
+              echo "Deployment succeeded on attempt $attempt."
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              echo "Transient SSH failure. Waiting 30s before retry..."
+              sleep 30
+            fi
+          done
+
+          echo "Deployment failed after 3 SSH attempts."
+          exit 1
+
+      - name: 🧹 Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/github_actions_vps
 
       - name: ✅ Deployment Status
         if: success()
