@@ -7,6 +7,13 @@ const INTERFERENCE_CACHE_TTL_MS = 1500;
 const interferenceCache = new Map<string, { at: number; value: InterferenceCall[] }>();
 const interferenceInflight = new Map<string, Promise<InterferenceCall[]>>();
 
+const isMissingInterferenceTableError = (error: unknown) => {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as { code?: string; message?: string; details?: string };
+    const text = `${candidate.code || ''} ${candidate.message || ''} ${candidate.details || ''}`.toLowerCase();
+    return text.includes('interference_calls') && (text.includes('404') || text.includes('not found') || text.includes('pgrst'));
+};
+
 export type RawScoreRow = {
     id?: string;
     event_id?: number;
@@ -156,7 +163,15 @@ export async function fetchInterferenceCalls(heatId: string): Promise<Interferen
             .eq('heat_id', normalizedHeatId)
             .order('updated_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+            if (isMissingInterferenceTableError(error)) {
+                console.warn('⚠️ Table interference_calls absente localement, interférences ignorées.');
+                const empty: InterferenceCall[] = [];
+                interferenceCache.set(normalizedHeatId, { at: Date.now(), value: empty });
+                return empty;
+            }
+            throw error;
+        }
         const value = (data ?? []) as InterferenceCall[];
         interferenceCache.set(normalizedHeatId, { at: Date.now(), value });
         return value;
@@ -178,7 +193,13 @@ export async function fetchAllInterferenceCallsForEvent(eventId: number): Promis
         .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
         .in('heat_id', heatIds);
 
-    if (callsError) throw callsError;
+    if (callsError) {
+        if (isMissingInterferenceTableError(callsError)) {
+            console.warn('⚠️ Table interference_calls absente localement, export PDF sans interférences.');
+            return {};
+        }
+        throw callsError;
+    }
     const result: Record<string, InterferenceCall[]> = {};
     (calls ?? []).forEach((call) => {
         const key = ensureHeatId((call as InterferenceCall).heat_id);
@@ -201,6 +222,12 @@ export async function upsertInterferenceCall(input: {
         call_type: input.call_type, is_head_judge_override: Boolean(input.is_head_judge_override),
     };
     const { error } = await supabase!.from('interference_calls').upsert(payload, { onConflict: 'heat_id,judge_id,surfer,wave_number' });
-    if (error) throw error;
+    if (error) {
+        if (isMissingInterferenceTableError(error)) {
+            console.warn('⚠️ Table interference_calls absente localement, sauvegarde interférence ignorée.');
+            return;
+        }
+        throw error;
+    }
     interferenceCache.delete(payload.heat_id);
 }

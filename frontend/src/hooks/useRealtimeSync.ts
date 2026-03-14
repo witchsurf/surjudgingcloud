@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured, getSupabaseConfig } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseConfig, isLocalSupabaseMode } from '../lib/supabase';
 import type { AppConfig, HeatTimer, KioskConfig, HeatSyncRequest } from '../types';
 import { ensureHeatId } from '../utils/heat';
 import { DEFAULT_TIMER_DURATION, INITIAL_CONFIG } from '../utils/constants';
@@ -50,6 +50,7 @@ const heatChannelRegistry = new Map<string, HeatChannelState>();
 let heatListenerSequence = 0;
 
 const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
+const LOCAL_POLL_INTERVAL_MS = 2500;
 
 const emitHeatUpdate = (
   heatId: string,
@@ -402,19 +403,28 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       return () => { };
     }
 
-    const listenerId = `listener-${++heatListenerSequence}`;
-    const state = heatChannelRegistry.get(normalizedHeatId) ?? createHeatChannel(normalizedHeatId);
-    state.listeners.set(listenerId, (timer, config, status) => {
-      setLastUpdate(new Date());
-      onUpdate(timer, config, status);
-    });
+    const usePollingOnly = isLocalSupabaseMode();
+    let listenerId: string | null = null;
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
+    let lastSnapshotKey: string | null = null;
 
-    if (debugRealtimeEnabled) {
-      console.log('🔔 Subscription au heat:', normalizedHeatId, 'listener:', listenerId, 'active listeners:', state.listeners.size);
+    if (!usePollingOnly) {
+      listenerId = `listener-${++heatListenerSequence}`;
+      const state = heatChannelRegistry.get(normalizedHeatId) ?? createHeatChannel(normalizedHeatId);
+      state.listeners.set(listenerId, (timer, config, status) => {
+        setLastUpdate(new Date());
+        onUpdate(timer, config, status);
+      });
+
+      if (debugRealtimeEnabled) {
+        console.log('🔔 Subscription au heat:', normalizedHeatId, 'listener:', listenerId, 'active listeners:', state.listeners.size);
+      }
+    } else {
+      console.log('📡 Realtime WS désactivé en mode LAN, fallback polling pour', normalizedHeatId);
     }
 
     // Charger l'état initial
-    const loadInitialState = async () => {
+    const loadInitialState = async (options?: { skipIfUnchanged?: boolean }) => {
       if (!isSupabaseConfigured()) {
         console.log('⚠️ Temps réel non disponible - Supabase non configuré');
         const defaultTimer: HeatTimer = {
@@ -446,6 +456,18 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
         }
 
         if (data) {
+          const snapshotKey = JSON.stringify({
+            status: data.status,
+            timer_start_time: data.timer_start_time,
+            timer_duration_minutes: data.timer_duration_minutes,
+            updated_at: data.updated_at,
+            config_data: data.config_data
+          });
+          if (options?.skipIfUnchanged && snapshotKey === lastSnapshotKey) {
+            return;
+          }
+          lastSnapshotKey = snapshotKey;
+
           const timer: HeatTimer = {
             isRunning: data.status === 'running',
             startTime: data.timer_start_time ? new Date(data.timer_start_time) : null,
@@ -479,8 +501,18 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     loadInitialState();
 
+    if (usePollingOnly) {
+      pollingInterval = setInterval(() => {
+        void loadInitialState({ skipIfUnchanged: true });
+      }, LOCAL_POLL_INTERVAL_MS);
+    }
+
     // Fonction de nettoyage
     return () => {
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+      if (!listenerId) return;
       const currentState = heatChannelRegistry.get(normalizedHeatId);
       if (!currentState) return;
       currentState.listeners.delete(listenerId);

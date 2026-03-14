@@ -11,7 +11,7 @@ import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
 import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchAllInterferenceCallsForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall } from '../api/supabaseClient';
-import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
@@ -162,6 +162,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   useEffect(() => {
     let cancelled = false;
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadDbScores = async () => {
       try {
@@ -187,9 +188,17 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     };
 
     window.addEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
+    if (isLocalSupabaseMode()) {
+      pollingInterval = setInterval(() => {
+        void loadDbScores();
+      }, 2500);
+    }
     return () => {
       cancelled = true;
       window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
     };
   }, [heatId]);
 

@@ -9,7 +9,7 @@ import { useScoreManager } from '../hooks/useScoreManager';
 import { getHeatIdentifiers } from '../utils/heat';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, isLocalSupabaseMode, supabase } from '../lib/supabase';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import type { AppConfig } from '../types';
 
@@ -108,7 +108,7 @@ export default function JudgePage() {
 
     // Realtime sync for admin config saves (division/round/heat changes).
     useEffect(() => {
-        if (!isSupabaseConfigured() || !supabase || configLoading) return;
+        if (!isSupabaseConfigured() || !supabase || configLoading || isLocalSupabaseMode()) return;
 
         const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
         const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
@@ -202,7 +202,7 @@ export default function JudgePage() {
 
     // Fallback realtime path: switch tablets when active_heat_pointer changes.
     useEffect(() => {
-        if (!isSupabaseConfigured() || !supabase || configLoading) return;
+        if (!isSupabaseConfigured() || !supabase || configLoading || isLocalSupabaseMode()) return;
 
         const normalizeEventKey = (value?: string) =>
             (value || '')

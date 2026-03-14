@@ -11,7 +11,7 @@ import {
     fetchHeatScores,
     fetchHeatEntriesWithParticipants
 } from '../api/supabaseClient';
-import { supabase } from '../lib/supabase';
+import { isLocalSupabaseMode, supabase } from '../lib/supabase';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
@@ -594,6 +594,9 @@ export default function DisplayPage() {
             return () => { };
         }
 
+        const useLocalPolling = isLocalSupabaseMode();
+        let pollingInterval: ReturnType<typeof setInterval> | null = null;
+
         // Charger les scores initiaux pour le heat courant
         setScores([]); // Reset scores immédiatement pour éviter de montrer des scores périmés
         loadScoresFromDatabase(currentHeatId).then((fetched) => {
@@ -646,9 +649,24 @@ export default function DisplayPage() {
 
         window.addEventListener('newScoreRealtime', handleNewScore);
 
+        if (useLocalPolling) {
+            pollingInterval = setInterval(() => {
+                loadScoresFromDatabase(currentHeatId).then((fetched) => {
+                    if (fetched) {
+                        setScores(normalizeScores(fetched));
+                    }
+                }).catch((error) => {
+                    console.warn('⚠️ Polling local des scores display indisponible:', error);
+                });
+            }, 2500);
+        }
+
         return () => {
             unsubscribe();
             window.removeEventListener('newScoreRealtime', handleNewScore);
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
         };
     }, [configSaved, config.competition, currentHeatId, subscribeToHeat, setTimer, setConfig, setHeatStatus, loadScoresFromDatabase, setScores]);
 

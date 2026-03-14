@@ -7,7 +7,7 @@ import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/supabaseClient';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers } from '../utils/heat';
-import { supabase } from '../lib/supabase';
+import { supabase, isLocalSupabaseMode } from '../lib/supabase';
 import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 
@@ -218,29 +218,43 @@ export default function ScoreDisplay({
 
     refreshInterferences();
 
-    const channel = supabase
-      ?.channel(`interference_calls_${heatId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'interference_calls',
-          filter: `heat_id=eq.${heatId}`
-        },
-        () => {
-          if (refreshTimeout) {
-            clearTimeout(refreshTimeout);
+    let pollingInterval: ReturnType<typeof setInterval> | null = null;
+    const usePollingOnly = isLocalSupabaseMode();
+
+    const channel = usePollingOnly
+      ? null
+      : supabase
+        ?.channel(`interference_calls_${heatId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'interference_calls',
+            filter: `heat_id=eq.${heatId}`
+          },
+          () => {
+            if (refreshTimeout) {
+              clearTimeout(refreshTimeout);
+            }
+            refreshTimeout = setTimeout(() => {
+              refreshInterferences();
+            }, 120);
           }
-          refreshTimeout = setTimeout(() => {
-            refreshInterferences();
-          }, 120);
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+
+    if (usePollingOnly) {
+      pollingInterval = setInterval(() => {
+        void refreshInterferences();
+      }, 3000);
+    }
 
     return () => {
       cancelled = true;
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
       if (refreshTimeout) {
         clearTimeout(refreshTimeout);
       }
