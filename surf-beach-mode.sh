@@ -309,6 +309,8 @@ function verify_services() {
 }
 
 function verify_vm() {
+    local check_services="${1:-yes}"
+
     echo -e "${YELLOW}Vérification de la machine virtuelle locale...${NC}"
     echo -e "Regardez l'écran de votre machine virtuelle Ubuntu."
     echo -e "L'adresse IP devrait être affichée (ex: 192.168.1.37 ou 10.0.0.24)."
@@ -331,10 +333,12 @@ function verify_vm() {
             echo -e "   Le script pourra vérifier les ports, mais pas diagnostiquer Docker automatiquement."
         fi
         echo ""
-        if ! verify_services; then
-            echo ""
-            read -p "Appuyez sur Entrée pour revenir au menu..."
-            return 1
+        if [ "$check_services" = "yes" ]; then
+            if ! verify_services; then
+                echo ""
+                read -p "Appuyez sur Entrée pour revenir au menu..."
+                return 1
+            fi
         fi
         return 0
     else
@@ -450,10 +454,19 @@ function etape_4_maintenance() {
     echo -e "Nettoyage Docker, diagnostic réseau/SSH et processus zombies."
     echo ""
 
-    verify_vm || return
+    verify_vm "no" || return
 
     echo ""
     echo -e "${BLUE}🌐 Diagnostic réseau/SSH...${NC}"
+    if ! can_ssh_vm; then
+        echo -e "${RED}❌ SSH inaccessible vers ${VM_USER}@${VM_IP}.${NC}"
+        echo -e "   La maintenance distante ne peut pas continuer."
+        echo -e "   Vérifiez d'abord l'IP affichée dans Ubuntu et le mode bridge/NAT de la VM."
+        echo ""
+        read -p "Appuyez sur Entrée pour revenir au menu..."
+        return
+    fi
+
     ssh ${SSH_OPTIONS} ${VM_USER}@${VM_IP} "cd ${VM_DIR} && chmod +x vm-network.sh vm-cleanup.sh vm-zombies.sh && ./vm-network.sh"
     echo ""
     echo -e "${BLUE}🧹 Nettoyage Docker...${NC}"
