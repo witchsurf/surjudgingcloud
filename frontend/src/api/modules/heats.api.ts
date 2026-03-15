@@ -325,12 +325,17 @@ export interface ActiveHeatPointer {
     updated_at: string;
 }
 
-export async function fetchActiveHeatPointer(): Promise<ActiveHeatPointer | null> {
+export async function fetchActiveHeatPointer(eventName?: string): Promise<ActiveHeatPointer | null> {
     ensureSupabase();
-    const { data, error } = await supabase!
+    let query = supabase!
         .from('active_heat_pointer')
-        .select('*')
-        .limit(1);
+        .select('*');
+
+    if (eventName) {
+        query = query.eq('event_name', eventName);
+    }
+
+    const { data, error } = await query.limit(1);
 
     if (error) return null;
     return data && data.length > 0 ? (data[0] as ActiveHeatPointer) : null;
@@ -460,4 +465,3 @@ export async function fetchAllEventHeats(eventId: number): Promise<Record<string
 
     return result;
 }
-

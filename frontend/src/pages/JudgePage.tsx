@@ -10,7 +10,7 @@ import { getHeatIdentifiers } from '../utils/heat';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured, isLocalSupabaseMode, supabase } from '../lib/supabase';
-import { parseActiveHeatId } from '../api/supabaseClient';
+import { fetchActiveHeatPointer, parseActiveHeatId } from '../api/supabaseClient';
 import type { AppConfig } from '../types';
 
 export default function JudgePage() {
@@ -202,7 +202,7 @@ export default function JudgePage() {
 
     // Fallback realtime path: switch tablets when active_heat_pointer changes.
     useEffect(() => {
-        if (!isSupabaseConfigured() || !supabase || configLoading || isLocalSupabaseMode()) return;
+        if (!isSupabaseConfigured() || !supabase || configLoading) return;
 
         const normalizeEventKey = (value?: string) =>
             (value || '')
@@ -211,6 +211,50 @@ export default function JudgePage() {
                 .replace(/[_\s]+/g, ' ');
 
         const expectedEvent = normalizeEventKey(config.competition);
+        const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
+            if (!row?.active_heat_id) return;
+
+            const eventName = (row.event_name || '').trim();
+            if (expectedEvent && normalizeEventKey(eventName) !== expectedEvent) return;
+
+            const parsed = parseActiveHeatId(row.active_heat_id);
+            if (!parsed) return;
+
+            setConfig((prev) => {
+                const unchanged =
+                    prev.round === parsed.round &&
+                    prev.heatId === parsed.heatNumber &&
+                    (prev.division || '').toUpperCase() === parsed.division.toUpperCase();
+
+                if (unchanged) return prev;
+
+                console.log('🔄 JudgePage: active_heat_pointer update received', {
+                    from: `${prev.division} R${prev.round}H${prev.heatId}`,
+                    to: `${parsed.division} R${parsed.round}H${parsed.heatNumber}`
+                });
+
+                return {
+                    ...prev,
+                    competition: eventName || prev.competition,
+                    division: parsed.division,
+                    round: parsed.round,
+                    heatId: parsed.heatNumber
+                };
+            });
+        };
+
+        if (isLocalSupabaseMode()) {
+            const interval = setInterval(() => {
+                void fetchActiveHeatPointer(config.competition).then((row) => {
+                    applyActiveHeatPointer(row);
+                });
+            }, 1000);
+
+            return () => {
+                clearInterval(interval);
+            };
+        }
+
         const channelName = `judge-active-heat-${expectedEvent || 'global'}`;
 
         const channel = supabase
@@ -219,36 +263,7 @@ export default function JudgePage() {
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'active_heat_pointer' },
                 (payload) => {
-                    const row = payload.new as { event_name?: string; active_heat_id?: string } | null;
-                    if (!row?.active_heat_id) return;
-
-                    const eventName = (row.event_name || '').trim();
-                    if (expectedEvent && normalizeEventKey(eventName) !== expectedEvent) return;
-
-                    const parsed = parseActiveHeatId(row.active_heat_id);
-                    if (!parsed) return;
-
-                    setConfig((prev) => {
-                        const unchanged =
-                            prev.round === parsed.round &&
-                            prev.heatId === parsed.heatNumber &&
-                            (prev.division || '').toUpperCase() === parsed.division.toUpperCase();
-
-                        if (unchanged) return prev;
-
-                        console.log('🔄 JudgePage: active_heat_pointer update received', {
-                            from: `${prev.division} R${prev.round}H${prev.heatId}`,
-                            to: `${parsed.division} R${parsed.round}H${parsed.heatNumber}`
-                        });
-
-                        return {
-                            ...prev,
-                            competition: eventName || prev.competition,
-                            division: parsed.division,
-                            round: parsed.round,
-                            heatId: parsed.heatNumber
-                        };
-                    });
+                    applyActiveHeatPointer(payload.new as { event_name?: string; active_heat_id?: string } | null);
                 }
             )
             .subscribe();

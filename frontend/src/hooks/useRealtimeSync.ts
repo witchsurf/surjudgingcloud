@@ -50,7 +50,7 @@ const heatChannelRegistry = new Map<string, HeatChannelState>();
 let heatListenerSequence = 0;
 
 const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
-const LOCAL_POLL_INTERVAL_MS = 2500;
+const LOCAL_POLL_INTERVAL_MS = 1000;
 
 const emitHeatUpdate = (
   heatId: string,

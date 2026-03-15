@@ -7,7 +7,7 @@ import { getHeatIdentifiers } from '../utils/heat';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isLocalSupabaseMode, isSupabaseConfigured, supabase } from '../lib/supabase';
-import { parseActiveHeatId } from '../api/supabaseClient';
+import { fetchActiveHeatPointer, parseActiveHeatId } from '../api/supabaseClient';
 import type { AppConfig } from '../types';
 
 export default function PriorityJudgePage() {
@@ -146,7 +146,7 @@ export default function PriorityJudgePage() {
     }, [configSaved, config.competition, currentHeatId, subscribeToHeat, setTimer, setConfig, setHeatStatus, configLoading]);
 
     useEffect(() => {
-        if (!isSupabaseConfigured() || !supabase || configLoading || isLocalSupabaseMode()) return;
+        if (!isSupabaseConfigured() || !supabase || configLoading) return;
 
         const normalizeEventKey = (value?: string) =>
             (value || '')
@@ -155,28 +155,43 @@ export default function PriorityJudgePage() {
                 .replace(/[_\s]+/g, ' ');
 
         const expectedEvent = normalizeEventKey(config.competition);
+        const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
+            if (!row?.active_heat_id) return;
+
+            const eventName = (row.event_name || '').trim();
+            if (expectedEvent && normalizeEventKey(eventName) !== expectedEvent) return;
+
+            const parsed = parseActiveHeatId(row.active_heat_id);
+            if (!parsed) return;
+
+            setConfig((prev) => ({
+                ...prev,
+                competition: eventName || prev.competition,
+                division: parsed.division,
+                round: parsed.round,
+                heatId: parsed.heatNumber
+            }));
+        };
+
+        if (isLocalSupabaseMode()) {
+            const interval = setInterval(() => {
+                void fetchActiveHeatPointer(config.competition).then((row) => {
+                    applyActiveHeatPointer(row);
+                });
+            }, 1000);
+
+            return () => {
+                clearInterval(interval);
+            };
+        }
+
         const channel = supabase
             .channel(`priority-active-heat-${expectedEvent || 'global'}`)
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'active_heat_pointer' },
                 (payload) => {
-                    const row = payload.new as { event_name?: string; active_heat_id?: string } | null;
-                    if (!row?.active_heat_id) return;
-
-                    const eventName = (row.event_name || '').trim();
-                    if (expectedEvent && normalizeEventKey(eventName) !== expectedEvent) return;
-
-                    const parsed = parseActiveHeatId(row.active_heat_id);
-                    if (!parsed) return;
-
-                    setConfig((prev) => ({
-                        ...prev,
-                        competition: eventName || prev.competition,
-                        division: parsed.division,
-                        round: parsed.round,
-                        heatId: parsed.heatNumber
-                    }));
+                    applyActiveHeatPointer(payload.new as { event_name?: string; active_heat_id?: string } | null);
                 }
             )
             .subscribe();

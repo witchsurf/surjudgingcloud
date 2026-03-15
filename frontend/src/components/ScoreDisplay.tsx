@@ -181,6 +181,10 @@ export default function ScoreDisplay({
     () => getPriorityLabels(priorityState, config.surfers || []),
     [priorityState, config.surfers]
   );
+  const isPriorityActive =
+    priorityState.mode === 'equal' ||
+    priorityState.mode === 'opening' ||
+    priorityState.mode === 'ordered';
 
   // Mise à jour horodatage
   useEffect(() => {
@@ -366,6 +370,14 @@ export default function ScoreDisplay({
         </div>
       </div>
 
+      {(heatStatus === 'finished' || heatStatus === 'closed') && (
+        <div className="bg-red-600 border-4 border-primary-950 rounded-2xl px-6 py-4 shadow-block text-center">
+          <div className="text-white font-bebas tracking-[0.25em] text-3xl sm:text-5xl leading-none">
+            HEAT OVER
+          </div>
+        </div>
+      )}
+
       {/* CLASSEMENT */}
       <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden transition-all">
         <div className="bg-primary-900 px-4 sm:px-6 py-3 border-b-4 border-primary-950 flex items-center justify-between">
@@ -390,14 +402,6 @@ export default function ScoreDisplay({
                 <div key={row.surfer} className="p-3">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                     <div className="flex items-center gap-4 sm:gap-6">
-                      <div className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl border-2 shadow-block text-xl sm:text-2xl font-bebas tracking-tighter ${
-                        isInFlight
-                          ? 'bg-amber-500 border-amber-600 text-white'
-                          : 'bg-primary-950 border-primary-950 text-white'
-                      }`}>
-                        {isInFlight ? '' : priorityBadge}
-                      </div>
-
                       <div className="flex items-center gap-4">
                         <div className="relative">
                           <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
@@ -407,7 +411,12 @@ export default function ScoreDisplay({
                         </div>
 
                         <div className="space-y-0.5">
-                          <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none">
+                          <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
+                            {isPriorityActive && (
+                              <span className="text-base sm:text-xl font-bebas tracking-widest text-primary-900">
+                                {isInFlight ? '' : priorityBadge}
+                              </span>
+                            )}
                             {row.displayName}
                           </h3>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -465,14 +474,6 @@ export default function ScoreDisplay({
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                       {/* Bloc gauche: rang + avatar + nom */}
                       <div className="flex items-center gap-4 sm:gap-6">
-                        <div className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl border-2 shadow-block text-xl sm:text-2xl font-bebas tracking-tighter ${
-                          isInFlight
-                            ? 'bg-amber-500 border-amber-600 text-white'
-                            : 'bg-primary-950 border-primary-950 text-white'
-                        }`}>
-                          {isInFlight ? '' : priorityBadge}
-                        </div>
-
                         <div className="flex items-center gap-4">
                           <div className="relative">
                             <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
@@ -483,6 +484,11 @@ export default function ScoreDisplay({
                           
                           <div className="space-y-0.5">
                             <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
+                              {isPriorityActive && (
+                                <span className="text-base sm:text-xl font-bebas tracking-widest text-primary-900">
+                                  {isInFlight ? '' : priorityBadge}
+                                </span>
+                              )}
                               {displayName}
                               {hasPendingScores && (
                                 <span className="text-danger-500 animate-pulse text-2xl leading-none pt-1" title="En attente de notes">*</span>
@@ -628,7 +634,7 @@ export default function ScoreDisplay({
       )}
 
       {/* HEAT TERMINÉ */}
-      {heatStatus === 'finished' && (
+      {(heatStatus === 'finished' || heatStatus === 'closed') && (
         <div className="bg-white border-4 border-primary-950 rounded-2xl p-6 shadow-block">
           <HeatResults
             heatId={`${config.competition}-${config.division}-${config.round}-${config.heatId}`}

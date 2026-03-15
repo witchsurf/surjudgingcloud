@@ -829,6 +829,14 @@ function JudgeInterface({
         </div>
       </div>
 
+      {(heatStatus === 'finished' || heatStatus === 'closed') && (
+        <div className="mt-3 rounded-xl border-4 border-primary-950 bg-red-600 px-6 py-4 text-center shadow-block flex-shrink-0">
+          <div className="font-bebas text-3xl sm:text-4xl tracking-[0.25em] text-white leading-none">
+            HEAT OVER
+          </div>
+        </div>
+      )}
+
       {(priorityOnly || canEditPriority) && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-shrink-0">
           <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-200 flex items-center justify-between gap-3">

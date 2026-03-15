@@ -4,12 +4,14 @@ import ScoreDisplay from '../components/ScoreDisplay';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import {
+    fetchActiveHeatPointer,
     fetchEventConfigSnapshot,
     fetchAllEventHeats,
     fetchAllScoresForEvent,
     fetchHeatMetadata,
     fetchHeatScores,
-    fetchHeatEntriesWithParticipants
+    fetchHeatEntriesWithParticipants,
+    parseActiveHeatId
 } from '../api/supabaseClient';
 import { isLocalSupabaseMode, supabase } from '../lib/supabase';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
@@ -260,6 +262,71 @@ export default function DisplayPage() {
             fetchAllEventHeats(activeEventId).then(setHistoryHeats).catch(console.error);
         }
     }, [activeEventId]);
+
+    useEffect(() => {
+        if (!configSaved || !config.competition) return;
+
+        const normalizeEventKey = (value?: string) =>
+            (value || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[_\s]+/g, ' ');
+
+        const expectedEvent = normalizeEventKey(config.competition);
+        const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
+            if (!row?.active_heat_id) return;
+
+            const eventName = (row.event_name || '').trim();
+            if (expectedEvent && normalizeEventKey(eventName) !== expectedEvent) return;
+
+            const parsed = parseActiveHeatId(row.active_heat_id);
+            if (!parsed) return;
+
+            setConfig((prev) => {
+                const unchanged =
+                    prev.round === parsed.round &&
+                    prev.heatId === parsed.heatNumber &&
+                    (prev.division || '').toUpperCase() === parsed.division.toUpperCase();
+                if (unchanged) return prev;
+
+                return normalizeConfig({
+                    ...prev,
+                    competition: eventName || prev.competition,
+                    division: parsed.division,
+                    round: parsed.round,
+                    heatId: parsed.heatNumber
+                } as AppConfig);
+            });
+        };
+
+        if (isLocalSupabaseMode()) {
+            const interval = setInterval(() => {
+                void fetchActiveHeatPointer(config.competition).then((row) => {
+                    applyActiveHeatPointer(row);
+                });
+            }, 1000);
+
+            return () => {
+                clearInterval(interval);
+            };
+        }
+
+        if (!supabase) return;
+        const channel = supabase
+            .channel(`display-active-heat-${expectedEvent || 'global'}`)
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'active_heat_pointer' },
+                (payload) => {
+                    applyActiveHeatPointer(payload.new as { event_name?: string; active_heat_id?: string } | null);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [configSaved, config.competition, setConfig]);
 
     const handleHeatSelect = async (heatId: string) => {
         if (!heatId || !activeEventId) return;
@@ -577,7 +644,7 @@ export default function DisplayPage() {
         if (isLocalSupabaseMode()) {
             const pollingInterval = setInterval(() => {
                 void applySnapshot();
-            }, 2500);
+            }, 1000);
 
             return () => {
                 clearInterval(pollingInterval);
@@ -674,7 +741,7 @@ export default function DisplayPage() {
                 }).catch((error) => {
                     console.warn('⚠️ Polling local des scores display indisponible:', error);
                 });
-            }, 2500);
+            }, 1000);
         }
 
         return () => {
