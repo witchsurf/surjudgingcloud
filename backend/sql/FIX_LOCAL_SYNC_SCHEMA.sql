@@ -52,15 +52,28 @@ CREATE POLICY "local_all_access_config" ON public.event_last_config
 -- Ensure other tables are also permissive for local sync/usage
 ALTER TABLE public.participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.heats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.heat_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.heat_realtime_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.heat_timers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.heat_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.heat_slot_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.active_heat_pointer ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "local_all_access_participants" ON public.participants;
 CREATE POLICY "local_all_access_participants" ON public.participants FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "local_all_access_heats" ON public.heats;
 CREATE POLICY "local_all_access_heats" ON public.heats FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "local_all_access_heat_configs" ON public.heat_configs;
+CREATE POLICY "local_all_access_heat_configs" ON public.heat_configs FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "local_all_access_heat_realtime_config" ON public.heat_realtime_config;
+CREATE POLICY "local_all_access_heat_realtime_config" ON public.heat_realtime_config FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "local_all_access_heat_timers" ON public.heat_timers;
+CREATE POLICY "local_all_access_heat_timers" ON public.heat_timers FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "local_all_access_heat_entries" ON public.heat_entries;
 CREATE POLICY "local_all_access_heat_entries" ON public.heat_entries FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
@@ -70,6 +83,14 @@ CREATE POLICY "local_all_access_heat_slot_mappings" ON public.heat_slot_mappings
 
 DROP POLICY IF EXISTS "local_all_access_scores" ON public.scores;
 CREATE POLICY "local_all_access_scores" ON public.scores FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "local_all_access_active_heat_pointer" ON public.active_heat_pointer;
+CREATE POLICY "local_all_access_active_heat_pointer" ON public.active_heat_pointer FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+GRANT ALL ON TABLE public.heat_configs TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.heat_realtime_config TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.heat_timers TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.active_heat_pointer TO anon, authenticated, service_role;
 
 COMMIT;
 

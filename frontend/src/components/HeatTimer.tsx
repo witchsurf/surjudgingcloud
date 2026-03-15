@@ -43,7 +43,7 @@ function HeatTimer({
     // localStorage sync REMOVED - using Supabase realtime only
     // This fixes infinite loop issue
 
-    const handleTimerSync = (e: CustomEvent) => {
+        const handleTimerSync = (e: CustomEvent) => {
       const syncedTimer = e.detail;
       console.log('📡 Événement timerSync reçu:', syncedTimer);
       if (syncedTimer.startTime) {
@@ -51,7 +51,10 @@ function HeatTimer({
           ? new Date(syncedTimer.startTime)
           : syncedTimer.startTime;
         const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
-        const remaining = Math.max(0, syncedTimer.duration * 60 - elapsed);
+        const remaining = Math.min(
+          syncedTimer.duration * 60,
+          Math.max(0, syncedTimer.duration * 60 - elapsed)
+        );
         setTimeLeft(remaining);
         console.log('⏰ Timer mis à jour via événement:', { remaining, elapsed });
       } else {
@@ -82,7 +85,10 @@ function HeatTimer({
         let remaining = timeLeft;
         if (timer.startTime) {
           const elapsed = Math.floor((Date.now() - new Date(timer.startTime).getTime()) / 1000);
-          remaining = Math.max(0, timer.duration * 60 - elapsed);
+          remaining = Math.min(
+            timer.duration * 60,
+            Math.max(0, timer.duration * 60 - elapsed)
+          );
         } else {
           // Fallback: décrémente localement si pas de startTime
           remaining = Math.max(0, remaining - 1);

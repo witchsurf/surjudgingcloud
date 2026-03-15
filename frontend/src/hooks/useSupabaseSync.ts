@@ -590,6 +590,13 @@ export function useSupabaseSync() {
 
     if (canReachSupabase() && isSupabaseConfigured()) {
       try {
+        const normalizedStatus =
+          heatData.status === 'open'
+            ? 'waiting'
+            : heatData.status === 'closed'
+              ? 'closed'
+              : heatData.status;
+
         const { error } = await supabase!
           .from('heats')
           .upsert({
@@ -599,7 +606,7 @@ export function useSupabaseSync() {
             division: newHeat.division,
             round: newHeat.round,
             heat_number: newHeat.heat_number,
-            status: newHeat.status,
+            status: normalizedStatus,
             created_at: newHeat.created_at
           });
 
