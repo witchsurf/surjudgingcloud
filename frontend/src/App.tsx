@@ -1,8 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import * as Sentry from '@sentry/react';
+import { isLocalSupabaseMode } from './lib/supabase';
 
 // Initialize Sentry (only in production with DSN configured)
-if (import.meta.env.VITE_SENTRY_DSN && !import.meta.env.DEV) {
+if (import.meta.env.VITE_SENTRY_DSN && !import.meta.env.DEV && !isLocalSupabaseMode()) {
     Sentry.init({
         dsn: import.meta.env.VITE_SENTRY_DSN,
         environment: import.meta.env.VITE_SENTRY_ENVIRONMENT || 'production',

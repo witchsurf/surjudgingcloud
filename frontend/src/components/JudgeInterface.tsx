@@ -743,9 +743,10 @@ function JudgeInterface({
                     </span>
                   )}
                 </h1>
-                <div className="flex items-center gap-x-3 text-violet-100 text-[10px] opacity-90">
+                <div className="flex items-center gap-x-3 text-violet-100 text-[10px] opacity-90 flex-wrap">
                   <span className="font-semibold truncate max-w-[100px]">{config.judgeNames[judgeId] || judgeName || judgeId}</span>
                   <span className="max-w-[100px] truncate">{config.competition}</span>
+                  <span className="font-semibold uppercase truncate max-w-[100px]">{config.division || 'Sans categorie'}</span>
                   <span className="font-bold">R{config.round} H{config.heatId}</span>
                 </div>
               </div>

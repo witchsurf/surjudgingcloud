@@ -4,6 +4,7 @@ import { ensureHeatId } from '../../utils/heat';
 import type { InterferenceCall, InterferenceType, Score } from '../../types';
 
 const INTERFERENCE_CACHE_TTL_MS = 1500;
+const SUPABASE_PAGE_SIZE = 1000;
 const interferenceCache = new Map<string, { at: number; value: InterferenceCall[] }>();
 const interferenceInflight = new Map<string, Promise<InterferenceCall[]>>();
 
@@ -98,6 +99,61 @@ export const canonicalizeScores = (scores: Score[]): Score[] => {
     return Array.from(latestByLogicalKey.values()).sort((a, b) => scoreTimestampMs(a) - scoreTimestampMs(b));
 };
 
+async function fetchPagedScoreRows(heatIds: string[]): Promise<RawScoreRow[]> {
+    const rows: RawScoreRow[] = [];
+    let from = 0;
+
+    while (true) {
+        const to = from + SUPABASE_PAGE_SIZE - 1;
+        const { data, error } = await supabase!
+            .from('scores')
+            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
+            .in('heat_id', heatIds)
+            .order('created_at', { ascending: true })
+            .range(from, to);
+
+        if (error) throw error;
+
+        const batch = (data ?? []) as RawScoreRow[];
+        rows.push(...batch);
+
+        if (batch.length < SUPABASE_PAGE_SIZE) break;
+        from += SUPABASE_PAGE_SIZE;
+    }
+
+    return rows;
+}
+
+async function fetchPagedInterferenceRows(heatIds: string[]): Promise<InterferenceCall[]> {
+    const rows: InterferenceCall[] = [];
+    let from = 0;
+
+    while (true) {
+        const to = from + SUPABASE_PAGE_SIZE - 1;
+        const { data, error } = await supabase!
+            .from('interference_calls')
+            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
+            .in('heat_id', heatIds)
+            .range(from, to);
+
+        if (error) {
+            if (isMissingInterferenceTableError(error)) {
+                console.warn('⚠️ Table interference_calls absente localement, export PDF sans interférences.');
+                return [];
+            }
+            throw error;
+        }
+
+        const batch = (data ?? []) as InterferenceCall[];
+        rows.push(...batch);
+
+        if (batch.length < SUPABASE_PAGE_SIZE) break;
+        from += SUPABASE_PAGE_SIZE;
+    }
+
+    return rows;
+}
+
 export async function fetchHeatScores(heatId: string): Promise<Score[]> {
     ensureSupabase();
     const normalizedHeatId = ensureHeatId(heatId);
@@ -117,15 +173,8 @@ export async function fetchScoresForHeats(heatIds: string[]): Promise<Record<str
     if (!heatIds.length) return {};
 
     const normalizedIds = Array.from(new Set(heatIds.map((id) => ensureHeatId(id))));
-    const { data, error } = await supabase!
-        .from('scores')
-        .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
-        .in('heat_id', normalizedIds)
-        .order('created_at', { ascending: true });
-
-    if (error) throw error;
     const grouped: Record<string, Score[]> = {};
-    ((data ?? []) as RawScoreRow[]).forEach((row) => {
+    (await fetchPagedScoreRows(normalizedIds)).forEach((row) => {
         const parsed = toParsedScore(row);
         if (!grouped[parsed.heat_id]) grouped[parsed.heat_id] = [];
         grouped[parsed.heat_id].push(parsed);
@@ -143,15 +192,8 @@ export async function fetchAllScoresForEvent(eventId: number): Promise<Record<st
     const heatIds = (heats ?? []).map((h) => h.id);
     if (!heatIds.length) return {};
 
-    const { data: scores, error: scoresError } = await supabase!
-        .from('scores')
-        .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
-        .in('heat_id', heatIds)
-        .order('created_at', { ascending: true });
-
-    if (scoresError) throw scoresError;
     const result: Record<string, Score[]> = {};
-    ((scores ?? []) as RawScoreRow[]).forEach((row) => {
+    (await fetchPagedScoreRows(heatIds)).forEach((row) => {
         const parsed = toParsedScore(row);
         if (!result[parsed.heat_id]) result[parsed.heat_id] = [];
         result[parsed.heat_id].push(parsed);
@@ -203,20 +245,8 @@ export async function fetchAllInterferenceCallsForEvent(eventId: number): Promis
     const heatIds = (heats ?? []).map((h) => h.id);
     if (!heatIds.length) return {};
 
-    const { data: calls, error: callsError } = await supabase!
-        .from('interference_calls')
-        .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
-        .in('heat_id', heatIds);
-
-    if (callsError) {
-        if (isMissingInterferenceTableError(callsError)) {
-            console.warn('⚠️ Table interference_calls absente localement, export PDF sans interférences.');
-            return {};
-        }
-        throw callsError;
-    }
     const result: Record<string, InterferenceCall[]> = {};
-    (calls ?? []).forEach((call) => {
+    (await fetchPagedInterferenceRows(heatIds)).forEach((call) => {
         const key = ensureHeatId((call as InterferenceCall).heat_id);
         if (!result[key]) result[key] = [];
         result[key].push(call as InterferenceCall);

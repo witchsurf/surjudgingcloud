@@ -12,6 +12,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'; // Local Supab
 const CLOUD_EVENTS_KEY = 'surfjudging_cloud_events';
 const CLOUD_PARTICIPANTS_KEY = 'surfjudging_cloud_participants';
 const LAST_SYNC_KEY = 'surfjudging_last_sync';
+const SUPABASE_PAGE_SIZE = 1000;
 
 interface CloudEvent {
   id: number;
@@ -169,6 +170,52 @@ async function withRetry<T>(fn: () => PromiseLike<T>, step: string, maxAttempts 
     }
   }
   throw lastError;
+}
+
+async function fetchAllCloudScores(cloudSupabase: ReturnType<typeof createClient>, heatIds: string[]) {
+  const rows: Record<string, unknown>[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+    const { data, error } = await cloudSupabase
+      .from('scores')
+      .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
+      .in('heat_id', heatIds)
+      .range(from, to);
+
+    if (error) throw error;
+
+    const batch = (data ?? []) as Record<string, unknown>[];
+    rows.push(...batch);
+    if (batch.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+async function fetchAllCloudInterferenceCalls(cloudSupabase: ReturnType<typeof createClient>, heatIds: string[]) {
+  const rows: CloudInterferenceCall[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SUPABASE_PAGE_SIZE - 1;
+    const { data, error } = await cloudSupabase
+      .from('interference_calls')
+      .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
+      .in('heat_id', heatIds)
+      .range(from, to);
+
+    if (error) throw error;
+
+    const batch = (data ?? []) as CloudInterferenceCall[];
+    rows.push(...batch);
+    if (batch.length < SUPABASE_PAGE_SIZE) break;
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return rows;
 }
 
 /**
@@ -460,14 +507,8 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
         // 4d) Scores sync (important for offline continuity)
         // Fetch by heat_id, not event_id, because some historical rows may not carry event_id reliably.
         const heatIds = cloudHeats.map((heat) => heat.id).filter(Boolean);
-        const { data: scoresRows, error: scoresFetchError } = await cloudSupabase
-          .from('scores')
-          .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
-          .in('heat_id', heatIds);
-
-        if (scoresFetchError) {
-          syncIssues.push({ step: 'scores_fetch', message: scoresFetchError.message });
-        } else {
+        try {
+          const scoresRows = await fetchAllCloudScores(cloudSupabase, heatIds);
           for (const heatBatch of chunkArray(heatIds, 200)) {
             const { error: deleteScoresError } = await supabase!
               .from('scores')
@@ -489,18 +530,15 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
             }
           }
           }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : JSON.stringify(error);
+          syncIssues.push({ step: 'scores_fetch', message });
         }
 
         // 4e) Interference calls sync (optional; should not block sync if the local table is absent)
         if (heatIds.length > 0) {
-          const { data: interferenceRows, error: interferenceFetchError } = await cloudSupabase
-            .from('interference_calls')
-            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
-            .in('heat_id', heatIds);
-
-          if (interferenceFetchError) {
-            syncIssues.push({ step: 'interference_fetch', message: interferenceFetchError.message });
-          } else {
+          try {
+            const interferenceRows = await fetchAllCloudInterferenceCalls(cloudSupabase, heatIds);
             const deleteCallsInBatches = async () => {
               for (const heatBatch of chunkArray(heatIds, 200)) {
                 const { error: deleteCallsError } = await supabase!
@@ -559,6 +597,9 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
               }
             }
             }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : JSON.stringify(error);
+            syncIssues.push({ step: 'interference_fetch', message });
           }
         }
 

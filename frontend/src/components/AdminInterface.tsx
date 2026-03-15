@@ -2120,9 +2120,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                       : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
                 const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
                 const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
-                // Prefer envBase (LAN/Cloud config) over current origin if we are on localhost
-                // or if we are explicitly in local mode.
-                let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost' && getSupabaseMode() !== 'local') ? currentOrigin : '';
+                // In LAN mode, always prefer the current browser origin so copied links
+                // match the live VM IP currently used by tablets/iPhones.
+                let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost') ? currentOrigin : '';
                 if (!kioskBase && envBase) {
                   try {
                     const url = new URL(envBase);

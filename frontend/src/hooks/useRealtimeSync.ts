@@ -188,6 +188,10 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       throw new Error(message);
     }
 
+    if (isLocalSupabaseMode()) {
+      return null;
+    }
+
     const { data, error } = await supabase.auth.getSession();
     if (error || !data.session) {
       const message = 'Vous devez être connecté pour modifier le timer.';
