@@ -586,8 +586,6 @@ export default function DisplayPage() {
         });
     }, [heatParticipants, heatParticipantsSource, liveHeatCountries, setConfig]);
 
-    const [isReloading, setIsReloading] = useState(false);
-
     // Subscribe to config changes for cross-device sync
     useEffect(() => {
         if (!activeEventId) return;
@@ -595,16 +593,7 @@ export default function DisplayPage() {
         const applySnapshot = async () => {
             const snapshot = await fetchEventConfigSnapshot(activeEventId);
             if (snapshot) {
-                const currentConfig = configRef.current;
                 const currentCountries = countriesRef.current;
-                const heatChanged = snapshot.heat_number !== currentConfig.heatId;
-                const roundChanged = snapshot.round !== currentConfig.round;
-
-                if (heatChanged || roundChanged) {
-                    setIsReloading(true);
-                    setTimeout(() => window.location.reload(), 100);
-                    return;
-                }
 
                 try {
                     setConfig((prev) => {
@@ -681,9 +670,8 @@ export default function DisplayPage() {
         let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
         // Charger les scores initiaux pour le heat courant
-        setScores([]); // Reset scores immédiatement pour éviter de montrer des scores périmés
         loadScoresFromDatabase(currentHeatId).then((fetched) => {
-            if (fetched && fetched.length) {
+            if (fetched) {
                 setScores(normalizeScores(fetched));
             }
         });
@@ -700,10 +688,8 @@ export default function DisplayPage() {
 
             // Recharger les scores en temps réel si le heat change
             loadScoresFromDatabase(currentHeatId).then((fetched) => {
-                if (fetched && fetched.length) {
+                if (fetched) {
                     setScores(normalizeScores(fetched));
-                } else if (fetched && fetched.length === 0) {
-                    setScores([]); // On vide si aucun score n'est retourné
                 }
             });
         });
@@ -752,8 +738,6 @@ export default function DisplayPage() {
             }
         };
     }, [configSaved, config.competition, currentHeatId, subscribeToHeat, setTimer, setConfig, setHeatStatus, loadScoresFromDatabase, setScores]);
-
-    if (isReloading) return null;
 
     // -- RENDER --
     return (
