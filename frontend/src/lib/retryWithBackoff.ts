@@ -24,7 +24,8 @@ function calculateBackoff(attempt: number, baseDelay = 1000, maxDelay = 30000): 
  */
 export async function retryWithBackoff<T>(
     fn: () => Promise<T>,
-    maxRetries = 3
+    maxRetries = 3,
+    shouldRetry?: (error: unknown, attempt: number) => boolean
 ): Promise<T> {
     let lastError: unknown;
 
@@ -35,6 +36,7 @@ export async function retryWithBackoff<T>(
             lastError = error;
 
             if (attempt === maxRetries) break;
+            if (shouldRetry && !shouldRetry(error, attempt)) break;
 
             const delay = calculateBackoff(attempt);
             console.log(`⏳ Retry ${attempt + 1}/${maxRetries} failed, next attempt in ${delay}ms`);

@@ -42,6 +42,8 @@ interface ConfigStore {
     saveConfigToDb: (eventId: number, config: AppConfig) => Promise<void>;
 }
 
+const configLoadInFlight = new Map<number, Promise<void>>();
+
 // Helper to build config from snapshot
 const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
     logger.debug('ConfigStore', 'Building config from snapshot', {
@@ -150,102 +152,115 @@ export const useConfigStore = create<ConfigStore>()(
 
             // Load config from database
             loadConfigFromDb: async (eventId: number) => {
-                logger.info('ConfigStore', 'Fetching config from database', { eventId });
+                const existingLoad = configLoadInFlight.get(eventId);
+                if (existingLoad) {
+                    logger.debug('ConfigStore', 'Reusing in-flight config load', { eventId });
+                    return existingLoad;
+                }
 
-                try {
-                    // Use EventRepository instead of supabaseClient
-                    let snapshot = await eventRepository.fetchEventConfigSnapshot(eventId);
+                const loadPromise = (async () => {
+                    logger.info('ConfigStore', 'Fetching config from database', { eventId });
 
-                    // Fallback: enrich snapshot with lineup names if missing
-                    if (snapshot && (!snapshot.surferNames || Object.keys(snapshot.surferNames).length === 0)) {
-                        try {
-                            const heatKey = ensureHeatId(
-                                `${snapshot.event_name}_${snapshot.division}_R${snapshot.round}_H${snapshot.heat_number}`
-                            );
-                            const entries = await fetchHeatEntriesWithParticipants(heatKey);
-                            const surferNames: Record<string, string> = {};
-                            const surferCountries: Record<string, string> = {};
-
-                            entries.forEach((entry) => {
-                                const color = entry.color?.toUpperCase();
-                                if (!color) return;
-                                if (entry.participant?.name) {
-                                    surferNames[color] = entry.participant.name;
-                                }
-                                if (entry.participant?.country) {
-                                    surferCountries[color] = entry.participant.country;
-                                }
-                            });
-
-                            snapshot = {
-                                ...snapshot,
-                                surferNames: Object.keys(surferNames).length ? surferNames : snapshot.surferNames,
-                                surferCountries: Object.keys(surferCountries).length
-                                    ? { ...snapshot.surferCountries, ...surferCountries }
-                                    : snapshot.surferCountries,
-                            };
-                        } catch (err) {
-                            logger.warn('ConfigStore', 'Unable to enrich surfer names from heat entries', err);
-                        }
-                    }
-
-                    // If active_heat_pointer is newer/different, prefer it for the active heat
-                    if (snapshot?.event_name) {
-                        try {
-                            const activeHeat = await fetchActiveHeatPointer(snapshot.event_name);
-                            if (activeHeat) {
-                                const parsed = parseActiveHeatId(activeHeat.active_heat_id);
-                                const snapshotUpdatedAt = snapshot.updated_at ? Date.parse(snapshot.updated_at) : NaN;
-                                const pointerUpdatedAt = activeHeat.updated_at ? Date.parse(activeHeat.updated_at) : NaN;
-                                const pointerIsNewer = Number.isFinite(pointerUpdatedAt)
-                                    && (!Number.isFinite(snapshotUpdatedAt) || pointerUpdatedAt >= snapshotUpdatedAt);
-                                if (parsed && pointerIsNewer && (parsed.round !== snapshot.round || parsed.heatNumber !== snapshot.heat_number || parsed.division !== snapshot.division)) {
-                                    logger.info('ConfigStore', 'Active heat pointer overrides snapshot', {
-                                        snapshot: { division: snapshot.division, round: snapshot.round, heat: snapshot.heat_number },
-                                        active: { division: parsed.division, round: parsed.round, heat: parsed.heatNumber }
-                                    });
-                                    snapshot = {
-                                        ...snapshot,
-                                        event_name: parsed.competition,
-                                        division: parsed.division,
-                                        round: parsed.round,
-                                        heat_number: parsed.heatNumber,
-                                        updated_at: activeHeat.updated_at
-                                    };
-                                }
-                            }
-                        } catch (err) {
-                            logger.warn('ConfigStore', 'Unable to align snapshot with active_heat_pointer', err);
-                        }
-                    }
-
-                    // Populate available divisions from heats (used by Admin dropdown)
                     try {
-                        const categories = await fetchAllEventCategories(eventId);
-                        set({ availableDivisions: categories });
-                    } catch (err) {
-                        logger.warn('ConfigStore', 'Unable to load divisions from heats', err);
-                        set({ availableDivisions: [] });
-                    }
+                        // Use EventRepository instead of supabaseClient
+                        let snapshot = await eventRepository.fetchEventConfigSnapshot(eventId);
 
-                    if (snapshot) {
-                        logger.info('ConfigStore', 'Snapshot found, building config');
-                        const dbConfig = buildConfigFromSnapshot(snapshot);
+                        // Fallback: enrich snapshot with lineup names if missing
+                        if (snapshot && (!snapshot.surferNames || Object.keys(snapshot.surferNames).length === 0)) {
+                            try {
+                                const heatKey = ensureHeatId(
+                                    `${snapshot.event_name}_${snapshot.division}_R${snapshot.round}_H${snapshot.heat_number}`
+                                );
+                                const entries = await fetchHeatEntriesWithParticipants(heatKey);
+                                const surferNames: Record<string, string> = {};
+                                const surferCountries: Record<string, string> = {};
 
-                        set({
-                            config: dbConfig,
-                            loadedFromDb: true,
-                            configSaved: true
-                        });
-                        // Note: Zustand persist middleware automatically saves to localStorage
-                    } else {
-                        logger.warn('ConfigStore', 'No snapshot found');
+                                entries.forEach((entry) => {
+                                    const color = entry.color?.toUpperCase();
+                                    if (!color) return;
+                                    if (entry.participant?.name) {
+                                        surferNames[color] = entry.participant.name;
+                                    }
+                                    if (entry.participant?.country) {
+                                        surferCountries[color] = entry.participant.country;
+                                    }
+                                });
+
+                                snapshot = {
+                                    ...snapshot,
+                                    surferNames: Object.keys(surferNames).length ? surferNames : snapshot.surferNames,
+                                    surferCountries: Object.keys(surferCountries).length
+                                        ? { ...snapshot.surferCountries, ...surferCountries }
+                                        : snapshot.surferCountries,
+                                };
+                            } catch (err) {
+                                logger.warn('ConfigStore', 'Unable to enrich surfer names from heat entries', err);
+                            }
+                        }
+
+                        // If active_heat_pointer is newer/different, prefer it for the active heat
+                        if (snapshot?.event_name) {
+                            try {
+                                const activeHeat = await fetchActiveHeatPointer(snapshot.event_name);
+                                if (activeHeat) {
+                                    const parsed = parseActiveHeatId(activeHeat.active_heat_id);
+                                    const snapshotUpdatedAt = snapshot.updated_at ? Date.parse(snapshot.updated_at) : NaN;
+                                    const pointerUpdatedAt = activeHeat.updated_at ? Date.parse(activeHeat.updated_at) : NaN;
+                                    const pointerIsNewer = Number.isFinite(pointerUpdatedAt)
+                                        && (!Number.isFinite(snapshotUpdatedAt) || pointerUpdatedAt >= snapshotUpdatedAt);
+                                    if (parsed && pointerIsNewer && (parsed.round !== snapshot.round || parsed.heatNumber !== snapshot.heat_number || parsed.division !== snapshot.division)) {
+                                        logger.info('ConfigStore', 'Active heat pointer overrides snapshot', {
+                                            snapshot: { division: snapshot.division, round: snapshot.round, heat: snapshot.heat_number },
+                                            active: { division: parsed.division, round: parsed.round, heat: parsed.heatNumber }
+                                        });
+                                        snapshot = {
+                                            ...snapshot,
+                                            event_name: parsed.competition,
+                                            division: parsed.division,
+                                            round: parsed.round,
+                                            heat_number: parsed.heatNumber,
+                                            updated_at: activeHeat.updated_at
+                                        };
+                                    }
+                                }
+                            } catch (err) {
+                                logger.warn('ConfigStore', 'Unable to align snapshot with active_heat_pointer', err);
+                            }
+                        }
+
+                        // Populate available divisions from heats (used by Admin dropdown)
+                        try {
+                            const categories = await fetchAllEventCategories(eventId);
+                            set({ availableDivisions: categories });
+                        } catch (err) {
+                            logger.warn('ConfigStore', 'Unable to load divisions from heats', err);
+                            set({ availableDivisions: [] });
+                        }
+
+                        if (snapshot) {
+                            logger.info('ConfigStore', 'Snapshot found, building config');
+                            const dbConfig = buildConfigFromSnapshot(snapshot);
+
+                            set({
+                                config: dbConfig,
+                                loadedFromDb: true,
+                                configSaved: true
+                            });
+                            // Note: Zustand persist middleware automatically saves to localStorage
+                        } else {
+                            logger.warn('ConfigStore', 'No snapshot found');
+                            set({ loadedFromDb: false });
+                        }
+                    } catch (error) {
+                        logger.error('ConfigStore', 'DB fetch error', error);
                         set({ loadedFromDb: false });
                     }
-                } catch (error) {
-                    logger.error('ConfigStore', 'DB fetch error', error);
-                    set({ loadedFromDb: false });
-                }
+                })().finally(() => {
+                    configLoadInFlight.delete(eventId);
+                });
+
+                configLoadInFlight.set(eventId, loadPromise);
+                return loadPromise;
             },
 
             // persistConfig is handled by Zustand persist middleware (key: 'surf-judging-config')

@@ -65,7 +65,11 @@ export abstract class BaseRepository {
 
             // Execute online operation with exponential backoff retry
             logger.debug(repoName, `${operationName} - Executing online`);
-            const result = await retryWithBackoff(() => operation(), 3);
+            const result = await retryWithBackoff(
+                () => operation(),
+                3,
+                (error) => this.shouldRetry(error)
+            );
             logger.debug(repoName, `${operationName} - Success`);
             return result;
 
@@ -89,6 +93,30 @@ export abstract class BaseRepository {
         if (!this.supabase || !isSupabaseConfigured()) {
             throw new Error('Supabase is not configured');
         }
+    }
+
+    /**
+     * Retry only transient/network failures. Auth, RLS, and validation errors should fail fast.
+     */
+    protected shouldRetry(error: unknown): boolean {
+        if (!error) return false;
+
+        const maybeError = error as { code?: string; message?: string; status?: number; name?: string };
+        const code = (maybeError.code || '').toString().toUpperCase();
+        const message = (maybeError.message || '').toLowerCase();
+        const status = Number(maybeError.status);
+        const name = (maybeError.name || '').toLowerCase();
+
+        if (Number.isFinite(status) && status >= 500) return true;
+        if (code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'NETWORK_ERROR') return true;
+        if (name.includes('abort') || name.includes('timeout')) return true;
+        if (message.includes('failed to fetch') || message.includes('network') || message.includes('timeout')) return true;
+
+        if (message.includes('session') || message.includes('auth') || message.includes('jwt')) return false;
+        if (message.includes('permission') || message.includes('row-level security') || message.includes('forbidden')) return false;
+        if (code.startsWith('PGRST') || code === '42501') return false;
+
+        return false;
     }
 
     /**
