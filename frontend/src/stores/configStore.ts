@@ -64,8 +64,7 @@ const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
         tournamentType: 'elimination' as 'elimination' | 'repechage',
         totalSurfers: 0,
         totalHeats: 0,
-        totalRounds: 1,
-        eventDetails: snapshot.eventDetails
+        totalRounds: 1
     };
 };
 
