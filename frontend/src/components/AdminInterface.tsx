@@ -111,6 +111,20 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [syncError, setSyncError] = useState<string | null>(null);
   const [dbHeatScores, setDbHeatScores] = useState<Score[]>([]);
   const [showClosedHeats, setShowClosedHeats] = useState(false);
+  const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<{division: string, status: string}[]>([]);
+
+  useEffect(() => {
+    if (!activeEventId) return;
+    let cancelled = false;
+    const loadMeta = async () => {
+      const { data } = await supabase.from('heats').select('division, status').eq('event_id', activeEventId);
+      if (!cancelled && data) {
+        setAllEventHeatsMeta(data);
+      }
+    };
+    loadMeta();
+    return () => { cancelled = true; };
+  }, [activeEventId]);
 
   const { normalized: heatId } = React.useMemo(
     () =>
@@ -631,6 +645,20 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return Array.from(new Set(merged)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [eventDivisionOptions, availableDivisions, divisionOptions]);
 
+  const activeDivisionOptions = React.useMemo(() => {
+    if (showClosedHeats) return effectiveDivisionOptions;
+    if (allEventHeatsMeta.length === 0) return effectiveDivisionOptions;
+
+    const activeDivs = new Set(
+      allEventHeatsMeta
+        .filter(h => h.status !== 'closed' && h.status !== 'finished')
+        .map(h => h.division.toLowerCase().trim())
+    );
+
+    const filtered = effectiveDivisionOptions.filter(d => activeDivs.has(d.toLowerCase().trim()));
+    return filtered.length > 0 ? filtered : effectiveDivisionOptions;
+  }, [effectiveDivisionOptions, showClosedHeats, allEventHeatsMeta]);
+
   const activeHeatSequence = React.useMemo(() => {
     if (showClosedHeats) return divisionHeatSequence;
     return divisionHeatSequence.filter(h => h.status !== 'closed' && h.status !== 'finished');
@@ -656,14 +684,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [divisionHeatSequence, config.round, config.heatId]);
 
   useEffect(() => {
-    if (!effectiveDivisionOptions.length) return;
-    const currentIsValid = effectiveDivisionOptions.some(
+    if (!activeDivisionOptions.length) return;
+    const currentIsValid = activeDivisionOptions.some(
       (division) => division.toLowerCase() === config.division.toLowerCase()
     );
     if (!currentIsValid) {
-      onConfigChange({ ...config, division: effectiveDivisionOptions[0] });
+      onConfigChange({ ...config, division: activeDivisionOptions[0] });
     }
-  }, [effectiveDivisionOptions, config, onConfigChange]);
+  }, [activeDivisionOptions, config, onConfigChange]);
 
   useEffect(() => {
     if (!roundOptions.length) return;
@@ -1480,7 +1508,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   onChange={(e) => handleConfigChange('division', e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {effectiveDivisionOptions.map((division) => (
+                  {activeDivisionOptions.map((division) => (
                     <option key={division} value={division}>
                       {division}
                     </option>
@@ -1527,6 +1555,36 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Round</label>
+                <select
+                  value={config.round}
+                  onChange={(e) => handleConfigChange('round', Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {roundOptions.map((round) => (
+                    <option key={round} value={round}>
+                      Round {round}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Heat</label>
+                <select
+                  value={config.heatId}
+                  onChange={(e) => handleConfigChange('heatId', Number(e.target.value))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {heatOptionsForRound.map((heat) => (
+                    <option key={heat} value={heat}>
+                      Heat {heat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
               <div className="md:col-span-2 pt-2 border-t border-gray-100 flex items-center justify-between">
                 <label className="flex items-center space-x-2 text-xs font-medium text-gray-700 cursor-pointer">
                   <input
