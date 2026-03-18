@@ -577,8 +577,8 @@ export function useSupabaseSync() {
     const normalizedHeatId = heatData.id || buildHeatId(
       heatData.competition || '',
       heatData.division || '',
-      heatData.round || '',
-      heatData.heat_number || 1
+      Number(heatData.round) || 1,
+      Number(heatData.heat_number) || 1
     );
 
     const newHeat: Heat = {
