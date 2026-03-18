@@ -93,7 +93,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [overridePending, setOverridePending] = useState(false);
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
   const [eventDivisionOptions, setEventDivisionOptions] = useState<string[]>([]);
-  const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number }>>([]);
+  const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number; status?: string }>>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
   const [priorityLinkCopied, setPriorityLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
@@ -638,7 +638,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       try {
         const sequence = await fetchOrderedHeatSequence(activeEventId, config.division);
         if (!cancelled) {
-          setDivisionHeatSequence(sequence.map((row) => ({ round: row.round, heat_number: row.heat_number })));
+          setDivisionHeatSequence(sequence.map((row) => ({ round: row.round, heat_number: row.heat_number, status: row.status })));
         }
       } catch (error) {
         console.warn('Impossible de charger la structure round/heat pour la division:', error);
@@ -1845,6 +1845,28 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
         </div>
       </details>
+
+      {/* Floating Timer Widget */}
+      {(!isTimerOpen && timer.isRunning) && (
+        <div className="fixed top-8 right-8 z-[100] bg-white border-4 border-primary-950 rounded-2xl shadow-2xl p-4 flex flex-col items-center pointer-events-auto transform transition-all">
+          <div className="flex items-center space-x-2 w-full justify-between mb-2">
+            <Clock className={`w-4 h-4 ${floatingTimeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`} />
+            <h3 className="text-xs font-bebas tracking-widest text-primary-800">CHRONO PRO</h3>
+            <button onClick={() => setIsTimerOpen(true)} className="text-gray-400 hover:text-black">
+              ▼
+            </button>
+          </div>
+          <div className={`font-bebas tracking-wider text-5xl leading-none ${floatingTimeLeft <= 5 ? 'text-red-500 animate-pulse' : floatingTimeLeft <= 60 ? 'text-red-500' : floatingTimeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`}>
+            {formatMinSec(floatingTimeLeft)}
+          </div>
+          <button
+            onClick={handleTimerPause}
+            className="mt-3 w-full bg-cta-500 text-white rounded-lg border-2 border-primary-950 shadow-sm transition-all flex justify-center items-center py-1.5 font-bebas tracking-widest hover:-translate-y-0.5"
+          >
+            PAUSE
+          </button>
+        </div>
+      )}
 
       <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
         <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
