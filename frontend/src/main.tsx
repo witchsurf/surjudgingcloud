@@ -55,13 +55,16 @@ async function bootstrap() {
     const resetFlagKey = 'surfapp_dev_bootstrap';
     try {
       if (!sessionStorage.getItem(resetFlagKey)) {
+        // Migration bridge: purge legacy localStorage keys that were replaced
+        // by Zustand persist (key: 'surf-judging-config').
+        // Can be removed once all legacy paths (router.tsx wrappers, App.legacy.tsx) are retired.
         const keysToClear = [
           'eventData',
           'eventId',
           'participants',
           'heats',
-          'surfJudgingConfig',
-          'surfJudgingConfigSaved',
+          'surfJudgingConfig',        // Replaced by Zustand persist 'surf-judging-config'
+          'surfJudgingConfigSaved',   // Managed by configStore.configSaved
           'surfJudgingScores',
           'surfJudgingTimer',
           'surfJudgingJudgeWorkCount',

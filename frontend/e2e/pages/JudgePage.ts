@@ -2,26 +2,38 @@ import { Page, Locator } from '@playwright/test';
 
 /**
  * Page Object for Judge Interface
- * 
- * Encapsulates all judge page interactions for cleaner tests
+ *
+ * Covers both login flows:
+ * - Kiosk mode (/judge?position=J1&eventId=1) → KioskJudgeLogin (label "Votre Nom", button "Commencer à Juger")
+ * - Legacy mode (/judge?judge_id=xxx) → JudgeLogin (label "Code Personnel", button "Se Connecter")
  */
 export class JudgePage {
     readonly page: Page;
 
-    // Locators
-    readonly judgeIdInput: Locator;
+    // Kiosk login locators (primary flow)
     readonly judgeNameInput: Locator;
-    readonly loginButton: Locator;
+    readonly kioskLoginButton: Locator;
+
+    // Legacy login locators (fallback)
+    readonly personalCodeInput: Locator;
+    readonly legacyLoginButton: Locator;
+
+    // Post-login
     readonly logoutButton: Locator;
 
     constructor(page: Page) {
         this.page = page;
 
-        // Login elements
-        this.judgeIdInput = page.getByLabel(/judge id/i);
-        this.judgeNameInput = page.getByLabel(/name|nom/i);
-        this.loginButton = page.getByRole('button', { name: /login|connexion/i });
-        this.logoutButton = page.getByRole('button', { name: /logout|d.connexion/i });
+        // Kiosk mode: KioskJudgeLogin component
+        this.judgeNameInput = page.getByLabel(/nom/i);
+        this.kioskLoginButton = page.getByRole('button', { name: /commencer|juger/i });
+
+        // Legacy mode: JudgeLogin component
+        this.personalCodeInput = page.getByLabel(/code personnel/i);
+        this.legacyLoginButton = page.getByRole('button', { name: /connecter/i });
+
+        // Post-login
+        this.logoutButton = page.getByRole('button', { name: /logout|déconnexion/i });
     }
 
     /**
@@ -32,12 +44,19 @@ export class JudgePage {
     }
 
     /**
-     * Login as a judge
+     * Login as a judge in kiosk mode (only needs name)
      */
-    async login(judgeId: string, judgeName: string) {
-        await this.judgeIdInput.fill(judgeId);
+    async login(judgeName: string) {
         await this.judgeNameInput.fill(judgeName);
-        await this.loginButton.click();
+        await this.kioskLoginButton.click();
+    }
+
+    /**
+     * Login via legacy flow (judge_id + personal code)
+     */
+    async loginWithCode(code: string) {
+        await this.personalCodeInput.fill(code);
+        await this.legacyLoginButton.click();
     }
 
     /**
@@ -68,7 +87,6 @@ export class JudgePage {
      * Get all submitted scores from UI
      */
     async getScoresFromUI(): Promise<Array<{ surfer: string; wave: number; score: number }>> {
-        // This would need to match your actual UI structure
         const scoreElements = await this.page.locator('[data-testid="score-item"]').all();
 
         return Promise.all(

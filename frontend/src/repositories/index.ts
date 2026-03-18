@@ -9,6 +9,7 @@ export { ScoreRepository, scoreRepository } from './ScoreRepository';
 export { EventRepository, eventRepository } from './EventRepository';
 export { ParticipantRepository, participantRepository } from './ParticipantRepository';
 export { HeatRepository, heatRepository } from './HeatRepository';
+export { TimerRepository, timerRepository } from './TimerRepository';
 
 // Export types
 export type { SaveScoreRequest, OverrideScoreRequest, OverrideResult } from './ScoreRepository';

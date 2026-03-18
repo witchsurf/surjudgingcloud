@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured, canUseSupabaseConnection, isLocalSupabaseMode } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, canUseSupabaseConnection, isLocalSupabaseMode, syncOffline } from '../lib/supabase';
 import type { Score, Heat, ScoreOverrideLog, OverrideReason } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
 import { ensureHeatId, buildHeatId } from '../utils/heat';
+import { heatRepository, timerRepository } from '../repositories';
 
 function extractHeatNumber(heatId: string): number | null {
   const match = /_h(\d+)$/i.exec(heatId.trim());
@@ -581,50 +582,42 @@ export function useSupabaseSync() {
     );
     const newHeat: Heat = {
       ...heatData,
-      id: normalizedHeatId,
+      id: heatData.id || buildHeatId(heatData.competition!, heatData.division!, heatData.heat_number!),
       created_at: new Date().toISOString()
-    };
+    } as Heat;
 
-    const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
-    const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : null;
+    try {
+      const normalizedStatus =
+        heatData.status === 'open'
+          ? 'waiting'
+          : heatData.status === 'closed'
+            ? 'closed'
+            : heatData.status;
 
-    if (canReachSupabase() && isSupabaseConfigured()) {
-      try {
-        const normalizedStatus =
-          heatData.status === 'open'
-            ? 'waiting'
-            : heatData.status === 'closed'
-              ? 'closed'
-              : heatData.status;
+      await heatRepository.createHeat({
+        id: newHeat.id,
+        event_id: eventId,
+        competition: newHeat.competition,
+        division: newHeat.division,
+        round: newHeat.round,
+        heat_number: newHeat.heat_number,
+        status: normalizedStatus,
+        created_at: newHeat.created_at
+      });
 
-        const { error } = await supabase!
-          .from('heats')
-          .upsert({
-            id: newHeat.id,
-            event_id: eventId, // ✅ Injected event_id
-            competition: newHeat.competition,
-            division: newHeat.division,
-            round: newHeat.round,
-            heat_number: newHeat.heat_number,
-            status: normalizedStatus,
-            created_at: newHeat.created_at
-          });
-
-        if (error) throw error;
-
-        const { error: realtimeError } = await supabase!
-          .from('heat_realtime_config')
-          .upsert({ heat_id: newHeat.id }, { onConflict: 'heat_id', ignoreDuplicates: true });
-
-        if (realtimeError) throw realtimeError;
-
-        console.log('✅ Heat créé dans Supabase:', newHeat.id);
-      } catch (error) {
-        console.error('❌ Erreur création heat:', error);
-        console.log('⚠️ Heat créé localement, synchronisation différée');
+      // We still do heat_realtime_config initialization here to ensure the row exists,
+      // but TimerRepository will handle the actual timer state later.
+      if (canReachSupabase() && isSupabaseConfigured()) {
+        try {
+          await supabase!
+            .from('heat_realtime_config')
+            .upsert({ heat_id: newHeat.id }, { onConflict: 'heat_id', ignoreDuplicates: true });
+        } catch (error) {
+           console.error('❌ Erreur initialisation heat_realtime_config:', error);
+        }
       }
-    } else {
-      console.log('⚠️ Heat créé localement uniquement (hors ligne ou Supabase non configuré)');
+    } catch (error) {
+       console.error('❌ Erreur création heat via repository:', error);
     }
 
     return newHeat;
@@ -633,76 +626,26 @@ export function useSupabaseSync() {
   // Sauvegarder la configuration du heat
   const saveHeatConfig = useCallback(async (heatId: string, config: AppConfig) => {
     const normalizedHeatId = ensureHeatId(heatId);
-    if (!canReachSupabase() || !isSupabaseConfigured()) {
-      console.log('⚠️ Config heat non sauvée: hors ligne ou Supabase non configuré');
-      return;
-    }
 
     try {
-      const { error } = await supabase!
-        .from('heat_configs')
-        .upsert({
-          heat_id: normalizedHeatId,
-          judges: config.judges,
-          surfers: config.surfers,
-          judge_names: config.judgeNames,
-          waves: config.waves,
-          tournament_type: config.tournamentType
-        }, {
-          onConflict: 'heat_id'
-        });
-
-      if (error) throw error;
-      console.log('✅ Configuration heat sauvée:', normalizedHeatId);
+      await heatRepository.saveHeatConfig(normalizedHeatId, {
+        judges: config.judges,
+        surfers: config.surfers,
+        judge_names: config.judgeNames,
+        waves: config.waves,
+        tournament_type: config.tournamentType
+      });
     } catch (error) {
-      console.log('⚠️ Config heat non sauvée (mode local):', error instanceof Error ? error.message : error);
+       console.error('❌ Erreur configuration heat via repository:', error);
     }
   }, []);
 
   // Sauvegarder l'état du timer
   const saveTimerState = useCallback(async (heatId: string, timer: HeatTimer) => {
-    const normalizedHeatId = ensureHeatId(heatId);
-    if (!canReachSupabase()) {
-      console.log('⚠️ Timer non sauvé: hors ligne');
-      return;
-    }
-
-    if (!isSupabaseConfigured()) {
-      console.log('⚠️ Timer non sauvé: Supabase non configuré');
-      return;
-    }
-
     try {
-      console.log('💾 Tentative sauvegarde timer (via heat_realtime_config):', {
-        heat_id: normalizedHeatId,
-        status: timer.isRunning ? 'running' : 'waiting',
-        timer_start_time: timer.startTime?.toISOString(),
-        timer_duration_minutes: timer.duration
-      });
-
-      const { error } = await supabase!
-        .from('heat_realtime_config')
-        .upsert({
-          heat_id: normalizedHeatId,
-          status: timer.isRunning ? 'running' : 'waiting',
-          timer_start_time: timer.startTime?.toISOString(),
-          timer_duration_minutes: timer.duration,
-          updated_by: 'admin'
-        }, {
-          onConflict: 'heat_id'
-        });
-
-      if (error) {
-        console.error('❌ ERREUR SUPABASE heat_realtime_config (timer):', {
-          message: error.message,
-          code: error.code
-        });
-        throw error;
-      }
-      console.log('✅ Timer sauvé dans heat_realtime_config:', normalizedHeatId);
+      await timerRepository.saveTimerState(heatId, timer);
     } catch (error) {
       console.error('❌ EXCEPTION saveTimerState:', error);
-      console.log('⚠️ Timer non sauvé dans Supabase (mode local):', error instanceof Error ? error.message : error);
     }
   }, []);
 
@@ -757,22 +700,8 @@ export function useSupabaseSync() {
 
   // Mettre à jour le statut d'un heat
   const updateHeatStatus = useCallback(async (heatId: string, status: 'open' | 'closed', closedAt?: string) => {
-    const normalizedHeatId = ensureHeatId(heatId);
-    if (!canReachSupabase() || !isSupabaseConfigured()) return;
-
     try {
-      const updateData: { status: 'open' | 'closed'; closed_at?: string } = { status };
-      if (closedAt) {
-        updateData.closed_at = closedAt;
-      }
-
-      const { error } = await supabase!
-        .from('heats')
-        .update(updateData)
-        .eq('id', normalizedHeatId);
-
-      if (error) throw error;
-      console.log(`✅ Heat ${normalizedHeatId} mis à jour: ${status}`);
+      await heatRepository.updateHeatStatus(heatId, status, closedAt);
     } catch (error) {
       console.error('❌ Erreur lors de la mise à jour du heat:', error);
     }
@@ -818,6 +747,7 @@ export function useSupabaseSync() {
     if (canReachSupabase() && isSupabaseConfigured()) {
       syncPendingScores();
       syncOverrideLogs();
+      syncOffline();
     }
 
     // Compter les scores en attente

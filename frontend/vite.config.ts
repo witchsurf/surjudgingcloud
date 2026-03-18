@@ -63,7 +63,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    globals: true
+    globals: true,
+    exclude: ['node_modules', 'dist', '.idea', '.git', '.cache', 'e2e/**']
   }
 })
 

@@ -389,14 +389,14 @@ interface OfflineEntry {
 const OFFLINE_KEY = 'surfapp_offline_queue'
 
 // Sauvegarder une action hors ligne
-function saveOffline(entry: OfflineEntry) {
+export function saveOffline(entry: OfflineEntry) {
   const queue: OfflineEntry[] = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]')
   queue.push(entry)
   localStorage.setItem(OFFLINE_KEY, JSON.stringify(queue))
 }
 
 // Récupérer la queue offline
-function getOffline(): OfflineEntry[] {
+export function getOffline(): OfflineEntry[] {
   return JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]')
 }
 

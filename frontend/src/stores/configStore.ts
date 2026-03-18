@@ -102,10 +102,10 @@ export const useConfigStore = create<ConfigStore>()(
                 try {
                     const urlParams = new URLSearchParams(window.location.search);
                     const urlEventId = urlParams.get('eventId');
-                    const storedEventId = Number(localStorage.getItem('surfJudgingActiveEventId'));
+                    const persistedEventId = get().activeEventId;
                     const eventIdCandidate = Number.isFinite(Number(urlEventId))
                         ? Number(urlEventId)
-                        : (Number.isFinite(storedEventId) ? storedEventId : null);
+                        : (Number.isFinite(persistedEventId) && persistedEventId ? persistedEventId : null);
 
                     if (eventIdCandidate) {
                         set({ activeEventId: eventIdCandidate });
@@ -238,9 +238,7 @@ export const useConfigStore = create<ConfigStore>()(
                             loadedFromDb: true,
                             configSaved: true
                         });
-
-                        // Persist to storage
-                        get().persistConfig(dbConfig);
+                        // Note: Zustand persist middleware automatically saves to localStorage
                     } else {
                         logger.warn('ConfigStore', 'No snapshot found');
                         set({ loadedFromDb: false });
@@ -251,13 +249,10 @@ export const useConfigStore = create<ConfigStore>()(
                 }
             },
 
-            // Persist config to localStorage
-            persistConfig: (config) => {
-                try {
-                    localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
-                } catch (error) {
-                    logger.error('ConfigStore', 'Error saving config to storage', error);
-                }
+            // persistConfig is handled by Zustand persist middleware (key: 'surf-judging-config')
+            persistConfig: () => {
+                // No-op: Zustand persist middleware handles localStorage automatically.
+                // Legacy manual writes to 'surfJudgingConfig' have been removed.
             },
 
             // Save config to database for realtime sync
@@ -316,15 +311,7 @@ export const useConfigStore = create<ConfigStore>()(
                     activeEventId: null,
                     loadedFromDb: false
                 });
-
-                // Clear localStorage
-                try {
-                    localStorage.removeItem('surfJudgingConfig');
-                    localStorage.removeItem('surfJudgingConfigSaved');
-                    localStorage.removeItem('surfJudgingActiveEventId');
-                } catch (error) {
-                    logger.error('ConfigStore', 'Error clearing storage', error);
-                }
+                // Note: Zustand persist middleware automatically clears its own key
             },
 
             // Initialize from URL params
@@ -357,9 +344,9 @@ export const useConfigStore = create<ConfigStore>()(
                     return;
                 }
 
-                // Fallback: Load from persisted activeEventId
-                const persistedEventId = get().activeEventId ?? Number(localStorage.getItem('surfJudgingActiveEventId'));
-                if (Number.isFinite(persistedEventId) && persistedEventId > 0 && !get().loadedFromDb) {
+                // Fallback: Load from persisted activeEventId (managed by Zustand persist)
+                const persistedEventId = get().activeEventId;
+                if (Number.isFinite(persistedEventId) && persistedEventId && persistedEventId > 0 && !get().loadedFromDb) {
                     logger.info('ConfigStore', 'Loading config from persisted eventId', { persistedEventId });
                     set({ activeEventId: persistedEventId });
                     await get().loadConfigFromDb(persistedEventId);

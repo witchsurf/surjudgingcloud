@@ -8,6 +8,7 @@
 import { BaseRepository } from './BaseRepository';
 import { ensureHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
+import { saveOffline } from '../lib/supabase';
 
 export interface HeatEntryWithParticipant {
     color: string | null;
@@ -55,7 +56,7 @@ export class HeatRepository extends BaseRepository {
                 if (error) throw error;
 
                 logger.info('HeatRepository', 'Heat entries fetched', { heatId: normalizedHeatId, count: data?.length || 0 });
-                return (data || []) as HeatEntryWithParticipant[];
+                return (data || []) as unknown as HeatEntryWithParticipant[];
             },
             undefined,
             'fetchHeatEntriesWithParticipants'
@@ -89,10 +90,14 @@ export class HeatRepository extends BaseRepository {
     }
 
     /**
-     * Update heat status
+     * Update heat status with offline fallback
      */
-    async updateHeatStatus(heatId: string, status: string): Promise<void> {
+    async updateHeatStatus(heatId: string, status: string, closedAt?: string): Promise<void> {
         const normalizedHeatId = ensureHeatId(heatId);
+        const updateData: Record<string, any> = { status };
+        if (closedAt) {
+            updateData.closed_at = closedAt;
+        }
 
         return this.execute(
             async () => {
@@ -100,15 +105,85 @@ export class HeatRepository extends BaseRepository {
 
                 const { error } = await this.supabase!
                     .from('heats')
-                    .update({ status })
+                    .update(updateData)
                     .eq('id', normalizedHeatId);
 
                 if (error) throw error;
 
-                logger.info('HeatRepository', 'Heat status updated', { heatId: normalizedHeatId, status });
+                logger.info('HeatRepository', 'Heat status updated online', { heatId: normalizedHeatId, status });
             },
-            undefined,
+            () => {
+                logger.info('HeatRepository', 'Heat status queued offline', { heatId: normalizedHeatId, status });
+                saveOffline({
+                    table: 'heats',
+                    action: 'update',
+                    payload: { id: normalizedHeatId, data: updateData },
+                    timestamp: Date.now()
+                });
+            },
             'updateHeatStatus'
+        );
+    }
+
+    /**
+     * Save Heat Configuration (Surfers, Colors, Judges)
+     */
+    async saveHeatConfig(heatId: string, config: any): Promise<void> {
+        const normalizedHeatId = ensureHeatId(heatId);
+        
+        const payload = {
+            heat_id: normalizedHeatId,
+            config: config,
+            updated_at: new Date().toISOString()
+        };
+
+        return this.execute(
+            async () => {
+                this.ensureSupabase();
+                const { error } = await this.supabase!
+                    .from('heat_configs')
+                    .upsert(payload, { onConflict: 'heat_id' });
+
+                if (error) throw error;
+                logger.info('HeatRepository', 'Heat config saved online', { heatId: normalizedHeatId });
+            },
+            () => {
+                logger.info('HeatRepository', 'Heat config queued offline', { heatId: normalizedHeatId });
+                saveOffline({
+                    table: 'heat_configs',
+                    action: 'insert',
+                    payload: payload,
+                    timestamp: Date.now()
+                });
+            },
+            'saveHeatConfig'
+        );
+    }
+
+    /**
+     * Create Heat with offline resilience
+     */
+    async createHeat(heatData: any): Promise<void> {
+        return this.execute(
+            async () => {
+                this.ensureSupabase();
+                const { error } = await this.supabase!
+                    .from('heats')
+                    .upsert(heatData, { onConflict: 'competition, division, round, heat_number' });
+
+                if (error) throw error;
+                logger.info('HeatRepository', 'Heat created online', { heat: heatData });
+            },
+            () => {
+                logger.info('HeatRepository', 'Heat created offline', { heat: heatData });
+                saveOffline({
+                    table: 'heats',
+                    action: 'insert',
+                    payload: heatData,
+                    timestamp: Date.now()
+                });
+            },
+            'createHeat'
         );
     }
 
@@ -178,3 +253,4 @@ export class HeatRepository extends BaseRepository {
 
 // Export singleton instance
 export const heatRepository = new HeatRepository();
+
