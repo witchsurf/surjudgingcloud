@@ -13,6 +13,7 @@ import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfEx
 import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchAllInterferenceCallsForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
+import { TimerAudio } from '../utils/audioUtils';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 
@@ -76,6 +77,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   onReconnectToDb
 }) => {
   const navigate = useNavigate();
+  const timerAudio = TimerAudio.getInstance();
   const [dbStatus, setDbStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
   const [selectedJudge, setSelectedJudge] = useState('');
   const [selectedSurfer, setSelectedSurfer] = useState('');

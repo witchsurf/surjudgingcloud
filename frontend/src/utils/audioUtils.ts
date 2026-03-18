@@ -75,6 +75,12 @@ export class TimerAudio {
     this.playBeep(800, 0.3, 1000);
   }
 
+  playStartHorn() {
+    console.log('▶️ Start horn !');
+    this.playBeep(900, 0.28, 180);
+    window.setTimeout(() => this.playBeep(1150, 0.35, 260), 220);
+  }
+
   playCountdownBeep() {
     console.log('⏰ Bip countdown !');
     this.playBeep(1000, 0.2, 200);
