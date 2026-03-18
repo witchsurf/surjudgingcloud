@@ -573,18 +573,22 @@ export function useSupabaseSync() {
   }, [readLocalOverrideLogs, supabaseEnabled]);
 
   // Créer un heat
-  const createHeat = useCallback(async (heatData: Omit<Heat, 'id' | 'created_at'>) => {
-    const normalizedHeatId = buildHeatId(
+  const createHeat = useCallback(async (heatData: Partial<Heat>) => {
+    const normalizedHeatId = heatData.id || buildHeatId(
       heatData.competition || '',
       heatData.division || '',
-      heatData.round,
-      heatData.heat_number
+      heatData.round || '',
+      heatData.heat_number || 1
     );
+
     const newHeat: Heat = {
       ...heatData,
-      id: heatData.id || buildHeatId(heatData.competition!, heatData.division!, heatData.heat_number!),
+      id: normalizedHeatId,
       created_at: new Date().toISOString()
     } as Heat;
+
+    const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+    const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : null;
 
     try {
       const normalizedStatus =
