@@ -112,6 +112,29 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [dbHeatScores, setDbHeatScores] = useState<Score[]>([]);
   const [showClosedHeats, setShowClosedHeats] = useState(false);
   const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<{division: string, status: string}[]>([]);
+  const [isTimerOpen, setIsTimerOpen] = useState(true);
+
+  // Floating timer sync
+  const [floatingTimeLeft, setFloatingTimeLeft] = useState(timer.duration * 60);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (timer.isRunning && !isTimerOpen) {
+      interval = setInterval(() => {
+        if (timer.startTime) {
+          const elapsed = Math.floor((Date.now() - new Date(timer.startTime).getTime()) / 1000);
+          setFloatingTimeLeft(Math.max(0, timer.duration * 60 - elapsed));
+        }
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timer.isRunning, isTimerOpen, timer.startTime, timer.duration]);
+
+  const formatMinSec = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
 
   useEffect(() => {
     if (!activeEventId) return;
@@ -631,6 +654,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     };
   }, [activeEventId, config.division]);
 
+  // Dropdowns visual states
+  const isCategoryClosed = useCallback((div: string) => {
+    const divHeats = allEventHeatsMeta.filter(h => h.division.toLowerCase() === div.toLowerCase().trim());
+    return divHeats.length > 0 && divHeats.every(h => ['closed', 'finished'].includes(h.status));
+  }, [allEventHeatsMeta]);
+
+  const isRoundClosed = useCallback((rnd: number) => {
+    const rHeats = divisionHeatSequence.filter(h => h.round === rnd);
+    return rHeats.length > 0 && rHeats.every(h => ['closed', 'finished'].includes(h.status));
+  }, [divisionHeatSequence]);
+
+  const isHeatClosed = useCallback((heatNum: number, rnd: number) => {
+    const heat = divisionHeatSequence.find(h => h.round === rnd && h.heat_number === heatNum);
+    return heat ? ['closed', 'finished'].includes(heat.status) : false;
+  }, [divisionHeatSequence]);
+
   const effectiveDivisionOptions = React.useMemo(() => {
     const fromEvent = (eventDivisionOptions || [])
       .map((value) => value?.toString().trim())
@@ -645,53 +684,36 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return Array.from(new Set(merged)).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [eventDivisionOptions, availableDivisions, divisionOptions]);
 
-  const activeDivisionOptions = React.useMemo(() => {
-    if (showClosedHeats) return effectiveDivisionOptions;
-    if (allEventHeatsMeta.length === 0) return effectiveDivisionOptions;
-
-    const activeDivs = new Set(
-      allEventHeatsMeta
-        .filter(h => h.status !== 'closed' && h.status !== 'finished')
-        .map(h => h.division.toLowerCase().trim())
-    );
-
-    const filtered = effectiveDivisionOptions.filter(d => activeDivs.has(d.toLowerCase().trim()));
-    return filtered.length > 0 ? filtered : effectiveDivisionOptions;
-  }, [effectiveDivisionOptions, showClosedHeats, allEventHeatsMeta]);
-
-  const activeHeatSequence = React.useMemo(() => {
-    if (showClosedHeats) return divisionHeatSequence;
-    return divisionHeatSequence.filter(h => h.status !== 'closed' && h.status !== 'finished');
-  }, [divisionHeatSequence, showClosedHeats]);
-
   const roundOptions = React.useMemo(() => {
-    if (!activeHeatSequence.length) return [config.round];
-    return Array.from(new Set(activeHeatSequence.map((row) => row.round))).sort((a, b) => a - b);
-  }, [activeHeatSequence, config.round]);
+    if (!divisionHeatSequence.length) return [config.round];
+    return Array.from(new Set(divisionHeatSequence.map((row) => row.round))).sort((a, b) => a - b);
+  }, [divisionHeatSequence, config.round]);
 
   const heatOptionsForRound = React.useMemo(() => {
-    if (!activeHeatSequence.length) return [config.heatId];
-    const options = activeHeatSequence
+    if (!divisionHeatSequence.length) return [config.heatId];
+    const options = divisionHeatSequence
       .filter((row) => row.round === config.round)
       .map((row) => row.heat_number);
     const unique = Array.from(new Set(options)).sort((a, b) => a - b);
     return unique.length ? unique : [config.heatId];
-  }, [activeHeatSequence, config.round, config.heatId]);
+  }, [divisionHeatSequence, config.round, config.heatId]);
 
   const currentHeatStatus = React.useMemo(() => {
     const row = divisionHeatSequence.find(h => h.round === config.round && h.heat_number === config.heatId);
     return row?.status || 'waiting';
   }, [divisionHeatSequence, config.round, config.heatId]);
 
+  const isCurrentHeatLocked = ['closed', 'finished'].includes(currentHeatStatus);
+
   useEffect(() => {
-    if (!activeDivisionOptions.length) return;
-    const currentIsValid = activeDivisionOptions.some(
+    if (!effectiveDivisionOptions.length) return;
+    const currentIsValid = effectiveDivisionOptions.some(
       (division) => division.toLowerCase() === config.division.toLowerCase()
     );
     if (!currentIsValid) {
-      onConfigChange({ ...config, division: activeDivisionOptions[0] });
+      onConfigChange({ ...config, division: effectiveDivisionOptions[0] });
     }
-  }, [activeDivisionOptions, config, onConfigChange]);
+  }, [effectiveDivisionOptions, config, onConfigChange]);
 
   useEffect(() => {
     if (!roundOptions.length) return;
@@ -699,7 +721,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const firstRound = roundOptions[0];
     const nextRound = roundOptions.includes(config.round) ? config.round : firstRound;
 
-    const heatsInRound = activeHeatSequence
+    const heatsInRound = divisionHeatSequence
       .filter((row) => row.round === nextRound)
       .map((row) => row.heat_number);
     const uniqueHeats = Array.from(new Set(heatsInRound)).sort((a, b) => a - b);
@@ -786,6 +808,37 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const handleTimerResume = () => {
     if (timer.isRunning) return;
     handleTimerStart();
+  };
+
+  const handleTimerStartImpl = async () => {
+    if (!configSaved || isCurrentHeatLocked) return;
+    setIsTimerOpen(false);
+    timerAudio.playStartHorn();
+    const fullDuration = Math.max(1, plannedTimerDuration || timer.duration || 20);
+    const newTimer = {
+      ...timer,
+      isRunning: true,
+      startTime: new Date(),
+      duration: fullDuration
+    };
+
+    onTimerChange(newTimer);
+    localStorage.setItem('surfJudgingTimer', JSON.stringify(newTimer));
+    setSyncError(null);
+
+    if (onRealtimeTimerStart) {
+      onRealtimeTimerStart(heatId, config, fullDuration)
+        .then(() => {
+          console.log('🔁 ADMIN: Timer RESTART publié en temps réel');
+        })
+        .catch((error) => {
+          console.error('⚠️ ADMIN: Timer RESTART failed:', error);
+          setSyncError("Échec de synchronisation (RESTART).");
+          window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
+        });
+    } else {
+      window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
+    }
   };
 
   const handleTimerRestartFull = () => {
@@ -1508,11 +1561,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   onChange={(e) => handleConfigChange('division', e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {activeDivisionOptions.map((division) => (
-                    <option key={division} value={division}>
-                      {division}
-                    </option>
-                  ))}
+                  {effectiveDivisionOptions.map((division) => {
+                    const closed = isCategoryClosed(division);
+                    return (
+                      <option key={division} value={division} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-gray-300 bg-gray-50" : ""}>
+                        {division} {!showClosedHeats && closed ? '(Terminé)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -1562,11 +1618,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   onChange={(e) => handleConfigChange('round', Number(e.target.value))}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {roundOptions.map((round) => (
-                    <option key={round} value={round}>
-                      Round {round}
-                    </option>
-                  ))}
+                  {roundOptions.map((round) => {
+                    const closed = isRoundClosed(round);
+                    return (
+                      <option key={round} value={round} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-gray-300 bg-gray-50" : ""}>
+                        Round {round} {!showClosedHeats && closed ? '(Terminé)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -1577,11 +1636,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   onChange={(e) => handleConfigChange('heatId', Number(e.target.value))}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {heatOptionsForRound.map((heat) => (
-                    <option key={heat} value={heat}>
-                      Heat {heat}
-                    </option>
-                  ))}
+                  {heatOptionsForRound.map((heat) => {
+                    const closed = isHeatClosed(heat, config.round);
+                    return (
+                      <option key={heat} value={heat} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-gray-300 bg-gray-50" : ""}>
+                        Heat {heat} {!showClosedHeats && closed ? '(Terminé)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               
@@ -1721,7 +1783,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       </details>
 
       {/* Timer */}
-      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" open>
+      <details 
+        className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" 
+        open={isTimerOpen} 
+        onToggle={(e) => setIsTimerOpen(e.currentTarget.open)}
+      >
         <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
           <div className="flex items-center space-x-3">
             <Clock className="w-6 h-6 text-cta-500" />
@@ -1729,13 +1795,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           </div>
           <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
-        <div className="p-6 bg-white border-t-4 border-primary-950">
+        <div className="p-6 bg-white border-t-4 border-primary-950 relative">
           {syncError && (
             <div className="w-full mb-4 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-xs font-bold animate-pulse">
               {syncError}
             </div>
           )}
-          {currentHeatStatus === 'closed' && (
+          {isCurrentHeatLocked && (
             <div className="w-full mb-4 p-3 bg-orange-100 border border-orange-400 rounded-lg shadow-sm">
               <div className="flex items-start">
                 <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5 mr-3 flex-shrink-0" />
@@ -1757,13 +1823,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             onReset={handleTimerReset}
             onDurationChange={handleTimerDurationChange}
             configSaved={configSaved}
-            disabled={currentHeatStatus === 'closed'}
+            disabled={isCurrentHeatLocked}
           />
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={handleTimerResume}
-              disabled={!configSaved || timer.isRunning || currentHeatStatus === 'closed'}
+              disabled={!configSaved || timer.isRunning || isCurrentHeatLocked}
               className="py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Reprendre (temps restant)
@@ -1771,7 +1837,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             <button
               type="button"
               onClick={handleTimerRestartFull}
-              disabled={!configSaved || currentHeatStatus === 'closed'}
+              disabled={!configSaved || isCurrentHeatLocked}
               className="py-2 px-4 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Recommencer (durée complète)
