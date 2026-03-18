@@ -41,6 +41,7 @@ export default function AdminPage() {
 
     const {
         timer,
+        setTimer,
         setDuration
     } = useCompetitionTimer();
 
@@ -236,13 +237,7 @@ export default function AdminPage() {
 
     // Wrapper for timer change to match interface
     const handleTimerChange = (newTimer: any) => {
-        // AdminInterface passes the whole timer object, but we have specific methods
-        // Actually AdminInterface calls onTimerChange(newTimer)
-        // We should probably expose setTimer from useCompetitionTimer if needed, 
-        // or just rely on the methods.
-        // AdminInterface uses onTimerChange mostly for updating duration or state manually?
-        // Let's check AdminInterface usage of onTimerChange.
-        // It seems it uses it to update duration.
+        setTimer(newTimer);
         if (newTimer.duration !== timer.duration) {
             setDuration(newTimer.duration);
         }

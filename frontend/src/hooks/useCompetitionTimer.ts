@@ -150,6 +150,7 @@ export function useCompetitionTimer() {
 
     return {
         timer,
+        setTimer,
         startTimer,
         pauseTimer,
         resetTimer,
