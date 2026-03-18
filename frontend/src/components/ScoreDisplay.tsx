@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Users, Trophy, FileText } from 'lucide-react';
 import HeatTimer from './HeatTimer';
-import HeatResults from './HeatResults';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/supabaseClient';
@@ -633,24 +632,6 @@ export default function ScoreDisplay({
         </div>
       )}
 
-      {/* HEAT TERMINÉ */}
-      {(heatStatus === 'finished' || heatStatus === 'closed') && (
-        <div className="bg-white border-4 border-primary-950 rounded-2xl p-6 shadow-block">
-          <HeatResults
-            heatId={`${config.competition}-${config.division}-${config.round}-${config.heatId}`}
-            competition={config.competition}
-            division={config.division}
-            round={config.round}
-            heatNumber={config.heatId}
-            surfers={config.surfers}
-            judgeIds={config.judges}
-            judgeNames={config.judgeNames}
-            maxWaves={config.waves}
-            scores={scores}
-            visible={true}
-          />
-        </div>
-      )}
     </div>
   );
 }
