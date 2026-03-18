@@ -273,6 +273,7 @@ export function useHeatManager() {
         let nextRound = config.round;
         let nextHeatNumber = config.heatId;
         let nextCandidate: any = null;
+        let eventHasRemainingHeats = true;
 
         if (sequence.length) {
             const currentIndex = sequence.findIndex((item: any) => ensureHeatId(item.id) === currentHeatId);
@@ -287,14 +288,39 @@ export function useHeatManager() {
             }
         }
 
+        if (activeEventId && isSupabaseConfigured() && supabase) {
+            try {
+                const { data: eventHeats, error: eventHeatsError } = await supabase
+                    .from('heats')
+                    .select('id, status')
+                    .eq('event_id', activeEventId);
+
+                if (eventHeatsError) {
+                    throw eventHeatsError;
+                }
+
+                const remainingEventHeats = (eventHeats ?? []).filter((heat: any) => {
+                    const heatId = ensureHeatId(heat.id);
+                    const status = (heat.status || '').toString().trim().toLowerCase();
+                    return heatId !== currentHeatId && !['closed', 'finished'].includes(status);
+                });
+                eventHasRemainingHeats = remainingEventHeats.length > 0;
+            } catch (error) {
+                console.warn('Impossible de vérifier si l’événement est terminé', error);
+            }
+        }
+
         // No automatic division switch: chief judge chooses next division manually from dropdown.
         const nextDivision = config.division;
         if (!nextCandidate) {
-            console.log(`✅ Division ${config.division} terminée (ou aucun heat ouvert restant dans cette division)`);
+            console.log(eventHasRemainingHeats
+                ? `✅ Division ${config.division} terminée (ou aucun heat ouvert restant dans cette division)`
+                : '🏁 EVENT FINISHED');
             setTimeout(() => {
                 alert(
-                    `✅ Division ${config.division.toUpperCase()} terminée.\n\n` +
-                    `Sélectionnez la prochaine division manuellement dans le menu déroulant.`
+                    eventHasRemainingHeats
+                        ? `✅ Division ${config.division.toUpperCase()} terminée.\n\nSélectionnez la prochaine division manuellement dans le menu déroulant.`
+                        : '🏁 EVENT FINISHED\n\nIl n’y a plus aucun heat à juger sur cet événement.'
                 );
             }, 500);
         }

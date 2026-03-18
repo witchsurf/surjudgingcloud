@@ -396,8 +396,8 @@ function JudgeInterface({
   }, [mergeRealtimeScore]);
 
   // Vérifier si la saisie est autorisée
-  // BLOQUE : avant démarrage (waiting) et après clôture (closed)
-  // AUTORISE : pendant (running), en pause (paused), et après expiration (finished)
+  // BLOQUE : avant démarrage (waiting) et après clôture chief judge (closed)
+  // AUTORISE : pendant (running), en pause (paused), et après expiration simple du timer (finished)
   const isTimerActive = () => {
     if (!configSaved) return false;
     // Bloquer si le heat est officiellement clos par le chef juge

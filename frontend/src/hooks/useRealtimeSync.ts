@@ -16,6 +16,8 @@ interface RealtimeHeatConfig {
   updated_by: string;
 }
 
+type HeatLifecycleStatus = RealtimeHeatConfig['status'] | 'closed';
+
 interface UseRealtimeSyncReturn {
   isConnected: boolean;
   lastUpdate: Date | null;
@@ -27,7 +29,7 @@ interface UseRealtimeSyncReturn {
   markHeatFinished: (heatId: string) => Promise<void>;
   subscribeToHeat: (
     heatId: string,
-    onUpdate: (timer: HeatTimer, config: AppConfig | null, status: RealtimeHeatConfig['status']) => void
+    onUpdate: (timer: HeatTimer, config: AppConfig | null, status: HeatLifecycleStatus) => void
   ) => () => void;
   fetchRealtimeState: (heatId: string) => Promise<RealtimeHeatConfig | null>;
   // New kiosk and heat sync functions
@@ -38,12 +40,15 @@ interface UseRealtimeSyncReturn {
 type HeatUpdateListener = (
   timer: HeatTimer,
   config: AppConfig | null,
-  status: RealtimeHeatConfig['status']
+  status: HeatLifecycleStatus
 ) => void;
 
 interface HeatChannelState {
   channel: RealtimeChannel;
   listeners: Map<string, HeatUpdateListener>;
+  lastTimer: HeatTimer | null;
+  lastConfig: AppConfig | null;
+  lastStatus: HeatLifecycleStatus | null;
 }
 
 const heatChannelRegistry = new Map<string, HeatChannelState>();
@@ -56,10 +61,14 @@ const emitHeatUpdate = (
   heatId: string,
   timer: HeatTimer,
   config: AppConfig | null,
-  status: RealtimeHeatConfig['status']
+  status: HeatLifecycleStatus
 ) => {
   const state = heatChannelRegistry.get(heatId);
   if (!state) return;
+
+  state.lastTimer = timer;
+  state.lastConfig = config;
+  state.lastStatus = status;
 
   for (const listener of state.listeners.values()) {
     try {
@@ -93,6 +102,29 @@ const createHeatChannel = (normalizedHeatId: string) => {
         };
 
         emitHeatUpdate(normalizedHeatId, timer, data.config_data ?? null, data.status);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'heats',
+        filter: `id=eq.${normalizedHeatId}`
+      },
+      (payload) => {
+        const row = payload.new as { status?: string } | null;
+        const normalizedStatus = (row?.status || '').toString().trim().toLowerCase();
+        if (normalizedStatus !== 'closed') return;
+
+        const state = heatChannelRegistry.get(normalizedHeatId);
+        const nextTimer: HeatTimer = {
+          ...(state?.lastTimer ?? { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION }),
+          isRunning: false,
+          startTime: null,
+        };
+
+        emitHeatUpdate(normalizedHeatId, nextTimer, state?.lastConfig ?? null, 'closed');
       }
     )
     .on(
@@ -132,6 +164,9 @@ const createHeatChannel = (normalizedHeatId: string) => {
   const state: HeatChannelState = {
     channel,
     listeners: new Map(),
+    lastTimer: null,
+    lastConfig: null,
+    lastStatus: null,
   };
   heatChannelRegistry.set(normalizedHeatId, state);
   return state;
@@ -399,7 +434,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
   const subscribeToHeat = useCallback((
     heatId: string,
-    onUpdate: (timer: HeatTimer, config: AppConfig | null, status: RealtimeHeatConfig['status']) => void
+    onUpdate: (timer: HeatTimer, config: AppConfig | null, status: HeatLifecycleStatus) => void
   ) => {
     const normalizedHeatId = ensureHeatId(heatId);
     if (!isSupabaseConfigured()) {
@@ -442,11 +477,18 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       }
 
       try {
-        const { data, error } = await supabase!
-          .from('heat_realtime_config')
-          .select('*')
-          .eq('heat_id', normalizedHeatId)
-          .maybeSingle();
+        const [{ data, error }, { data: heatRow, error: heatError }] = await Promise.all([
+          supabase!
+            .from('heat_realtime_config')
+            .select('*')
+            .eq('heat_id', normalizedHeatId)
+            .maybeSingle(),
+          supabase!
+            .from('heats')
+            .select('status')
+            .eq('id', normalizedHeatId)
+            .maybeSingle()
+        ]);
 
         if (error) {
           console.error('Erreur chargement état initial:', error);
@@ -460,8 +502,15 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
           return;
         }
 
+        if (heatError && heatError.code !== 'PGRST116') {
+          console.error('Erreur chargement statut heat:', heatError);
+        }
+
+        const heatIsClosed = (heatRow?.status || '').toString().trim().toLowerCase() === 'closed';
+
         if (data) {
           const snapshotKey = JSON.stringify({
+            heat_status: heatRow?.status ?? null,
             status: data.status,
             timer_start_time: data.timer_start_time,
             timer_duration_minutes: data.timer_duration_minutes,
@@ -481,12 +530,19 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
           const config = data.config_data ?? null;
           console.log('📋 État initial chargé:', { timer, config });
-          onUpdate(timer, config, data.status);
+          onUpdate(
+            heatIsClosed
+              ? { ...timer, isRunning: false, startTime: null }
+              : timer,
+            config,
+            heatIsClosed ? 'closed' : data.status
+          );
         } else {
-          if (options?.skipIfUnchanged && lastSnapshotKey === '__missing__') {
+          const missingKey = heatIsClosed ? '__closed__' : '__missing__';
+          if (options?.skipIfUnchanged && lastSnapshotKey === missingKey) {
             return;
           }
-          lastSnapshotKey = '__missing__';
+          lastSnapshotKey = missingKey;
           // Aucune donnée trouvée, utiliser des valeurs par défaut
           const defaultTimer: HeatTimer = {
             isRunning: false,
@@ -497,7 +553,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
             console.log('⚠️ Aucune config temps réel trouvée, utilisation des valeurs par défaut');
             missingRealtimeStateLogged = true;
           }
-          onUpdate(defaultTimer, null, 'waiting');
+          onUpdate(defaultTimer, null, heatIsClosed ? 'closed' : 'waiting');
         }
       } catch (err) {
         console.log('⚠️ Chargement initial en mode local uniquement', err instanceof Error ? err.message : err);
