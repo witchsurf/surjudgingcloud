@@ -727,15 +727,22 @@ function JudgeInterface({
     });
     return map;
   }, [effectiveInterferences, normalizeSurferKey]);
+
+  const priorityShellClass = priorityOnly
+    ? 'min-h-screen max-w-5xl mx-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4 flex flex-col overflow-hidden'
+    : 'h-screen max-w-full mx-auto px-2 sm:px-4 py-2 flex flex-col overflow-hidden';
+
+  const priorityCardPadding = priorityOnly ? 'p-4 sm:p-5' : 'p-2 sm:p-3';
+
   return (
-    <div className="h-screen max-w-full mx-auto px-2 sm:px-4 py-2 flex flex-col overflow-hidden">
+    <div className={priorityShellClass}>
       {/* HEADER + TIMER */}
       <div className={isFullscreen ? 'sticky top-3 z-40' : ''}>
-        <div className="bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl p-2 sm:p-3 shadow-lg">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center justify-between flex-1 gap-4 min-w-0">
+        <div className={`bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl shadow-lg ${priorityCardPadding}`}>
+          <div className={`flex items-center justify-between ${priorityOnly ? 'gap-3 sm:gap-5' : 'gap-4'}`}>
+            <div className={`flex items-center justify-between flex-1 min-w-0 ${priorityOnly ? 'gap-3 sm:gap-6' : 'gap-4'}`}>
               <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl font-bold flex items-center gap-2 truncate">
+                <h1 className={`${priorityOnly ? 'text-xl sm:text-2xl md:text-3xl' : 'text-lg sm:text-xl'} font-bold flex items-center gap-2 truncate`}>
                   {resolvedInterfaceTitle}
                   {!isConnected && (
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-red-100 text-red-800">
@@ -743,10 +750,10 @@ function JudgeInterface({
                     </span>
                   )}
                 </h1>
-                <div className="flex items-center gap-x-3 text-violet-100 text-[10px] opacity-90 flex-wrap">
-                  <span className="font-semibold truncate max-w-[100px]">{config.judgeNames[judgeId] || judgeName || judgeId}</span>
-                  <span className="max-w-[100px] truncate">{config.competition}</span>
-                  <span className="font-semibold uppercase truncate max-w-[100px]">{config.division || 'Sans categorie'}</span>
+                <div className={`flex items-center gap-x-3 text-violet-100 opacity-90 flex-wrap ${priorityOnly ? 'text-xs sm:text-sm mt-1.5' : 'text-[10px]'}`}>
+                  <span className={`font-semibold truncate ${priorityOnly ? 'max-w-[160px] sm:max-w-[220px]' : 'max-w-[100px]'}`}>{config.judgeNames[judgeId] || judgeName || judgeId}</span>
+                  <span className={`${priorityOnly ? 'max-w-[180px] sm:max-w-[260px]' : 'max-w-[100px]'} truncate`}>{config.competition}</span>
+                  <span className={`font-semibold uppercase truncate ${priorityOnly ? 'max-w-[160px] sm:max-w-[220px]' : 'max-w-[100px]'}`}>{config.division || 'Sans categorie'}</span>
                   <span className="font-bold">R{config.round} H{config.heatId}</span>
                 </div>
               </div>
@@ -759,7 +766,7 @@ function JudgeInterface({
                   onReset={() => { }}
                   onDurationChange={() => { }}
                   showControls={isChiefJudge}
-                  size="small"
+                  size={priorityOnly ? 'medium' : 'small'}
                   landscape={true}
                   embedded={true}
                   configSaved={configSaved}
@@ -812,7 +819,7 @@ function JudgeInterface({
 
               <button
                 onClick={toggleFullscreen}
-                className="flex items-center space-x-1 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-xs font-medium border border-white/10"
+                className={`flex items-center space-x-1 bg-white/20 hover:bg-white/30 rounded-lg transition-colors font-medium border border-white/10 ${priorityOnly ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs'}`}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                 <span className="hidden sm:inline">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
@@ -839,10 +846,10 @@ function JudgeInterface({
 
       {(priorityOnly || canEditPriority) && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-shrink-0">
-          <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-200 flex items-center justify-between gap-3">
+          <div className={`bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3 ${priorityOnly ? 'px-4 py-3 sm:px-5' : 'px-3 py-1.5'}`}>
             <div>
-              <h2 className="text-lg font-bold text-gray-900 leading-tight">Priorité</h2>
-              <p className="text-[10px] text-gray-600 leading-tight">
+              <h2 className={`${priorityOnly ? 'text-2xl sm:text-3xl' : 'text-lg'} font-bold text-gray-900 leading-tight`}>Priorité</h2>
+              <p className={`${priorityOnly ? 'text-xs sm:text-sm mt-1' : 'text-[10px]'} text-gray-600 leading-tight`}>
                 {priorityState.mode === 'equal'
                   ? 'Début de série: tous les surfeurs sont égaux.'
                   : priorityState.mode === 'opening'
@@ -855,7 +862,7 @@ function JudgeInterface({
                 <button
                   type="button"
                   onClick={() => handlePriorityResetEqual().catch(() => { })}
-                  className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className={`rounded-lg border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
                 >
                   Egalite
                 </button>
@@ -867,7 +874,7 @@ function JudgeInterface({
                         setIsPriorityOrdering(false);
                         setPriorityDraft([]);
                       }}
-                      className="px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      className={`rounded-lg border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
                     >
                       Annuler
                     </button>
@@ -875,7 +882,7 @@ function JudgeInterface({
                       type="button"
                       onClick={() => handlePriorityOrderSave().catch(() => { })}
                       disabled={orderedDraft.length !== normalizedSurfers.length}
-                      className="px-3 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className={`rounded-lg bg-indigo-600 font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
                     >
                       Valider l&apos;ordre
                     </button>
@@ -884,7 +891,7 @@ function JudgeInterface({
                   <button
                     type="button"
                     onClick={handlePriorityOrderStart}
-                    className="px-3 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700"
+                    className={`rounded-lg bg-indigo-600 font-medium text-white hover:bg-indigo-700 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
                   >
                     Definir l&apos;ordre
                   </button>
@@ -893,20 +900,20 @@ function JudgeInterface({
             )}
           </div>
 
-          <div className="p-2 sm:p-3 space-y-3">
+          <div className={`${priorityOnly ? 'p-4 sm:p-5 space-y-5' : 'p-2 sm:p-3 space-y-3'}`}>
             {isPriorityOrdering ? (
               <>
                 <div>
-                  <p className="text-sm font-semibold text-gray-800 mb-3">Touchez les surfeurs dans l&apos;ordre P, 2, 3, 4.</p>
+                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-sm'} font-semibold text-gray-800 mb-3`}>Touchez les surfeurs dans l&apos;ordre P, 2, 3, 4.</p>
                   <div className="flex flex-wrap gap-3">
                     {availableDraftSurfers.map((surfer) => (
                       <button
                         key={surfer}
                         type="button"
                         onClick={() => handlePriorityDraftAdd(surfer)}
-                        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
+                        className={`flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-sm hover:border-indigo-400 hover:bg-indigo-50 transition-colors ${priorityOnly ? 'px-4 py-3 text-lg' : 'px-3 py-2'}`}
                       >
-                        <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className={`${priorityOnly ? 'w-5 h-5' : 'w-4 h-4'} rounded-full border border-gray-300`} style={{ backgroundColor: getSurferColor(surfer) }} />
                         <span className="font-semibold text-gray-900">{surfer}</span>
                       </button>
                     ))}
@@ -914,19 +921,19 @@ function JudgeInterface({
                 </div>
 
                 <div>
-                  <p className="text-sm font-semibold text-gray-800 mb-3">Ordre en cours</p>
+                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-sm'} font-semibold text-gray-800 mb-3`}>Ordre en cours</p>
                   <div className="flex flex-wrap gap-3">
                     {orderedDraft.length > 0 ? orderedDraft.map((surfer, index) => (
                       <button
                         key={surfer}
                         type="button"
                         onClick={() => handlePriorityDraftRemove(surfer)}
-                        className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 shadow-sm"
+                        className={`flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 shadow-sm ${priorityOnly ? 'px-4 py-3 text-lg' : 'px-3 py-2'}`}
                       >
-                        <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-indigo-600 px-2 py-1 text-sm font-bold text-white">
+                        <span className={`inline-flex justify-center rounded-full bg-indigo-600 font-bold text-white ${priorityOnly ? 'min-w-[2.5rem] px-3 py-1.5 text-base' : 'min-w-[2rem] px-2 py-1 text-sm'}`}>
                           {index === 0 ? 'P' : index + 1}
                         </span>
-                        <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className={`${priorityOnly ? 'w-5 h-5' : 'w-4 h-4'} rounded-full border border-gray-300`} style={{ backgroundColor: getSurferColor(surfer) }} />
                         <span className="font-semibold text-gray-900">{surfer}</span>
                       </button>
                     )) : (
@@ -940,7 +947,7 @@ function JudgeInterface({
             ) : (
               <>
                 <div>
-                  <p className="text-sm font-semibold text-gray-800 mb-3">
+                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-sm'} font-semibold text-gray-800 mb-3`}>
                     {priorityState.mode === 'equal' ? 'Tous egaux' : priorityState.mode === 'opening' ? 'Phase initiale' : 'Line-up'}
                   </p>
                   <div className="flex flex-wrap gap-3">
@@ -950,12 +957,12 @@ function JudgeInterface({
                         type="button"
                         onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
                         disabled={!canEditPriority}
-                        className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 shadow-sm disabled:cursor-default"
+                        className={`flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-sm disabled:cursor-default ${priorityOnly ? 'px-4 py-3 text-lg' : 'px-3 py-2'}`}
                       >
-                        <span className={`inline-flex min-w-[2rem] justify-center rounded-full px-2 py-1 text-sm font-bold ${priorityState.mode === 'equal' ? 'bg-gray-200 text-gray-700' : 'bg-indigo-600 text-white'}`}>
+                        <span className={`inline-flex justify-center rounded-full font-bold ${priorityState.mode === 'equal' ? 'bg-gray-200 text-gray-700' : 'bg-indigo-600 text-white'} ${priorityOnly ? 'min-w-[2.5rem] px-3 py-1.5 text-base' : 'min-w-[2rem] px-2 py-1 text-sm'}`}>
                           {priorityLabels[surfer] || '='}
                         </span>
-                        <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className={`${priorityOnly ? 'w-5 h-5' : 'w-4 h-4'} rounded-full border border-gray-300`} style={{ backgroundColor: getSurferColor(surfer) }} />
                         <span className="font-semibold text-gray-900">{surfer}</span>
                       </button>
                     ))}
@@ -964,7 +971,7 @@ function JudgeInterface({
 
                 {priorityState.mode === 'ordered' && (
                   <div>
-                    <p className="text-sm font-semibold text-gray-800 mb-3">En vague / hors line-up</p>
+                    <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-sm'} font-semibold text-gray-800 mb-3`}>En vague / hors line-up</p>
                     <div className="flex flex-wrap gap-3">
                       {inFlightSurfers.length > 0 ? inFlightSurfers.map((surfer) => (
                         <button
@@ -972,12 +979,12 @@ function JudgeInterface({
                           type="button"
                           onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
                           disabled={!canEditPriority}
-                          className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shadow-sm disabled:cursor-default"
+                          className={`flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 shadow-sm disabled:cursor-default ${priorityOnly ? 'px-4 py-3 text-lg' : 'px-3 py-2'}`}
                         >
-                          <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-amber-500 px-2 py-1 text-sm font-bold text-white">
+                          <span className={`inline-flex justify-center rounded-full bg-amber-500 font-bold text-white ${priorityOnly ? 'min-w-[2.5rem] px-3 py-1.5 text-base' : 'min-w-[2rem] px-2 py-1 text-sm'}`}>
                             Surf
                           </span>
-                          <span className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: getSurferColor(surfer) }} />
+                          <span className={`${priorityOnly ? 'w-5 h-5' : 'w-4 h-4'} rounded-full border border-gray-300`} style={{ backgroundColor: getSurferColor(surfer) }} />
                           <span className="font-semibold text-gray-900">{surfer}</span>
                         </button>
                       )) : (
