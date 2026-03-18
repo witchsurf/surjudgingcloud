@@ -15,6 +15,7 @@ interface HeatTimerProps {
   landscape?: boolean;
   embedded?: boolean;
   configSaved: boolean;
+  disabled?: boolean;
 }
 
 function HeatTimer({
@@ -28,7 +29,8 @@ function HeatTimer({
   compact = false,
   landscape = false,
   embedded = false,
-  configSaved
+  configSaved,
+  disabled = false
 }: HeatTimerProps) {
   const [timeLeft, setTimeLeft] = useState(timer.duration * 60);
   const [showSettings, setShowSettings] = useState(false);
@@ -215,8 +217,8 @@ function HeatTimer({
             max="60"
             value={timer.duration}
             onChange={(e) => onDurationChange(parseInt(e.target.value) || 20)}
-            className="w-20 px-3 py-1.5 bg-white border-2 border-primary-200 rounded-lg text-center font-bold text-primary-900 focus:border-primary-600 focus:ring-0"
-            disabled={timer.isRunning}
+            className="w-20 px-3 py-1.5 bg-white border-2 border-primary-200 rounded-lg text-center font-bold text-primary-900 focus:border-primary-600 focus:ring-0 disabled:bg-gray-100 disabled:text-gray-400"
+            disabled={timer.isRunning || disabled}
           />
         </div>
       )}
@@ -258,8 +260,8 @@ function HeatTimer({
           {!timer.isRunning ? (
             <button
               onClick={onStart}
-              disabled={!configSaved}
-              className={`${classes.button} bg-success-500 text-white rounded-xl border-2 border-primary-950 shadow-block hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 font-bebas tracking-widest px-6 disabled:opacity-50`}
+              disabled={!configSaved || disabled}
+              className={`${classes.button} bg-success-500 text-white rounded-xl border-2 border-primary-950 shadow-block hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 font-bebas tracking-widest px-6 disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <Play className={classes.icon} fill="currentColor" />
               <span>START</span>
@@ -267,7 +269,8 @@ function HeatTimer({
           ) : (
             <button
               onClick={onPause}
-              className={`${classes.button} bg-cta-500 text-white rounded-xl border-2 border-primary-950 shadow-block hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 font-bebas tracking-widest px-6`}
+              disabled={disabled}
+              className={`${classes.button} bg-cta-500 text-white rounded-xl border-2 border-primary-950 shadow-block hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 font-bebas tracking-widest px-6 disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <Pause className={classes.icon} fill="currentColor" />
               <span>PAUSE</span>
@@ -276,8 +279,8 @@ function HeatTimer({
 
           <button
             onClick={onReset}
-            disabled={!configSaved}
-            className={`${classes.button} bg-white text-primary-900 rounded-xl border-2 border-primary-950 hover:bg-primary-50 transition-all flex items-center gap-2 font-bebas tracking-widest px-6 disabled:opacity-50`}
+            disabled={!configSaved || disabled}
+            className={`${classes.button} bg-white text-primary-900 rounded-xl border-2 border-primary-950 hover:bg-primary-50 transition-all flex items-center gap-2 font-bebas tracking-widest px-6 disabled:opacity-50 disabled:bg-gray-100 disabled:cursor-not-allowed`}
           >
             <RotateCcw className={classes.icon} />
             <span>RESET</span>

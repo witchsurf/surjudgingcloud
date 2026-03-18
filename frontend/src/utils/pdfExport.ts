@@ -971,7 +971,9 @@ export function exportFullCompetitionPDF({
             cursorY += 18;
           }
 
-          let surferStats: Array<{ surfer: string; bestTwo: number; rank: number }> = [];
+          let surferStats: Array<{ surfer: string; bestTwo: number; rank: number; waves: number[] }> = [];
+          let currentHeatMaxWaves = 0;
+
           if (hasResults) {
             const heatSurfers = heat.slots
               .filter(s => s.color !== undefined)
@@ -983,16 +985,31 @@ export function exportFullCompetitionPDF({
               heatScores.map(score => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
               heatSurfers, judgeCount, maxWaves, false, effectiveInterferences
             );
-            surferStats = stats.map(s => ({ surfer: s.surfer, bestTwo: s.bestTwo, rank: s.rank }));
+            
+            const maxSurferWaves = Math.max(...stats.map(s => s.waves?.length || 0), 0);
+            currentHeatMaxWaves = Math.max(1, Math.min(maxSurferWaves, maxWaves));
+
+            surferStats = stats.map(s => ({ 
+              surfer: s.surfer, 
+              bestTwo: s.bestTwo, 
+              rank: s.rank,
+              waves: (s.waves || []).map(w => w.score)
+            }));
           }
 
           const bodyData = heat.slots.map((slot, sIdx) => {
             let scoreStr = '';
             let numericVal = 0;
+            let surferWaves: number[] = [];
+
             if (hasResults && slot.color) {
               const colorName = colorLabelMap[slot.color as keyof typeof colorLabelMap] || slot.color;
               const stat = surferStats.find(s => s.surfer === colorName);
-              if (stat) { numericVal = stat.bestTwo; scoreStr = stat.bestTwo.toFixed(2); }
+              if (stat) { 
+                numericVal = stat.bestTwo; 
+                scoreStr = stat.bestTwo.toFixed(2);
+                surferWaves = stat.waves;
+              }
             }
             return {
               pos: sIdx + 1,
@@ -1001,6 +1018,7 @@ export function exportFullCompetitionPDF({
               numericVal,
               name: slot.name ?? slot.placeholder ?? '',
               country: slot.country ?? '',
+              waves: surferWaves
             };
           });
 
@@ -1012,10 +1030,39 @@ export function exportFullCompetitionPDF({
           doc.text(`Heat ${heat.heatNumber} ${hasResults ? '— RÉSULTATS' : '— PRÉVISIONS'}`, 45, cursorY);
           cursorY += 4;
 
+          const headRow = ['#', 'Lycra', 'Total', 'Surfeur', 'Pays'];
+          if (hasResults) {
+            for (let i = 1; i <= currentHeatMaxWaves; i++) {
+              headRow.push(`V${i}`);
+            }
+          }
+
+          // Generate dynamic column styles for table
+          const columnStyles: any = {
+            0: { cellWidth: 15 },
+            1: { cellWidth: 35, fontStyle: 'bold' },
+            2: { cellWidth: 35, fontStyle: 'bold' },
+            3: { halign: 'left', fontStyle: 'bold', cellWidth: 130 },
+            4: { halign: 'left', cellWidth: 40 }
+          };
+          if (hasResults) {
+            for (let i = 0; i < currentHeatMaxWaves; i++) {
+              columnStyles[5 + i] = { cellWidth: 25 }; 
+            }
+          }
+
           autoTable(doc, {
             startY: cursorY,
-            head: [['#', 'Lycra', 'Score', 'Surfeur', 'Pays']],
-            body: bodyData.map((d, i) => [i + 1, d.lycra, d.score, d.name, d.country]),
+            head: [headRow],
+            body: bodyData.map((d, i) => {
+              const row = [i + 1, d.lycra, d.score, d.name, d.country];
+              if (hasResults) {
+                for (let w = 0; w < currentHeatMaxWaves; w++) {
+                  row.push(d.waves && d.waves[w] !== undefined ? d.waves[w].toFixed(2) : '—');
+                }
+              }
+              return row;
+            }),
             styles: {
               font: 'helvetica',
               fontSize: 8,
@@ -1030,14 +1077,8 @@ export function exportFullCompetitionPDF({
               fontStyle: 'bold',
               lineWidth: 0
             },
-            columnStyles: {
-              0: { cellWidth: 20 },
-              1: { cellWidth: 40, fontStyle: 'bold' },
-              2: { cellWidth: 35, fontStyle: 'bold' },
-              3: { halign: 'left', fontStyle: 'bold', cellWidth: 150 },
-              4: { halign: 'left' }
-            },
-            margin: { left: 45, right: 45 },
+            columnStyles,
+            margin: { left: 40, right: 40 },
             tableLineColor: [241, 245, 249],
             tableLineWidth: 0.1,
             didParseCell: (data) => {
