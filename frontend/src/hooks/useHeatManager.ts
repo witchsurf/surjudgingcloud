@@ -17,6 +17,7 @@ import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { eventRepository } from '../repositories';
 import { HEAT_COLOR_CACHE_KEY, DEFAULT_TIMER_DURATION } from '../utils/constants';
+import { getNextHeatSyncTarget } from '../utils/heatWorkflow';
 import type { AppConfig } from '../types';
 
 // Helper to normalize heat entries
@@ -276,7 +277,9 @@ export function useHeatManager() {
         if (sequence.length) {
             const currentIndex = sequence.findIndex((item: any) => ensureHeatId(item.id) === currentHeatId);
             if (currentIndex >= 0) {
-                nextCandidate = sequence.slice(currentIndex + 1).find((item: any) => item.status !== 'closed') ?? null;
+                nextCandidate = sequence
+                    .slice(currentIndex + 1)
+                    .find((item: any) => !['closed', 'finished'].includes((item.status || '').toString().trim().toLowerCase())) ?? null;
                 if (nextCandidate) {
                     nextRound = nextCandidate.round;
                     nextHeatNumber = nextCandidate.heat_number;
@@ -446,38 +449,32 @@ export function useHeatManager() {
         setScores([]);
         localStorage.setItem('surfJudgingScores', JSON.stringify([]));
 
-        // 6. Create/Sync Next Heat
-        const nextHeatIdentifiers = getHeatIdentifiers(
-            newConfig.competition,
-            newConfig.division,
-            newConfig.round,
-            newConfig.heatId
-        );
-        const nextHeatKey = nextHeatIdentifiers.normalized;
+        // 6. Create/Sync Next Heat only when the workflow actually advances.
+        const nextHeatKey = getNextHeatSyncTarget(newConfig, advanced);
 
         try {
             await publishConfigUpdate(currentHeatId, newConfig); // Inform current heat subscribers
 
-            // Always ensure next heat row exists before saving dependent tables (heat_configs/realtime).
-            // createHeat uses upsert, so calling it systematically is safe and idempotent.
-            await createHeat({
-                competition: newConfig.competition,
-                division: newConfig.division,
-                round: newConfig.round,
-                heat_number: newConfig.heatId,
-                status: 'open',
-                surfers: newConfig.surfers.map((surfer) => ({
-                    color: surfer,
-                    name: surfer,
-                    country: 'SENEGAL',
-                })),
-            });
+            if (nextHeatKey) {
+                // createHeat uses upsert, so calling it only for the actual next heat is safe and idempotent.
+                await createHeat({
+                    competition: newConfig.competition,
+                    division: newConfig.division,
+                    round: newConfig.round,
+                    heat_number: newConfig.heatId,
+                    status: 'open',
+                    surfers: newConfig.surfers.map((surfer) => ({
+                        color: surfer,
+                        name: surfer,
+                        country: 'SENEGAL',
+                    })),
+                });
 
-            await saveHeatConfig(nextHeatKey, newConfig);
-            await saveTimerState(nextHeatKey, { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION });
-            await publishConfigUpdate(nextHeatKey, newConfig);
-            await publishTimerReset(nextHeatKey, DEFAULT_TIMER_DURATION);
-
+                await saveHeatConfig(nextHeatKey, newConfig);
+                await saveTimerState(nextHeatKey, { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION });
+                await publishConfigUpdate(nextHeatKey, newConfig);
+                await publishTimerReset(nextHeatKey, DEFAULT_TIMER_DURATION);
+            }
         } catch (error) {
             console.log('⚠️ Synchronisation du nouveau heat différée:', error);
         }
