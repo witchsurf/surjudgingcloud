@@ -43,7 +43,6 @@ const GenerateHeatsPage = () => {
   const { setActiveEventId, setConfig, setConfigSaved, saveConfigToDb } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
   const [categoryManOnManRounds, setCategoryManOnManRounds] = useState<Record<string, number>>({});
-  const [categoryBestSecondWildcards, setCategoryBestSecondWildcards] = useState<Record<string, boolean>>({});
   const [seriesSize, setSeriesSize] = useState('auto');
   const [previewData, setPreviewData] = useState<CategoryPreview[]>([]);
   const [eventId, setEventId] = useState<string | null>(null);
@@ -124,9 +123,7 @@ const GenerateHeatsPage = () => {
             ? requestedRound
             : 0;
           const selectedOption = allowedRounds.find((option) => option.round === selectedRound);
-          const enableBestSecond = Boolean(
-            selectedOption?.requiresBestSecond && categoryBestSecondWildcards[category]
-          );
+          const enableBestSecond = Boolean(selectedOption?.requiresBestSecond);
 
           const rounds = generatePreviewHeats(
             list,
@@ -159,7 +156,6 @@ const GenerateHeatsPage = () => {
       console.error('Erreur lors de la génération des heats:', error);
     }
   }, [
-    categoryBestSecondWildcards,
     categoryManOnManOptions,
     categoryManOnManRounds,
     eventId,
@@ -698,10 +694,6 @@ const GenerateHeatsPage = () => {
                     const selectedManOnManOption = manOnManOptions.find(
                       (option) => option.round === selectedManOnManRound
                     );
-                    const bestSecondEnabled = Boolean(
-                      selectedManOnManOption?.requiresBestSecond &&
-                      categoryBestSecondWildcards[category.category]
-                    );
 
                     return (
                     <div key={category.category} className="space-y-6">
@@ -727,12 +719,6 @@ const GenerateHeatsPage = () => {
                                 ...prev,
                                 [category.category]: newVal
                               }));
-                              if (newVal === 0) {
-                                setCategoryBestSecondWildcards(prev => ({
-                                  ...prev,
-                                  [category.category]: false
-                                }));
-                              }
                             }}
                             className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm"
                           >
@@ -755,23 +741,10 @@ const GenerateHeatsPage = () => {
                           <p className="mt-2 text-amber-100">
                             {selectedManOnManOption.warning}
                           </p>
-                          <label className="mt-4 flex items-start gap-3 text-amber-50">
-                            <input
-                              type="checkbox"
-                              checked={bestSecondEnabled}
-                              onChange={(event) => {
-                                setCategoryBestSecondWildcards(prev => ({
-                                  ...prev,
-                                  [category.category]: event.target.checked
-                                }));
-                              }}
-                              className="mt-1 h-4 w-4 rounded border-amber-300 bg-gray-900 text-amber-500"
-                            />
-                            <span>
-                              Ajouter le meilleur 2e du Round {selectedManOnManOption.wildcardSourceRound}
-                              {' '}pour compléter le tableau en man-on-man.
-                            </span>
-                          </label>
+                          <div className="mt-4 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-amber-50">
+                            Le meilleur 2e du Round {selectedManOnManOption.wildcardSourceRound} est ajouté automatiquement
+                            pour éviter un heat à 1 surfeur.
+                          </div>
                           <p className="mt-2 text-xs text-amber-200/80">
                             Un placeholder `Meilleur 2e R{selectedManOnManOption.wildcardSourceRound}` sera ajouté
                             dans la prévisualisation et dans le bracket généré.
