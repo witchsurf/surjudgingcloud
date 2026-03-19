@@ -282,8 +282,28 @@ export const generatePreviewHeats = (
     seedToParticipant.set(seedVal, p);
   });
 
-  if (seriesSize === 2) {
-    return buildManOnManBracket(participants);
+  const shouldStartManOnMan = seriesSize === 2 || manOnManFromRound === 1;
+
+  if (shouldStartManOnMan) {
+    const manOnManSizes = distributeHeatSizes(totalParticipants, 2);
+    const manOnManSeedMap = distributeSeedsSnake(seeds, {
+      heatSize: 2,
+      heatCount: manOnManSizes.length,
+      heatSizes: manOnManSizes
+    });
+    const participantsInManOnManOrder: any[] = [];
+
+    [...manOnManSeedMap]
+      .sort((a, b) => a.heatNumber - b.heatNumber)
+      .forEach((heat) => {
+        heat.seeds.forEach((seed: number | null) => {
+          if (seed !== null) {
+            participantsInManOnManOrder.push(seedToParticipant.get(seed));
+          }
+        });
+      });
+
+    return buildManOnManBracket(participantsInManOnManOrder);
   }
 
   // Calculate Standard Round 1 Heat Sizes
@@ -504,8 +524,12 @@ export const getManOnManRoundOptions = (
   const classicRounds = generatePreviewHeats(participants, format, seriesSize);
   const classicSignature = serializePlan(classicRounds);
   const maxCandidateRound = classicRounds.length;
+  const candidateRounds = [
+    ...(participants.length >= 4 && participants.length % 2 === 0 ? [1] : []),
+    ...Array.from({ length: Math.max(0, maxCandidateRound - 1) }, (_, index) => index + 2)
+  ];
 
-  return Array.from({ length: Math.max(0, maxCandidateRound - 1) }, (_, index) => index + 2)
+  return candidateRounds
     .map((round) => {
       const generated = generatePreviewHeats(participants, format, seriesSize, {
         manOnManFromRound: round

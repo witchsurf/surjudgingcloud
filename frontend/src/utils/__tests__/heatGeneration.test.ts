@@ -13,16 +13,34 @@ describe('generatePreviewHeats man-on-man activation', () => {
     const participants = buildParticipants(10, 'CADET');
     const options = getManOnManRoundOptions(participants, 'elimination', 4);
 
-    expect(options.map((option) => option.round)).toEqual([2, 3]);
+    expect(options.map((option) => option.round)).toEqual([1, 2, 3]);
     expect(options[0]).toMatchObject({
+      round: 1,
+      requiresBestSecond: false,
+    });
+    expect(options[1]).toMatchObject({
       round: 2,
       requiresBestSecond: true,
       wildcardSourceRound: 2,
     });
-    expect(options[1]).toMatchObject({
+    expect(options[2]).toMatchObject({
       round: 3,
       requiresBestSecond: false,
     });
+  });
+
+  it('allows starting directly in man-on-man from round 1 when the category can support it', () => {
+    const participants = buildParticipants(4, 'MINIME');
+    const options = getManOnManRoundOptions(participants, 'elimination', 4);
+    const manOnManBracket = generatePreviewHeats(participants, 'elimination', 4, {
+      manOnManFromRound: 1,
+    });
+
+    expect(options.map((option) => option.round)).toContain(1);
+    expect(manOnManBracket).toHaveLength(2);
+    expect(manOnManBracket[0].heats).toHaveLength(2);
+    expect(manOnManBracket[0].heats.every((heat) => heat.surfers.length === 2)).toBe(true);
+    expect(manOnManBracket[1].heats[0].surfers).toHaveLength(2);
   });
 
   it('can inject a best second placeholder to avoid a one-surfer man-on-man heat', () => {
