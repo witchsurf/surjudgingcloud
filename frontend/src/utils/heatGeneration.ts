@@ -2,6 +2,17 @@ import { Heat } from '../types';
 import { distributeSeedsSnake } from './seeding';
 
 type HeatPlan = { round: number; heats: Heat[] };
+export interface GeneratePreviewOptions {
+  manOnManFromRound?: number;
+  promoteBestSecond?: boolean;
+}
+
+export interface ManOnManRoundOption {
+  round: number;
+  requiresBestSecond: boolean;
+  wildcardSourceRound?: number;
+  warning?: string;
+}
 
 // Palette de couleurs fixe pour garantir l'ordre standard quoi qu'il arrive
 const FIXED_COLOR_PALETTE = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'];
@@ -39,7 +50,12 @@ const placeholderFrom = (
 
 const getAdvancingCount = (heatSize: number) => Math.max(1, Math.ceil(heatSize / 2));
 
-type QualifierRef = { round: number; heatNumber: number; position: number };
+type QualifierRef = {
+  round: number;
+  heatNumber: number;
+  position: number;
+  customName?: string;
+};
 
 const buildQualifierBuckets = (roundNumber: number, heats: Heat[]) => {
   const adv: QualifierRef[] = [];
@@ -130,9 +146,15 @@ const buildHeatsFromRefs = (
       if (!bucket.length) return null;
       // IMPORTANT: Color index must be the surfer's position WITHIN this heat (0=ROUGE,1=BLANC,2=JAUNE,3=BLEU)
       // NOT the bucket's internal slot index, which can cause duplicates
-      const slots = bucket.map((ref, surferIdx) =>
-        placeholderFrom(ref.round, ref.heatNumber, surferIdx, label, ref.position)
-      );
+      const slots = bucket.map((ref, surferIdx) => (
+        ref.customName
+          ? {
+            color: pickColor(surferIdx),
+            name: ref.customName,
+            country: ''
+          }
+          : placeholderFrom(ref.round, ref.heatNumber, surferIdx, label, ref.position)
+      ));
       return createHeat(roundNumber, heatIdx + 1, slots);
     })
     .filter((heat): heat is Heat => Boolean(heat));
@@ -239,7 +261,7 @@ export const generatePreviewHeats = (
   participants: any[],
   format: 'elimination' | 'repechage',
   seriesSize: number,
-  options?: { manOnManFromRound?: number }
+  options?: GeneratePreviewOptions
 ): HeatPlan[] => {
   const manOnManFromRound = options?.manOnManFromRound ?? 0; // 0 = disabled
   const totalParticipants = participants.length;
@@ -346,10 +368,28 @@ export const generatePreviewHeats = (
     format === 'repechage' ? Math.max(2, Math.floor(seriesSize / 2)) : seriesSize;
   const finalRepSlots = format === 'repechage' ? Math.max(2, seriesSize - finalMainSlots) : 0;
 
+  const maybePromoteBestSecond = (refs: QualifierRef[], roundNumber: number, finalSlotThreshold: number) => {
+    if (!options?.promoteBestSecond || manOnManFromRound <= 0 || roundNumber < manOnManFromRound) {
+      return refs;
+    }
+    if (refs.length <= finalSlotThreshold || refs.length % 2 === 0) {
+      return refs;
+    }
+
+    return refs.concat({
+      round: roundNumber - 1,
+      heatNumber: 0,
+      position: 2,
+      customName: `Meilleur 2e R${roundNumber - 1}`
+    });
+  };
+
   const runMainRound = () => {
     // Determine effective series size for this round (hybrid format support)
     const effectiveSize = (manOnManFromRound > 0 && currentRound >= manOnManFromRound) ? 2 : seriesSize;
     const effectiveFinalSlots = (manOnManFromRound > 0 && currentRound >= manOnManFromRound) ? 2 : finalMainSlots;
+
+    mainRefs = maybePromoteBestSecond(mainRefs, currentRound, effectiveFinalSlots);
 
     if (mainRefs.length <= effectiveFinalSlots) {
       return false;
@@ -442,4 +482,62 @@ export const generatePreviewHeats = (
   }
 
   return rounds;
+};
+
+const serializePlan = (rounds: HeatPlan[]) =>
+  rounds
+    .map((round) => `${round.round}:${round.heats.map((heat) => heat.surfers.length).join(',')}`)
+    .join('|');
+
+const findFirstSoloHeatRound = (rounds: HeatPlan[], startRound: number) =>
+  rounds.find((round) => round.round >= startRound && round.heats.some((heat) => heat.surfers.length < 2))?.round;
+
+export const getManOnManRoundOptions = (
+  participants: any[],
+  format: 'elimination' | 'repechage',
+  seriesSize: number
+): ManOnManRoundOption[] => {
+  if (seriesSize <= 2 || participants.length <= 2) {
+    return [];
+  }
+
+  const classicRounds = generatePreviewHeats(participants, format, seriesSize);
+  const classicSignature = serializePlan(classicRounds);
+  const maxCandidateRound = classicRounds.length;
+
+  return Array.from({ length: Math.max(0, maxCandidateRound - 1) }, (_, index) => index + 2)
+    .map((round) => {
+      const generated = generatePreviewHeats(participants, format, seriesSize, {
+        manOnManFromRound: round
+      });
+
+      if (serializePlan(generated) === classicSignature) {
+        return null;
+      }
+
+      const firstSoloRound = findFirstSoloHeatRound(generated, round);
+      if (!firstSoloRound) {
+        return {
+          round,
+          requiresBestSecond: false
+        };
+      }
+
+      const resolved = generatePreviewHeats(participants, format, seriesSize, {
+        manOnManFromRound: round,
+        promoteBestSecond: true
+      });
+      const resolvedSoloRound = findFirstSoloHeatRound(resolved, round);
+      const wildcardSourceRound = firstSoloRound - 1;
+
+      return {
+        round,
+        requiresBestSecond: !resolvedSoloRound,
+        wildcardSourceRound,
+        warning: !resolvedSoloRound
+          ? `Le man-on-man au Round ${round} laisserait un heat à 1 surfeur au Round ${firstSoloRound}. Ajoutez le meilleur 2e du Round ${wildcardSourceRound} pour équilibrer le tableau.`
+          : `Le man-on-man au Round ${round} crée un bracket incomplet.`
+      };
+    })
+    .filter((option): option is ManOnManRoundOption => Boolean(option));
 };

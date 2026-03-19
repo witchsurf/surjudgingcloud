@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { createHeatsWithEntries } from '../api/supabaseClient';
-import { generatePreviewHeats } from '../utils/heatGeneration';
+import {
+  generatePreviewHeats,
+  getManOnManRoundOptions,
+  type ManOnManRoundOption
+} from '../utils/heatGeneration';
 import EventStatus from './EventStatus';
 import { useConfigStore } from '../stores/configStore';
 
@@ -39,6 +43,7 @@ const GenerateHeatsPage = () => {
   const { setActiveEventId, setConfig, setConfigSaved, saveConfigToDb } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
   const [categoryManOnManRounds, setCategoryManOnManRounds] = useState<Record<string, number>>({});
+  const [categoryBestSecondWildcards, setCategoryBestSecondWildcards] = useState<Record<string, boolean>>({});
   const [seriesSize, setSeriesSize] = useState('auto');
   const [previewData, setPreviewData] = useState<CategoryPreview[]>([]);
   const [eventId, setEventId] = useState<string | null>(null);
@@ -73,22 +78,39 @@ const GenerateHeatsPage = () => {
     return Math.max(1, parseInt(seriesSize, 10) || 2);
   };
 
+  const groupedParticipants = useMemo(
+    () => participants.reduce<Record<string, ParticipantRecord[]>>((acc, participant) => {
+      const rawCategory =
+        (participant.category ||
+          (participant as ParticipantRecord).division ||
+          'OPEN') as string;
+      const category = rawCategory?.trim() || 'OPEN';
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(participant as ParticipantRecord);
+      return acc;
+    }, {}),
+    [participants]
+  );
+
+  const categoryManOnManOptions = useMemo(
+    () => Object.entries(groupedParticipants).reduce<Record<string, ManOnManRoundOption[]>>((acc, [category, list]) => {
+      const baseSeriesSize = getSeriesSize();
+      const computedSeriesSize = Math.max(
+        1,
+        Math.min(baseSeriesSize, list.length || baseSeriesSize)
+      );
+
+      acc[category] = getManOnManRoundOptions(list, selectedFormat, computedSeriesSize);
+      return acc;
+    }, {}),
+    [groupedParticipants, selectedFormat, seriesSize]
+  );
+
   useEffect(() => {
     if (!eventId || participants.length === 0) return;
 
     try {
-      const grouped = participants.reduce<Record<string, ParticipantRecord[]>>((acc, participant) => {
-        const rawCategory =
-          (participant.category ||
-            (participant as ParticipantRecord).division ||
-            'OPEN') as string;
-        const category = rawCategory?.trim() || 'OPEN';
-        if (!acc[category]) acc[category] = [];
-        acc[category].push(participant as ParticipantRecord);
-        return acc;
-      }, {});
-
-      const preview = Object.entries(grouped)
+      const preview = Object.entries(groupedParticipants)
         .map(([category, list]) => {
           const baseSeriesSize = getSeriesSize();
           const computedSeriesSize = Math.max(
@@ -96,13 +118,26 @@ const GenerateHeatsPage = () => {
             Math.min(baseSeriesSize, list.length || baseSeriesSize)
           );
 
-          const catManOnManRound = categoryManOnManRounds[category] || 0;
+          const allowedRounds = categoryManOnManOptions[category] || [];
+          const requestedRound = categoryManOnManRounds[category] || 0;
+          const selectedRound = allowedRounds.some((option) => option.round === requestedRound)
+            ? requestedRound
+            : 0;
+          const selectedOption = allowedRounds.find((option) => option.round === selectedRound);
+          const enableBestSecond = Boolean(
+            selectedOption?.requiresBestSecond && categoryBestSecondWildcards[category]
+          );
 
           const rounds = generatePreviewHeats(
             list,
             selectedFormat,
             computedSeriesSize,
-            catManOnManRound > 0 ? { manOnManFromRound: catManOnManRound } : undefined
+            selectedRound > 0
+              ? {
+                manOnManFromRound: selectedRound,
+                promoteBestSecond: enableBestSecond
+              }
+              : undefined
           ).map(round => ({
             round: round.round,
             heats: round.heats.map(heat => ({
@@ -123,7 +158,16 @@ const GenerateHeatsPage = () => {
     } catch (error) {
       console.error('Erreur lors de la génération des heats:', error);
     }
-  }, [eventId, participants, selectedFormat, seriesSize, categoryManOnManRounds]);
+  }, [
+    categoryBestSecondWildcards,
+    categoryManOnManOptions,
+    categoryManOnManRounds,
+    eventId,
+    groupedParticipants,
+    participants.length,
+    selectedFormat,
+    seriesSize
+  ]);
 
   const handlePreview = () => {
     // This button is now largely redundant for normal flow but can be kept as a manual refresh
@@ -645,7 +689,21 @@ const GenerateHeatsPage = () => {
                 </div>
 
                 <div className="space-y-10">
-                  {previewData.map(category => (
+                  {previewData.map(category => {
+                    const manOnManOptions = categoryManOnManOptions[category.category] || [];
+                    const requestedRound = categoryManOnManRounds[category.category] || 0;
+                    const selectedManOnManRound = manOnManOptions.some((option) => option.round === requestedRound)
+                      ? requestedRound
+                      : 0;
+                    const selectedManOnManOption = manOnManOptions.find(
+                      (option) => option.round === selectedManOnManRound
+                    );
+                    const bestSecondEnabled = Boolean(
+                      selectedManOnManOption?.requiresBestSecond &&
+                      categoryBestSecondWildcards[category.category]
+                    );
+
+                    return (
                     <div key={category.category} className="space-y-6">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-700/30 p-4 rounded-lg">
                         <div className="mb-4 sm:mb-0">
@@ -662,24 +720,64 @@ const GenerateHeatsPage = () => {
                             Man-on-Man à partir du :
                           </label>
                           <select
-                            value={categoryManOnManRounds[category.category] || 0}
+                            value={selectedManOnManRound}
                             onChange={e => {
                               const newVal = parseInt(e.target.value, 10);
                               setCategoryManOnManRounds(prev => ({
                                 ...prev,
                                 [category.category]: newVal
                               }));
+                              if (newVal === 0) {
+                                setCategoryBestSecondWildcards(prev => ({
+                                  ...prev,
+                                  [category.category]: false
+                                }));
+                              }
                             }}
                             className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm"
                           >
                             <option value="0">Désactivé</option>
-                            <option value="2">Round 2</option>
-                            <option value="3">Round 3</option>
-                            <option value="4">Round 4</option>
-                            <option value="5">Round 5</option>
+                            {manOnManOptions.map((option) => (
+                              <option key={option.round} value={option.round}>
+                                {option.requiresBestSecond
+                                  ? `Round ${option.round} (meilleur 2e requis)`
+                                  : `Round ${option.round}`}
+                              </option>
+                            ))}
                           </select>
                         </div>
                       </div>
+                      {selectedManOnManOption?.requiresBestSecond && (
+                        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-50">
+                          <div className="font-semibold text-amber-200">
+                            Attention: ce passage en Man-on-Man crée un bracket impair.
+                          </div>
+                          <p className="mt-2 text-amber-100">
+                            {selectedManOnManOption.warning}
+                          </p>
+                          <label className="mt-4 flex items-start gap-3 text-amber-50">
+                            <input
+                              type="checkbox"
+                              checked={bestSecondEnabled}
+                              onChange={(event) => {
+                                setCategoryBestSecondWildcards(prev => ({
+                                  ...prev,
+                                  [category.category]: event.target.checked
+                                }));
+                              }}
+                              className="mt-1 h-4 w-4 rounded border-amber-300 bg-gray-900 text-amber-500"
+                            />
+                            <span>
+                              Ajouter le meilleur 2e du Round {selectedManOnManOption.wildcardSourceRound}
+                              {' '}pour compléter le tableau en man-on-man.
+                            </span>
+                          </label>
+                          <p className="mt-2 text-xs text-amber-200/80">
+                            Un placeholder `Meilleur 2e R{selectedManOnManOption.wildcardSourceRound}` sera ajouté
+                            dans la prévisualisation et dans le bracket généré.
+                          </p>
+                        </div>
+                      )}
                       {category.rounds.map(round => (
                         <div key={round.round} className="space-y-4">
                           <h4 className="text-lg font-medium text-gray-300">ROUND {round.round}</h4>
@@ -727,7 +825,8 @@ const GenerateHeatsPage = () => {
                         </div>
                       ))}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
