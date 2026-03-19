@@ -13,17 +13,13 @@ describe('generatePreviewHeats man-on-man activation', () => {
     const participants = buildParticipants(10, 'CADET');
     const options = getManOnManRoundOptions(participants, 'elimination', 4);
 
-    expect(options.map((option) => option.round)).toEqual([1, 2, 3]);
+    expect(options.map((option) => option.round)).toEqual([2, 3]);
     expect(options[0]).toMatchObject({
-      round: 1,
-      requiresBestSecond: false,
-    });
-    expect(options[1]).toMatchObject({
       round: 2,
       requiresBestSecond: true,
       wildcardSourceRound: 2,
     });
-    expect(options[2]).toMatchObject({
+    expect(options[1]).toMatchObject({
       round: 3,
       requiresBestSecond: false,
     });
@@ -41,6 +37,32 @@ describe('generatePreviewHeats man-on-man activation', () => {
     expect(manOnManBracket[0].heats).toHaveLength(2);
     expect(manOnManBracket[0].heats.every((heat) => heat.surfers.length === 2)).toBe(true);
     expect(manOnManBracket[1].heats[0].surfers).toHaveLength(2);
+  });
+
+  it('auto-promotes a best second when a round-1 man-on-man bracket becomes odd', () => {
+    const participants = buildParticipants(6, 'CADET');
+
+    const brokenBracket = generatePreviewHeats(participants, 'elimination', 4, {
+      manOnManFromRound: 1,
+    });
+    expect(brokenBracket[1].heats.map((heat) => heat.surfers.length)).toEqual([2, 1]);
+
+    const resolvedBracket = generatePreviewHeats(participants, 'elimination', 4, {
+      manOnManFromRound: 1,
+      promoteBestSecond: true,
+    });
+
+    expect(resolvedBracket[1].heats.map((heat) => heat.surfers.length)).toEqual([2, 2]);
+    expect(
+      resolvedBracket[1].heats.some((heat) =>
+        heat.surfers.some((surfer) => surfer.name === 'Meilleur 2e R1')
+      )
+    ).toBe(true);
+    expect(
+      resolvedBracket.flatMap((round) => round.heats.flatMap((heat) => heat.surfers))
+        .filter((surfer) => surfer.name.startsWith('Meilleur 2e '))
+    ).toHaveLength(1);
+    expect(resolvedBracket[2].heats[0].surfers).toHaveLength(2);
   });
 
   it('can inject a best second placeholder to avoid a one-surfer man-on-man heat', () => {
@@ -62,6 +84,10 @@ describe('generatePreviewHeats man-on-man activation', () => {
         heat.surfers.some((surfer) => surfer.name === 'Meilleur 2e R2')
       )
     ).toBe(true);
+    expect(
+      resolvedBracket.flatMap((round) => round.heats.flatMap((heat) => heat.surfers))
+        .filter((surfer) => surfer.name.startsWith('Meilleur 2e '))
+    ).toHaveLength(1);
     expect(resolvedBracket[3].heats).toHaveLength(1);
     expect(resolvedBracket[3].heats[0].surfers).toHaveLength(2);
   });

@@ -168,7 +168,7 @@ const distributeHeatSizes = (totalSurfers: number, heatSize: number): number[] =
   return Array.from({ length: heatCount }, (_, idx) => baseSize + (idx < remainder ? 1 : 0));
 };
 
-const buildManOnManBracket = (participants: any[]): HeatPlan[] => {
+const buildManOnManBracket = (participants: any[], promoteBestSecond = false): HeatPlan[] => {
   const total = participants.length;
   if (total <= 0) return [];
 
@@ -187,23 +187,31 @@ const buildManOnManBracket = (participants: any[]): HeatPlan[] => {
 
   let previousRound = 1;
   let previousHeatCount = round1.length;
+  let bestSecondUsed = false;
 
   while (previousHeatCount > 1) {
     const currentRound = previousRound + 1;
-    const currentHeatCount = Math.ceil(previousHeatCount / 2);
-    const heats: Heat[] = [];
+    const refs: QualifierRef[] = Array.from({ length: previousHeatCount }, (_, index) => ({
+      round: previousRound,
+      heatNumber: index + 1,
+      position: 1
+    }));
 
-    for (let i = 0, heatNo = 1; i < previousHeatCount; i += 2, heatNo += 1) {
-      const slots = [placeholderFrom(previousRound, i + 1, 0, 'Vainqueur')];
-      if (i + 1 < previousHeatCount) {
-        slots.push(placeholderFrom(previousRound, i + 2, 1, 'Vainqueur'));
-      }
-      heats.push(createHeat(currentRound, heatNo, slots));
+    if (promoteBestSecond && !bestSecondUsed && previousHeatCount % 2 === 1) {
+      refs.push({
+        round: previousRound,
+        heatNumber: 0,
+        position: 2,
+        customName: `Meilleur 2e R${previousRound}`
+      });
+      bestSecondUsed = true;
     }
+
+    const heats = buildHeatsFromRefs(refs, currentRound, 'Vainqueur', 2);
 
     bracket.push({ round: currentRound, heats });
     previousRound = currentRound;
-    previousHeatCount = currentHeatCount;
+    previousHeatCount = heats.length;
   }
 
   return bracket;
@@ -303,7 +311,7 @@ export const generatePreviewHeats = (
         });
       });
 
-    return buildManOnManBracket(participantsInManOnManOrder);
+    return buildManOnManBracket(participantsInManOnManOrder, options?.promoteBestSecond);
   }
 
   // Calculate Standard Round 1 Heat Sizes
@@ -384,18 +392,25 @@ export const generatePreviewHeats = (
 
   let { adv: mainRefs, rep: repechageRefs } = buildQualifierBuckets(1, round1Heats);
   let currentRound = 2;
+  let bestSecondUsed = false;
   const finalMainSlots =
     format === 'repechage' ? Math.max(2, Math.floor(seriesSize / 2)) : seriesSize;
   const finalRepSlots = format === 'repechage' ? Math.max(2, seriesSize - finalMainSlots) : 0;
 
   const maybePromoteBestSecond = (refs: QualifierRef[], roundNumber: number, finalSlotThreshold: number) => {
-    if (!options?.promoteBestSecond || manOnManFromRound <= 0 || roundNumber < manOnManFromRound) {
+    if (
+      bestSecondUsed ||
+      !options?.promoteBestSecond ||
+      manOnManFromRound <= 0 ||
+      roundNumber < manOnManFromRound
+    ) {
       return refs;
     }
     if (refs.length <= finalSlotThreshold || refs.length % 2 === 0) {
       return refs;
     }
 
+    bestSecondUsed = true;
     return refs.concat({
       round: roundNumber - 1,
       heatNumber: 0,
@@ -552,15 +567,18 @@ export const getManOnManRoundOptions = (
         promoteBestSecond: true
       });
       const resolvedSoloRound = findFirstSoloHeatRound(resolved, round);
+
+      if (resolvedSoloRound) {
+        return null;
+      }
+
       const wildcardSourceRound = firstSoloRound - 1;
 
       return {
         round,
-        requiresBestSecond: !resolvedSoloRound,
+        requiresBestSecond: true,
         wildcardSourceRound,
-        warning: !resolvedSoloRound
-          ? `Le man-on-man au Round ${round} laisserait un heat à 1 surfeur au Round ${firstSoloRound}. Ajoutez le meilleur 2e du Round ${wildcardSourceRound} pour équilibrer le tableau.`
-          : `Le man-on-man au Round ${round} crée un bracket incomplet.`
+        warning: `Le man-on-man au Round ${round} laisserait un heat à 1 surfeur au Round ${firstSoloRound}. Ajoutez le meilleur 2e du Round ${wildcardSourceRound} pour équilibrer le tableau.`
       };
     })
     .filter((option): option is ManOnManRoundOption => Boolean(option));
