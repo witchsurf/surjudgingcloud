@@ -161,6 +161,7 @@ export function calculateSurferStats(
     const waveA = sortedWaves[0]?.score ?? 0;
     const waveB = sortedWaves[1]?.score ?? 0;
     let bestTwo = roundScore(waveA + waveB);
+    const penalizedSecondWave = summary?.type === 'INT2' ? sortedWaves[1]?.wave : undefined;
 
     if (isDisqualified) {
       bestTwo = 0;
@@ -170,9 +171,19 @@ export function calculateSurferStats(
       bestTwo = roundScore(waveA);
     }
 
+    const displayWaves = waves.map((wave) => {
+      if (penalizedSecondWave && wave.wave === penalizedSecondWave) {
+        return {
+          ...wave,
+          score: 0
+        };
+      }
+      return wave;
+    });
+
     return {
       surfer,
-      waves,
+      waves: displayWaves,
       bestTwo,
       rank: 1,
       color: SURFER_COLORS[surfer as keyof typeof SURFER_COLORS] || '#6b7280',

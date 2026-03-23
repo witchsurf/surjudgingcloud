@@ -63,6 +63,7 @@ function normalizePriorityKey(label?: string) {
 type NeededScoreInfo = {
   needed: number;
   targetRank: number;
+  label: 'to 1st' | 'to ADV';
 };
 
 function computeNeededScores(stats: SurferStats[]): Record<string, NeededScoreInfo> {
@@ -93,7 +94,11 @@ function computeNeededScores(stats: SurferStats[]): Record<string, NeededScoreIn
     const needed = Math.min(rawNeeded, 10);
 
     if (needed > 0) {
-      result[surfer.surfer] = { needed, targetRank };
+      result[surfer.surfer] = {
+        needed,
+        targetRank,
+        label: targetRank === 1 ? 'to 1st' : 'to ADV'
+      };
     }
   };
 
@@ -523,6 +528,7 @@ export default function ScoreDisplay({
                           {neededInfo && (
                             <div className="text-[10px] font-bold text-cta-600 bg-cta-50 px-2 py-0.5 rounded-full border border-cta-100 uppercase tracking-widest flex items-center gap-1 justify-end">
                               Need <span className="font-bebas text-sm">{neededInfo.needed.toFixed(2)}</span>
+                              <span>{neededInfo.label}</span>
                             </div>
                           )}
                         </div>
