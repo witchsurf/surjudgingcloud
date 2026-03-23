@@ -3,9 +3,10 @@ import type { EffectiveInterference, Score } from '../types';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { fetchHeatEntriesWithParticipants, fetchInterferenceCalls } from '../api/supabaseClient';
-import { isSupabaseConfigured, isLocalSupabaseMode, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { HEAT_RESULTS_CACHE_KEY } from '../utils/constants';
 import { computeEffectiveInterferences } from '../utils/interference';
+import { subscribeToHeatInterference, subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 
 interface HeatResultsProps {
   heatId: string | null;
@@ -136,7 +137,6 @@ export default function HeatResults({
     if (!visible || !heatId || !isSupabaseConfigured()) return;
 
     let cancelled = false;
-    let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
     const loadScores = async () => {
       try {
@@ -164,31 +164,13 @@ export default function HeatResults({
 
     void loadScores();
 
-    const channel = isSupabaseConfigured() && !isLocalSupabaseMode()
-      ? supabase!
-          .channel(`heat-results-${heatId}`)
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'scores', filter: `heat_id=eq.${heatId}` },
-            () => {
-              void loadScores();
-            }
-          )
-          .subscribe()
-      : null;
-
-    if (!channel && isLocalSupabaseMode()) {
-      pollingInterval = setInterval(() => {
-        void loadScores();
-      }, 2500);
-    }
+    const unsubscribe = subscribeToHeatScores(heatId, () => {
+      void loadScores();
+    });
 
     return () => {
       cancelled = true;
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-      channel?.unsubscribe?.();
+      unsubscribe();
     };
   }, [visible, heatId]);
 
@@ -198,19 +180,28 @@ export default function HeatResults({
       return;
     }
     let cancelled = false;
-    fetchInterferenceCalls(heatId)
-      .then((calls) => {
+
+    const refreshInterferences = async () => {
+      try {
+        const calls = await fetchInterferenceCalls(heatId);
         if (cancelled) return;
         setEffectiveInterferences(computeEffectiveInterferences(calls, Math.max(judgeIds.length, 1)));
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!cancelled) {
           console.warn('Impossible de charger les interférences du heat', error);
           setEffectiveInterferences([]);
         }
-      });
+      }
+    };
+
+    void refreshInterferences();
+    const unsubscribe = subscribeToHeatInterference(heatId, () => {
+      void refreshInterferences();
+    });
+
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, [visible, heatId, judgeIds.length, scoresState]);
 

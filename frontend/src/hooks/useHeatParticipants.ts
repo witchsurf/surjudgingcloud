@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase, isLocalSupabaseMode } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import { subscribeToHeatParticipants } from '../lib/sharedHeatTableSubscriptions';
 import {
     fetchHeatEntriesWithParticipants,
     fetchHeatSlotMappings,
@@ -38,8 +39,6 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 const PARTICIPANT_RELOAD_THROTTLE_MS = 400;
-const PARTICIPANT_POLL_INTERVAL_MS = 2500;
-
 const normalizeColor = (value?: string | null) => {
     if (!value) return '';
     return COLOR_MAP[value.toUpperCase()] || value.toUpperCase();
@@ -498,52 +497,15 @@ export function useHeatParticipants(heatId: string) {
 
         scheduleReload(true);
 
-        const usePollingOnly = isLocalSupabaseMode();
-        let pollingInterval: ReturnType<typeof setInterval> | null = null;
-        const subscription = usePollingOnly
-            ? null
-            : supabase!
-                .channel(`heat_participants_${heatId}`)
-                .on(
-                    'postgres_changes',
-                    {
-                        event: '*',
-                        schema: 'public',
-                        table: 'heat_entries',
-                        filter: `heat_id=eq.${heatId}`
-                    },
-                    () => {
-                        scheduleReload();
-                    }
-                )
-                .on(
-                    'postgres_changes',
-                    {
-                        event: '*',
-                        schema: 'public',
-                        table: 'heat_slot_mappings',
-                        filter: `heat_id=eq.${heatId}`
-                    },
-                    () => {
-                        scheduleReload();
-                    }
-                )
-                .subscribe();
-
-        if (usePollingOnly) {
-            pollingInterval = setInterval(() => {
-                scheduleReload();
-            }, PARTICIPANT_POLL_INTERVAL_MS);
-        }
+        const unsubscribe = subscribeToHeatParticipants(heatId, () => {
+            scheduleReload();
+        });
 
         return () => {
             if (reloadTimeoutRef.current) {
                 clearTimeout(reloadTimeoutRef.current);
             }
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-            }
-            subscription?.unsubscribe();
+            unsubscribe();
         };
     }, [heatId]);
 

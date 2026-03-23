@@ -6,7 +6,7 @@ import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/supabaseClient';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers } from '../utils/heat';
-import { supabase, isLocalSupabaseMode } from '../lib/supabase';
+import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
 import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 
@@ -226,49 +226,21 @@ export default function ScoreDisplay({
 
     refreshInterferences();
 
-    let pollingInterval: ReturnType<typeof setInterval> | null = null;
-    const usePollingOnly = isLocalSupabaseMode();
-
-    const channel = usePollingOnly
-      ? null
-      : supabase
-        ?.channel(`interference_calls_${heatId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'interference_calls',
-            filter: `heat_id=eq.${heatId}`
-          },
-          () => {
-            if (refreshTimeout) {
-              clearTimeout(refreshTimeout);
-            }
-            refreshTimeout = setTimeout(() => {
-              refreshInterferences();
-            }, 120);
-          }
-        )
-        .subscribe();
-
-    if (usePollingOnly) {
-      pollingInterval = setInterval(() => {
-        void refreshInterferences();
-      }, 3000);
-    }
-
-    return () => {
-      cancelled = true;
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
+    const unsubscribe = subscribeToHeatInterference(heatId, () => {
       if (refreshTimeout) {
         clearTimeout(refreshTimeout);
       }
-      if (channel && supabase) {
-        supabase.removeChannel(channel);
+      refreshTimeout = setTimeout(() => {
+        void refreshInterferences();
+      }, 120);
+    });
+
+    return () => {
+      cancelled = true;
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
       }
+      unsubscribe();
     };
   }, [configSaved, heatId, config.judges.length, scores]);
 
