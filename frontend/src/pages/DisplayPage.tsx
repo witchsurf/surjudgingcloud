@@ -4,7 +4,6 @@ import ScoreDisplay from '../components/ScoreDisplay';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import {
-    fetchActiveHeatPointer,
     fetchEventConfigSnapshot,
     fetchAllEventHeats,
     fetchAllScoresForEvent,
@@ -13,13 +12,14 @@ import {
     fetchHeatEntriesWithParticipants,
     parseActiveHeatId
 } from '../api/supabaseClient';
-import { isLocalSupabaseMode, supabase } from '../lib/supabase';
+import { isLocalSupabaseMode } from '../lib/supabase';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers } from '../utils/heat';
 import { calculateSurferStats } from '../utils/scoring';
 import { colorLabelMap } from '../utils/colorUtils';
+import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
 import type { AppConfig, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
 
@@ -266,18 +266,12 @@ export default function DisplayPage() {
     useEffect(() => {
         if (!configSaved || !config.competition) return;
 
-        const normalizeEventKey = (value?: string) =>
-            (value || '')
-                .trim()
-                .toLowerCase()
-                .replace(/[_\s]+/g, ' ');
-
-        const expectedEvent = normalizeEventKey(config.competition);
+        const expectedEvent = normalizeEventRealtimeKey(config.competition);
         const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
             if (!row?.active_heat_id) return;
 
             const eventName = (row.event_name || '').trim();
-            if (expectedEvent && normalizeEventKey(eventName) !== expectedEvent) return;
+            if (expectedEvent && normalizeEventRealtimeKey(eventName) !== expectedEvent) return;
 
             const parsed = parseActiveHeatId(row.active_heat_id);
             if (!parsed) return;
@@ -299,33 +293,9 @@ export default function DisplayPage() {
             });
         };
 
-        if (isLocalSupabaseMode()) {
-            const interval = setInterval(() => {
-                void fetchActiveHeatPointer(config.competition).then((row) => {
-                    applyActiveHeatPointer(row);
-                });
-            }, 1000);
-
-            return () => {
-                clearInterval(interval);
-            };
-        }
-
-        if (!supabase) return;
-        const channel = supabase
-            .channel(`display-active-heat-${expectedEvent || 'global'}`)
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'active_heat_pointer' },
-                (payload) => {
-                    applyActiveHeatPointer(payload.new as { event_name?: string; active_heat_id?: string } | null);
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return subscribeToActiveHeatPointer(config.competition, (row) => {
+            applyActiveHeatPointer(row);
+        });
     }, [configSaved, config.competition, setConfig]);
 
     const handleHeatSelect = async (heatId: string) => {
@@ -640,23 +610,9 @@ export default function DisplayPage() {
             };
         }
 
-        const channel = supabase
-            ?.channel(`event-config-${activeEventId}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'event_last_config',
-                filter: `event_id=eq.${activeEventId}`
-            }, async () => {
-                await applySnapshot();
-            })
-            .subscribe();
-
-        return () => {
-            if (channel) {
-                supabase?.removeChannel(channel);
-            }
-        };
+        return subscribeToEventConfig(activeEventId, async () => {
+            await applySnapshot();
+        });
     }, [activeEventId]); // Keep a single subscription per event
 
     // Subscribe to realtime heat timer/config and scores
