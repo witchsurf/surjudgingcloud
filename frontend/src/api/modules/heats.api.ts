@@ -304,19 +304,142 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
     return fallbackEntries as HeatEntriesWithParticipantRow[];
 }
 
+type CategoryHeatUpdateState = {
+    channel: ReturnType<NonNullable<typeof supabase>['channel']> | null;
+    listeners: Map<string, () => void>;
+    knownHeatIds: Set<string>;
+    refreshTimeout: ReturnType<typeof setTimeout> | null;
+};
+
+const categoryHeatUpdateRegistry = new Map<string, CategoryHeatUpdateState>();
+let categoryHeatListenerSequence = 0;
+
+const normalizeCategoryKey = (value: string) => value.trim().toUpperCase();
+
+const emitCategoryHeatUpdate = (state: CategoryHeatUpdateState) => {
+    for (const listener of state.listeners.values()) {
+        try {
+            listener();
+        } catch (error) {
+            console.error('❌ Category heat update listener failed:', error);
+        }
+    }
+};
+
+const scheduleCategoryHeatUpdate = (state: CategoryHeatUpdateState) => {
+    if (state.refreshTimeout) {
+        clearTimeout(state.refreshTimeout);
+    }
+    state.refreshTimeout = setTimeout(() => {
+        emitCategoryHeatUpdate(state);
+    }, 120);
+};
+
+const fetchCategoryHeatIds = async (eventId: number, category: string) => {
+    const { data, error } = await supabase!
+        .from('heats')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('division', category);
+
+    if (error) throw error;
+    return new Set((data ?? []).map((row: { id: string }) => row.id));
+};
+
+const releaseCategoryHeatUpdate = (key: string) => {
+    const state = categoryHeatUpdateRegistry.get(key);
+    if (!state || state.listeners.size > 0) return;
+
+    if (state.refreshTimeout) {
+        clearTimeout(state.refreshTimeout);
+    }
+
+    if (state.channel && supabase) {
+        try {
+            state.channel.unsubscribe();
+            supabase.removeChannel(state.channel);
+        } catch (error) {
+            console.warn('⚠️ Failed to release category heat update channel', key, error);
+        }
+    }
+
+    categoryHeatUpdateRegistry.delete(key);
+};
+
 export function subscribeToHeatUpdates(eventId: number, category: string, callback: () => void) {
     ensureSupabase();
-    const heatPrefix = `event_${eventId}_${category.replace(/\s+/g, '_')}_`;
-    const channel = supabase!
-        .channel(`heats-${eventId}-${category}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'heat_entries' }, (payload) => {
-            const heatId = (payload.new as { heat_id?: string } | null)?.heat_id;
-            if (heatId && heatId.startsWith(heatPrefix)) callback();
+    const normalizedCategory = normalizeCategoryKey(category);
+    const key = `${eventId}:${normalizedCategory}`;
+    const existing = categoryHeatUpdateRegistry.get(key);
+    const listenerId = `category-heat-listener-${++categoryHeatListenerSequence}`;
+
+    if (existing) {
+        existing.listeners.set(listenerId, callback);
+        return () => {
+            existing.listeners.delete(listenerId);
+            releaseCategoryHeatUpdate(key);
+        };
+    }
+
+    const state: CategoryHeatUpdateState = {
+        channel: null,
+        listeners: new Map([[listenerId, callback]]),
+        knownHeatIds: new Set<string>(),
+        refreshTimeout: null,
+    };
+
+    void fetchCategoryHeatIds(eventId, category)
+        .then((heatIds) => {
+            state.knownHeatIds = heatIds;
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'scores', filter: `event_id=eq.${eventId}` }, callback)
+        .catch((error) => {
+            console.warn('⚠️ Unable to preload category heat ids', { eventId, category, error });
+        });
+
+    state.channel = supabase!
+        .channel(`heats-${eventId}-${normalizedCategory}`)
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'heats', filter: `event_id=eq.${eventId}` },
+            (payload) => {
+                const row = (payload.new || payload.old) as { id?: string; division?: string } | null;
+                if (!row?.id) return;
+                if (normalizeCategoryKey(row.division || '') !== normalizedCategory) return;
+
+                if (payload.eventType === 'DELETE') {
+                    state.knownHeatIds.delete(row.id);
+                } else {
+                    state.knownHeatIds.add(row.id);
+                }
+                scheduleCategoryHeatUpdate(state);
+            }
+        )
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'heat_entries' },
+            (payload) => {
+                const row = (payload.new || payload.old) as { heat_id?: string } | null;
+                if (!row?.heat_id || !state.knownHeatIds.has(row.heat_id)) return;
+                scheduleCategoryHeatUpdate(state);
+            }
+        )
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'heat_slot_mappings' },
+            (payload) => {
+                const row = (payload.new || payload.old) as { heat_id?: string } | null;
+                if (!row?.heat_id || !state.knownHeatIds.has(row.heat_id)) return;
+                scheduleCategoryHeatUpdate(state);
+            }
+        )
         .subscribe();
 
-    return () => { supabase?.removeChannel(channel); };
+    categoryHeatUpdateRegistry.set(key, state);
+
+    return () => {
+        state.listeners.delete(listenerId);
+        releaseCategoryHeatUpdate(key);
+    };
 }
 
 export interface ActiveHeatPointer {
