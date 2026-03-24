@@ -241,20 +241,28 @@ export default function AdminPage() {
 
     // Subscribe to own heat timer updates (P2 fix: admin needs to see own timer start)
     const { subscribeToHeat } = useRealtimeSync();
-    const { setTimer: setLocalTimer } = useJudgingStore();
+    const { setTimer: setLocalTimer, setHeatStatus } = useJudgingStore();
 
     useEffect(() => {
         if (!configSaved || !config.competition) return;
 
         console.log('📡 Admin: subscribing to own heat timer:', currentHeatId);
 
-        const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer) => {
-            // Update local timer state when subscription receives update
+        const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, _nextConfig, status) => {
             setLocalTimer(nextTimer);
+            if (status) {
+                setHeatStatus(status);
+            } else if (nextTimer.isRunning) {
+                setHeatStatus('running');
+            } else if (nextTimer.startTime) {
+                setHeatStatus('finished');
+            } else {
+                setHeatStatus('waiting');
+            }
         });
 
         return unsubscribe;
-    }, [configSaved, currentHeatId, subscribeToHeat, setLocalTimer, config.competition]);
+    }, [configSaved, currentHeatId, subscribeToHeat, setLocalTimer, setHeatStatus, config.competition]);
 
     // Wrapper for timer change to match interface
     const handleTimerChange = (newTimer: any) => {
