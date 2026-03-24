@@ -38,6 +38,21 @@ interface CategoryPreview {
   seriesSize: number;
 }
 
+const isBracketPlaceholderName = (value?: string | null) => {
+  const normalized = (value || '').trim();
+  if (!normalized) return false;
+
+  return (
+    normalized.startsWith('Qualifié') ||
+    normalized.startsWith('Winner') ||
+    normalized.startsWith('Vainqueur') ||
+    normalized.startsWith('Repêchage') ||
+    normalized.startsWith('Finaliste') ||
+    normalized.startsWith('Meilleur 2e') ||
+    /^R\d+\s*-\s*H\d+/i.test(normalized)
+  );
+};
+
 const GenerateHeatsPage = () => {
   const navigate = useNavigate();
   const { setActiveEventId, setConfig, setConfigSaved, saveConfigToDb } = useConfigStore();
@@ -222,17 +237,10 @@ const GenerateHeatsPage = () => {
             heats: r.heats.map((h: any) => ({
               heatNumber: h.heat_number,
               slots: h.surfers.map((s: any) => {
-                const isPlaceholder = s.name && (
-                  s.name.startsWith('Qualifié') ||
-                  s.name.startsWith('Winner') ||
-                  s.name.startsWith('Repêchage') ||
-                  s.name.startsWith('Finaliste') ||
-                  s.name.match(/^R\d+-H\d+/)
-                );
                 return {
                   seed: typeof s.seed === 'number' ? s.seed : null,
                   name: s.name,
-                  placeholder: isPlaceholder ? s.name : null
+                  placeholder: isBracketPlaceholderName(s.name) ? s.name : null
                 };
               })
             }))
