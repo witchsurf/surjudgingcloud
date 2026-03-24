@@ -31,6 +31,7 @@ interface AdminInterfaceProps {
   judgeWorkCount: Record<string, number>;
   scores: Score[];
   overrideLogs: ScoreOverrideLog[];
+  heatStatus?: 'waiting' | 'running' | 'paused' | 'finished' | 'closed';
   onScoreOverride: (input: {
     heatId: string;
     competition: string;
@@ -66,6 +67,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   judgeWorkCount,
   scores,
   overrideLogs,
+  heatStatus = 'waiting',
   onScoreOverride,
   onRealtimeTimerStart,
   onRealtimeTimerPause,
@@ -437,7 +439,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         ...config,
         judgeNames: config.judgeNames,
         configSaved,
-        heatStatus: timer.isRunning ? 'running' : timer.startTime ? 'paused' : 'waiting',
+        heatStatus,
         timerSnapshot: {
           ...timer,
           startTime: timer.startTime ? timer.startTime.toISOString() : null
@@ -448,7 +450,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       console.warn('Impossible de préparer la configuration affichage:', error);
       return null;
     }
-  }, [config, configSaved, timer]);
+  }, [config, configSaved, heatStatus, timer]);
 
   const publicDisplayUrl = React.useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -754,8 +756,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const currentHeatStatus = React.useMemo(() => {
     const row = divisionHeatSequence.find(h => h.round === config.round && h.heat_number === config.heatId);
-    return row?.status || 'waiting';
-  }, [divisionHeatSequence, config.round, config.heatId]);
+    const dbStatus = (row?.status || '').toString().trim().toLowerCase();
+    const liveStatus = (heatStatus || '').toString().trim().toLowerCase();
+
+    // Prefer the live status when it is more restrictive than the DB sequence.
+    if (liveStatus === 'closed' || liveStatus === 'finished') {
+      return liveStatus;
+    }
+
+    return dbStatus || liveStatus || 'waiting';
+  }, [divisionHeatSequence, config.round, config.heatId, heatStatus]);
 
   const isCurrentHeatLocked = isLockedStatus(currentHeatStatus);
   const floatingTimeLeft = React.useMemo(

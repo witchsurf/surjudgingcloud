@@ -38,7 +38,8 @@ export default function AdminPage() {
     const {
         scores,
         judgeWorkCount,
-        overrideLogs
+        overrideLogs,
+        heatStatus
     } = useJudgingStore();
 
     const {
@@ -335,6 +336,7 @@ export default function AdminPage() {
             judgeWorkCount={judgeWorkCount}
             scores={scores}
             overrideLogs={overrideLogs}
+            heatStatus={heatStatus}
             onScoreOverride={(req) => handleScoreOverride(req, currentHeatId)}
             onRealtimeTimerStart={publishTimerStart}
             onRealtimeTimerPause={publishTimerPause}
