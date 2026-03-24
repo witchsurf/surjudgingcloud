@@ -82,6 +82,25 @@ export function useHeatManager() {
 
     const closeHeat = useCallback(async () => {
         const closedAt = new Date().toISOString();
+        let sequence: any[] = [];
+        let currentSequenceHeat: any = null;
+        let currentDbHeatId = currentHeatId;
+
+        if (activeEventId && isSupabaseConfigured()) {
+            try {
+                sequence = await fetchOrderedHeatSequence(activeEventId, config.division);
+                currentSequenceHeat = sequence.find((item: any) =>
+                    Number(item.round) === Number(config.round)
+                    && Number(item.heat_number) === Number(config.heatId)
+                ) ?? null;
+
+                if (currentSequenceHeat?.id) {
+                    currentDbHeatId = ensureHeatId(currentSequenceHeat.id);
+                }
+            } catch (error) {
+                console.warn('Impossible de récupérer la séquence des heats', error);
+            }
+        }
 
         // 1. Pause Timer & Update Status
         try {
@@ -91,8 +110,8 @@ export function useHeatManager() {
         }
 
         try {
-            await updateHeatStatus(currentHeatId, 'closed', closedAt);
-            console.log('✅ Heat fermé:', currentHeatId);
+            await updateHeatStatus(currentDbHeatId, 'closed', closedAt);
+            console.log('✅ Heat fermé:', currentDbHeatId);
         } catch (error) {
             console.log('⚠️ Heat fermé en mode local uniquement', error);
         }
@@ -141,19 +160,12 @@ export function useHeatManager() {
             }
         }
 
-        let sequence: any[] = [];
         const currentHeatScores = (scores || []).filter(
             (score) => ensureHeatId(score.heat_id) === currentHeatId && Number(score.score) > 0
         );
         const hasCurrentHeatResults = currentHeatScores.length > 0;
 
         if (activeEventId && isSupabaseConfigured()) {
-            try {
-                sequence = await fetchOrderedHeatSequence(activeEventId, config.division);
-            } catch (error) {
-                console.warn('Impossible de récupérer la séquence des heats', error);
-            }
-
             // Logic to advance qualifiers (complex logic from App.tsx)
             if (hasCurrentHeatResults) {
                 try {
@@ -276,7 +288,10 @@ export function useHeatManager() {
         let eventHasRemainingHeats = true;
 
         if (sequence.length) {
-            const currentIndex = sequence.findIndex((item: any) => ensureHeatId(item.id) === currentHeatId);
+            const currentIndex = sequence.findIndex((item: any) =>
+                Number(item.round) === Number(config.round)
+                && Number(item.heat_number) === Number(config.heatId)
+            );
             if (currentIndex >= 0) {
                 nextCandidate = sequence
                     .slice(currentIndex + 1)
@@ -302,7 +317,7 @@ export function useHeatManager() {
                 const remainingEventHeats = (eventHeats ?? []).filter((heat: any) => {
                     const heatId = ensureHeatId(heat.id);
                     const status = (heat.status || '').toString().trim().toLowerCase();
-                    return heatId !== currentHeatId && !['closed', 'finished'].includes(status);
+                    return heatId !== currentDbHeatId && !['closed', 'finished'].includes(status);
                 });
                 eventHasRemainingHeats = remainingEventHeats.length > 0;
             } catch (error) {
