@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AdminInterface from '../components/AdminInterface';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
@@ -20,6 +21,7 @@ import { supabase } from '../lib/supabase';
 import type { AppConfig } from '../types';
 
 export default function AdminPage() {
+    const [searchParams] = useSearchParams();
     const {
         config,
         setConfig,
@@ -68,6 +70,25 @@ export default function AdminPage() {
 
     // Load participant names for current heat
     const { participants: heatParticipants } = useHeatParticipants(currentHeatId);
+    const eventIdFromUrl = Number(searchParams.get('eventId'));
+
+    useEffect(() => {
+        const targetEventId = Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0
+            ? eventIdFromUrl
+            : activeEventId;
+
+        if (!targetEventId) {
+            return;
+        }
+
+        if (activeEventId !== targetEventId) {
+            setActiveEventId(targetEventId);
+        }
+
+        if (!loadedFromDb || activeEventId !== targetEventId) {
+            void loadConfigFromDb(targetEventId);
+        }
+    }, [eventIdFromUrl, activeEventId, loadedFromDb, loadConfigFromDb, setActiveEventId]);
 
     const handleConfigChange = useCallback((newConfig: AppConfig) => {
         setConfig(newConfig);

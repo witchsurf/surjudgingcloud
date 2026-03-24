@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { createHeatsWithEntries } from '../api/supabaseClient';
+import { createHeatsWithEntries, fetchParticipants } from '../api/supabaseClient';
 import {
   generatePreviewHeats,
   getManOnManRoundOptions,
@@ -10,6 +10,7 @@ import {
 } from '../utils/heatGeneration';
 import EventStatus from './EventStatus';
 import { useConfigStore } from '../stores/configStore';
+import { supabase } from '../lib/supabase';
 
 interface Heat {
   round: number;
@@ -55,35 +56,100 @@ const isBracketPlaceholderName = (value?: string | null) => {
 
 const GenerateHeatsPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { setActiveEventId, setConfig, setConfigSaved, saveConfigToDb } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
   const [categoryManOnManRounds, setCategoryManOnManRounds] = useState<Record<string, number>>({});
   const [seriesSize, setSeriesSize] = useState('auto');
   const [previewData, setPreviewData] = useState<CategoryPreview[]>([]);
   const [eventId, setEventId] = useState<string | null>(null);
+  const [eventName, setEventName] = useState<string | null>(null);
   const [participants, setParticipants] = useState<ParticipantRecord[]>([]);
 
   useEffect(() => {
-    // Try multiple sources for the event ID
-    const storedEventId = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+    const urlEventId = searchParams.get('eventId');
+    const storedEventId = urlEventId || localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
 
     if (!storedEventId) {
       alert('Aucun événement sélectionné. Veuillez créer ou sélectionner un événement.');
       navigate('/my-events');
       return;
     }
-    setEventId(storedEventId);
 
-    try {
-      const saved = JSON.parse(localStorage.getItem('participants') || '[]');
-      if (Array.isArray(saved)) {
-        setParticipants(saved);
-      }
-    } catch (error) {
-      console.warn('Impossible de charger les participants:', error);
-      setParticipants([]);
+    setEventId(storedEventId);
+    localStorage.setItem('surfJudgingActiveEventId', storedEventId);
+
+    const numericEventId = Number.parseInt(storedEventId, 10);
+    if (Number.isFinite(numericEventId) && numericEventId > 0) {
+      setActiveEventId(numericEventId);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const loadContext = async () => {
+      if (Number.isFinite(numericEventId) && numericEventId > 0) {
+        try {
+          const dbParticipants = await fetchParticipants(numericEventId);
+          if (dbParticipants.length > 0) {
+            setParticipants(dbParticipants);
+            localStorage.setItem('participants', JSON.stringify(dbParticipants));
+          } else {
+            const saved = JSON.parse(localStorage.getItem('participants') || '[]');
+            if (Array.isArray(saved)) {
+              setParticipants(saved);
+            }
+          }
+        } catch (error) {
+          console.warn('Impossible de charger les participants depuis la base:', error);
+          try {
+            const saved = JSON.parse(localStorage.getItem('participants') || '[]');
+            if (Array.isArray(saved)) {
+              setParticipants(saved);
+            }
+          } catch {
+            setParticipants([]);
+          }
+        }
+
+        if (supabase) {
+          try {
+            const { data, error } = await supabase
+              .from('events')
+              .select('id, name, organizer, start_date, end_date')
+              .eq('id', numericEventId)
+              .maybeSingle();
+
+            if (error) throw error;
+            if (data?.name) {
+              setEventName(data.name);
+              localStorage.setItem('eventData', JSON.stringify({
+                id: data.id,
+                eventDbId: data.id,
+                name: data.name,
+                organizer: data.organizer,
+                start_date: data.start_date,
+                end_date: data.end_date
+              }));
+            }
+          } catch (error) {
+            console.warn('Impossible de charger le contexte événement:', error);
+          }
+        }
+
+        return;
+      }
+
+      try {
+        const saved = JSON.parse(localStorage.getItem('participants') || '[]');
+        if (Array.isArray(saved)) {
+          setParticipants(saved);
+        }
+      } catch (error) {
+        console.warn('Impossible de charger les participants:', error);
+        setParticipants([]);
+      }
+    };
+
+    void loadContext();
+  }, [navigate, searchParams, setActiveEventId]);
 
   const getSeriesSize = () => {
     if (seriesSize === 'auto') {
@@ -227,6 +293,7 @@ const GenerateHeatsPage = () => {
         await createHeatsWithEntries(
           numericId,
           (() => {
+            if (eventName) return eventName;
             const ev = JSON.parse(localStorage.getItem('eventData') || 'null');
             return ev?.name || 'Competition';
           })(),
@@ -271,6 +338,9 @@ const GenerateHeatsPage = () => {
         if (eventData?.name) competitionName = eventData.name;
       } catch {
         // ignore
+      }
+      if (eventName) {
+        competitionName = eventName;
       }
       const configPayload = {
         competition: competitionName || eventId || 'Event',

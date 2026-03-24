@@ -83,6 +83,10 @@ function App() {
                         <Route index element={<PriorityJudgePage />} />
                     </Route>
 
+                    <Route path="/priority-judge" element={<JudgeLayout />}>
+                        <Route index element={<PriorityJudgePage />} />
+                    </Route>
+
                     {/* Public Display Routes */}
                     <Route path="/display" element={<PublicLayout />}>
                         <Route index element={<DisplayPage />} />
