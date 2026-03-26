@@ -22,7 +22,7 @@ from (
       nullif(
         trim(
           coalesce(
-            coalesce(hc.config -> 'judgeNames', hc.judge_names) ->> upper(trim(judge_station.station)),
+            hc.judge_names ->> upper(trim(judge_station.station)),
             upper(trim(judge_station.station))
           )
         ),
@@ -34,11 +34,7 @@ from (
   join public.heats h
     on h.id = hc.heat_id
   cross join lateral jsonb_array_elements_text(
-    case
-      when jsonb_typeof(hc.config -> 'judges') = 'array' then hc.config -> 'judges'
-      when hc.judges is not null then to_jsonb(hc.judges)
-      else '[]'::jsonb
-    end
+    coalesce(to_jsonb(hc.judges), '[]'::jsonb)
   ) as judge_station(station)
 ) as source
 where source.station <> ''

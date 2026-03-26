@@ -19,7 +19,7 @@ with ranked_scores as (
 resolved_scores as (
   select
     ranked_scores.id,
-    ranked_scores.event_id,
+    coalesce(ranked_scores.event_id, heat.event_id) as event_id,
     ranked_scores.heat_id,
     ranked_scores.competition,
     ranked_scores.division,
@@ -33,6 +33,8 @@ resolved_scores as (
     ranked_scores.timestamp,
     ranked_scores.created_at
   from ranked_scores
+  left join public.heats heat
+    on heat.id = ranked_scores.heat_id
   left join public.heat_judge_assignments assignment
     on assignment.heat_id = ranked_scores.heat_id
    and upper(trim(assignment.station)) = ranked_scores.judge_station_normalized
@@ -54,11 +56,7 @@ with expected_stations as (
   join public.heat_configs config
     on config.heat_id = heat.id
   cross join lateral jsonb_array_elements_text(
-    case
-      when jsonb_typeof(config.config -> 'judges') = 'array' then config.config -> 'judges'
-      when config.judges is not null then to_jsonb(config.judges)
-      else '[]'::jsonb
-    end
+    coalesce(to_jsonb(config.judges), '[]'::jsonb)
   ) as station(value)
 ),
 resolved_assignments as (

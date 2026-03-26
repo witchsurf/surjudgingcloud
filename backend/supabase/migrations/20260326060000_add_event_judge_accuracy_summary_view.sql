@@ -9,7 +9,9 @@ with canonical_scores as (
     score.wave_number,
     score.score
   from public.v_scores_canonical_enriched score
-  where nullif(trim(score.judge_identity_id), '') is not null
+  where score.event_id is not null
+    and nullif(trim(score.judge_identity_id), '') is not null
+    and upper(trim(score.judge_identity_id)) <> 'CHIEF'
 ),
 scored_waves as (
   select
@@ -69,7 +71,7 @@ score_accuracy as (
 ),
 override_stats as (
   select
-    coalesce(override_log.event_id, heat.event_id) as event_id,
+    heat.event_id as event_id,
     coalesce(
       nullif(trim(override_log.judge_identity_id), ''),
       assignment.judge_id,
@@ -93,13 +95,19 @@ override_stats as (
   left join public.heat_judge_assignments assignment
     on assignment.heat_id = override_log.heat_id
    and upper(trim(assignment.station)) = upper(trim(coalesce(override_log.judge_station, override_log.judge_id)))
-  where coalesce(
-    nullif(trim(override_log.judge_identity_id), ''),
-    assignment.judge_id,
-    nullif(trim(override_log.judge_id), '')
-  ) is not null
+  where heat.event_id is not null
+    and coalesce(
+      nullif(trim(override_log.judge_identity_id), ''),
+      assignment.judge_id,
+      nullif(trim(override_log.judge_id), '')
+    ) is not null
+    and upper(trim(coalesce(
+      nullif(trim(override_log.judge_identity_id), ''),
+      assignment.judge_id,
+      nullif(trim(override_log.judge_id), '')
+    ))) <> 'CHIEF'
   group by
-    coalesce(override_log.event_id, heat.event_id),
+    heat.event_id,
     coalesce(
       nullif(trim(override_log.judge_identity_id), ''),
       assignment.judge_id,
@@ -189,4 +197,6 @@ select
     ) >= 55 then 'watch'
     else 'needs_review'
   end as quality_band
-from combined;
+from combined
+where combined.event_id is not null
+  and combined.scored_waves > 0;

@@ -1,3 +1,6 @@
+alter table public.scores disable trigger trg_block_scores_update;
+alter table public.scores disable trigger trg_block_scores_insert;
+
 alter table public.scores
   add column if not exists judge_station text,
   add column if not exists judge_identity_id text;
@@ -42,3 +45,6 @@ create index if not exists idx_interference_calls_heat_station
 
 create index if not exists idx_interference_calls_judge_identity_id
   on public.interference_calls(judge_identity_id);
+
+alter table public.scores enable trigger trg_block_scores_insert;
+alter table public.scores enable trigger trg_block_scores_update;

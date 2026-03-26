@@ -1,3 +1,6 @@
+alter table public.scores disable trigger trg_block_scores_update;
+alter table public.scores disable trigger trg_block_scores_insert;
+
 do $$
 begin
   if exists (
@@ -15,7 +18,7 @@ begin
         from public.heat_judge_assignments
       ),
       judge_lookup as (
-        select id as judge_identity_id
+        select id::text as judge_identity_id
         from public.judges
       ),
       score_candidates as (
@@ -31,6 +34,27 @@ begin
          and assignment_lookup.station = upper(trim(coalesce(score.judge_station, score.judge_id)))
         left join judge_lookup
           on judge_lookup.judge_identity_id = score.judge_id
+      )
+      update public.scores score
+      set
+        judge_identity_id = score_candidates.judge_identity_id,
+        judge_station = upper(trim(coalesce(score.judge_station, score.judge_id)))
+      from score_candidates
+      where score.id = score_candidates.id
+        and score_candidates.judge_identity_id is not null;
+    $sql$;
+
+    execute $sql$
+      with assignment_lookup as (
+        select
+          heat_id,
+          upper(trim(station)) as station,
+          nullif(trim(judge_id), '') as judge_identity_id
+        from public.heat_judge_assignments
+      ),
+      judge_lookup as (
+        select id::text as judge_identity_id
+        from public.judges
       ),
       override_candidates as (
         select
@@ -45,6 +69,27 @@ begin
          and assignment_lookup.station = upper(trim(coalesce(log.judge_station, log.judge_id)))
         left join judge_lookup
           on judge_lookup.judge_identity_id = log.judge_id
+      )
+      update public.score_overrides log
+      set
+        judge_identity_id = override_candidates.judge_identity_id,
+        judge_station = upper(trim(coalesce(log.judge_station, log.judge_id)))
+      from override_candidates
+      where log.id = override_candidates.id
+        and override_candidates.judge_identity_id is not null;
+    $sql$;
+
+    execute $sql$
+      with assignment_lookup as (
+        select
+          heat_id,
+          upper(trim(station)) as station,
+          nullif(trim(judge_id), '') as judge_identity_id
+        from public.heat_judge_assignments
+      ),
+      judge_lookup as (
+        select id::text as judge_identity_id
+        from public.judges
       ),
       interference_candidates as (
         select
@@ -60,23 +105,10 @@ begin
         left join judge_lookup
           on judge_lookup.judge_identity_id = call.judge_id
       )
-      update public.scores score
-      set judge_identity_id = score_candidates.judge_identity_id,
-          judge_station = upper(trim(coalesce(score.judge_station, score.judge_id)))
-      from score_candidates
-      where score.id = score_candidates.id
-        and score_candidates.judge_identity_id is not null;
-
-      update public.score_overrides log
-      set judge_identity_id = override_candidates.judge_identity_id,
-          judge_station = upper(trim(coalesce(log.judge_station, log.judge_id)))
-      from override_candidates
-      where log.id = override_candidates.id
-        and override_candidates.judge_identity_id is not null;
-
       update public.interference_calls call
-      set judge_identity_id = interference_candidates.judge_identity_id,
-          judge_station = upper(trim(coalesce(call.judge_station, call.judge_id)))
+      set
+        judge_identity_id = interference_candidates.judge_identity_id,
+        judge_station = upper(trim(coalesce(call.judge_station, call.judge_id)))
       from interference_candidates
       where call.id = interference_candidates.id
         and interference_candidates.judge_identity_id is not null;
@@ -86,11 +118,15 @@ begin
       update public.scores
       set judge_station = upper(trim(coalesce(judge_station, judge_id)))
       where judge_station is null or trim(judge_station) = '';
+    $sql$;
 
+    execute $sql$
       update public.score_overrides
       set judge_station = upper(trim(coalesce(judge_station, judge_id)))
       where judge_station is null or trim(judge_station) = '';
+    $sql$;
 
+    execute $sql$
       update public.interference_calls
       set judge_station = upper(trim(coalesce(judge_station, judge_id)))
       where judge_station is null or trim(judge_station) = '';
@@ -98,3 +134,6 @@ begin
   end if;
 end
 $$;
+
+alter table public.scores enable trigger trg_block_scores_insert;
+alter table public.scores enable trigger trg_block_scores_update;
