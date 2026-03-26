@@ -230,8 +230,11 @@ export class HeatRepository extends BaseRepository {
                 logger.info('HeatRepository', 'Heat created offline', { heat: heatData });
                 saveOffline({
                     table: 'heats',
-                    action: 'insert',
-                    payload: heatData,
+                    action: 'upsert',
+                    payload: {
+                        rows: heatData,
+                        options: { onConflict: 'id' }
+                    },
                     timestamp: Date.now()
                 });
             },

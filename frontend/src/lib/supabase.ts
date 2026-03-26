@@ -409,6 +409,14 @@ export async function syncOffline() {
   if (queue.length === 0) return
   const failed: OfflineEntry[] = []
 
+  const isBenignConflict = (entry: OfflineEntry, err: unknown) => {
+    const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: string }).code || '') : ''
+    const message = typeof err === 'object' && err !== null && 'message' in err ? String((err as { message?: string }).message || '') : ''
+    const duplicate = code === '23505' || code === '409' || /duplicate|conflict/i.test(message)
+    if (!duplicate) return false
+    return entry.table === 'heats' || entry.table === 'heat_configs' || entry.table === 'heat_realtime_config'
+  }
+
   for (const entry of queue) {
     try {
       if (entry.action === 'insert')
@@ -420,6 +428,10 @@ export async function syncOffline() {
       else if (entry.action === 'delete')
         await supabase.from(entry.table).delete().eq('id', entry.payload.id)
     } catch (err) {
+      if (isBenignConflict(entry, err)) {
+        console.warn('⚠️ Conflit offline ignoré (déjà synchronisé)', entry.table, err)
+        continue
+      }
       console.error('Erreur de sync offline', err)
       failed.push(entry)
     }

@@ -50,6 +50,7 @@ interface HeatChannelState {
   lastConfig: AppConfig | null;
   lastStatus: HeatLifecycleStatus | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
+  pollingInterval: ReturnType<typeof setInterval> | null;
   reconnecting: boolean;
 }
 
@@ -58,6 +59,7 @@ let heatListenerSequence = 0;
 
 const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
 const LOCAL_POLL_INTERVAL_MS = 1000;
+const CLOUD_POLL_INTERVAL_MS = 3000;
 
 const emitHeatUpdate = (
   heatId: string,
@@ -146,9 +148,20 @@ const createHeatChannel = (normalizedHeatId: string) => {
     lastConfig: null,
     lastStatus: null,
     retryTimer: null,
+    pollingInterval: null,
     reconnecting: false,
   };
   heatChannelRegistry.set(normalizedHeatId, state);
+
+  const ensurePolling = () => {
+    if (state.pollingInterval) return;
+    const intervalMs = isLocalSupabaseMode() ? LOCAL_POLL_INTERVAL_MS : CLOUD_POLL_INTERVAL_MS;
+    state.pollingInterval = setInterval(() => {
+      void refreshHeatSnapshot(normalizedHeatId);
+    }, intervalMs);
+  };
+
+  ensurePolling();
 
   const setupChannel = () => {
     if (!heatChannelRegistry.has(normalizedHeatId)) return;
@@ -288,6 +301,10 @@ const releaseHeatChannel = (normalizedHeatId: string) => {
       if (state.retryTimer) {
         clearTimeout(state.retryTimer);
         state.retryTimer = null;
+      }
+      if (state.pollingInterval) {
+        clearInterval(state.pollingInterval);
+        state.pollingInterval = null;
       }
       if (state.channel) {
         const channel = state.channel;
@@ -685,11 +702,10 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     loadInitialState();
 
-    if (usePollingOnly) {
-      pollingInterval = setInterval(() => {
-        void loadInitialState({ skipIfUnchanged: true });
-      }, LOCAL_POLL_INTERVAL_MS);
-    }
+    const pollIntervalMs = usePollingOnly ? LOCAL_POLL_INTERVAL_MS : CLOUD_POLL_INTERVAL_MS;
+    pollingInterval = setInterval(() => {
+      void loadInitialState({ skipIfUnchanged: true });
+    }, pollIntervalMs);
 
     // Fonction de nettoyage
     return () => {

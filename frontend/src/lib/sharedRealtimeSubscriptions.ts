@@ -24,8 +24,8 @@ export type ActiveHeatPointerRealtimeRow = {
   active_heat_id?: string;
 };
 
-const EVENT_CONFIG_POLL_INTERVAL_MS = 1000;
-const ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS = 1000;
+const EVENT_CONFIG_POLL_INTERVAL_MS = 3000;
+const ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS = 3000;
 
 const eventConfigRegistry = new Map<number, RegistryState<EventConfigRealtimeRow>>();
 const activeHeatPointerRegistry = new Map<string, RegistryState<ActiveHeatPointerRealtimeRow>>();
@@ -124,12 +124,12 @@ export const subscribeToEventConfig = (
     }
   };
 
-  if (isLocalSupabaseMode()) {
+  void refresh();
+  state.pollingInterval = setInterval(() => {
     void refresh();
-    state.pollingInterval = setInterval(() => {
-      void refresh();
-    }, EVENT_CONFIG_POLL_INTERVAL_MS);
-  } else if (supabase) {
+  }, EVENT_CONFIG_POLL_INTERVAL_MS);
+
+  if (!isLocalSupabaseMode() && supabase) {
     void refresh();
     state.channel = supabase
       .channel(`shared-event-config-${eventId}`)
@@ -190,12 +190,12 @@ export const subscribeToActiveHeatPointer = (
     }
   };
 
-  if (isLocalSupabaseMode()) {
+  void refresh();
+  state.pollingInterval = setInterval(() => {
     void refresh();
-    state.pollingInterval = setInterval(() => {
-      void refresh();
-    }, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
-  } else if (supabase) {
+  }, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
+
+  if (!isLocalSupabaseMode() && supabase) {
     void refresh();
     state.channel = supabase
       .channel(`shared-active-heat-${key}`)
