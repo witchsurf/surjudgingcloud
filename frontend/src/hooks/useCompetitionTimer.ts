@@ -30,21 +30,9 @@ export function useCompetitionTimer() {
         }
     }, []);
 
-    // Load timer from localStorage on mount
-    useEffect(() => {
-        try {
-            const storedTimer = localStorage.getItem(STORAGE_KEYS.timer);
-            if (storedTimer) {
-                const parsed = JSON.parse(storedTimer);
-                setTimer({
-                    ...parsed,
-                    startTime: parsed.startTime ? new Date(parsed.startTime) : null
-                });
-            }
-        } catch (error) {
-            console.error('❌ Error loading timer:', error);
-        }
-    }, [setTimer]);
+    // Do not hydrate the admin timer from localStorage on mount.
+    // The remote heat state is the source of truth; reviving a stale local timer
+    // can make admin diverge from display/judge tablets after refresh.
 
     // Timer interval logic
     useEffect(() => {
