@@ -137,6 +137,20 @@ export default function AdminPage() {
         setConfigSaved(saved);
 
         if (saved) {
+            const persistedEventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+            const persistedEventId = persistedEventIdRaw ? Number(persistedEventIdRaw) : NaN;
+            let targetEventId = Number.isFinite(persistedEventId) && persistedEventId > 0
+                ? persistedEventId
+                : activeEventId;
+
+            if (!targetEventId && config.competition) {
+                targetEventId = await fetchEventIdByName(config.competition);
+            }
+
+            if (targetEventId && activeEventId !== targetEventId) {
+                setActiveEventId(targetEventId);
+            }
+
             const divisionsPayload = Array.from(
                 new Set<string>(
                     [...availableDivisions, config.division]
@@ -149,15 +163,15 @@ export default function AdminPage() {
                 identityId: config.judgeIdentities?.[id],
             }));
 
-            if (canUseSupabaseConnection() && isSupabaseConfigured() && activeEventId) {
+            if (canUseSupabaseConnection() && isSupabaseConfigured() && targetEventId) {
                 try {
-                    await updateEventConfiguration(activeEventId, {
+                    await updateEventConfiguration(targetEventId, {
                         config,
                         divisions: divisionsPayload,
                         judges: judgesPayload,
                     });
                     await saveEventConfigSnapshot({
-                        eventId: activeEventId,
+                        eventId: targetEventId,
                         eventName: config.competition,
                         division: config.division,
                         round: config.round,
@@ -221,6 +235,7 @@ export default function AdminPage() {
         config,
         availableDivisions,
         activeEventId,
+        setActiveEventId,
         setConfigSaved,
         createHeat,
         saveHeatConfig,

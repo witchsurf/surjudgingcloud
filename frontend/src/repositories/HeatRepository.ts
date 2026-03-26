@@ -221,7 +221,7 @@ export class HeatRepository extends BaseRepository {
                 this.ensureSupabase();
                 const { error } = await this.supabase!
                     .from('heats')
-                    .upsert(heatData, { onConflict: 'competition, division, round, heat_number' });
+                    .upsert(heatData, { onConflict: 'id' });
 
                 if (error) throw error;
                 logger.info('HeatRepository', 'Heat created online', { heat: heatData });

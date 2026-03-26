@@ -312,19 +312,30 @@ export async function saveEventConfigSnapshot(payload: {
 
 export async function ensureEventExists(eventName: string): Promise<number> {
     ensureSupabase();
-    const { data: existing, error: fetchError } = await supabase!
-        .from('events')
-        .select('id')
-        .eq('name', eventName)
-        .maybeSingle();
+    const normalizedName = eventName.trim();
+    const lowerName = normalizedName.toLowerCase();
 
-    if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
-    if (existing) return existing.id;
+    const lookupExisting = async (): Promise<number | null> => {
+        const { data, error } = await supabase!
+            .from('events')
+            .select('id, name')
+            .ilike('name', normalizedName)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+        if (error) throw error;
+
+        const exactMatch = (data ?? []).find((row) => (row.name || '').trim().toLowerCase() === lowerName);
+        return exactMatch?.id ?? null;
+    };
+
+    const existingId = await lookupExisting();
+    if (existingId) return existingId;
 
     const { data: newEvent, error: createError } = await supabase!
         .from('events')
         .insert({
-            name: eventName,
+            name: normalizedName,
             organizer: 'Auto-created',
             start_date: new Date().toISOString().split('T')[0],
             end_date: new Date().toISOString().split('T')[0],
@@ -333,20 +344,29 @@ export async function ensureEventExists(eventName: string): Promise<number> {
         .select('id')
         .single();
 
-    if (createError) throw createError;
+    if (createError) {
+        if (createError.code === '23505') {
+            const collidedId = await lookupExisting();
+            if (collidedId) return collidedId;
+        }
+        throw createError;
+    }
     return newEvent.id;
 }
 
 export async function fetchEventIdByName(name: string): Promise<number | null> {
     ensureSupabase();
+    const normalizedName = name.trim();
+    const lowerName = normalizedName.toLowerCase();
     const { data, error } = await supabase!
         .from('events')
-        .select('id')
-        .eq('name', name)
+        .select('id, name')
+        .ilike('name', normalizedName)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(10);
 
     if (error) return null;
-    return data?.id || null;
+
+    const exactMatch = (data ?? []).find((row) => (row.name || '').trim().toLowerCase() === lowerName);
+    return exactMatch?.id || null;
 }
