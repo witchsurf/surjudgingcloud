@@ -299,6 +299,10 @@ export function useSupabaseSync() {
         judge_names: assignments.reduce<Record<string, string>>((acc, assignment) => {
           acc[assignment.station] = assignment.judge_name;
           return acc;
+        }, {}),
+        judge_identities: assignments.reduce<Record<string, string>>((acc, assignment) => {
+          acc[assignment.station] = assignment.judge_id;
+          return acc;
         }, {})
       };
     } catch (error) {

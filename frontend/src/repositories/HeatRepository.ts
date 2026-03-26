@@ -142,8 +142,11 @@ export class HeatRepository extends BaseRepository {
         
         const payload = {
             heat_id: normalizedHeatId,
-            config: config,
-            updated_at: new Date().toISOString()
+            judges: Array.isArray(config?.judges) ? config.judges : [],
+            surfers: Array.isArray(config?.surfers) ? config.surfers : [],
+            judge_names: config?.judge_names ?? config?.judgeNames ?? {},
+            waves: Number.isFinite(Number(config?.waves)) ? Number(config.waves) : 15,
+            tournament_type: config?.tournament_type ?? config?.tournamentType ?? 'elimination'
         };
 
         return this.execute(

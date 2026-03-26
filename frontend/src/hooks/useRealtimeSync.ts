@@ -50,6 +50,7 @@ interface HeatChannelState {
   lastConfig: AppConfig | null;
   lastStatus: HeatLifecycleStatus | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
+  reconnecting: boolean;
 }
 
 const heatChannelRegistry = new Map<string, HeatChannelState>();
@@ -145,6 +146,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
     lastConfig: null,
     lastStatus: null,
     retryTimer: null,
+    reconnecting: false,
   };
   heatChannelRegistry.set(normalizedHeatId, state);
 
@@ -153,8 +155,10 @@ const createHeatChannel = (normalizedHeatId: string) => {
 
     if (state.channel && supabase) {
       try {
-        state.channel.unsubscribe();
-        supabase.removeChannel(state.channel);
+        const previousChannel = state.channel;
+        state.channel = null;
+        previousChannel.unsubscribe();
+        supabase.removeChannel(previousChannel);
       } catch (error) {
         console.warn('⚠️ Failed to recycle realtime channel', normalizedHeatId, error);
       }
@@ -238,10 +242,13 @@ const createHeatChannel = (normalizedHeatId: string) => {
     state.channel = channel;
 
     channel.subscribe((status) => {
+      if (state.channel !== channel) return;
+
       if (debugRealtimeEnabled) {
         console.log(`📡 [${channelName}] status:`, status, 'listeners:', heatChannelRegistry.get(normalizedHeatId)?.listeners.size ?? 0);
       }
       if (status === 'SUBSCRIBED') {
+        state.reconnecting = false;
         void refreshHeatSnapshot(normalizedHeatId);
         window.dispatchEvent(new CustomEvent('heatRealtimeResync', {
           detail: { heatId: normalizedHeatId }
@@ -250,7 +257,10 @@ const createHeatChannel = (normalizedHeatId: string) => {
       }
 
       if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
+        if (state.reconnecting) return;
+        state.reconnecting = true;
         console.warn(`⚠️ Heat stream ${channelName} dropped (${status}), scheduling reconnect...`);
+        state.channel = null;
         supabase!.removeChannel(channel).catch(() => {});
         if (state.retryTimer) clearTimeout(state.retryTimer);
         state.retryTimer = setTimeout(() => {
@@ -280,8 +290,11 @@ const releaseHeatChannel = (normalizedHeatId: string) => {
         state.retryTimer = null;
       }
       if (state.channel) {
-        state.channel.unsubscribe();
-        supabase?.removeChannel(state.channel);
+        const channel = state.channel;
+        state.channel = null;
+        state.reconnecting = false;
+        channel.unsubscribe();
+        supabase?.removeChannel(channel);
       }
     } catch (error) {
       console.warn('⚠️ Failed to release realtime channel', normalizedHeatId, error);

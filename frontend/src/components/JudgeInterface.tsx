@@ -144,6 +144,10 @@ function JudgeInterface({
     if (typeof window === 'undefined') return judgeId;
     return sessionStorage.getItem('authenticated_judge_identity_id') || sessionStorage.getItem('authenticated_judge_id') || judgeId;
   }, [judgeId]);
+  const isKioskJudge = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(sessionStorage.getItem('kiosk_position'));
+  }, []);
 
   // Judge Name Modal State
   const [showNameModal, setShowNameModal] = useState(false);
@@ -157,14 +161,22 @@ function JudgeInterface({
   // Check if judge name is set
   useEffect(() => {
     if (priorityOnly) return;
-    if (configSaved && config.competition && judgeId && config.judges.includes(judgeId)) {
-      const currentName = config.judgeNames[judgeId];
-      // If name is missing or is just the ID (e.g. "J1"), show modal
-      if (!currentName || currentName === judgeId) {
-        setShowNameModal(true);
-      }
+    const configuredJudgeKey = (judgeStation || judgeId || '').trim();
+    const configuredName = (config.judgeNames[configuredJudgeKey] || '').trim();
+    const effectiveName = configuredName || judgeName?.trim() || '';
+
+    if (!configSaved || !config.competition || !configuredJudgeKey || !config.judges.includes(configuredJudgeKey)) {
+      setShowNameModal(false);
+      return;
     }
-  }, [priorityOnly, configSaved, config.competition, config.judgeNames, config.judges, judgeId]);
+
+    if (isKioskJudge || (effectiveName && effectiveName.toUpperCase() !== configuredJudgeKey.toUpperCase())) {
+      setShowNameModal(false);
+      return;
+    }
+
+    setShowNameModal(true);
+  }, [priorityOnly, configSaved, config.competition, config.judgeNames, config.judges, judgeId, judgeName, judgeStation, isKioskJudge]);
 
   const handleNameSubmit = async () => {
     if (!judgeNameInput.trim()) return;

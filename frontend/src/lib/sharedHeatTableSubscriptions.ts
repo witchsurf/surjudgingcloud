@@ -9,6 +9,7 @@ type HeatSignalState = {
   channel: RealtimeChannel | null;
   pollingInterval: ReturnType<typeof setInterval> | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
+  reconnecting: boolean;
   listeners: Record<HeatSignalType, Map<string, Listener>>;
 };
 
@@ -21,6 +22,7 @@ const createState = (): HeatSignalState => ({
   channel: null,
   pollingInterval: null,
   retryTimer: null,
+  reconnecting: false,
   listeners: {
     scores: new Map(),
     interference: new Map(),
@@ -56,8 +58,11 @@ const release = (heatId: string) => {
 
   if (state.channel && supabase) {
     try {
-      state.channel.unsubscribe();
-      supabase.removeChannel(state.channel);
+      const channel = state.channel;
+      state.channel = null;
+      state.reconnecting = false;
+      channel.unsubscribe();
+      supabase.removeChannel(channel);
     } catch (error) {
       console.warn('⚠️ Failed to release shared heat signal channel', heatId, error);
     }
@@ -87,8 +92,10 @@ const ensureState = (heatId: string) => {
 
       if (state.channel && supabase) {
         try {
-          state.channel.unsubscribe();
-          supabase.removeChannel(state.channel);
+          const previousChannel = state.channel;
+          state.channel = null;
+          previousChannel.unsubscribe();
+          supabase.removeChannel(previousChannel);
         } catch (error) {
           console.warn('⚠️ Failed to recycle shared heat signal channel', heatId, error);
         }
@@ -119,8 +126,13 @@ const ensureState = (heatId: string) => {
           () => emit(state, 'participants')
         )
         .subscribe((status, err) => {
+          if (state.channel !== channel) return;
+
           if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+            if (state.reconnecting) return;
+            state.reconnecting = true;
             console.warn(`⚠️ Shared stream ${channelName} dropped (${status}), scheduling reconnect...`, err);
+            state.channel = null;
             supabase!.removeChannel(channel).catch(() => {});
             if (state.retryTimer) clearTimeout(state.retryTimer);
             state.retryTimer = setTimeout(() => {
@@ -131,6 +143,7 @@ const ensureState = (heatId: string) => {
               }
             }, 3000 + Math.random() * 2000);
           } else if (status === 'SUBSCRIBED') {
+            state.reconnecting = false;
             // Heal any missed events upon reconnect by emitting events
             emit(state, 'scores');
             emit(state, 'interference');

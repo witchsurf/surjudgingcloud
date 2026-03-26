@@ -2969,6 +2969,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 <div key={judgeId} className="bg-primary-50 border-2 border-primary-950 p-4 rounded-xl shadow-block flex flex-col gap-3">
                   {(() => {
                     const assignedIdentityId = resolveAssignedJudgeIdentity(judgeId);
+                    const assignedOfficialJudge = availableOfficialJudges.find((judge) => judge.id === assignedIdentityId);
                     const isOfficialAssigned = Boolean(assignedIdentityId);
                     return (
                       <>
@@ -3012,7 +3013,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                     />
                     <p className="text-[10px] text-primary-700">
                       {isOfficialAssigned
-                        ? `Identité réelle liée: ${assignedIdentityId}`
+                        ? `Officiel lié: ${assignedOfficialJudge?.name || config.judgeNames[judgeId] || judgeId}`
                         : `Aucune identité officielle liée à ${judgeId}`}
                     </p>
                   </div>

@@ -116,6 +116,10 @@ export default function JudgePage() {
         if (!targetEventId) return;
 
         return subscribeToEventConfig(targetEventId, (row) => {
+            if (positionFromUrl) {
+                void loadConfigFromDb(targetEventId);
+                return;
+            }
             setConfig((prev) => ({
                 ...prev,
                 competition: row.event_name || prev.competition,
@@ -124,7 +128,7 @@ export default function JudgePage() {
                 heatId: row.heat_number ?? prev.heatId
             }));
         });
-    }, [eventIdFromUrl, activeEventId, configLoading, setConfig]);
+    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, loadConfigFromDb]);
 
     // Subscribe to realtime timer/config for the current heat
     useEffect(() => {
@@ -187,6 +191,11 @@ export default function JudgePage() {
             const eventName = (row.event_name || '').trim();
             if (expectedEvent && normalizeEventRealtimeKey(eventName) !== expectedEvent) return;
 
+            if (positionFromUrl) {
+                void loadKioskConfig();
+                return;
+            }
+
             const parsed = parseActiveHeatId(row.active_heat_id);
             if (!parsed) return;
 
@@ -216,7 +225,7 @@ export default function JudgePage() {
         return subscribeToActiveHeatPointer(config.competition, (row) => {
             applyActiveHeatPointer(row);
         });
-    }, [config.competition, configLoading, setConfig]);
+    }, [config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig]);
 
     // Purge local scores only when heat changes.
     // Do NOT purge on generic config reload, otherwise unsynced tablet scores can disappear.
