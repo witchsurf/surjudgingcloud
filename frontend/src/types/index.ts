@@ -7,6 +7,7 @@ export interface AppConfig {
   surfers: string[];
   waves: number;
   judgeNames: Record<string, string>;
+  judgeIdentities?: Record<string, string>;
   judgeEmails?: Record<string, string>;
   surferNames?: Record<string, string>;
   surferCountries: Record<string, string>;
@@ -40,6 +41,8 @@ export interface Score {
   round: number;
   judge_id: string;
   judge_name: string;
+  judge_station?: string;
+  judge_identity_id?: string;
   surfer: string;
   wave_number: number;
   score: number;
@@ -57,6 +60,8 @@ export interface ScoreOverrideLog {
   score_id: string;
   judge_id: string;
   judge_name: string;
+  judge_station?: string;
+  judge_identity_id?: string;
   surfer: string;
   wave_number: number;
   previous_score: number | null;
@@ -122,6 +127,8 @@ export interface InterferenceCall {
   round?: number | null;
   judge_id: string;
   judge_name?: string | null;
+  judge_station?: string | null;
+  judge_identity_id?: string | null;
   surfer: string;
   wave_number: number;
   call_type: InterferenceType;

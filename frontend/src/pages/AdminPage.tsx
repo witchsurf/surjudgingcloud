@@ -146,6 +146,7 @@ export default function AdminPage() {
             const judgesPayload = config.judges.map((id) => ({
                 id,
                 name: config.judgeNames[id] || id,
+                identityId: config.judgeIdentities?.[id],
             }));
 
             if (canUseSupabaseConnection() && isSupabaseConfigured() && activeEventId) {

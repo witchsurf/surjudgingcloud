@@ -9,6 +9,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, promoteOpeningToOrdered, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
+import { canonicalizeScores } from '../api/modules/scoring.api';
 
 interface JudgeInterfaceProps {
   config?: AppConfig;
@@ -134,6 +135,16 @@ function JudgeInterface({
     return colorLabelMap[raw as HeatColor] ?? raw;
   }, []);
 
+  const judgeStation = useMemo(() => {
+    if (typeof window === 'undefined') return judgeId;
+    return sessionStorage.getItem('kiosk_position') || sessionStorage.getItem('authenticated_judge_id') || judgeId;
+  }, [judgeId]);
+
+  const judgeIdentityId = useMemo(() => {
+    if (typeof window === 'undefined') return judgeId;
+    return sessionStorage.getItem('authenticated_judge_identity_id') || sessionStorage.getItem('authenticated_judge_id') || judgeId;
+  }, [judgeId]);
+
   // Judge Name Modal State
   const [showNameModal, setShowNameModal] = useState(false);
   const [judgeNameInput, setJudgeNameInput] = useState('');
@@ -202,11 +213,12 @@ function JudgeInterface({
 
     try {
       const parsedScores: Score[] = JSON.parse(savedScores);
-      return parsedScores.filter((score) => {
+      return canonicalizeScores(parsedScores.filter((score) => {
         const sameJudge = score.judge_id === judgeId;
+        const sameStation = (score.judge_station || score.judge_id) === judgeStation;
         const sameHeat = currentHeatId ? ensureHeatId(score.heat_id) === currentHeatId : false;
-        return sameJudge && sameHeat;
-      });
+        return sameJudge && sameStation && sameHeat;
+      }));
     } catch (error) {
       console.error('Erreur chargement scores juge:', error);
       return [];
@@ -243,16 +255,16 @@ function JudgeInterface({
     if (incomingId !== currentId) return;
 
     const normalised = { ...incoming, heat_id: incomingId };
-    const existing = readAllScoresFromStorage().filter(score => !(
-      ensureHeatId(score.heat_id) === incomingId &&
-      score.judge_id === normalised.judge_id &&
-      score.surfer === normalised.surfer &&
-      score.wave_number === normalised.wave_number
-    ));
-    const merged = [...existing, normalised];
+    const existing = readAllScoresFromStorage();
+    const merged = existing.some((score) => score.id === normalised.id)
+      ? existing.map((score) => (score.id === normalised.id ? normalised : score))
+      : [...existing, normalised];
     persistScoresToStorage(merged);
-    setSubmittedScores(merged.filter(score => score.heat_id === currentId && score.judge_id === judgeId));
-  }, [currentHeatId, judgeId, persistScoresToStorage, readAllScoresFromStorage]);
+    setSubmittedScores(canonicalizeScores(
+      merged.filter(score => score.heat_id === currentId && score.judge_id === judgeId)
+        .filter(score => (score.judge_station || score.judge_id) === judgeStation)
+    ));
+  }, [currentHeatId, judgeId, judgeStation, persistScoresToStorage, readAllScoresFromStorage]);
 
   const refreshInterferenceCalls = useCallback(async () => {
     if (!currentHeatId || !isSupabaseConfigured()) return;
@@ -366,10 +378,10 @@ function JudgeInterface({
         // Filter for current heat & judge (Case Insensitive)
         const displayScores = finalScores.filter((score) =>
           ensureHeatId(score.heat_id) === currentHeatId &&
-          score.judge_id?.toLowerCase() === judgeId?.toLowerCase()
+          (score.judge_station || score.judge_id)?.toLowerCase() === judgeStation?.toLowerCase()
         );
 
-        setSubmittedScores(displayScores);
+        setSubmittedScores(canonicalizeScores(displayScores));
 
 
 
@@ -382,7 +394,7 @@ function JudgeInterface({
     hydrateHeatScores().catch((error) => {
       console.warn('Erreur hydratation scores', error);
     });
-  }, [currentHeatId, judgeId, readAllScoresFromStorage, persistScoresToStorage, readScoresFromStorage]);
+  }, [currentHeatId, judgeId, judgeStation, readAllScoresFromStorage, persistScoresToStorage, readScoresFromStorage]);
 
   useEffect(() => {
     const handleRealtimeScore = (event: Event) => {
@@ -417,7 +429,7 @@ function JudgeInterface({
       s =>
         normalizeSurferKey(s.surfer) === surferKey &&
         s.wave_number === wave &&
-        s.judge_id === judgeId
+        (s.judge_station || s.judge_id) === judgeStation
     );
   };
 
@@ -475,6 +487,8 @@ function JudgeInterface({
       round: config.round,
       judge_id: judgeId,
       judge_name: judgeName,
+      judge_station: judgeStation,
+      judge_identity_id: judgeIdentityId,
       surfer: normalizedSurfer,
       wave_number: wave,
       call_type: interferenceType,
@@ -508,6 +522,8 @@ function JudgeInterface({
         round: config.round,
         judge_id: judgeId,
         judge_name: judgeName,
+        judge_station: judgeStation,
+        judge_identity_id: judgeIdentityId,
         surfer: activeInput.surfer,
         wave_number: activeInput.wave,
         score: scoreValue
@@ -517,32 +533,25 @@ function JudgeInterface({
         const sanitizedScore = {
           ...savedScore,
           heat_id: savedScore.heat_id || currentHeatId,
-          judge_id: savedScore.judge_id || judgeId
+          judge_id: savedScore.judge_id || judgeId,
+          judge_station: savedScore.judge_station || judgeStation,
+          judge_identity_id: savedScore.judge_identity_id || judgeIdentityId
         };
 
         if (!currentHeatId || sanitizedScore.heat_id === currentHeatId) {
           // CRITICAL FIX: Persist to localStorage FIRST
           const allScores = readAllScoresFromStorage();
-          const withoutDuplicate = allScores.filter(
-            (score) => !(
-              ensureHeatId(score.heat_id) === ensureHeatId(sanitizedScore.heat_id) &&
-              score.judge_id === sanitizedScore.judge_id &&
-              normalizeSurferKey(score.surfer) === normalizeSurferKey(sanitizedScore.surfer) &&
-              score.wave_number === sanitizedScore.wave_number
-            )
-          );
-          const updatedScores = [...withoutDuplicate, sanitizedScore];
+          const updatedScores = allScores.some((score) => score.id === sanitizedScore.id)
+            ? allScores.map((score) => (score.id === sanitizedScore.id ? sanitizedScore : score))
+            : [...allScores, sanitizedScore];
           persistScoresToStorage(updatedScores);
 
           // THEN update state
           setSubmittedScores(prev => {
-            const withoutDuplicate = prev.filter(
-              (score) => !(
-                normalizeSurferKey(score.surfer) === normalizeSurferKey(sanitizedScore.surfer) &&
-                score.wave_number === sanitizedScore.wave_number
-              )
-            );
-            return [...withoutDuplicate, sanitizedScore];
+            const nextScores = prev.some((score) => score.id === sanitizedScore.id)
+              ? prev.map((score) => (score.id === sanitizedScore.id ? sanitizedScore : score))
+              : [...prev, sanitizedScore];
+            return canonicalizeScores(nextScores);
           });
         }
       }

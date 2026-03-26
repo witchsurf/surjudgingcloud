@@ -12,6 +12,8 @@ import * as Sentry from '@sentry/react';
 interface Judge {
     id: string;
     name: string;
+    identityId?: string;
+    stationId?: string;
 }
 
 interface AuthStore {
@@ -22,7 +24,7 @@ interface AuthStore {
     isAuthenticated: boolean;
 
     // Actions
-    login: (judgeId: string, judgeName: string) => void;
+    login: (judgeId: string, judgeName: string, judgeIdentityId?: string, stationId?: string) => void;
     logout: () => void;
 }
 
@@ -38,14 +40,14 @@ export const useAuthStore = create<AuthStore>()(
             },
 
             // Actions
-            login: (judgeId: string, judgeName: string) => {
-                const judge = { id: judgeId, name: judgeName };
+            login: (judgeId: string, judgeName: string, judgeIdentityId?: string, stationId?: string) => {
+                const judge = { id: judgeId, name: judgeName, identityId: judgeIdentityId, stationId };
                 set({ currentJudge: judge });
 
                 // Set Sentry user context
                 try {
                     Sentry.setUser({
-                        id: judgeId,
+                        id: judgeIdentityId || judgeId,
                         username: judgeName,
                     });
                 } catch (error) {

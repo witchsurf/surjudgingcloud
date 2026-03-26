@@ -4,16 +4,18 @@ import { useNavigate } from 'react-router-dom';
 import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
 import { validateScore } from '../utils/scoring';
-import { calculateSurferStats } from '../utils/scoring';
+import { buildJudgeDeviationDetails, calculateJudgeAccuracy, calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchAllScoresForEvent, fetchAllInterferenceCallsForEvent, fetchHeatScores, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall } from '../api/supabaseClient';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments } from '../api/supabaseClient';
+import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
+import { canonicalizeScores } from '../api/modules/scoring.api';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 
@@ -39,6 +41,8 @@ interface AdminInterfaceProps {
     round: number;
     judgeId: string;
     judgeName: string;
+    judgeStation?: string;
+    judgeIdentityId?: string;
     surfer: string;
     waveNumber: number;
     newScore: number;
@@ -114,10 +118,80 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [plannedTimerDuration, setPlannedTimerDuration] = useState<number>(timer.duration);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [dbHeatScores, setDbHeatScores] = useState<Score[]>([]);
+  const [dbHeatScoreHistory, setDbHeatScoreHistory] = useState<Score[]>([]);
+  const [analyticsScope, setAnalyticsScope] = useState<'heat' | 'event'>('heat');
+  const [eventAccuracyScores, setEventAccuracyScores] = useState<Score[]>([]);
+  const [eventAccuracyOverrides, setEventAccuracyOverrides] = useState<ScoreOverrideLog[]>([]);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [selectedJudgeProfileId, setSelectedJudgeProfileId] = useState<string | null>(null);
   const [showClosedHeats, setShowClosedHeats] = useState(false);
   const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<Array<{ division: string; round: number; heat_number: number; status: string }>>([]);
   const [isTimerOpen, setIsTimerOpen] = useState(true);
   const [floatingTimerTick, setFloatingTimerTick] = useState(Date.now());
+  const [availableOfficialJudges, setAvailableOfficialJudges] = useState<Judge[]>([]);
+  const [eventJudgeAssignments, setEventJudgeAssignments] = useState<HeatJudgeAssignmentRow[]>([]);
+  const [assignmentCoverageRows, setAssignmentCoverageRows] = useState<EventJudgeAssignmentCoverageRow[]>([]);
+  const [eventJudgeAccuracySummary, setEventJudgeAccuracySummary] = useState<EventJudgeAccuracySummaryRow[]>([]);
+
+  const resolveAssignedJudgeIdentity = useCallback((stationId: string) => {
+    return (config.judgeIdentities?.[stationId] || '').trim();
+  }, [config.judgeIdentities]);
+
+  const buildIdentityAssignmentMap = useCallback((assignments: HeatJudgeAssignmentRow[]) => {
+    return assignments.reduce<Map<string, { judgeId: string; judgeName: string }>>((acc, assignment) => {
+      const heatId = ensureHeatId(assignment.heat_id);
+      const station = (assignment.station || '').trim().toUpperCase();
+      const judgeId = (assignment.judge_id || '').trim();
+      if (!heatId || !station || !judgeId) return acc;
+      acc.set(`${heatId}::${station}`, {
+        judgeId,
+        judgeName: (assignment.judge_name || assignment.station || assignment.judge_id || '').trim() || judgeId
+      });
+      return acc;
+    }, new Map());
+  }, []);
+
+  const remapScoresToJudgeIdentity = useCallback((sourceScores: Score[], identityMap: Map<string, { judgeId: string; judgeName: string }>) => {
+    return sourceScores.map((score) => {
+      if (score.judge_identity_id) {
+        return {
+          ...score,
+          judge_id: score.judge_identity_id,
+          judge_name: (score.judge_name || '').trim() || score.judge_id,
+        };
+      }
+      const station = (score.judge_station || score.judge_id || '').trim().toUpperCase();
+      const key = `${ensureHeatId(score.heat_id)}::${station}`;
+      const identity = identityMap.get(key);
+      if (!identity) return score;
+      return {
+        ...score,
+        judge_id: identity.judgeId,
+        judge_name: identity.judgeName,
+      };
+    });
+  }, []);
+
+  const remapOverrideLogsToJudgeIdentity = useCallback((sourceLogs: ScoreOverrideLog[], identityMap: Map<string, { judgeId: string; judgeName: string }>) => {
+    return sourceLogs.map((log) => {
+      if (log.judge_identity_id) {
+        return {
+          ...log,
+          judge_id: log.judge_identity_id,
+          judge_name: (log.judge_name || '').trim() || log.judge_id,
+        };
+      }
+      const station = (log.judge_station || log.judge_id || '').trim().toUpperCase();
+      const key = `${ensureHeatId(log.heat_id)}::${station}`;
+      const identity = identityMap.get(key);
+      if (!identity) return log;
+      return {
+        ...log,
+        judge_id: identity.judgeId,
+        judge_name: identity.judgeName,
+      };
+    });
+  }, []);
 
   const isLockedStatus = useCallback((status?: string | null) => {
     const normalized = status?.toString().trim().toLowerCase();
@@ -144,6 +218,75 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     return () => window.clearInterval(interval);
   }, [timer.isRunning, isTimerOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOfficialJudges = async () => {
+      if (!isSupabaseConfigured()) {
+        if (!cancelled) setAvailableOfficialJudges([]);
+        return;
+      }
+
+      try {
+        const judges = await fetchActiveJudges();
+        if (!cancelled) {
+          setAvailableOfficialJudges(judges);
+        }
+      } catch (error) {
+        console.warn('Impossible de charger les juges officiels:', error);
+        if (!cancelled) {
+          setAvailableOfficialJudges([]);
+        }
+      }
+    };
+
+    void loadOfficialJudges();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEventAssignments = async () => {
+      if (!activeEventId || !isSupabaseConfigured()) {
+        if (!cancelled) {
+          setEventJudgeAssignments([]);
+          setAssignmentCoverageRows([]);
+        }
+        return;
+      }
+
+      try {
+        const [assignments, coverage] = await Promise.all([
+          fetchEventJudgeAssignments(activeEventId),
+          fetchEventJudgeAssignmentCoverage(activeEventId).catch((error) => {
+            if (error instanceof Error && error.message.startsWith('VIEW_NOT_READY:')) {
+              return [];
+            }
+            throw error;
+          })
+        ]);
+        if (!cancelled) {
+          setEventJudgeAssignments(assignments);
+          setAssignmentCoverageRows(coverage);
+        }
+      } catch (error) {
+        console.warn('Impossible de charger les affectations officielles de l’événement:', error);
+        if (!cancelled) {
+          setEventJudgeAssignments([]);
+          setAssignmentCoverageRows([]);
+        }
+      }
+    };
+
+    void loadEventAssignments();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEventId]);
 
   const formatMinSec = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -235,14 +378,24 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     const loadDbScores = async () => {
       try {
-        const nextScores = await fetchHeatScores(heatId);
+        if (!supabase) throw new Error('Supabase non initialisé');
+        const { data, error } = await supabase
+          .from('scores')
+          .select('*')
+          .eq('heat_id', heatId)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        const nextScores = (data || []) as Score[];
         if (!cancelled) {
-          setDbHeatScores(nextScores);
+          setDbHeatScoreHistory(nextScores);
+          setDbHeatScores(canonicalizeScores(nextScores));
         }
       } catch (error) {
         if (!cancelled) {
           console.warn('⚠️ Impossible de charger les scores DB pour le panel admin:', error);
           setDbHeatScores([]);
+          setDbHeatScoreHistory([]);
         }
       }
     };
@@ -284,6 +437,282 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
   }, [mergedScores, heatId, selectedJudge, selectedSurfer, selectedWave]);
 
+  const heatScoreHistory = React.useMemo(() => {
+    const localScores = (() => {
+      try {
+        const raw = localStorage.getItem('surfJudgingScores');
+        if (!raw) return [] as Score[];
+        return (JSON.parse(raw) as Score[]).filter((score) => ensureHeatId(score.heat_id) === heatId);
+      } catch {
+        return [] as Score[];
+      }
+    })();
+
+    const byId = new Map<string, Score>();
+    [...localScores, ...dbHeatScoreHistory].forEach((score) => {
+      if (!score.id) return;
+      byId.set(score.id, score);
+    });
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(a.created_at || a.timestamp || 0).getTime() - new Date(b.created_at || b.timestamp || 0).getTime()
+    );
+  }, [dbHeatScoreHistory, heatId]);
+
+  const currentHeatIdentityMap = React.useMemo(() => {
+    const assignments = (config.judges || []).map((station) => ({
+      heat_id: heatId,
+      event_id: activeEventId ?? null,
+      station,
+      judge_id: resolveAssignedJudgeIdentity(station) || station,
+      judge_name: (config.judgeNames?.[station] || station).trim() || station,
+    }));
+    return buildIdentityAssignmentMap(assignments);
+  }, [activeEventId, buildIdentityAssignmentMap, config.judgeNames, config.judges, heatId, resolveAssignedJudgeIdentity]);
+
+  const analyticsHeatScores = React.useMemo(
+    () => remapScoresToJudgeIdentity(canonicalizeScores(heatScoreHistory), currentHeatIdentityMap),
+    [currentHeatIdentityMap, heatScoreHistory, remapScoresToJudgeIdentity]
+  );
+
+  const analyticsHeatOverrides = React.useMemo(
+    () => remapOverrideLogsToJudgeIdentity(overrideLogs, currentHeatIdentityMap),
+    [currentHeatIdentityMap, overrideLogs, remapOverrideLogsToJudgeIdentity]
+  );
+
+  const eventIdentityMap = React.useMemo(
+    () => buildIdentityAssignmentMap(eventJudgeAssignments),
+    [buildIdentityAssignmentMap, eventJudgeAssignments]
+  );
+
+  const analyticsEventScores = React.useMemo(
+    () => remapScoresToJudgeIdentity(eventAccuracyScores, eventIdentityMap),
+    [eventAccuracyScores, eventIdentityMap, remapScoresToJudgeIdentity]
+  );
+
+  const analyticsEventOverrides = React.useMemo(
+    () => remapOverrideLogsToJudgeIdentity(eventAccuracyOverrides, eventIdentityMap),
+    [eventAccuracyOverrides, eventIdentityMap, remapOverrideLogsToJudgeIdentity]
+  );
+
+  const analyticsConfiguredJudgeIds = React.useMemo(() => {
+    if (analyticsScope === 'event') {
+      return Array.from(new Set(eventJudgeAssignments.map((assignment) => (assignment.judge_id || '').trim()).filter(Boolean)));
+    }
+    return (config.judges || []).map((station) => resolveAssignedJudgeIdentity(station) || station);
+  }, [analyticsScope, config.judges, eventJudgeAssignments, resolveAssignedJudgeIdentity]);
+
+  const localJudgeAccuracy = React.useMemo(
+    () => calculateJudgeAccuracy(
+      analyticsScope === 'event' ? analyticsEventScores : analyticsHeatScores,
+      analyticsScope === 'event' ? analyticsEventOverrides : analyticsHeatOverrides,
+      analyticsConfiguredJudgeIds
+    ),
+    [analyticsConfiguredJudgeIds, analyticsEventOverrides, analyticsEventScores, analyticsHeatOverrides, analyticsHeatScores, analyticsScope]
+  );
+
+  const judgeAccuracy = React.useMemo(() => {
+    if (analyticsScope !== 'event' || !eventJudgeAccuracySummary.length) {
+      return localJudgeAccuracy;
+    }
+
+    return eventJudgeAccuracySummary.map((row) => ({
+      judgeId: row.judge_identity_id,
+      scoredWaves: row.scored_waves,
+      consensusSamples: row.consensus_samples,
+      meanAbsDeviation: row.mean_abs_deviation,
+      bias: row.bias,
+      withinHalfPointRate: row.within_half_point_rate,
+      overrideCount: row.override_count,
+      overrideRate: row.override_rate,
+      averageOverrideDelta: row.average_override_delta,
+      qualityScore: row.quality_score,
+      qualityBand: row.quality_band,
+    }));
+  }, [analyticsScope, eventJudgeAccuracySummary, localJudgeAccuracy]);
+
+  const analyticsJudgeNames = React.useMemo(() => {
+    const names = new Map<string, string>();
+
+    Object.entries(config.judgeNames || {}).forEach(([judgeId, name]) => {
+      if (judgeId && name) names.set(judgeId, name);
+    });
+
+    Object.entries(config.judgeIdentities || {}).forEach(([station, identityId]) => {
+      const judgeName = (config.judgeNames?.[station] || '').trim();
+      if (identityId && judgeName) {
+        names.set(identityId, judgeName);
+      }
+    });
+
+    [...analyticsHeatScores, ...analyticsEventScores, ...dbHeatScores, ...dbHeatScoreHistory].forEach((score) => {
+      const judgeId = (score.judge_id || '').trim();
+      const judgeName = (score.judge_name || '').trim();
+      if (judgeId && judgeName && !names.has(judgeId)) {
+        names.set(judgeId, judgeName);
+      }
+    });
+
+    [...analyticsHeatOverrides, ...analyticsEventOverrides].forEach((log) => {
+      const judgeId = (log.judge_id || '').trim();
+      const judgeName = (log.judge_name || '').trim();
+      if (judgeId && judgeName && !names.has(judgeId)) {
+        names.set(judgeId, judgeName);
+      }
+    });
+
+    eventJudgeAccuracySummary.forEach((row) => {
+      const judgeId = (row.judge_identity_id || '').trim();
+      const judgeName = (row.judge_display_name || '').trim();
+      if (judgeId && judgeName && !names.has(judgeId)) {
+        names.set(judgeId, judgeName);
+      }
+    });
+
+    return names;
+  }, [analyticsEventOverrides, analyticsEventScores, analyticsHeatOverrides, analyticsHeatScores, config.judgeIdentities, config.judgeNames, dbHeatScoreHistory, dbHeatScores, eventJudgeAccuracySummary]);
+
+  useEffect(() => {
+    if (!judgeAccuracy.length) {
+      setSelectedJudgeProfileId(null);
+      return;
+    }
+
+    if (!selectedJudgeProfileId || !judgeAccuracy.some((row) => row.judgeId === selectedJudgeProfileId)) {
+      setSelectedJudgeProfileId(judgeAccuracy[0].judgeId);
+    }
+  }, [judgeAccuracy, selectedJudgeProfileId]);
+
+  const selectedJudgeProfile = React.useMemo(
+    () => judgeAccuracy.find((row) => row.judgeId === selectedJudgeProfileId) ?? null,
+    [judgeAccuracy, selectedJudgeProfileId]
+  );
+
+  const selectedJudgeDeviations = React.useMemo(() => {
+    if (!selectedJudgeProfileId) return [];
+    const analysisScores = analyticsScope === 'event' ? analyticsEventScores : analyticsHeatScores;
+    return buildJudgeDeviationDetails(analysisScores, selectedJudgeProfileId).slice(0, 8);
+  }, [analyticsEventScores, analyticsHeatScores, analyticsScope, selectedJudgeProfileId]);
+
+  const selectedJudgeOverrides = React.useMemo(() => {
+    if (!selectedJudgeProfileId) return [];
+    const sourceLogs = analyticsScope === 'event' ? analyticsEventOverrides : analyticsHeatOverrides;
+    return sourceLogs.filter((log) => log.judge_id === selectedJudgeProfileId);
+  }, [analyticsEventOverrides, analyticsHeatOverrides, analyticsScope, selectedJudgeProfileId]);
+
+  const selectedJudgeOverrideSummary = React.useMemo(() => {
+    const summary = {
+      correction: 0,
+      omission: 0,
+      probleme: 0,
+    };
+
+    selectedJudgeOverrides.forEach((log) => {
+      summary[log.reason] += 1;
+    });
+
+    return summary;
+  }, [selectedJudgeOverrides]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEventAccuracyData = async () => {
+      if (analyticsScope !== 'event' || !activeEventId || !supabase) {
+        if (!cancelled) {
+          setEventAccuracyScores([]);
+          setEventAccuracyOverrides([]);
+          setEventJudgeAccuracySummary([]);
+        }
+        return;
+      }
+
+      setAnalyticsLoading(true);
+      try {
+        const groupedScores = await fetchPreferredScoresForEvent(activeEventId);
+        const nextScores = Object.values(groupedScores).flat();
+        const nextSummary = await fetchEventJudgeAccuracySummary(activeEventId).catch((error) => {
+          if (error instanceof Error && error.message.startsWith('VIEW_NOT_READY:')) {
+            return [];
+          }
+          throw error;
+        });
+
+        const { data: heatRows, error: heatsError } = await supabase
+          .from('heats')
+          .select('id')
+          .eq('event_id', activeEventId);
+
+        if (heatsError) throw heatsError;
+        const heatIds = (heatRows || []).map((row) => row.id).filter(Boolean);
+
+        let nextOverrides: ScoreOverrideLog[] = [];
+        if (heatIds.length > 0) {
+          const { data: overrideRows, error: overridesError } = await supabase
+            .from('score_overrides')
+            .select('*')
+            .in('heat_id', heatIds)
+            .order('created_at', { ascending: false });
+
+          if (overridesError) throw overridesError;
+          nextOverrides = (overrideRows || []) as ScoreOverrideLog[];
+        }
+
+        if (!cancelled) {
+          setEventAccuracyScores(nextScores);
+          setEventAccuracyOverrides(nextOverrides);
+          setEventJudgeAccuracySummary(nextSummary);
+        }
+      } catch (error) {
+        console.warn('Impossible de charger les analytics de juges sur l’événement:', error);
+        if (!cancelled) {
+          setEventAccuracyScores([]);
+          setEventAccuracyOverrides([]);
+          setEventJudgeAccuracySummary([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setAnalyticsLoading(false);
+        }
+      }
+    };
+
+    void loadEventAccuracyData();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEventId, analyticsScope]);
+
+  const handleExportJudgeAccuracy = useCallback(() => {
+    if (!judgeAccuracy.length || typeof window === 'undefined') return;
+
+    const lines = [
+      ['scope', 'judge_id', 'judge_name', 'quality_score', 'quality_band', 'scored_waves', 'consensus_samples', 'mean_abs_deviation', 'bias', 'within_half_point_rate', 'override_count', 'override_rate', 'average_override_delta'].join(','),
+      ...judgeAccuracy.map((row) => ([
+        analyticsScope,
+        row.judgeId,
+        `"${(analyticsJudgeNames.get(row.judgeId) || row.judgeId).replace(/"/g, '""')}"`,
+        row.qualityScore.toFixed(2),
+        row.qualityBand,
+        row.scoredWaves,
+        row.consensusSamples,
+        row.meanAbsDeviation.toFixed(2),
+        row.bias.toFixed(2),
+        row.withinHalfPointRate.toFixed(2),
+        row.overrideCount,
+        row.overrideRate.toFixed(2),
+        row.averageOverrideDelta.toFixed(2),
+      ].join(',')))
+    ];
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `judge-accuracy-${analyticsScope}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [analyticsJudgeNames, analyticsScope, judgeAccuracy]);
+
   const handleOverrideSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (correctionMode === 'interference') {
@@ -314,6 +743,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         round: config.round,
         judgeId: selectedJudge,
         judgeName: config.judgeNames[selectedJudge] || selectedJudge,
+        judgeStation: selectedJudge,
+        judgeIdentityId: config.judgeIdentities?.[selectedJudge],
         surfer: selectedSurferKey,
         waveNumber: Number(selectedWave),
         newScore: validation.value,
@@ -773,6 +1204,132 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     [timer, floatingTimerTick, getRemainingTimerSeconds]
   );
 
+  const judgeAssignmentStatus = React.useMemo(() => {
+    const configuredJudgeIds = (config.judges || [])
+      .map((judgeId) => (judgeId || '').trim().toUpperCase())
+      .filter(Boolean);
+
+    const missingNames = configuredJudgeIds.filter((judgeId) => {
+      const assignedName = (config.judgeNames?.[judgeId] || '').trim();
+      return !assignedName || assignedName.toUpperCase() === judgeId;
+    });
+
+    const missingIdentity = configuredJudgeIds.filter((judgeId) => {
+      const identityId = resolveAssignedJudgeIdentity(judgeId);
+      return !identityId;
+    });
+
+    return {
+      configuredJudgeIds,
+      missingNames,
+      missingIdentity,
+      isReady: configuredJudgeIds.length > 0 && missingNames.length === 0 && missingIdentity.length === 0,
+    };
+  }, [config.judgeNames, config.judges, resolveAssignedJudgeIdentity]);
+
+  const judgeAssignmentErrorMessage = React.useMemo(() => {
+    const parts: string[] = [];
+    if (judgeAssignmentStatus.missingNames.length > 0) {
+      parts.push(`noms manquants: ${judgeAssignmentStatus.missingNames.join(', ')}`);
+    }
+    if (judgeAssignmentStatus.missingIdentity.length > 0) {
+      parts.push(`identités officielles manquantes: ${judgeAssignmentStatus.missingIdentity.join(', ')}`);
+    }
+    return parts.join(' | ');
+  }, [judgeAssignmentStatus]);
+
+  const eventAssignmentCoverage = React.useMemo(() => {
+    if (assignmentCoverageRows.length > 0) {
+      return assignmentCoverageRows.map((row) => {
+        const heatAssignments = eventJudgeAssignments.filter((assignment) => ensureHeatId(assignment.heat_id) === ensureHeatId(row.heat_id));
+        return {
+          heatId: row.heat_id,
+          division: row.division,
+          round: row.round,
+          heatNumber: row.heat_number,
+          status: allEventHeatsMeta.find((heat) => heat.division === row.division && heat.round === row.round && heat.heat_number === row.heat_number)?.status || 'unknown',
+          assignedCount: row.assigned_station_count,
+          missingStations: row.missing_station_count > 0
+            ? (config.judges || [])
+                .map((station) => (station || '').trim().toUpperCase())
+                .filter((station) => !heatAssignments.some((assignment) => (assignment.station || '').trim().toUpperCase() === station && (assignment.judge_id || '').trim() && (assignment.judge_name || '').trim()))
+            : [],
+          assignments: (config.judges || []).map((station) => {
+            const assignment = heatAssignments.find((candidate) => (candidate.station || '').trim().toUpperCase() === (station || '').trim().toUpperCase());
+            return {
+              station,
+              judgeId: assignment?.judge_id || '',
+              judgeName: assignment?.judge_name || ''
+            };
+          })
+        };
+      });
+    }
+
+    const expectedStations = (config.judges || []).map((station) => (station || '').trim().toUpperCase()).filter(Boolean);
+    if (!config.competition || expectedStations.length === 0 || allEventHeatsMeta.length === 0) {
+      return [];
+    }
+
+    const assignmentsByHeat = eventJudgeAssignments.reduce<Map<string, Map<string, HeatJudgeAssignmentRow>>>((acc, assignment) => {
+      const heatId = ensureHeatId(assignment.heat_id);
+      const station = (assignment.station || '').trim().toUpperCase();
+      if (!heatId || !station) return acc;
+      if (!acc.has(heatId)) {
+        acc.set(heatId, new Map());
+      }
+      acc.get(heatId)!.set(station, assignment);
+      return acc;
+    }, new Map());
+
+    return allEventHeatsMeta
+      .map((heat) => {
+        const heatId = getHeatIdentifiers(
+          config.competition,
+          heat.division,
+          heat.round,
+          heat.heat_number
+        ).normalized;
+        const assignments = assignmentsByHeat.get(heatId) ?? new Map<string, HeatJudgeAssignmentRow>();
+        const missingStations = expectedStations.filter((station) => {
+          const assignment = assignments.get(station);
+          return !assignment || !(assignment.judge_id || '').trim() || !(assignment.judge_name || '').trim();
+        });
+
+        return {
+          heatId,
+          division: heat.division,
+          round: heat.round,
+          heatNumber: heat.heat_number,
+          status: heat.status,
+          assignedCount: assignments.size,
+          missingStations,
+          assignments: expectedStations.map((station) => ({
+            station,
+            judgeId: assignments.get(station)?.judge_id || '',
+            judgeName: assignments.get(station)?.judge_name || ''
+          }))
+        };
+      })
+      .sort((a, b) => {
+        if (a.division !== b.division) {
+          return a.division.localeCompare(b.division, undefined, { sensitivity: 'base' });
+        }
+        if (a.round !== b.round) return a.round - b.round;
+        return a.heatNumber - b.heatNumber;
+      });
+  }, [allEventHeatsMeta, config.competition, config.judges, eventJudgeAssignments]);
+
+  const eventAssignmentSummary = React.useMemo(() => {
+    const totalHeats = eventAssignmentCoverage.length;
+    const completeHeats = eventAssignmentCoverage.filter((heat) => heat.missingStations.length === 0).length;
+    return {
+      totalHeats,
+      completeHeats,
+      incompleteHeats: Math.max(totalHeats - completeHeats, 0),
+    };
+  }, [eventAssignmentCoverage]);
+
   useEffect(() => {
     if (!activeDivisionOptions.length) return;
     const currentIsValid = activeDivisionOptions.some(
@@ -823,6 +1380,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
 
   const handleSaveConfig = async () => {
+    if (!judgeAssignmentStatus.isReady) {
+      alert(`Affectations juges incomplètes. ${judgeAssignmentErrorMessage}`);
+      return;
+    }
+
     // Ensure event exists in Supabase if competition is set
     if (config.competition && isSupabaseConfigured()) {
       try {
@@ -844,6 +1406,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleTimerStart = () => {
+    if (!judgeAssignmentStatus.isReady) {
+      setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
+      return;
+    }
+
     const newTimer = {
       ...timer,
       isRunning: true,
@@ -882,6 +1449,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const handleTimerStartImpl = async () => {
     if (!configSaved || isCurrentHeatLocked) return;
+    if (!judgeAssignmentStatus.isReady) {
+      setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
+      return;
+    }
     setIsTimerOpen(false);
     timerAudio.playStartHorn();
     const fullDuration = Math.max(1, plannedTimerDuration || timer.duration || 20);
@@ -913,6 +1484,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const handleTimerRestartFull = () => {
     if (!configSaved) return;
+    if (!judgeAssignmentStatus.isReady) {
+      setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
+      return;
+    }
     const fullDuration = Math.max(1, plannedTimerDuration || timer.duration || 20);
     const newTimer = {
       ...timer,
@@ -1391,21 +1966,57 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       judgeNames: {
         ...config.judgeNames,
         [nextJudgeId]: nextJudgeId
-      }
+      },
+      judgeIdentities: {
+        ...(config.judgeIdentities || {})
+      },
     });
   };
 
   const handleRemoveJudge = (judgeId: string) => {
     const nextJudgeNames = { ...config.judgeNames };
     const nextJudgeEmails = { ...(config.judgeEmails || {}) };
+    const nextJudgeIdentities = { ...(config.judgeIdentities || {}) };
     delete nextJudgeNames[judgeId];
     delete nextJudgeEmails[judgeId];
+    delete nextJudgeIdentities[judgeId];
 
     onConfigChange({
       ...config,
       judges: config.judges.filter((id) => id !== judgeId),
       judgeNames: nextJudgeNames,
-      judgeEmails: nextJudgeEmails
+      judgeEmails: nextJudgeEmails,
+      judgeIdentities: nextJudgeIdentities
+    });
+  };
+
+  const handleJudgeIdentityChange = (stationId: string, identityId: string) => {
+    const nextJudgeIdentities = { ...(config.judgeIdentities || {}) };
+    const trimmedIdentityId = identityId.trim();
+
+    if (!trimmedIdentityId) {
+      delete nextJudgeIdentities[stationId];
+      onConfigChange({
+        ...config,
+        judgeIdentities: nextJudgeIdentities
+      });
+      return;
+    }
+
+    const officialJudge = availableOfficialJudges.find((judge) => judge.id === trimmedIdentityId);
+    nextJudgeIdentities[stationId] = trimmedIdentityId;
+
+    onConfigChange({
+      ...config,
+      judgeIdentities: nextJudgeIdentities,
+      judgeNames: {
+        ...config.judgeNames,
+        [stationId]: officialJudge?.name || config.judgeNames?.[stationId] || stationId
+      },
+      judgeEmails: {
+        ...(config.judgeEmails || {}),
+        [stationId]: officialJudge?.email || config.judgeEmails?.[stationId] || ''
+      }
     });
   };
 
@@ -1492,7 +2103,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       // Fetch ALL scores for ALL heats
-      const allScores = await fetchAllScoresForEvent(eventId);
+      const allScores = await fetchPreferredScoresForEvent(eventId);
       const allInterferenceCalls = await fetchAllInterferenceCallsForEvent(eventId);
 
       // Get event details (organizer, date, optional logo) if available
@@ -1780,10 +2391,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 const numJudges = parseInt(e.target.value);
                 const judgeIds = Array.from({ length: numJudges }, (_, i) => `J${i + 1}`);
                 const judgeNames = judgeIds.reduce((acc, id) => ({ ...acc, [id]: id }), {} as Record<string, string>);
+                const judgeIdentities = judgeIds.reduce((acc, id) => {
+                  const existingIdentity = config.judgeIdentities?.[id];
+                  if (existingIdentity) {
+                    acc[id] = existingIdentity;
+                  }
+                  return acc;
+                }, {} as Record<string, string>);
                 onConfigChange({
                   ...config,
                   judges: judgeIds,
-                  judgeNames: judgeNames
+                  judgeNames: judgeNames,
+                  judgeIdentities
                 });
               }}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1795,6 +2414,46 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             <p className="mt-2 text-xs text-gray-500">
               Les juges utiliseront le mode kiosque avec leurs positions (J1, J2, etc.)
             </p>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900">Couverture des affectations officielles</h4>
+                <p className="text-xs text-slate-600">
+                  {eventAssignmentSummary.completeHeats}/{eventAssignmentSummary.totalHeats} heats complets
+                  {eventAssignmentSummary.incompleteHeats > 0 ? ` · ${eventAssignmentSummary.incompleteHeats} à compléter` : ''}
+                </p>
+              </div>
+              <div className={`text-xs font-semibold px-2 py-1 rounded-full ${eventAssignmentSummary.incompleteHeats > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                {eventAssignmentSummary.incompleteHeats > 0 ? 'Vérification requise' : 'Complet'}
+              </div>
+            </div>
+
+            {eventAssignmentCoverage.length === 0 ? (
+              <p className="text-xs text-slate-500">Aucun heat détecté pour cet événement.</p>
+            ) : (
+              <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                {eventAssignmentCoverage.map((heat) => (
+                  <div key={heat.heatId} className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-slate-900">
+                        {heat.division} · R{heat.round} H{heat.heatNumber}
+                      </div>
+                      <div className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${heat.missingStations.length > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                        {heat.missingStations.length > 0 ? `Manque: ${heat.missingStations.join(', ')}` : 'Complet'}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-600">
+                      {heat.assignments
+                        .filter((assignment) => assignment.judgeId)
+                        .map((assignment) => `${assignment.station}: ${assignment.judgeName || assignment.judgeId}`)
+                        .join(' · ') || 'Aucune affectation officielle enregistrée'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Surfeurs (lecture seule depuis Supabase) */}
@@ -1833,15 +2492,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
           <button
             onClick={handleSaveConfig}
-            disabled={configSaved || loadState === 'loading'}
+            disabled={configSaved || loadState === 'loading' || !judgeAssignmentStatus.isReady}
             className={`w-full py-4 px-6 rounded-xl font-bebas text-2xl tracking-widest transition-all border-4 shadow-block flex justify-center items-center gap-2 ${configSaved
               ? 'bg-success-50 text-success-700 border-success-200 cursor-not-allowed opacity-80'
-              : 'bg-cta-500 text-white border-primary-950 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#172554] active:translate-y-0 active:shadow-none'
+              : !judgeAssignmentStatus.isReady
+                ? 'bg-amber-100 text-amber-800 border-amber-300 cursor-not-allowed opacity-90'
+                : 'bg-cta-500 text-white border-primary-950 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#172554] active:translate-y-0 active:shadow-none'
               }`}
           >
             {configSaved ? (
               <>
                 <CheckCircle className="w-6 h-6" /> CONFIGURATION SAUVEGARDÉE
+              </>
+            ) : !judgeAssignmentStatus.isReady ? (
+              <>
+                AFFECTATIONS JUGES INCOMPLÈTES
               </>
             ) : (
               <>
@@ -1849,6 +2514,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               </>
             )}
           </button>
+          {!judgeAssignmentStatus.isReady && (
+            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Configuration incomplète: <span className="font-mono">{judgeAssignmentErrorMessage}</span>
+            </div>
+          )}
         </div>
       </details>
 
@@ -1884,6 +2554,19 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               </div>
             </div>
           )}
+          {!judgeAssignmentStatus.isReady && (
+            <div className="w-full mb-4 p-3 bg-amber-100 border border-amber-400 rounded-lg shadow-sm">
+              <div className="flex items-start">
+                <AlertCircle className="w-5 h-5 text-amber-700 mt-0.5 mr-3 flex-shrink-0" />
+                <div>
+                  <h4 className="text-sm font-bold text-amber-900 uppercase tracking-widest">Démarrage bloqué</h4>
+                  <p className="text-xs text-amber-800 mt-1">
+                    Le heat ne peut pas démarrer tant que ces postes n’ont pas une identité officielle complète: {judgeAssignmentErrorMessage}.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <HeatTimer
             key={`timer-${config.competition}-${config.division}-R${config.round}-H${config.heatId}`}
@@ -1893,13 +2576,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             onReset={handleTimerReset}
             onDurationChange={handleTimerDurationChange}
             configSaved={configSaved}
-            disabled={isCurrentHeatLocked}
+            disabled={isCurrentHeatLocked || !judgeAssignmentStatus.isReady}
           />
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={handleTimerResume}
-              disabled={!configSaved || timer.isRunning || isCurrentHeatLocked}
+              disabled={!configSaved || timer.isRunning || isCurrentHeatLocked || !judgeAssignmentStatus.isReady}
               className="py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Reprendre (temps restant)
@@ -1907,7 +2590,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             <button
               type="button"
               onClick={handleTimerRestartFull}
-              disabled={!configSaved || isCurrentHeatLocked}
+              disabled={!configSaved || isCurrentHeatLocked || !judgeAssignmentStatus.isReady}
               className="py-2 px-4 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Recommencer (durée complète)
@@ -2096,6 +2779,170 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 </p>
               </div>
             )}
+
+            {judgeAccuracy.length > 0 && (
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">Qualité de jugement</h3>
+                    <p className="text-xs text-slate-500">
+                      Référence: médiane des autres juges par vague, plus corrections du chef juge.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex rounded-md border border-slate-300 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setAnalyticsScope('heat')}
+                        className={`px-3 py-1 text-xs ${analyticsScope === 'heat' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700'}`}
+                      >
+                        Heat
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAnalyticsScope('event')}
+                        disabled={!activeEventId}
+                        className={`px-3 py-1 text-xs border-l border-slate-300 ${analyticsScope === 'event' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700'} disabled:opacity-50`}
+                      >
+                        Event
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleExportJudgeAccuracy}
+                      className="px-3 py-1 text-xs bg-white border border-slate-300 rounded-md hover:bg-slate-100"
+                    >
+                      Export CSV
+                    </button>
+                  </div>
+                </div>
+                {analyticsLoading && (
+                  <p className="text-xs text-slate-500 mb-3">Chargement de l’analyse événement...</p>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-slate-600 border-b border-slate-200">
+                        <th className="py-2 pr-4">Juge</th>
+                        <th className="py-2 pr-4">Score</th>
+                        <th className="py-2 pr-4">Vagues</th>
+                        <th className="py-2 pr-4">Ecart moyen</th>
+                        <th className="py-2 pr-4">Biais</th>
+                        <th className="py-2 pr-4">Dans +/-0.5</th>
+                        <th className="py-2 pr-4">Corrections</th>
+                        <th className="py-2">Delta corr.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {judgeAccuracy.map((row) => (
+                        <tr
+                          key={row.judgeId}
+                          onClick={() => setSelectedJudgeProfileId(row.judgeId)}
+                          className={`border-b border-slate-100 last:border-b-0 cursor-pointer ${selectedJudgeProfileId === row.judgeId ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                        >
+                          <td className="py-2 pr-4 font-medium text-slate-900">{analyticsJudgeNames.get(row.judgeId) || row.judgeId}</td>
+                          <td className="py-2 pr-4">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
+                              row.qualityBand === 'excellent' ? 'bg-emerald-100 text-emerald-800' :
+                              row.qualityBand === 'good' ? 'bg-sky-100 text-sky-800' :
+                              row.qualityBand === 'watch' ? 'bg-amber-100 text-amber-800' :
+                              'bg-rose-100 text-rose-800'
+                            }`}>
+                              {row.qualityScore.toFixed(0)}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-4 text-slate-700">{row.scoredWaves}</td>
+                          <td className="py-2 pr-4 text-slate-700">{row.meanAbsDeviation.toFixed(2)}</td>
+                          <td className={`py-2 pr-4 ${row.bias > 0.15 ? 'text-amber-700' : row.bias < -0.15 ? 'text-sky-700' : 'text-slate-700'}`}>
+                            {row.bias > 0 ? '+' : ''}{row.bias.toFixed(2)}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-700">{row.withinHalfPointRate.toFixed(0)}%</td>
+                          <td className="py-2 pr-4 text-slate-700">{row.overrideCount} ({row.overrideRate.toFixed(0)}%)</td>
+                          <td className="py-2 text-slate-700">{row.averageOverrideDelta.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {selectedJudgeProfile && (
+                  <div className="mt-4 grid grid-cols-1 lg:grid-cols-[280px,1fr] gap-4">
+                    <div className="bg-white border border-slate-200 rounded-lg p-4">
+                      <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Profil juge</p>
+                      <h4 className="text-lg font-semibold text-slate-900">
+                        {analyticsJudgeNames.get(selectedJudgeProfile.judgeId) || selectedJudgeProfile.judgeId}
+                      </h4>
+                      <div className="mt-3 space-y-2 text-sm text-slate-700">
+                        <div className="flex justify-between"><span>Score qualité</span><strong>{selectedJudgeProfile.qualityScore.toFixed(0)}/100</strong></div>
+                        <div className="flex justify-between"><span>Ecart moyen</span><strong>{selectedJudgeProfile.meanAbsDeviation.toFixed(2)}</strong></div>
+                        <div className="flex justify-between"><span>Biais</span><strong>{selectedJudgeProfile.bias > 0 ? '+' : ''}{selectedJudgeProfile.bias.toFixed(2)}</strong></div>
+                        <div className="flex justify-between"><span>Notes proches</span><strong>{selectedJudgeProfile.withinHalfPointRate.toFixed(0)}%</strong></div>
+                        <div className="flex justify-between"><span>Corrections</span><strong>{selectedJudgeProfile.overrideCount}</strong></div>
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-slate-200">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Typologie des corrections</p>
+                        <div className="space-y-2 text-sm text-slate-700">
+                          <div className="flex justify-between"><span>Correction</span><strong>{selectedJudgeOverrideSummary.correction}</strong></div>
+                          <div className="flex justify-between"><span>Omission</span><strong>{selectedJudgeOverrideSummary.omission}</strong></div>
+                          <div className="flex justify-between"><span>Problème</span><strong>{selectedJudgeOverrideSummary.probleme}</strong></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                      <div className="bg-white border border-slate-200 rounded-lg p-4">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Vagues les plus atypiques</p>
+                        {selectedJudgeDeviations.length === 0 ? (
+                          <p className="text-sm text-slate-500">Pas assez de données comparables pour ce juge sur le scope sélectionné.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {selectedJudgeDeviations.map((item) => (
+                              <div key={`${item.heatId}-${item.surfer}-${item.waveNumber}`} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
+                                <div>
+                                  <div className="font-medium text-slate-900">
+                                    {item.surfer} · Vague {item.waveNumber}
+                                  </div>
+                                  <div className="text-xs text-slate-500">{item.heatId}</div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-slate-700">Juge {item.judgeScore.toFixed(2)} vs panel {item.consensusScore.toFixed(2)}</div>
+                                  <div className={`text-xs font-semibold ${item.delta > 0 ? 'text-amber-700' : 'text-sky-700'}`}>
+                                    {item.delta > 0 ? '+' : ''}{item.delta.toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="bg-white border border-slate-200 rounded-lg p-4">
+                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Dernières corrections du juge</p>
+                        {selectedJudgeOverrides.length === 0 ? (
+                          <p className="text-sm text-slate-500">Aucune correction enregistrée pour ce juge sur le scope sélectionné.</p>
+                        ) : (
+                          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                            {selectedJudgeOverrides.slice(0, 8).map((log) => (
+                              <div key={log.id} className="rounded-md border border-slate-200 px-3 py-2 text-sm">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-slate-900">{log.surfer} · Vague {log.wave_number}</span>
+                                  <span className="text-xs text-slate-500">{reasonLabels[log.reason]}</span>
+                                </div>
+                                <div className="mt-1 text-slate-700">
+                                  {log.previous_score !== null ? `${log.previous_score.toFixed(2)} → ` : ''}
+                                  {log.new_score.toFixed(2)}
+                                </div>
+                                {log.comment && (
+                                  <div className="mt-1 text-xs italic text-slate-500">{log.comment}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </details>
       )}
@@ -2120,6 +2967,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {config.judges.map((judgeId, index) => (
                 <div key={judgeId} className="bg-primary-50 border-2 border-primary-950 p-4 rounded-xl shadow-block flex flex-col gap-3">
+                  {(() => {
+                    const assignedIdentityId = resolveAssignedJudgeIdentity(judgeId);
+                    const isOfficialAssigned = Boolean(assignedIdentityId);
+                    return (
+                      <>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-primary-900/60 uppercase tracking-widest">Juge #{index + 1}</span>
                     <button
@@ -2130,21 +2982,43 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                     </button>
                   </div>
                   <div className="space-y-1">
+                    <select
+                      value={assignedIdentityId}
+                      onChange={(e) => handleJudgeIdentityChange(judgeId, e.target.value)}
+                      className="w-full px-3 py-2 bg-white border-2 border-primary-200 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-medium"
+                    >
+                      <option value="">Sélectionner un juge officiel</option>
+                      {availableOfficialJudges.map((judge) => (
+                        <option key={judge.id} value={judge.id}>
+                          {judge.name}{judge.certification_level ? ` · ${judge.certification_level}` : ''}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       type="text"
                       value={config.judgeNames[judgeId] || ''}
                       onChange={(e) => handleJudgeNameChange(judgeId, e.target.value)}
                       placeholder="Nom du Juge"
-                      className="w-full px-3 py-2 bg-white border-2 border-primary-200 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold"
+                      readOnly={isOfficialAssigned}
+                      className={`w-full px-3 py-2 bg-white border-2 rounded-lg focus:ring-0 text-sm font-bold ${isOfficialAssigned ? 'border-emerald-300 text-emerald-900 bg-emerald-50 cursor-not-allowed' : 'border-primary-200 focus:border-primary-600'}`}
                     />
                     <input
                       type="email"
                       value={config.judgeEmails?.[judgeId] || ''}
                       onChange={(e) => handleJudgeEmailChange(judgeId, e.target.value)}
                       placeholder="Email (optionnel)"
-                      className="w-full px-3 py-1.5 bg-white/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium"
+                      readOnly={isOfficialAssigned}
+                      className={`w-full px-3 py-1.5 border rounded-lg focus:ring-0 text-[10px] font-medium ${isOfficialAssigned ? 'bg-emerald-50 border-emerald-200 text-emerald-900 cursor-not-allowed' : 'bg-white/50 border-primary-100 focus:border-primary-400'}`}
                     />
+                    <p className="text-[10px] text-primary-700">
+                      {isOfficialAssigned
+                        ? `Identité réelle liée: ${assignedIdentityId}`
+                        : `Aucune identité officielle liée à ${judgeId}`}
+                    </p>
                   </div>
+                      </>
+                    );
+                  })()}
                 </div>
               ))}
               <button

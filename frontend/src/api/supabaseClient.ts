@@ -49,9 +49,11 @@ export {
     fetchHeatEntriesWithParticipants,
     fetchHeatSlotMappings,
     fetchHeatMetadata,
+    fetchHeatJudgeAssignments,
+    fetchEventJudgeAssignments,
     replaceHeatEntries
 } from './modules/heats.api';
-export type { ActiveHeatPointer, HeatRow, HeatEntryRow, HeatSlotMappingRow, CreateHeatsOptions } from './modules/heats.api';
+export type { ActiveHeatPointer, HeatRow, HeatEntryRow, HeatSlotMappingRow, HeatJudgeAssignmentRow, CreateHeatsOptions } from './modules/heats.api';
 
 export {
     normalizeScoreJudgeId,
@@ -63,11 +65,15 @@ export {
     fetchHeatScores,
     fetchScoresForHeats,
     fetchAllScoresForEvent,
+    fetchCanonicalScoresForEvent,
+    fetchPreferredScoresForEvent,
+    fetchEventJudgeAssignmentCoverage,
+    fetchEventJudgeAccuracySummary,
     fetchInterferenceCalls,
     fetchAllInterferenceCallsForEvent,
     upsertInterferenceCall
 } from './modules/scoring.api';
-export type { RawScoreRow } from './modules/scoring.api';
+export type { RawScoreRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from './modules/scoring.api';
 
 export {
     fetchActiveJudges,

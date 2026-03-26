@@ -1,23 +1,29 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface KioskJudgeLoginProps {
     position: string; // "J1", "J2", "J3", etc.
-    onSuccess: (judge: { id: string; name: string }) => void;
+    assignedName?: string;
+    assignedJudgeId?: string;
+    onSuccess: (judge: { id: string; name: string; identityId?: string; stationId?: string }) => void;
 }
 
-export const KioskJudgeLogin = ({ position, onSuccess }: KioskJudgeLoginProps) => {
+export const KioskJudgeLogin = ({ position, assignedName, assignedJudgeId, onSuccess }: KioskJudgeLoginProps) => {
     const [judgeName, setJudgeName] = useState('');
     const [loading, setLoading] = useState(false);
 
     // Extract position number for display
     const positionNumber = position.replace('J', '');
-    const kioskId = `kiosk-${position.toLowerCase()}`;
+    const resolvedJudgeName = assignedName?.trim() || judgeName.trim();
+
+    useEffect(() => {
+        if (!assignedName) return;
+        setJudgeName(assignedName);
+    }, [assignedName]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        const trimmedName = judgeName.trim();
-        if (!trimmedName) {
+        if (!resolvedJudgeName) {
             return;
         }
 
@@ -25,15 +31,18 @@ export const KioskJudgeLogin = ({ position, onSuccess }: KioskJudgeLoginProps) =
 
         try {
             // Store in session storage
-            sessionStorage.setItem('authenticated_judge_id', kioskId);
-            sessionStorage.setItem('authenticated_judge_name', trimmedName);
+            sessionStorage.setItem('authenticated_judge_id', position);
+            sessionStorage.setItem('authenticated_judge_name', resolvedJudgeName);
+            sessionStorage.setItem('authenticated_judge_identity_id', assignedJudgeId || position);
             sessionStorage.setItem('kiosk_position', position);
 
             // Call success callback
-            console.log('🚀 KioskJudgeLogin: Login success for', position, trimmedName);
+            console.log('🚀 KioskJudgeLogin: Login success for', position, resolvedJudgeName);
             onSuccess({
-                id: kioskId,
-                name: trimmedName
+                id: position,
+                name: resolvedJudgeName,
+                identityId: assignedJudgeId,
+                stationId: position
             });
         } catch (err) {
             console.error('Kiosk login error:', err);
@@ -58,29 +67,36 @@ export const KioskJudgeLogin = ({ position, onSuccess }: KioskJudgeLoginProps) =
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    <div>
-                        <label htmlFor="judge-name" className="block text-sm font-medium text-gray-700 mb-2">
-                            Votre Nom
-                        </label>
-                        <input
-                            id="judge-name"
-                            type="text"
-                            value={judgeName}
-                            onChange={(e) => setJudgeName(e.target.value)}
-                            placeholder="Entrez votre nom complet"
-                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-lg"
-                            autoFocus
-                            required
-                            disabled={loading}
-                        />
-                    </div>
+                    {assignedName ? (
+                        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+                            <p className="text-sm text-gray-600 mb-1">Juge assigné pour ce heat</p>
+                            <p className="text-lg font-semibold text-blue-700">{assignedName}</p>
+                        </div>
+                    ) : (
+                        <div>
+                            <label htmlFor="judge-name" className="block text-sm font-medium text-gray-700 mb-2">
+                                Votre Nom
+                            </label>
+                            <input
+                                id="judge-name"
+                                type="text"
+                                value={judgeName}
+                                onChange={(e) => setJudgeName(e.target.value)}
+                                placeholder="Entrez votre nom complet"
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-lg"
+                                autoFocus
+                                required
+                                disabled={loading}
+                            />
+                        </div>
+                    )}
 
                     <button
                         type="submit"
-                        disabled={loading || !judgeName.trim()}
+                        disabled={loading || !resolvedJudgeName}
                         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 text-lg"
                     >
-                        {loading ? 'Connexion...' : 'Commencer à Juger'}
+                        {loading ? 'Connexion...' : assignedName ? `Continuer comme ${assignedName}` : 'Commencer à Juger'}
                     </button>
                 </form>
 

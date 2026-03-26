@@ -8,6 +8,8 @@ import type { Score, ScoreOverrideLog, OverrideReason } from '../types';
 interface OverrideRequest {
     judgeId: string;
     judgeName: string;
+    judgeStation?: string;
+    judgeIdentityId?: string;
     surfer: string;
     waveNumber: number;
     newScore: number;
@@ -16,7 +18,7 @@ interface OverrideRequest {
 }
 
 export function useScoreManager() {
-    const { config, configSaved } = useConfigStore();
+    const { config, configSaved, activeEventId } = useConfigStore();
     const { setScores, setOverrideLogs } = useJudgingStore();
 
     const handleScoreSubmit = useCallback(async (
@@ -30,8 +32,11 @@ export function useScoreManager() {
                 competition: scoreData.competition || '',
                 division: scoreData.division || '',
                 round: scoreData.round ?? 0,
+                eventId: scoreData.event_id ?? activeEventId ?? undefined,
                 judgeId: scoreData.judge_id,
                 judgeName: scoreData.judge_name,
+                judgeStation: scoreData.judge_station,
+                judgeIdentityId: scoreData.judge_identity_id,
                 surfer: scoreData.surfer,
                 waveNumber: scoreData.wave_number,
                 score: scoreData.score,
@@ -46,7 +51,7 @@ export function useScoreManager() {
             console.error('❌ Erreur sauvegarde score:', error);
             return undefined;
         }
-    }, [setScores]);
+    }, [setScores, activeEventId]);
 
     const handleScoreOverride = useCallback(async (request: OverrideRequest, heatId: string): Promise<ScoreOverrideLog | undefined> => {
         if (!configSaved || !config.competition) {
@@ -63,6 +68,8 @@ export function useScoreManager() {
                 round: config.round,
                 judgeId: request.judgeId,
                 judgeName: request.judgeName,
+                judgeStation: request.judgeStation,
+                judgeIdentityId: request.judgeIdentityId,
                 surfer: request.surfer,
                 waveNumber: request.waveNumber,
                 newScore: request.newScore,
@@ -76,7 +83,7 @@ export function useScoreManager() {
                 const matchIndex = prev.findIndex(
                     score =>
                         ensureHeatId(score.heat_id) === heatId &&
-                        score.judge_id === request.judgeId &&
+                        (score.judge_station || score.judge_id) === (request.judgeStation || request.judgeId) &&
                         score.wave_number === request.waveNumber &&
                         score.surfer === request.surfer
                 );

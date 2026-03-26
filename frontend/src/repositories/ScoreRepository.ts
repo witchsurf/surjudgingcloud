@@ -10,6 +10,7 @@ import type { Score, ScoreOverrideLog, OverrideReason } from '../types';
 import { ensureHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
 import { saveScoreIDB, saveScoresBatchIDB } from '../lib/idbStorage';
+import { canonicalizeScores, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
 
 export interface SaveScoreRequest {
     heatId: string;
@@ -18,9 +19,12 @@ export interface SaveScoreRequest {
     round: number;
     judgeId: string;
     judgeName: string;
+    judgeStation?: string;
+    judgeIdentityId?: string;
     surfer: string;
     waveNumber: number;
     score: number;
+    eventId?: number | null;
 }
 
 export interface OverrideScoreRequest {
@@ -30,6 +34,8 @@ export interface OverrideScoreRequest {
     round: number;
     judgeId: string;
     judgeName: string;
+    judgeStation?: string;
+    judgeIdentityId?: string;
     surfer: string;
     waveNumber: number;
     newScore: number;
@@ -171,12 +177,15 @@ export class ScoreRepository extends BaseRepository {
 
         const newScore: Score = {
             id: this.generateId(),
+            event_id: request.eventId ?? undefined,
             heat_id: normalizedHeatId,
             competition: request.competition,
             division: request.division,
             round: request.round,
             judge_id: request.judgeId,
             judge_name: request.judgeName,
+            judge_station: request.judgeStation || request.judgeId,
+            judge_identity_id: request.judgeIdentityId,
             surfer: request.surfer,
             wave_number: request.waveNumber,
             score: request.score,
@@ -202,12 +211,15 @@ export class ScoreRepository extends BaseRepository {
                     .from('scores')
                     .upsert({
                         id: newScore.id,
+                        event_id: newScore.event_id,
                         heat_id: newScore.heat_id,
                         competition: newScore.competition,
                         division: newScore.division,
                         round: newScore.round,
                         judge_id: newScore.judge_id,
                         judge_name: newScore.judge_name,
+                        judge_station: newScore.judge_station,
+                        judge_identity_id: newScore.judge_identity_id,
                         surfer: newScore.surfer,
                         wave_number: newScore.wave_number,
                         score: newScore.score,
@@ -262,15 +274,15 @@ export class ScoreRepository extends BaseRepository {
 
                 if (error) throw error;
 
-                const scores = (data || []) as Score[];
+                const scores = canonicalizeScores(((data || []) as RawScoreRow[]).map(toParsedScore));
                 logger.info('ScoreRepository', 'Scores fetched online', { count: scores.length });
                 return scores;
             },
             // Offline fallback
             () => {
-                const scores = this.getScoresFromLocalStorage().filter(
+                const scores = canonicalizeScores(this.getScoresFromLocalStorage().filter(
                     score => heatIds.includes(ensureHeatId(score.heat_id))
-                );
+                ));
                 logger.info('ScoreRepository', 'Scores fetched offline', { count: scores.length });
                 return scores;
             },
@@ -285,27 +297,33 @@ export class ScoreRepository extends BaseRepository {
         const normalizedHeatId = ensureHeatId(request.heatId);
         const now = new Date();
 
-        // Find existing score in localStorage
+        // Find the latest logical score in localStorage without destroying history.
         const localScores = this.getScoresFromLocalStorage();
-        const matchIndex = localScores.findIndex(
-            score =>
+        const matchingScores = localScores.filter(
+                score =>
                 ensureHeatId(score.heat_id) === normalizedHeatId &&
-                score.judge_id === request.judgeId &&
+                (score.judge_station || score.judge_id) === (request.judgeStation || request.judgeId) &&
                 score.wave_number === request.waveNumber &&
                 score.surfer === request.surfer
         );
-
-        const existingScore = matchIndex >= 0 ? localScores[matchIndex] : undefined;
-        const scoreId = existingScore?.id ?? this.generateId();
+        const existingScore = matchingScores.sort(
+            (a, b) => new Date(b.timestamp || b.created_at || 0).getTime() - new Date(a.timestamp || a.created_at || 0).getTime()
+        )[0];
+        const updatedScoreId = this.generateId();
+        const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+        const derivedEventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
 
         const updatedScore: Score = {
-            id: scoreId,
+            id: updatedScoreId,
+            event_id: existingScore?.event_id ?? derivedEventId,
             heat_id: normalizedHeatId,
             competition: request.competition,
             division: request.division,
             round: request.round,
             judge_id: request.judgeId,
             judge_name: request.judgeName,
+            judge_station: request.judgeStation || request.judgeId,
+            judge_identity_id: request.judgeIdentityId,
             surfer: request.surfer,
             wave_number: request.waveNumber,
             score: request.newScore,
@@ -317,9 +335,11 @@ export class ScoreRepository extends BaseRepository {
         const overrideLog: ScoreOverrideLog = {
             id: this.generateId(),
             heat_id: normalizedHeatId,
-            score_id: scoreId!,
+            score_id: existingScore?.id ?? updatedScoreId,
             judge_id: request.judgeId,
             judge_name: request.judgeName,
+            judge_station: request.judgeStation || request.judgeId,
+            judge_identity_id: request.judgeIdentityId,
             surfer: request.surfer,
             wave_number: request.waveNumber,
             previous_score: existingScore ? existingScore.score : null,
@@ -339,20 +359,23 @@ export class ScoreRepository extends BaseRepository {
                 // Save score
                 const { error: scoreError } = await this.supabase!
                     .from('scores')
-                    .upsert({
-                        id: scoreId,
+                    .insert({
+                        id: updatedScore.id,
+                        event_id: updatedScore.event_id,
                         heat_id: normalizedHeatId,
                         competition: request.competition,
                         division: request.division,
                         round: request.round,
                         judge_id: request.judgeId,
                         judge_name: request.judgeName,
+                        judge_station: updatedScore.judge_station,
+                        judge_identity_id: updatedScore.judge_identity_id,
                         surfer: request.surfer,
                         wave_number: request.waveNumber,
                         score: request.newScore,
                         timestamp: updatedScore.timestamp,
                         created_at: updatedScore.created_at
-                    }, { onConflict: 'id' });
+                    });
 
                 if (scoreError) throw scoreError;
 
@@ -365,6 +388,8 @@ export class ScoreRepository extends BaseRepository {
                         score_id: overrideLog.score_id,
                         judge_id: overrideLog.judge_id,
                         judge_name: overrideLog.judge_name,
+                        judge_station: overrideLog.judge_station,
+                        judge_identity_id: overrideLog.judge_identity_id,
                         surfer: overrideLog.surfer,
                         wave_number: overrideLog.wave_number,
                         previous_score: overrideLog.previous_score,
@@ -379,19 +404,19 @@ export class ScoreRepository extends BaseRepository {
                 if (logError) throw logError;
 
                 // Update local storage
-                this.updateScoreInLocalStorage(updatedScore, matchIndex);
+                this.saveScoreToLocalStorage(updatedScore);
                 this.saveOverrideLogToLocalStorage(overrideLog);
 
-                logger.info('ScoreRepository', 'Score overridden online', { scoreId });
+                logger.info('ScoreRepository', 'Score overridden online (append-only)', { scoreId: updatedScore.id, previousScoreId: existingScore?.id });
 
                 return { updatedScore, previousScore: existingScore, log: overrideLog };
             },
             // Offline fallback
             () => {
-                this.updateScoreInLocalStorage(updatedScore, matchIndex);
+                this.saveScoreToLocalStorage(updatedScore);
                 this.saveOverrideLogToLocalStorage(overrideLog);
 
-                logger.info('ScoreRepository', 'Score overridden offline', { scoreId });
+                logger.info('ScoreRepository', 'Score overridden offline (append-only)', { scoreId: updatedScore.id, previousScoreId: existingScore?.id });
 
                 return { updatedScore, previousScore: existingScore, log: overrideLog };
             },
@@ -491,6 +516,8 @@ export class ScoreRepository extends BaseRepository {
                     round: s.round || 1,
                     judge_id: s.judge_id,
                     judge_name: s.judge_name,
+                    judge_station: s.judge_station || s.judge_id,
+                    judge_identity_id: s.judge_identity_id || null,
                     surfer: s.surfer,
                     wave_number: s.wave_number,
                     score: s.score,
@@ -512,6 +539,7 @@ export class ScoreRepository extends BaseRepository {
                 return s;
             });
             localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(updatedScores));
+            window.dispatchEvent(new CustomEvent('localScoresUpdated'));
             // Async dual-write synced status to IndexedDB
             saveScoresBatchIDB(updatedScores.filter(s => ensureHeatId(s.heat_id) === normalizedHeatId)).catch(() => {});
 
@@ -523,12 +551,49 @@ export class ScoreRepository extends BaseRepository {
         }
     }
 
+    /**
+     * Synchronize all pending local scores grouped by heat.
+     * Uses the same per-heat sync path as the manual recovery button.
+     */
+    async syncPendingScores(): Promise<{ success: number; failed: number; heats: number }> {
+        const pendingHeatIds = Array.from(
+            new Set(
+                this.getScoresFromLocalStorage()
+                    .filter((score) => !score.synced)
+                    .map((score) => ensureHeatId(score.heat_id))
+            )
+        );
+
+        if (pendingHeatIds.length === 0) {
+            return { success: 0, failed: 0, heats: 0 };
+        }
+
+        let success = 0;
+        let failed = 0;
+
+        for (const heatId of pendingHeatIds) {
+            try {
+                const result = await this.syncScores(heatId);
+                success += result.success;
+                failed += result.failed;
+            } catch (error) {
+                failed += this.getScoresFromLocalStorage().filter(
+                    (score) => !score.synced && ensureHeatId(score.heat_id) === heatId
+                ).length;
+                logger.error('ScoreRepository', 'Pending heat sync failed', { heatId, error });
+            }
+        }
+
+        return { success, failed, heats: pendingHeatIds.length };
+    }
+
     // ========== Private Helper Methods ==========
 
     private saveScoreToLocalStorage(score: Score): void {
         const scores = this.getScoresFromLocalStorage();
         scores.push(score);
         localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(scores));
+        window.dispatchEvent(new CustomEvent('localScoresUpdated'));
         // Async dual-write to IndexedDB (fire-and-forget)
         saveScoreIDB(score).catch(() => {});
     }
@@ -541,6 +606,7 @@ export class ScoreRepository extends BaseRepository {
             scores.push(score);
         }
         localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(scores));
+        window.dispatchEvent(new CustomEvent('localScoresUpdated'));
         // Async dual-write to IndexedDB (fire-and-forget)
         saveScoreIDB(score).catch(() => {});
     }

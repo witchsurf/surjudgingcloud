@@ -4,6 +4,7 @@ import HeatTimer from './HeatTimer';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/supabaseClient';
+import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers } from '../utils/heat';
 import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
@@ -210,7 +211,7 @@ export default function ScoreDisplay({
         if (cancelled) return;
         const observedJudgeCount = new Set(
           scores
-            .map((score) => (score.judge_id || '').trim().toUpperCase())
+            .map((score) => getScoreJudgeStation(score))
             .filter(Boolean)
         ).size;
         const effectiveJudgeCount = observedJudgeCount > 0 ? observedJudgeCount : Math.max(config.judges.length, 1);

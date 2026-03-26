@@ -466,7 +466,8 @@ export function useHeatManager() {
                     heatNumber: newConfig.heatId,
                     judges: (newConfig.judges || []).map(id => ({
                         id,
-                        name: newConfig.judgeNames?.[id] || id
+                        name: newConfig.judgeNames?.[id] || id,
+                        identityId: newConfig.judgeIdentities?.[id]
                     })),
                     surfers: newConfig.surfers || [],
                     surferNames: newConfig.surferNames || {},

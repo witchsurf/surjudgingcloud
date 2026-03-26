@@ -26,7 +26,7 @@ export interface EventConfigSnapshot {
     division: string;
     round: number;
     heat_number: number;
-    judges: Array<{ id: string; name?: string }>;
+    judges: Array<{ id: string; name?: string; identityId?: string }>;
     surfers?: string[];
     heat_size?: number;
     surferNames?: Record<string, string>;
@@ -48,7 +48,7 @@ export interface SaveSnapshotRequest {
     division: string;
     round: number;
     heatNumber: number;
-    judges: Array<{ id: string; name?: string }>;
+    judges: Array<{ id: string; name?: string; identityId?: string }>;
     surfers?: string[];
     surferNames?: Record<string, string>;
     surferCountries?: Record<string, string>;
@@ -202,6 +202,7 @@ export class EventRepository extends BaseRepository {
                 const judgePayload = request.judges.map((judge) => ({
                     id: judge.id,
                     name: judge.name ?? judge.id,
+                    identity_id: judge.identityId ?? null,
                 }));
 
                 const { error } = await this.supabase!.rpc('upsert_event_last_config', {
@@ -305,20 +306,26 @@ export class EventRepository extends BaseRepository {
 
     // ========== Private Helper Methods ==========
 
-    private parseJudges(judgesData: any): Array<{ id: string; name: string }> {
+    private parseJudges(judgesData: any): Array<{ id: string; name: string; identityId?: string }> {
         if (!Array.isArray(judgesData)) return [];
 
-        return (judgesData as Array<{ id?: string; name?: string }>)
+        return (judgesData as Array<{ id?: string; name?: string; identity_id?: string; identityId?: string }>)
             .map((judge) => {
                 if (typeof judge === 'string') {
                     return { id: judge, name: judge };
                 }
                 if (judge && typeof judge === 'object' && typeof judge.id === 'string') {
-                    return { id: judge.id, name: judge.name ?? judge.id };
+                    return {
+                        id: judge.id,
+                        name: judge.name ?? judge.id,
+                        identityId: typeof judge.identity_id === 'string'
+                            ? judge.identity_id
+                            : (typeof judge.identityId === 'string' ? judge.identityId : undefined),
+                    };
                 }
                 return null;
             })
-            .filter((value): value is { id: string; name: string } => Boolean(value));
+            .filter((value): value is { id: string; name: string; identityId?: string } => Boolean(value));
     }
 
     private async fetchHeatStructure(

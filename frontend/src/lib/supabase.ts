@@ -198,6 +198,8 @@ export interface DatabaseScore {
   round: number;
   judge_id: string;
   judge_name: string;
+  judge_station?: string;
+  judge_identity_id?: string;
   surfer: string;
   wave_number: number;
   score: number;
@@ -381,7 +383,7 @@ export async function getHeatsForCompetition(competitionId: string) {
 
 interface OfflineEntry {
   table: string
-  action: 'insert' | 'update' | 'delete'
+  action: 'insert' | 'update' | 'delete' | 'upsert'
   payload: any
   timestamp: number
 }
@@ -411,6 +413,8 @@ export async function syncOffline() {
     try {
       if (entry.action === 'insert')
         await supabase.from(entry.table).insert(entry.payload)
+      else if (entry.action === 'upsert')
+        await supabase.from(entry.table).upsert(entry.payload.rows ?? entry.payload, entry.payload.options ?? undefined)
       else if (entry.action === 'update')
         await supabase.from(entry.table).update(entry.payload.data).eq('id', entry.payload.id)
       else if (entry.action === 'delete')

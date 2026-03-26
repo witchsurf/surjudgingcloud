@@ -9,8 +9,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AppConfig } from '../types';
 import { INITIAL_CONFIG } from '../utils/constants';
-import { eventRepository } from '../repositories';
-import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, parseActiveHeatId } from '../api/supabaseClient';
+import { eventRepository, heatRepository } from '../repositories';
+import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, parseActiveHeatId } from '../api/supabaseClient';
 import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
 import { logger } from '../lib/logger';
 import type { EventConfigSnapshot } from '../repositories';
@@ -58,6 +58,12 @@ const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
         heatId: snapshot.heat_number || 1,
         judges: snapshot.judges?.map(j => j.id) || ['J1', 'J2', 'J3'],
         judgeNames: snapshot.judges?.reduce((acc, j) => ({ ...acc, [j.id]: j.name || j.id }), {}) || {},
+        judgeIdentities: snapshot.judges?.reduce((acc, j) => {
+            if (j.identityId) {
+                acc[j.id] = j.identityId;
+            }
+            return acc;
+        }, {} as Record<string, string>) || {},
         surfers: snapshot.surfers || ['ROUGE', 'BLANC', 'JAUNE', 'BLEU'],
         surferNames: snapshot.surferNames || {},
         surferCountries: snapshot.surferCountries || {},
@@ -68,6 +74,38 @@ const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
         totalHeats: 0,
         totalRounds: 1
     };
+};
+
+const applyHeatJudgeAssignments = async (config: AppConfig, heatId: string): Promise<AppConfig> => {
+    try {
+        const assignments = await heatRepository.fetchHeatJudgeAssignments(heatId);
+        if (assignments.length === 0) {
+            return config;
+        }
+
+        const sortedAssignments = [...assignments].sort((a, b) =>
+            a.station.localeCompare(b.station, undefined, { numeric: true, sensitivity: 'base' })
+        );
+
+        const judgeNames = sortedAssignments.reduce<Record<string, string>>((acc, assignment) => {
+            acc[assignment.station] = assignment.judge_name;
+            return acc;
+        }, {});
+        const judgeIdentities = sortedAssignments.reduce<Record<string, string>>((acc, assignment) => {
+            acc[assignment.station] = assignment.judge_id;
+            return acc;
+        }, {});
+
+        return {
+            ...config,
+            judges: sortedAssignments.map((assignment) => assignment.station),
+            judgeNames,
+            judgeIdentities,
+        };
+    } catch (error) {
+        logger.warn('ConfigStore', 'Unable to load heat judge assignments', { heatId, error });
+        return config;
+    }
 };
 
 export const useConfigStore = create<ConfigStore>()(
@@ -124,23 +162,31 @@ export const useConfigStore = create<ConfigStore>()(
                             logger.info('ConfigStore', 'Parsed heat config', parsed);
 
                             // Get event ID from event name using EventRepository
-                            const eventId = await eventRepository.fetchEventIdByName(parsed.competition);
+                            let eventId = await eventRepository.fetchEventIdByName(parsed.competition);
+                            if (!eventId) {
+                                const heatMetadata = await fetchHeatMetadata(activeHeat.active_heat_id);
+                                eventId = heatMetadata?.event_id ?? null;
+                            }
                             if (eventId) {
                                 set({ activeEventId: eventId });
+                                await get().loadConfigFromDb(eventId);
+                                return;
                             }
 
-                            // Set basic config from active heat pointer
-                            set((state) => ({
-                                config: {
-                                    ...state.config,
-                                    competition: parsed.competition,
-                                    division: parsed.division,
-                                    round: parsed.round,
-                                    heatId: parsed.heatNumber
-                                },
+                            const nextHeatId = ensureHeatId(activeHeat.active_heat_id);
+                            const nextConfig = await applyHeatJudgeAssignments({
+                                ...INITIAL_CONFIG,
+                                competition: parsed.competition,
+                                division: parsed.division,
+                                round: parsed.round,
+                                heatId: parsed.heatNumber
+                            }, nextHeatId);
+
+                            set({
+                                config: nextConfig,
                                 configSaved: true,
                                 loadedFromDb: true
-                            }));
+                            });
                         }
                     } else {
                         logger.warn('ConfigStore', 'No active heat pointer found');
@@ -239,7 +285,11 @@ export const useConfigStore = create<ConfigStore>()(
 
                         if (snapshot) {
                             logger.info('ConfigStore', 'Snapshot found, building config');
-                            const dbConfig = buildConfigFromSnapshot(snapshot);
+                            const baseConfig = buildConfigFromSnapshot(snapshot);
+                            const heatKey = ensureHeatId(
+                                `${snapshot.event_name}_${snapshot.division}_R${snapshot.round}_H${snapshot.heat_number}`
+                            );
+                            const dbConfig = await applyHeatJudgeAssignments(baseConfig, heatKey);
 
                             set({
                                 config: dbConfig,
@@ -276,7 +326,8 @@ export const useConfigStore = create<ConfigStore>()(
                 try {
                     const judges = (config.judges || []).map(id => ({
                         id,
-                        name: config.judgeNames?.[id] || id
+                        name: config.judgeNames?.[id] || id,
+                        identityId: config.judgeIdentities?.[id]
                     }));
 
                     await eventRepository.saveEventConfigSnapshot({
@@ -309,6 +360,16 @@ export const useConfigStore = create<ConfigStore>()(
                         });
                         logger.info('ConfigStore', 'active_heat_pointer updated', { heatId });
                     }
+
+                    await heatRepository.saveHeatConfig(heatId, {
+                        event_id: eventId,
+                        judges: config.judges,
+                        judge_names: config.judgeNames,
+                        judge_identities: config.judgeIdentities,
+                        surfers: config.surfers || [],
+                        waves: config.waves,
+                        tournament_type: config.tournamentType
+                    });
 
                     logger.info('ConfigStore', 'Config saved to DB successfully');
                 } catch (error) {

@@ -143,7 +143,7 @@ export default function HeatResults({
         const { data, error } = await supabase!
           .from('scores')
           .select(
-            'id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at'
+            'id, heat_id, competition, division, round, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, score, timestamp, created_at'
           )
           .eq('heat_id', heatId)
           .order('created_at', { ascending: true });

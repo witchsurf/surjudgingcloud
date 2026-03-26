@@ -44,11 +44,12 @@ type HeatUpdateListener = (
 ) => void;
 
 interface HeatChannelState {
-  channel: RealtimeChannel;
+  channel: RealtimeChannel | null;
   listeners: Map<string, HeatUpdateListener>;
   lastTimer: HeatTimer | null;
   lastConfig: AppConfig | null;
   lastStatus: HeatLifecycleStatus | null;
+  retryTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const heatChannelRegistry = new Map<string, HeatChannelState>();
@@ -79,96 +80,192 @@ const emitHeatUpdate = (
   }
 };
 
+const refreshHeatSnapshot = async (normalizedHeatId: string) => {
+  if (!supabase || !isSupabaseConfigured()) return;
+
+  try {
+    const [{ data, error }, { data: heatRow, error: heatError }] = await Promise.all([
+      supabase
+        .from('heat_realtime_config')
+        .select('*')
+        .eq('heat_id', normalizedHeatId)
+        .maybeSingle(),
+      supabase
+        .from('heats')
+        .select('status')
+        .eq('id', normalizedHeatId)
+        .maybeSingle()
+    ]);
+
+    if (error) {
+      console.warn('⚠️ Failed to refresh heat realtime snapshot:', normalizedHeatId, error);
+      return;
+    }
+
+    if (heatError && heatError.code !== 'PGRST116') {
+      console.warn('⚠️ Failed to refresh heat status snapshot:', normalizedHeatId, heatError);
+    }
+
+    const heatIsClosed = (heatRow?.status || '').toString().trim().toLowerCase() === 'closed';
+    const state = heatChannelRegistry.get(normalizedHeatId);
+    const fallbackTimer: HeatTimer = {
+      isRunning: false,
+      startTime: null,
+      duration: DEFAULT_TIMER_DURATION
+    };
+
+    if (!data) {
+      emitHeatUpdate(
+        normalizedHeatId,
+        heatIsClosed ? fallbackTimer : (state?.lastTimer ?? fallbackTimer),
+        state?.lastConfig ?? null,
+        heatIsClosed ? 'closed' : (state?.lastStatus ?? 'waiting')
+      );
+      return;
+    }
+
+    const timer: HeatTimer = {
+      isRunning: !heatIsClosed && data.status === 'running',
+      startTime: !heatIsClosed && data.timer_start_time ? new Date(data.timer_start_time) : null,
+      duration: data.timer_duration_minutes || DEFAULT_TIMER_DURATION
+    };
+
+    emitHeatUpdate(normalizedHeatId, timer, data.config_data ?? null, heatIsClosed ? 'closed' : data.status);
+  } catch (error) {
+    console.warn('⚠️ Heat snapshot refresh failed after reconnect:', normalizedHeatId, error);
+  }
+};
+
 const createHeatChannel = (normalizedHeatId: string) => {
   const channelName = `heat-${normalizedHeatId}`;
-  const channel = supabase!
-    .channel(channelName)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'heat_realtime_config',
-        filter: `heat_id=eq.${normalizedHeatId}`
-      },
-      (payload) => {
-        const data = payload.new as RealtimeHeatConfig;
-        if (!data) return;
-
-        const timer: HeatTimer = {
-          isRunning: data.status === 'running',
-          startTime: data.timer_start_time ? new Date(data.timer_start_time) : null,
-          duration: data.timer_duration_minutes || DEFAULT_TIMER_DURATION
-        };
-
-        emitHeatUpdate(normalizedHeatId, timer, data.config_data ?? null, data.status);
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'heats',
-        filter: `id=eq.${normalizedHeatId}`
-      },
-      (payload) => {
-        const row = payload.new as { status?: string } | null;
-        const normalizedStatus = (row?.status || '').toString().trim().toLowerCase();
-        if (normalizedStatus !== 'closed') return;
-
-        const state = heatChannelRegistry.get(normalizedHeatId);
-        const nextTimer: HeatTimer = {
-          ...(state?.lastTimer ?? { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION }),
-          isRunning: false,
-          startTime: null,
-        };
-
-        emitHeatUpdate(normalizedHeatId, nextTimer, state?.lastConfig ?? null, 'closed');
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'scores',
-        filter: `heat_id=eq.${normalizedHeatId}`
-      },
-      (payload) => {
-        window.dispatchEvent(new CustomEvent('newScoreRealtime', {
-          detail: payload.new
-        }));
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'scores',
-        filter: `heat_id=eq.${normalizedHeatId}`
-      },
-      (payload) => {
-        window.dispatchEvent(new CustomEvent('newScoreRealtime', {
-          detail: payload.new
-        }));
-      }
-    )
-    .subscribe((status) => {
-      if (debugRealtimeEnabled) {
-        console.log(`📡 [${channelName}] status:`, status, 'listeners:', heatChannelRegistry.get(normalizedHeatId)?.listeners.size ?? 0);
-      }
-    });
-
   const state: HeatChannelState = {
-    channel,
+    channel: null,
     listeners: new Map(),
     lastTimer: null,
     lastConfig: null,
     lastStatus: null,
+    retryTimer: null,
   };
   heatChannelRegistry.set(normalizedHeatId, state);
+
+  const setupChannel = () => {
+    if (!heatChannelRegistry.has(normalizedHeatId)) return;
+
+    if (state.channel && supabase) {
+      try {
+        state.channel.unsubscribe();
+        supabase.removeChannel(state.channel);
+      } catch (error) {
+        console.warn('⚠️ Failed to recycle realtime channel', normalizedHeatId, error);
+      }
+    }
+
+    const channel = supabase!
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'heat_realtime_config',
+          filter: `heat_id=eq.${normalizedHeatId}`
+        },
+        (payload) => {
+          const data = payload.new as RealtimeHeatConfig;
+          if (!data) return;
+
+          const timer: HeatTimer = {
+            isRunning: data.status === 'running',
+            startTime: data.timer_start_time ? new Date(data.timer_start_time) : null,
+            duration: data.timer_duration_minutes || DEFAULT_TIMER_DURATION
+          };
+
+          emitHeatUpdate(normalizedHeatId, timer, data.config_data ?? null, data.status);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'heats',
+          filter: `id=eq.${normalizedHeatId}`
+        },
+        (payload) => {
+          const row = payload.new as { status?: string } | null;
+          const normalizedStatus = (row?.status || '').toString().trim().toLowerCase();
+          if (normalizedStatus !== 'closed') return;
+
+          const currentState = heatChannelRegistry.get(normalizedHeatId);
+          const nextTimer: HeatTimer = {
+            ...(currentState?.lastTimer ?? { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION }),
+            isRunning: false,
+            startTime: null,
+          };
+
+          emitHeatUpdate(normalizedHeatId, nextTimer, currentState?.lastConfig ?? null, 'closed');
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'scores',
+          filter: `heat_id=eq.${normalizedHeatId}`
+        },
+        (payload) => {
+          window.dispatchEvent(new CustomEvent('newScoreRealtime', {
+            detail: payload.new
+          }));
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'scores',
+          filter: `heat_id=eq.${normalizedHeatId}`
+        },
+        (payload) => {
+          window.dispatchEvent(new CustomEvent('newScoreRealtime', {
+            detail: payload.new
+          }));
+        }
+      );
+
+    state.channel = channel;
+
+    channel.subscribe((status) => {
+      if (debugRealtimeEnabled) {
+        console.log(`📡 [${channelName}] status:`, status, 'listeners:', heatChannelRegistry.get(normalizedHeatId)?.listeners.size ?? 0);
+      }
+      if (status === 'SUBSCRIBED') {
+        void refreshHeatSnapshot(normalizedHeatId);
+        window.dispatchEvent(new CustomEvent('heatRealtimeResync', {
+          detail: { heatId: normalizedHeatId }
+        }));
+        return;
+      }
+
+      if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
+        console.warn(`⚠️ Heat stream ${channelName} dropped (${status}), scheduling reconnect...`);
+        supabase!.removeChannel(channel).catch(() => {});
+        if (state.retryTimer) clearTimeout(state.retryTimer);
+        state.retryTimer = setTimeout(() => {
+          state.retryTimer = null;
+          if (heatChannelRegistry.has(normalizedHeatId)) {
+            console.log(`🔄 Reconnecting heat config stream ${channelName}...`);
+            setupChannel();
+          }
+        }, 3000 + Math.random() * 2000);
+      }
+    });
+  };
+
+  setupChannel();
+
   return state;
 };
 
@@ -178,8 +275,14 @@ const releaseHeatChannel = (normalizedHeatId: string) => {
 
   if (state.listeners.size === 0) {
     try {
-      state.channel.unsubscribe();
-      supabase?.removeChannel(state.channel);
+      if (state.retryTimer) {
+        clearTimeout(state.retryTimer);
+        state.retryTimer = null;
+      }
+      if (state.channel) {
+        state.channel.unsubscribe();
+        supabase?.removeChannel(state.channel);
+      }
     } catch (error) {
       console.warn('⚠️ Failed to release realtime channel', normalizedHeatId, error);
     } finally {

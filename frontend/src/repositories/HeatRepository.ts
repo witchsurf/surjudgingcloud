@@ -29,6 +29,14 @@ export interface OrderedHeat {
     id: string;
 }
 
+export interface HeatJudgeAssignment {
+    heat_id: string;
+    event_id?: number | null;
+    station: string;
+    judge_id: string;
+    judge_name: string;
+}
+
 /**
  * Repository for managing heats
  */
@@ -130,6 +138,7 @@ export class HeatRepository extends BaseRepository {
      */
     async saveHeatConfig(heatId: string, config: any): Promise<void> {
         const normalizedHeatId = ensureHeatId(heatId);
+        const assignmentPayload = this.buildJudgeAssignments(normalizedHeatId, config);
         
         const payload = {
             heat_id: normalizedHeatId,
@@ -145,6 +154,13 @@ export class HeatRepository extends BaseRepository {
                     .upsert(payload, { onConflict: 'heat_id' });
 
                 if (error) throw error;
+                if (assignmentPayload.length > 0) {
+                    const { error: assignmentError } = await this.supabase!
+                        .from('heat_judge_assignments')
+                        .upsert(assignmentPayload, { onConflict: 'heat_id,station' });
+
+                    if (assignmentError) throw assignmentError;
+                }
                 logger.info('HeatRepository', 'Heat config saved online', { heatId: normalizedHeatId });
             },
             () => {
@@ -155,8 +171,41 @@ export class HeatRepository extends BaseRepository {
                     payload: payload,
                     timestamp: Date.now()
                 });
+                if (assignmentPayload.length > 0) {
+                    saveOffline({
+                        table: 'heat_judge_assignments',
+                        action: 'upsert',
+                        payload: {
+                            rows: assignmentPayload,
+                            options: { onConflict: 'heat_id,station' }
+                        },
+                        timestamp: Date.now()
+                    });
+                }
             },
             'saveHeatConfig'
+        );
+    }
+
+    async fetchHeatJudgeAssignments(heatId: string): Promise<HeatJudgeAssignment[]> {
+        const normalizedHeatId = ensureHeatId(heatId);
+
+        return this.execute(
+            async () => {
+                this.ensureSupabase();
+
+                const { data, error } = await this.supabase!
+                    .from('heat_judge_assignments')
+                    .select('heat_id, event_id, station, judge_id, judge_name')
+                    .eq('heat_id', normalizedHeatId)
+                    .order('station', { ascending: true });
+
+                if (error) throw error;
+
+                return (data ?? []) as HeatJudgeAssignment[];
+            },
+            () => [],
+            'fetchHeatJudgeAssignments'
         );
     }
 
@@ -249,8 +298,25 @@ export class HeatRepository extends BaseRepository {
             'fetchAllEventCategories'
         );
     }
+
+    private buildJudgeAssignments(heatId: string, config: any): HeatJudgeAssignment[] {
+        const judgeIds = Array.isArray(config?.judges) ? config.judges : [];
+        const judgeNames = config?.judge_names ?? config?.judgeNames ?? {};
+        const judgeIdentities = config?.judge_identities ?? config?.judgeIdentities ?? {};
+        const eventId = Number.isFinite(Number(config?.event_id)) ? Number(config.event_id) : null;
+
+        return judgeIds
+            .map((stationRaw: unknown) => String(stationRaw ?? '').trim().toUpperCase())
+            .filter((station: string) => station.length > 0)
+            .map((station) => ({
+                heat_id: heatId,
+                event_id: eventId,
+                station,
+                judge_id: String(judgeIdentities?.[station] ?? station).trim() || station,
+                judge_name: String(judgeNames?.[station] ?? station).trim() || station,
+            }));
+    }
 }
 
 // Export singleton instance
 export const heatRepository = new HeatRepository();
-

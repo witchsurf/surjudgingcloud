@@ -6,12 +6,13 @@ import { useJudgingStore } from '../stores/judgingStore';
 import {
     fetchEventConfigSnapshot,
     fetchAllEventHeats,
-    fetchAllScoresForEvent,
+    fetchPreferredScoresForEvent,
     fetchHeatMetadata,
     fetchHeatScores,
     fetchHeatEntriesWithParticipants,
     parseActiveHeatId
 } from '../api/supabaseClient';
+import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { isLocalSupabaseMode } from '../lib/supabase';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
@@ -191,10 +192,12 @@ const resolveFromQualifierMap = (text: string, qualifierMap: Map<string, string>
 const normalizeScores = (scores: Score[]) => scores.map(score => {
     const s = normalizeColorCode(score.surfer) || (score.surfer || '').trim().toUpperCase();
     const j = normalizeJudgeId(score.judge_id) || (score.judge_id || '').trim().toUpperCase();
+    const station = normalizeJudgeId(score.judge_station) || (score.judge_station || score.judge_id || '').trim().toUpperCase();
     return {
         ...score,
         surfer: s,
         judge_id: j,
+        judge_station: station,
         judge_name: normalizeJudgeName(score.judge_name) || score.judge_name,
         division: normalizeDivision(score.division) || (score.division || '').trim().toUpperCase()
     };
@@ -334,7 +337,7 @@ export default function DisplayPage() {
                 const divisionRounds = divisionKey ? historyHeats[divisionKey] : [];
                 if (divisionRounds.length > 0) {
                     const rounds = JSON.parse(JSON.stringify(divisionRounds)) as RoundSpec[];
-                    const allScores = await fetchAllScoresForEvent(activeEventId);
+                    const allScores = await fetchPreferredScoresForEvent(activeEventId);
                     const qualifierMap = new Map<string, string>();
 
                     rounds
@@ -417,11 +420,12 @@ export default function DisplayPage() {
             // (fetchHeatScores already returns Score[] format compatible with our store)
 
             // 5. Construct synthetic AppConfig
-            const uniqueJudgeIds = Array.from(new Set(rawScores.map(s => s.judge_id))).filter(Boolean);
+            const uniqueJudgeIds = Array.from(new Set(rawScores.map((s) => getScoreJudgeStation(s)))).filter(Boolean);
             const inferredJudgeNames: Record<string, string> = {};
             rawScores.forEach(s => {
-                if (s.judge_id && s.judge_name) {
-                    inferredJudgeNames[s.judge_id] = s.judge_name;
+                const judgeKey = getScoreJudgeStation(s);
+                if (judgeKey && s.judge_name) {
+                    inferredJudgeNames[judgeKey] = s.judge_name;
                 }
             });
 
@@ -664,7 +668,7 @@ export default function DisplayPage() {
             // Fusionner: supprimer l'ancien score pour ce juge/surfeur/vague s'il existe
             const normalizedNew = normalizeScores([newScore])[0];
             const otherScores = currentScores.filter(s =>
-                !(s.judge_id === normalizedNew.judge_id &&
+                !(getScoreJudgeStation(s) === getScoreJudgeStation(normalizedNew) &&
                     s.surfer === normalizedNew.surfer &&
                     s.wave_number === normalizedNew.wave_number)
             );

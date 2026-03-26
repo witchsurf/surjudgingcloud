@@ -8,7 +8,7 @@ import {
     fetchHeatScores,
     fetchInterferenceCalls,
     fetchCategoryHeats,
-    fetchAllScoresForEvent
+    fetchPreferredScoresForEvent
 } from '../api/supabaseClient';
 import { calculateSurferStats } from '../utils/scoring';
 import { colorLabelMap } from '../utils/colorUtils';
@@ -253,7 +253,7 @@ async function resolveNamesFromMappings(
     if (Object.keys(namesByTargetColor).length === 0) {
         try {
             const rounds = await fetchCategoryHeats(currentHeat.event_id, currentHeat.division);
-            const allScores = await fetchAllScoresForEvent(currentHeat.event_id);
+            const allScores = await fetchPreferredScoresForEvent(currentHeat.event_id);
             const normalizePlaceholderKey = (value: string) =>
                 value
                     .toUpperCase()

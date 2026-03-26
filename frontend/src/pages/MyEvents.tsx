@@ -76,10 +76,15 @@ const buildConfigFromSnapshot = (eventName: string, snapshot: EventConfigSnapsho
   if (snapshot?.judges?.length) {
     next.judges = snapshot.judges.map((judge) => judge.id);
     const names: Record<string, string> = {};
+    const identities: Record<string, string> = {};
     snapshot.judges.forEach((judge) => {
       names[judge.id] = judge.name ?? judge.id;
+      if (judge.identityId) {
+        identities[judge.id] = judge.identityId;
+      }
     });
     next.judgeNames = names;
+    next.judgeIdentities = identities;
   }
 
   // Use surfers from snapshot if available (correct heat size from database)
@@ -622,7 +627,8 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
             heatNumber: 1,
             judges: config.judges.map(id => ({
               id,
-              name: config.judgeNames[id] || id
+              name: config.judgeNames[id] || id,
+              identityId: config.judgeIdentities?.[id]
             }))
           });
           console.log('✅ Config auto-saved to event_last_config');

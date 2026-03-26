@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { RoundSpec } from './bracket';
 import type { AppConfig, InterferenceCall, Score } from '../types';
+import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { colorLabelMap } from './colorUtils';
 import { calculateSurferStats } from './scoring';
 import { computeEffectiveInterferences } from './interference';
@@ -616,7 +617,7 @@ export function exportFullCompetitionPDF({
   });
 
   const getHeatScoringParams = (heatScores: Score[]) => {
-    const judgeCount = new Set(heatScores.map((s) => s.judge_id).filter(Boolean)).size;
+    const judgeCount = new Set(heatScores.map((s) => getScoreJudgeStation(s)).filter(Boolean)).size;
     const maxWaves = Math.max(
       1,
       ...heatScores.map((s) => Number(s.wave_number) || 0)

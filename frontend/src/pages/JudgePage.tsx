@@ -252,10 +252,38 @@ export default function JudgePage() {
 
     // Kiosk mode: show simplified login with position
     if (!currentJudge && positionFromUrl && /^J[1-5]$/i.test(positionFromUrl)) {
+        const normalizedPosition = positionFromUrl.toUpperCase();
+        const assignedJudgeName = config.judgeNames?.[normalizedPosition]?.trim();
+        const assignedJudgeIdentity = config.judgeIdentities?.[normalizedPosition]?.trim();
+
+        if (!assignedJudgeName || !assignedJudgeIdentity) {
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center px-4">
+                    <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-xl text-center">
+                        <h1 className="text-2xl font-bold text-gray-900 mb-3">Affectation juge incomplète</h1>
+                        <p className="text-gray-700 mb-4">
+                            La position <span className="font-semibold text-blue-700">{normalizedPosition}</span> n’a pas une identité officielle complète dans la configuration du heat courant.
+                        </p>
+                        <p className="text-sm text-gray-500 mb-6">
+                            Pour éviter toute ambiguïté d’identité, la tablette est verrouillée tant que l’administrateur n’a pas affecté le juge officiel en base pour ce heat.
+                        </p>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                        >
+                            Rafraîchir
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <KioskJudgeLogin
-                position={positionFromUrl.toUpperCase()}
-                onSuccess={(judge) => login(judge.id, judge.name)}
+                position={normalizedPosition}
+                assignedName={assignedJudgeName}
+                assignedJudgeId={assignedJudgeIdentity}
+                onSuccess={(judge) => login(judge.id, judge.name, judge.identityId, judge.stationId)}
             />
         );
     }
@@ -297,7 +325,7 @@ export default function JudgePage() {
     // Fast path: always show the judge code screen when judge_id is present, skipping magic-link/user auth.
     // Regular judge login (legacy UUID-based)
     if (!currentJudge && judgeIdFromUrl && !positionFromUrl) {
-        return <JudgeLogin judgeId={judgeIdFromUrl} onSuccess={(judge) => login(judge.id, judge.name)} />;
+        return <JudgeLogin judgeId={judgeIdFromUrl} onSuccess={(judge) => login(judge.id, judge.name, judge.id, judge.id)} />;
     }
 
     if (!currentJudge && !judgeIdFromUrl && !positionFromUrl) {

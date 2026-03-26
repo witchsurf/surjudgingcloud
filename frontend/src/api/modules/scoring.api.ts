@@ -8,6 +8,28 @@ const SUPABASE_PAGE_SIZE = 1000;
 const interferenceCache = new Map<string, { at: number; value: InterferenceCall[] }>();
 const interferenceInflight = new Map<string, Promise<InterferenceCall[]>>();
 
+const isMissingViewError = (error: unknown, viewName: string) => {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as {
+        code?: string;
+        message?: string;
+        details?: string;
+        status?: number;
+        statusCode?: number;
+        hint?: string;
+    };
+    const text = [
+        candidate.code,
+        candidate.message,
+        candidate.details,
+        candidate.hint,
+        String(candidate.status ?? ''),
+        String(candidate.statusCode ?? ''),
+        JSON.stringify(candidate),
+    ].join(' ').toLowerCase();
+    return text.includes(viewName.toLowerCase()) && (text.includes('404') || text.includes('not found') || text.includes('pgrst'));
+};
+
 const isMissingInterferenceTableError = (error: unknown) => {
     if (!error || typeof error !== 'object') return false;
     const candidate = error as {
@@ -39,11 +61,48 @@ export type RawScoreRow = {
     round: number;
     judge_id: string;
     judge_name: string;
+    judge_station?: string | null;
+    judge_identity_id?: string | null;
     surfer: string;
     wave_number: number;
     score: number;
     timestamp?: string;
     created_at?: string;
+};
+
+export type CanonicalScoreViewRow = RawScoreRow & {
+    judge_station: string;
+    judge_identity_id?: string | null;
+    judge_display_name?: string | null;
+};
+
+export type EventJudgeAssignmentCoverageRow = {
+    event_id: number;
+    competition: string;
+    division: string;
+    round: number;
+    heat_number: number;
+    heat_id: string;
+    expected_station_count: number;
+    assigned_station_count: number;
+    missing_station_count: number;
+    is_complete: boolean;
+};
+
+export type EventJudgeAccuracySummaryRow = {
+    event_id: number;
+    judge_identity_id: string;
+    judge_display_name: string;
+    scored_waves: number;
+    consensus_samples: number;
+    mean_abs_deviation: number;
+    bias: number;
+    within_half_point_rate: number;
+    override_count: number;
+    override_rate: number;
+    average_override_delta: number;
+    quality_score: number;
+    quality_band: 'excellent' | 'good' | 'watch' | 'needs_review';
 };
 
 export const normalizeScoreJudgeId = (judgeId?: string) => {
@@ -53,6 +112,19 @@ export const normalizeScoreJudgeId = (judgeId?: string) => {
     if (upper === 'KIOSK-J3') return 'J3';
     return upper || judgeId || '';
 };
+
+export const normalizeScoreJudgeName = (judgeName?: string) => {
+    return (judgeName || '').trim();
+};
+
+export const getScoreJudgeStation = (score: Pick<Score, 'judge_station' | 'judge_id'>) =>
+    normalizeScoreJudgeStation(score.judge_station, score.judge_id);
+
+export const getScoreJudgeIdentity = (score: Pick<Score, 'judge_identity_id' | 'judge_id'>) =>
+    (score.judge_identity_id || '').trim() || normalizeScoreJudgeId(score.judge_id);
+
+export const getScoreJudgeDisplayName = (score: Pick<Score, 'judge_name' | 'judge_identity_id' | 'judge_id'>) =>
+    normalizeScoreJudgeName(score.judge_name) || getScoreJudgeIdentity(score);
 
 export const SCORE_SURFER_MAP: Record<string, string> = {
     RED: 'RED', ROUGE: 'RED',
@@ -70,6 +142,10 @@ export const normalizeScoreSurfer = (surfer?: string) => {
 
 export const scoreTimestampMs = (score: Score) => new Date(score.created_at || score.timestamp || 0).getTime();
 
+export const normalizeScoreJudgeStation = (judgeStation?: string, judgeId?: string) => {
+    return normalizeScoreJudgeId(judgeStation || judgeId);
+};
+
 export const toParsedScore = (row: RawScoreRow): Score => ({
     id: row.id,
     event_id: row.event_id,
@@ -78,7 +154,9 @@ export const toParsedScore = (row: RawScoreRow): Score => ({
     division: row.division,
     round: row.round,
     judge_id: normalizeScoreJudgeId(row.judge_id),
-    judge_name: normalizeScoreJudgeId(row.judge_name),
+    judge_name: normalizeScoreJudgeName(row.judge_name) || normalizeScoreJudgeId(row.judge_id),
+    judge_station: normalizeScoreJudgeStation(row.judge_station, row.judge_id),
+    judge_identity_id: (row.judge_identity_id || '').trim() || undefined,
     surfer: normalizeScoreSurfer(row.surfer),
     wave_number: row.wave_number,
     score: typeof row.score === 'number' ? row.score : Number(row.score) || 0,
@@ -90,7 +168,8 @@ export const toParsedScore = (row: RawScoreRow): Score => ({
 export const canonicalizeScores = (scores: Score[]): Score[] => {
     const latestByLogicalKey = new Map<string, Score>();
     scores.forEach((score) => {
-        const key = `${score.heat_id}::${normalizeScoreJudgeId(score.judge_id)}::${normalizeScoreSurfer(score.surfer)}::${Number(score.wave_number)}`;
+        const judgeStation = normalizeScoreJudgeStation(score.judge_station, score.judge_id);
+        const key = `${score.heat_id}::${judgeStation}::${normalizeScoreSurfer(score.surfer)}::${Number(score.wave_number)}`;
         const existing = latestByLogicalKey.get(key);
         if (!existing || scoreTimestampMs(score) >= scoreTimestampMs(existing)) {
             latestByLogicalKey.set(key, score);
@@ -107,7 +186,7 @@ async function fetchPagedScoreRows(heatIds: string[]): Promise<RawScoreRow[]> {
         const to = from + SUPABASE_PAGE_SIZE - 1;
         const { data, error } = await supabase!
             .from('scores')
-            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
+            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, score, timestamp, created_at')
             .in('heat_id', heatIds)
             .order('created_at', { ascending: true })
             .range(from, to);
@@ -132,7 +211,7 @@ async function fetchPagedInterferenceRows(heatIds: string[]): Promise<Interferen
         const to = from + SUPABASE_PAGE_SIZE - 1;
         const { data, error } = await supabase!
             .from('interference_calls')
-            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
+            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
             .in('heat_id', heatIds)
             .range(from, to);
 
@@ -158,8 +237,8 @@ export async function fetchHeatScores(heatId: string): Promise<Score[]> {
     ensureSupabase();
     const normalizedHeatId = ensureHeatId(heatId);
     const { data, error } = await supabase!
-        .from('scores')
-        .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, score, timestamp, created_at')
+            .from('scores')
+        .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, score, timestamp, created_at')
         .eq('heat_id', normalizedHeatId)
         .order('created_at', { ascending: true });
 
@@ -204,6 +283,88 @@ export async function fetchAllScoresForEvent(eventId: number): Promise<Record<st
     return result;
 }
 
+export async function fetchCanonicalScoresForEvent(eventId: number): Promise<Record<string, Score[]>> {
+    ensureSupabase();
+    const { data, error } = await supabase!
+        .from('v_scores_canonical_enriched')
+        .select('id, event_id, heat_id, competition, division, round, judge_identity_id, judge_station, judge_display_name, surfer, wave_number, score, timestamp, created_at')
+        .eq('event_id', eventId)
+        .order('heat_id', { ascending: true })
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        if (isMissingViewError(error, 'v_scores_canonical_enriched')) {
+            throw new Error('VIEW_NOT_READY:v_scores_canonical_enriched');
+        }
+        throw error;
+    }
+
+    const result: Record<string, Score[]> = {};
+    ((data ?? []) as CanonicalScoreViewRow[]).forEach((row) => {
+        const parsed = toParsedScore({
+            ...row,
+            judge_id: row.judge_identity_id || row.judge_id,
+            judge_name: row.judge_display_name || row.judge_name,
+        });
+        if (!result[parsed.heat_id]) result[parsed.heat_id] = [];
+        result[parsed.heat_id].push(parsed);
+    });
+    Object.keys(result).forEach((heatId) => {
+        result[heatId] = canonicalizeScores(result[heatId]);
+    });
+    return result;
+}
+
+export async function fetchPreferredScoresForEvent(eventId: number): Promise<Record<string, Score[]>> {
+    try {
+        return await fetchCanonicalScoresForEvent(eventId);
+    } catch (error) {
+        if (error instanceof Error && error.message.startsWith('VIEW_NOT_READY:')) {
+            return fetchAllScoresForEvent(eventId);
+        }
+        throw error;
+    }
+}
+
+export async function fetchEventJudgeAssignmentCoverage(eventId: number): Promise<EventJudgeAssignmentCoverageRow[]> {
+    ensureSupabase();
+    const { data, error } = await supabase!
+        .from('v_event_judge_assignment_coverage')
+        .select('*')
+        .eq('event_id', eventId)
+        .order('division', { ascending: true })
+        .order('round', { ascending: true })
+        .order('heat_number', { ascending: true });
+
+    if (error) {
+        if (isMissingViewError(error, 'v_event_judge_assignment_coverage')) {
+            throw new Error('VIEW_NOT_READY:v_event_judge_assignment_coverage');
+        }
+        throw error;
+    }
+
+    return (data ?? []) as EventJudgeAssignmentCoverageRow[];
+}
+
+export async function fetchEventJudgeAccuracySummary(eventId: number): Promise<EventJudgeAccuracySummaryRow[]> {
+    ensureSupabase();
+    const { data, error } = await supabase!
+        .from('v_event_judge_accuracy_summary')
+        .select('*')
+        .eq('event_id', eventId)
+        .order('quality_score', { ascending: false })
+        .order('mean_abs_deviation', { ascending: true });
+
+    if (error) {
+        if (isMissingViewError(error, 'v_event_judge_accuracy_summary')) {
+            throw new Error('VIEW_NOT_READY:v_event_judge_accuracy_summary');
+        }
+        throw error;
+    }
+
+    return (data ?? []) as EventJudgeAccuracySummaryRow[];
+}
+
 export async function fetchInterferenceCalls(heatId: string): Promise<InterferenceCall[]> {
     ensureSupabase();
     const normalizedHeatId = ensureHeatId(heatId);
@@ -216,7 +377,7 @@ export async function fetchInterferenceCalls(heatId: string): Promise<Interferen
     const request = (async () => {
         const { data, error } = await supabase!
             .from('interference_calls')
-            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
+            .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, call_type, is_head_judge_override, created_at, updated_at')
             .eq('heat_id', normalizedHeatId)
             .order('updated_at', { ascending: false });
 
@@ -256,14 +417,15 @@ export async function fetchAllInterferenceCallsForEvent(eventId: number): Promis
 
 export async function upsertInterferenceCall(input: {
     event_id?: number | null; heat_id: string; competition?: string; division?: string; round?: number;
-    judge_id: string; judge_name?: string; surfer: string; wave_number: number; call_type: InterferenceType;
+    judge_id: string; judge_name?: string; judge_station?: string; judge_identity_id?: string; surfer: string; wave_number: number; call_type: InterferenceType;
     is_head_judge_override?: boolean;
 }): Promise<void> {
     ensureSupabase();
     const payload = {
         event_id: input.event_id ?? null, heat_id: ensureHeatId(input.heat_id), competition: input.competition ?? null,
         division: input.division ?? null, round: input.round ?? null, judge_id: input.judge_id,
-        judge_name: input.judge_name ?? null, surfer: input.surfer, wave_number: input.wave_number,
+        judge_name: input.judge_name ?? null, judge_station: input.judge_station ?? input.judge_id,
+        judge_identity_id: input.judge_identity_id ?? null, surfer: input.surfer, wave_number: input.wave_number,
         call_type: input.call_type, is_head_judge_override: Boolean(input.is_head_judge_override),
     };
     const { error } = await supabase!.from('interference_calls').upsert(payload, { onConflict: 'heat_id,judge_id,surfer,wave_number' });

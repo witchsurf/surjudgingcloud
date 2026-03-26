@@ -20,4 +20,4 @@ export type {
     SaveSnapshotRequest
 } from './EventRepository';
 export type { ParticipantRecord } from './ParticipantRepository';
-export type { HeatEntryWithParticipant, OrderedHeat } from './HeatRepository';
+export type { HeatEntryWithParticipant, OrderedHeat, HeatJudgeAssignment } from './HeatRepository';

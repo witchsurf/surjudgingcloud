@@ -8,6 +8,7 @@ type Listener = () => void;
 type HeatSignalState = {
   channel: RealtimeChannel | null;
   pollingInterval: ReturnType<typeof setInterval> | null;
+  retryTimer: ReturnType<typeof setTimeout> | null;
   listeners: Record<HeatSignalType, Map<string, Listener>>;
 };
 
@@ -19,6 +20,7 @@ let listenerSequence = 0;
 const createState = (): HeatSignalState => ({
   channel: null,
   pollingInterval: null,
+  retryTimer: null,
   listeners: {
     scores: new Map(),
     interference: new Map(),
@@ -47,6 +49,11 @@ const release = (heatId: string) => {
     clearInterval(state.pollingInterval);
   }
 
+  if (state.retryTimer) {
+    clearTimeout(state.retryTimer);
+    state.retryTimer = null;
+  }
+
   if (state.channel && supabase) {
     try {
       state.channel.unsubscribe();
@@ -64,6 +71,7 @@ const ensureState = (heatId: string) => {
   if (existing) return existing;
 
   const state = createState();
+  heatSignalRegistry.set(heatId, state);
 
   if (isLocalSupabaseMode()) {
     state.pollingInterval = setInterval(() => {
@@ -72,32 +80,68 @@ const ensureState = (heatId: string) => {
       emit(state, 'participants');
     }, HEAT_SIGNAL_POLL_INTERVAL_MS);
   } else if (supabase) {
-    state.channel = supabase
-      .channel(`shared-heat-signals-${heatId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'scores', filter: `heat_id=eq.${heatId}` },
-        () => emit(state, 'scores')
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'interference_calls', filter: `heat_id=eq.${heatId}` },
-        () => emit(state, 'interference')
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'heat_entries', filter: `heat_id=eq.${heatId}` },
-        () => emit(state, 'participants')
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'heat_slot_mappings', filter: `heat_id=eq.${heatId}` },
-        () => emit(state, 'participants')
-      )
-      .subscribe();
+    const channelName = `shared-heat-signals-${heatId}`;
+
+    const setupChannel = () => {
+      if (!heatSignalRegistry.has(heatId)) return; // Released
+
+      if (state.channel && supabase) {
+        try {
+          state.channel.unsubscribe();
+          supabase.removeChannel(state.channel);
+        } catch (error) {
+          console.warn('⚠️ Failed to recycle shared heat signal channel', heatId, error);
+        }
+      }
+
+      const channel = supabase!.channel(channelName);
+      state.channel = channel;
+
+      channel
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'scores', filter: `heat_id=eq.${heatId}` },
+          () => emit(state, 'scores')
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'interference_calls', filter: `heat_id=eq.${heatId}` },
+          () => emit(state, 'interference')
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'heat_entries', filter: `heat_id=eq.${heatId}` },
+          () => emit(state, 'participants')
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'heat_slot_mappings', filter: `heat_id=eq.${heatId}` },
+          () => emit(state, 'participants')
+        )
+        .subscribe((status, err) => {
+          if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+            console.warn(`⚠️ Shared stream ${channelName} dropped (${status}), scheduling reconnect...`, err);
+            supabase!.removeChannel(channel).catch(() => {});
+            if (state.retryTimer) clearTimeout(state.retryTimer);
+            state.retryTimer = setTimeout(() => {
+              state.retryTimer = null;
+              if (heatSignalRegistry.has(heatId)) {
+                console.log(`🔄 Reconnecting shared heat stream ${channelName}...`);
+                setupChannel();
+              }
+            }, 3000 + Math.random() * 2000);
+          } else if (status === 'SUBSCRIBED') {
+            // Heal any missed events upon reconnect by emitting events
+            emit(state, 'scores');
+            emit(state, 'interference');
+            emit(state, 'participants');
+          }
+        });
+    };
+
+    setupChannel();
   }
 
-  heatSignalRegistry.set(heatId, state);
   return state;
 };
 

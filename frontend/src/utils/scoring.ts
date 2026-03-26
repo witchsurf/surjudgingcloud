@@ -67,9 +67,10 @@ export function rankSurfers(surferScores: Array<{ surfer: string; best2: number 
   });
 }
 
-import type { EffectiveInterference, Score, SurferStats, WaveScore } from '../types';
+import type { EffectiveInterference, Score, ScoreOverrideLog, SurferStats, WaveScore } from '../types';
 import { SURFER_COLORS } from './constants';
 import { summarizeInterferenceBySurfer } from './interference';
+import { getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
 
 function calculateScoreAverage(scores: number[], judgeCount: number): number {
   if (scores.length === 0) return 0;
@@ -118,7 +119,7 @@ export function calculateSurferStats(
           waveScores[score.wave_number] = {};
         }
         // Utiliser une clé normalisée pour le juge pour éviter les doublons/mishaps
-        const judgeKey = (score.judge_id || '').trim().toUpperCase();
+        const judgeKey = getScoreJudgeStation(score);
         waveScores[score.wave_number][judgeKey] = score.score;
       });
 
@@ -223,7 +224,7 @@ export function calculateSurferStats(
 export function getEffectiveJudgeCount(scores: Score[], configuredCount?: number): number {
   const uniqueJudges = new Set(
     scores
-      .map((score) => score.judge_id)
+      .map((score) => getScoreJudgeStation(score))
       .filter((judgeId): judgeId is string => Boolean(judgeId))
   ).size;
 
@@ -234,4 +235,228 @@ export function getEffectiveJudgeCount(scores: Score[], configuredCount?: number
   }
 
   return Math.max(uniqueJudges, 1);
+}
+
+export interface JudgeAccuracyStats {
+  judgeId: string;
+  scoredWaves: number;
+  consensusSamples: number;
+  meanAbsDeviation: number;
+  bias: number;
+  withinHalfPointRate: number;
+  overrideCount: number;
+  overrideRate: number;
+  averageOverrideDelta: number;
+  qualityScore: number;
+  qualityBand: 'excellent' | 'good' | 'watch' | 'needs_review';
+}
+
+export interface JudgeDeviationDetail {
+  judgeId: string;
+  heatId: string;
+  surfer: string;
+  waveNumber: number;
+  judgeScore: number;
+  consensusScore: number;
+  delta: number;
+}
+
+const median = (values: number[]): number => {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return roundScore((sorted[mid - 1] + sorted[mid]) / 2);
+  }
+  return roundScore(sorted[mid]);
+};
+
+export function calculateJudgeAccuracy(
+  scores: Score[],
+  overrideLogs: ScoreOverrideLog[],
+  configuredJudges: string[] = []
+): JudgeAccuracyStats[] {
+  const activeByWave = new Map<string, Score[]>();
+  const normalizedJudges = Array.from(new Set(
+    configuredJudges
+      .map((judge) => (judge || '').trim().toUpperCase())
+      .filter(Boolean)
+  ));
+
+  scores.forEach((score) => {
+    const judgeId = normalizeScoreJudgeId(score.judge_id);
+    const judgeIdentityId = getScoreJudgeIdentity(score);
+    if (!judgeId) return;
+    const key = `${(score.heat_id || '').trim()}::${(score.surfer || '').trim().toUpperCase()}::${Number(score.wave_number)}`;
+    if (!activeByWave.has(key)) activeByWave.set(key, []);
+    activeByWave.get(key)!.push({
+      ...score,
+      judge_id: judgeIdentityId
+    });
+  });
+
+  const perJudge = new Map<string, {
+    scoredWaves: number;
+    consensusSamples: number;
+    deviationSum: number;
+    signedDeviationSum: number;
+    withinHalfPointCount: number;
+  }>();
+
+  activeByWave.forEach((waveScores) => {
+    waveScores.forEach((score) => {
+      const judgeId = score.judge_id.trim().toUpperCase();
+      const normalizedJudgeId = normalizeScoreJudgeId(judgeId);
+      if (!perJudge.has(normalizedJudgeId)) {
+        perJudge.set(normalizedJudgeId, {
+          scoredWaves: 0,
+          consensusSamples: 0,
+          deviationSum: 0,
+          signedDeviationSum: 0,
+          withinHalfPointCount: 0,
+        });
+      }
+
+      const stats = perJudge.get(normalizedJudgeId)!;
+      stats.scoredWaves += 1;
+
+      const peerScores = waveScores
+        .filter((peer) => normalizeScoreJudgeId(peer.judge_id) !== normalizedJudgeId)
+        .map((peer) => peer.score);
+
+      if (peerScores.length === 0) return;
+
+      const consensus = median(peerScores);
+      const delta = roundScore(score.score - consensus);
+      stats.consensusSamples += 1;
+      stats.deviationSum += Math.abs(delta);
+      stats.signedDeviationSum += delta;
+      if (Math.abs(delta) <= 0.5) {
+        stats.withinHalfPointCount += 1;
+      }
+    });
+  });
+
+  const overrideByJudge = new Map<string, { count: number; deltaSum: number }>();
+  overrideLogs.forEach((log) => {
+    const judgeId = normalizeScoreJudgeId(log.judge_id);
+    const judgeIdentityId = (log.judge_identity_id || '').trim() || judgeId;
+    if (!judgeIdentityId) return;
+    const current = overrideByJudge.get(judgeIdentityId) ?? { count: 0, deltaSum: 0 };
+    current.count += 1;
+    current.deltaSum += Math.abs((log.new_score ?? 0) - (log.previous_score ?? 0));
+    overrideByJudge.set(judgeIdentityId, current);
+  });
+
+  const judgeIds = Array.from(new Set([
+    ...normalizedJudges,
+    ...Array.from(perJudge.keys()),
+    ...Array.from(overrideByJudge.keys())
+  ]));
+
+  return judgeIds
+    .map((judgeId) => {
+      const scoreStats = perJudge.get(judgeId) ?? {
+        scoredWaves: 0,
+        consensusSamples: 0,
+        deviationSum: 0,
+        signedDeviationSum: 0,
+        withinHalfPointCount: 0,
+      };
+      const overrideStats = overrideByJudge.get(judgeId) ?? { count: 0, deltaSum: 0 };
+
+      return {
+        judgeId,
+        scoredWaves: scoreStats.scoredWaves,
+        consensusSamples: scoreStats.consensusSamples,
+        meanAbsDeviation: scoreStats.consensusSamples > 0
+          ? roundScore(scoreStats.deviationSum / scoreStats.consensusSamples)
+          : 0,
+        bias: scoreStats.consensusSamples > 0
+          ? roundScore(scoreStats.signedDeviationSum / scoreStats.consensusSamples)
+          : 0,
+        withinHalfPointRate: scoreStats.consensusSamples > 0
+          ? roundScore((scoreStats.withinHalfPointCount / scoreStats.consensusSamples) * 100)
+          : 0,
+        overrideCount: overrideStats.count,
+        overrideRate: scoreStats.scoredWaves > 0
+          ? roundScore((overrideStats.count / scoreStats.scoredWaves) * 100)
+          : 0,
+        averageOverrideDelta: overrideStats.count > 0
+          ? roundScore(overrideStats.deltaSum / overrideStats.count)
+          : 0,
+        qualityScore: 0,
+        qualityBand: 'needs_review' as const,
+      };
+    })
+    .map((row) => {
+      const deviationPenalty = Math.min(45, row.meanAbsDeviation * 30);
+      const biasPenalty = Math.min(15, Math.abs(row.bias) * 20);
+      const overridePenalty = Math.min(20, row.overrideRate * 0.5);
+      const withinBonus = Math.min(10, row.withinHalfPointRate * 0.1);
+      const qualityScore = Math.max(0, Math.min(100, roundScore(100 - deviationPenalty - biasPenalty - overridePenalty + withinBonus)));
+      const qualityBand =
+        qualityScore >= 85 ? 'excellent' :
+        qualityScore >= 70 ? 'good' :
+        qualityScore >= 55 ? 'watch' :
+        'needs_review';
+
+      return {
+        ...row,
+        qualityScore,
+        qualityBand,
+      };
+    })
+    .sort((a, b) => {
+      if (b.qualityScore !== a.qualityScore) {
+        return b.qualityScore - a.qualityScore;
+      }
+      if (a.meanAbsDeviation !== b.meanAbsDeviation) {
+        return a.meanAbsDeviation - b.meanAbsDeviation;
+      }
+      return a.judgeId.localeCompare(b.judgeId);
+    });
+}
+
+export function buildJudgeDeviationDetails(scores: Score[], judgeId: string): JudgeDeviationDetail[] {
+  const normalizedJudgeId = normalizeScoreJudgeId(judgeId);
+  if (!normalizedJudgeId) return [];
+
+  const activeByWave = new Map<string, Score[]>();
+  scores.forEach((score) => {
+    const normalizedScoreJudgeId = normalizeScoreJudgeId(score.judge_id);
+    const judgeIdentityId = getScoreJudgeIdentity(score);
+    if (!normalizedScoreJudgeId) return;
+    const key = `${(score.heat_id || '').trim()}::${(score.surfer || '').trim().toUpperCase()}::${Number(score.wave_number)}`;
+    if (!activeByWave.has(key)) activeByWave.set(key, []);
+    activeByWave.get(key)!.push({
+      ...score,
+      judge_id: judgeIdentityId
+    });
+  });
+
+  const details: JudgeDeviationDetail[] = [];
+  activeByWave.forEach((waveScores) => {
+    const judgeScore = waveScores.find((score) => normalizeScoreJudgeId(score.judge_id) === normalizedJudgeId);
+    if (!judgeScore) return;
+
+    const peerScores = waveScores
+      .filter((score) => normalizeScoreJudgeId(score.judge_id) !== normalizedJudgeId)
+      .map((score) => score.score);
+
+    if (!peerScores.length) return;
+
+    const consensusScore = median(peerScores);
+    details.push({
+      judgeId: normalizedJudgeId,
+      heatId: judgeScore.heat_id,
+      surfer: judgeScore.surfer,
+      waveNumber: judgeScore.wave_number,
+      judgeScore: judgeScore.score,
+      consensusScore,
+      delta: roundScore(judgeScore.score - consensusScore),
+    });
+  });
+
+  return details.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 }

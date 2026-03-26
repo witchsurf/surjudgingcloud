@@ -17,7 +17,7 @@ export interface EventConfigRecord {
     id: number;
     name: string;
     categories: string[];
-    judges: Array<{ id: string; name?: string }>;
+    judges: Array<{ id: string; name?: string; identityId?: string }>;
     config: Partial<AppConfig> | null;
 }
 
@@ -27,7 +27,7 @@ export interface EventConfigSnapshot {
     division: string;
     round: number;
     heat_number: number;
-    judges: Array<{ id: string; name?: string }>;
+    judges: Array<{ id: string; name?: string; identityId?: string }>;
     surfers?: string[];
     heat_size?: number;
     surferNames?: Record<string, string>;
@@ -80,13 +80,17 @@ export async function fetchLatestEventConfig(): Promise<EventConfigRecord | null
             if (value && typeof value === 'object') {
                 const maybeId = 'id' in value && typeof value.id === 'string' ? value.id : null;
                 const maybeName = 'name' in value && typeof value.name === 'string' ? value.name : undefined;
+                const maybeIdentityId =
+                    'identity_id' in value && typeof value.identity_id === 'string'
+                        ? value.identity_id
+                        : ('identityId' in value && typeof value.identityId === 'string' ? value.identityId : undefined);
                 if (maybeId) {
-                    return { id: maybeId, name: maybeName };
+                    return { id: maybeId, name: maybeName, identityId: maybeIdentityId };
                 }
             }
             return null;
         })
-        .filter((value): value is { id: string; name?: string } => value !== null);
+        .filter((value): value is { id: string; name?: string; identityId?: string } => value !== null);
 
     const config = data.config && typeof data.config === 'object' ? (data.config as Partial<AppConfig>) : null;
 
@@ -102,7 +106,7 @@ export async function fetchLatestEventConfig(): Promise<EventConfigRecord | null
 export async function updateEventConfiguration(eventId: number, payload: {
     config: AppConfig;
     divisions: string[];
-    judges: Array<{ id: string; name?: string }>;
+    judges: Array<{ id: string; name?: string; identityId?: string }>;
 }): Promise<void> {
     ensureSupabase();
     const { config, divisions, judges } = payload;
@@ -178,17 +182,23 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
     if (!data) return null;
 
     const judgesPayload = Array.isArray(data.judges)
-        ? (data.judges as Array<{ id?: string; name?: string }>)
+        ? (data.judges as Array<{ id?: string; name?: string; identity_id?: string; identityId?: string }>)
             .map((judge) => {
                 if (typeof judge === 'string') {
                     return { id: judge, name: judge };
                 }
                 if (judge && typeof judge === 'object' && typeof judge.id === 'string') {
-                    return { id: judge.id, name: judge.name ?? judge.id };
+                    return {
+                        id: judge.id,
+                        name: judge.name ?? judge.id,
+                        identityId: typeof judge.identity_id === 'string'
+                            ? judge.identity_id
+                            : (typeof judge.identityId === 'string' ? judge.identityId : undefined)
+                    };
                 }
                 return null;
             })
-            .filter((value): value is { id: string; name: string } => Boolean(value))
+            .filter((value): value is { id: string; name: string; identityId?: string } => Boolean(value))
         : [];
 
     let surfers: string[] | undefined;
@@ -278,13 +288,14 @@ export async function saveEventConfigSnapshot(payload: {
     division: string;
     round: number;
     heatNumber: number;
-    judges: Array<{ id: string; name?: string }>;
+    judges: Array<{ id: string; name?: string; identityId?: string }>;
 }): Promise<void> {
     ensureSupabase();
 
     const judgePayload = payload.judges.map((judge) => ({
         id: judge.id,
         name: judge.name ?? judge.id,
+        identity_id: judge.identityId ?? null,
     }));
 
     const { error } = await supabase!.rpc('upsert_event_last_config', {

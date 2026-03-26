@@ -43,6 +43,16 @@ export interface HeatSequenceRow {
     color_order: string[] | null;
 }
 
+export interface HeatJudgeAssignmentRow {
+    heat_id: string;
+    event_id: number | null;
+    station: string;
+    judge_id: string;
+    judge_name: string;
+    assigned_at?: string | null;
+    updated_at?: string | null;
+}
+
 export interface HeatEntriesWithParticipantRow {
     color: string | null;
     position: number;
@@ -238,6 +248,32 @@ export async function fetchHeatMetadata(heatId: string): Promise<HeatRow | null>
 
     if (error && error.code !== 'PGRST116') throw error;
     return (data as HeatRow) ?? null;
+}
+
+export async function fetchHeatJudgeAssignments(heatId: string): Promise<HeatJudgeAssignmentRow[]> {
+    ensureSupabase();
+    const normalizedHeatId = ensureHeatId(heatId);
+    const { data, error } = await supabase!
+        .from('heat_judge_assignments')
+        .select('heat_id, event_id, station, judge_id, judge_name, assigned_at, updated_at')
+        .eq('heat_id', normalizedHeatId)
+        .order('station', { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as HeatJudgeAssignmentRow[];
+}
+
+export async function fetchEventJudgeAssignments(eventId: number): Promise<HeatJudgeAssignmentRow[]> {
+    ensureSupabase();
+    const { data, error } = await supabase!
+        .from('heat_judge_assignments')
+        .select('heat_id, event_id, station, judge_id, judge_name, assigned_at, updated_at')
+        .eq('event_id', eventId)
+        .order('heat_id', { ascending: true })
+        .order('station', { ascending: true });
+
+    if (error) throw error;
+    return (data ?? []) as HeatJudgeAssignmentRow[];
 }
 
 export async function replaceHeatEntries(heatId: string, rows: { position: number; participant_id: number | null; seed?: number | null; color?: string | null }[]) {
