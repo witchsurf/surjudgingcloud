@@ -551,12 +551,17 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
     });
 
-    Object.entries(config.judgeNames || {}).forEach(([judgeId, name]) => {
-      if (judgeId && name) names.set(judgeId, name);
+    const safeJudgeNames = Object.fromEntries(
+      Object.entries(config.judgeNames || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
+    );
+
+    Object.entries(safeJudgeNames).forEach(([station, name]) => {
+      if (station && name) names.set(station, name);
     });
 
     Object.entries(config.judgeIdentities || {}).forEach(([station, identityId]) => {
-      const judgeName = (config.judgeNames?.[station] || '').trim();
+      const normalizedStation = station.trim().toUpperCase();
+      const judgeName = (safeJudgeNames[normalizedStation] || '').trim();
       if (identityId && judgeName) {
         names.set(identityId, judgeName);
       }
@@ -2875,7 +2880,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                         'bg-green-100 text-green-800'
                       }`}>
                       <span className="text-sm font-medium">
-                        {config.judgeNames[judgeId] || judgeId}
+                        {analyticsJudgeNames.get(judgeId) || config.judgeNames[judgeId] || judgeId}
                       </span>
                       <span className="text-sm font-bold">{count}</span>
                     </div>
