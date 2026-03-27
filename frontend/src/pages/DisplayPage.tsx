@@ -297,12 +297,16 @@ export default function DisplayPage() {
                     (prev.division || '').toUpperCase() === parsed.division.toUpperCase();
                 if (unchanged) return prev;
 
+                // Clear surfer names/countries when switching heat to prevent
+                // stale data from the previous heat polluting the merge queue
                 return normalizeConfig({
                     ...prev,
                     competition: resolveEventDisplayName(eventName, prev.competition),
                     division: parsed.division,
                     round: parsed.round,
-                    heatId: parsed.heatNumber
+                    heatId: parsed.heatNumber,
+                    surferNames: {},
+                    surferCountries: {}
                 } as AppConfig);
             });
         };
@@ -586,23 +590,23 @@ export default function DisplayPage() {
 
                 try {
                     setConfig((prev) => {
+                        // If the snapshot is for a different heat, ignore it entirely.
+                        // Heat-specific data sources (useHeatParticipants, fetchHeatEntries)
+                        // will populate the correct surfer names without a stale merge.
+                        const snapshotHeat = snapshot.heat_number;
+                        const snapshotRound = snapshot.round;
+                        const heatMismatch =
+                            snapshotHeat &&
+                            prev.surfers?.length &&
+                            (snapshotHeat !== prev.heatId || snapshotRound !== prev.round);
+                        if (heatMismatch) return prev;
+
                         const snapshotNames = normalizeSurferMap(snapshot.surferNames || {});
                         const mergedNames = mergeSurferNames(prev.surferNames, snapshotNames);
                         const snapshotCountries = normalizeSurferCountries(snapshot.surferCountries || {});
                         const mergedCountries = Object.keys(currentCountries).length > 0
                             ? currentCountries
                             : (Object.keys(snapshotCountries).length > 0 ? snapshotCountries : (prev.surferCountries || {}));
-
-                        // Only use snapshot surfers when the snapshot heat matches the current heat
-                        // (or when we have no surfers yet). This prevents the drift where switching
-                        // heats causes the old heat's surfer list to briefly appear after ~2s.
-                        const snapshotHeatMatches =
-                            !snapshot.heat_number ||
-                            snapshot.heat_number === prev.heatId ||
-                            !prev.surfers?.length;
-                        const resolvedSurfers = snapshotHeatMatches
-                            ? (snapshot.surfers || prev.surfers)
-                            : prev.surfers;
 
                         const newConfig = {
                             ...prev,
@@ -612,10 +616,10 @@ export default function DisplayPage() {
                             heatId: snapshot.heat_number || prev.heatId || 1,
                             judges: snapshot.judges?.map(j => j.id) || prev.judges || [],
                             judgeNames: snapshot.judges?.reduce((acc, j) => ({ ...acc, [j.id]: j.name || j.id }), {}) || prev.judgeNames || {},
-                            surfers: resolvedSurfers,
+                            surfers: snapshot.surfers || prev.surfers,
                             surferNames: mergedNames,
                             surferCountries: mergedCountries,
-                            surfersPerHeat: resolvedSurfers?.length || prev.surfersPerHeat || 4,
+                            surfersPerHeat: snapshot.surfers?.length || prev.surfersPerHeat || 4,
                             waves: prev.waves,
                             tournamentType: prev.tournamentType,
                             totalSurfers: prev.totalSurfers,
