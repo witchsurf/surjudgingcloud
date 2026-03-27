@@ -256,6 +256,8 @@ export function useSupabaseSync() {
         surfers: config.surfers,
         judge_names: config.judgeNames,
         judge_identities: config.judgeIdentities,
+        surfer_names: config.surferNames,
+        surfer_countries: config.surferCountries,
         waves: config.waves,
         tournament_type: config.tournamentType
       });

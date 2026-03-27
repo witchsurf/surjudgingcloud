@@ -205,8 +205,8 @@ export default function AdminPage() {
                     status: 'open',
                     surfers: config.surfers.map(surfer => ({
                         color: surfer,
-                        name: surfer,
-                        country: 'SENEGAL'
+                        name: config.surferNames?.[surfer] || surfer, // Provide the real name if available
+                        country: config.surferCountries?.[surfer] || 'SENEGAL'
                     }))
                 });
 
