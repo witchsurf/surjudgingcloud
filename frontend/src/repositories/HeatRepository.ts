@@ -657,7 +657,7 @@ export class HeatRepository extends BaseRepository {
             return;
         }
 
-        const surferNames = fallbackSurfers.reduce<Record<string, string>>((acc: Record<string, string>, color: string) => {
+        const surferNames = (fallbackSurfers as string[]).reduce((acc: Record<string, string>, color: string) => {
             const fromEntry = normalizedEntries.find((entry) => entry.color === color)?.name ?? '';
             const fromConfig = String(configSurferNames?.[color] ?? '').trim();
             const resolved = fromEntry || fromConfig;
@@ -665,9 +665,9 @@ export class HeatRepository extends BaseRepository {
                 acc[color] = resolved;
             }
             return acc;
-        }, {});
+        }, {} as Record<string, string>);
 
-        const surferCountries = fallbackSurfers.reduce<Record<string, string>>((acc: Record<string, string>, color: string) => {
+        const surferCountries = (fallbackSurfers as string[]).reduce((acc: Record<string, string>, color: string) => {
             const fromEntry = normalizedEntries.find((entry) => entry.color === color)?.country ?? '';
             const fromConfig = String(configSurferCountries?.[color] ?? '').trim();
             const resolved = fromEntry || fromConfig;
@@ -675,7 +675,7 @@ export class HeatRepository extends BaseRepository {
                 acc[color] = resolved;
             }
             return acc;
-        }, {});
+        }, {} as Record<string, string>);
 
         const judgePayload = assignmentPayload.map((assignment) => ({
             id: assignment.station,
