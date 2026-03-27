@@ -203,7 +203,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const isLockedStatus = useCallback((status?: string | null) => {
     const normalized = status?.toString().trim().toLowerCase();
-    return normalized === 'closed' || normalized === 'finished';
+    // Only 'closed' (explicit head-judge action) locks the heat.
+    // 'finished' = timer expired; judges may still score during review.
+    return normalized === 'closed';
   }, []);
 
   const getRemainingTimerSeconds = useCallback((currentTimer: HeatTimerType, nowMs: number = Date.now()) => {
