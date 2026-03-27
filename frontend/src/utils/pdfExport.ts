@@ -999,10 +999,10 @@ export function exportFullCompetitionPDF({
           if (hasResults) for (let i = 1; i <= currentHeatMaxWaves; i++) headRow.push(`V${i}`);
 
           // Column budget: pageW=595, margins=36*2=523 usable
-          // #=12, LYCRA=42, TOTAL=30, PAYS=52, waves=22each, SURFEUR=rest
-          const waveColW = 22;
+          // #=12, LYCRA=42, TOTAL=30, PAYS=52, waves=28each, SURFEUR=rest
+          const waveColW = 28;
           const fixedW = 12 + 42 + 30 + 52 + currentHeatMaxWaves * waveColW;
-          const surferColW = Math.max(80, Math.min(pageW - MARGIN * 2 - fixedW, 130));
+          const surferColW = Math.max(80, Math.min(pageW - MARGIN * 2 - fixedW, 140));
           const colW: Record<number, any> = {
             0: { cellWidth: 12, halign: 'center' as const, fontSize: 8 },
             1: { cellWidth: 42, halign: 'center' as const, fontStyle: 'bold', overflow: 'hidden' },
@@ -1052,6 +1052,10 @@ export function exportFullCompetitionPDF({
               }
               // PAYS cell — no word-wrap
               if (data.column.index === 4) {
+                data.cell.styles.overflow = 'hidden';
+              }
+              // Wave score cells — no word-wrap
+              if (data.column.index >= 5) {
                 data.cell.styles.overflow = 'hidden';
               }
               if (data.section === 'body' && data.column.index === 1) {
