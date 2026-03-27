@@ -1887,6 +1887,65 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleCloseHeat = async () => {
+    // --- Check for pending scores FIRST ---
+    // Compute expected: for each surfer, find the max wave any judge scored.
+    // Then verify every configured judge has scored every surfer up to that wave.
+    const heatScoresForCheck = (mergedScores || []).filter(
+      s => ensureHeatId(s.heat_id) === heatId && Number(s.score) > 0
+    );
+
+    // Build configured judge IDs (resolved from station names)
+    const safeIdent = Object.fromEntries(
+      Object.entries(config.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
+    );
+    const configuredJudgeIds = (config.judges || []).map(
+      station => (safeIdent[station.trim().toUpperCase()] || station).trim()
+    ).filter(Boolean);
+
+    // Find pending: judge × surfer × wave combos that are missing
+    const pending: string[] = [];
+    if (configuredJudgeIds.length > 0 && heatScoresForCheck.length > 0) {
+      // For each surfer, find the max wave number scored by any judge
+      const surferMaxWave = new Map<string, number>();
+      heatScoresForCheck.forEach(s => {
+        const surfer = normalizeJerseyLabel(s.surfer);
+        surferMaxWave.set(surfer, Math.max(surferMaxWave.get(surfer) || 0, s.wave_number));
+      });
+
+      configuredJudgeIds.forEach(judgeId => {
+        surferMaxWave.forEach((maxWave, surfer) => {
+          for (let w = 1; w <= maxWave; w++) {
+            const hasScore = heatScoresForCheck.some(
+              s => normalizeJerseyLabel(s.surfer) === surfer &&
+                   s.wave_number === w &&
+                   (s.judge_id === judgeId || s.judge_station === judgeId)
+            );
+            if (!hasScore) {
+              const judgeName = Object.entries(config.judgeNames || {}).find(([,v]) => v === judgeId)?.[1]
+                || (config.judgeNames?.[judgeId]) || judgeId;
+              pending.push(`${judgeName} → ${surfer} V${w}`);
+            }
+          }
+        });
+      });
+    }
+
+    if (pending.length > 0) {
+      const missingList = pending.slice(0, 10).join('
+  • ');
+      const forceClose = confirm(
+        `⚠️ NOTES MANQUANTES — ${pending.length} note(s) non saisie(s) :
+
+  • ${missingList}` +
+        (pending.length > 10 ? `
+  • ... et ${pending.length - 10} autre(s)` : '') +
+        '
+
+Fermer quand même ce heat ?'
+      );
+      if (!forceClose) return;
+    }
+
     let canCloseWithoutWarning = canCloseHeat();
 
     // Safety net: if local/store state is stale, verify directly from DB before showing warning.
@@ -1901,20 +1960,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
     }
 
-    // Warning if no scores, but allow to proceed with confirmation
+    // Warning if no scores at all, but allow to proceed with confirmation
     if (!canCloseWithoutWarning) {
       const forceClose = confirm(
-        '⚠️ ATTENTION: Aucune vague complète enregistrée!\n\n' +
+        '⚠️ ATTENTION: Aucune note enregistrée pour ce heat!\n\n' +
         'Ce heat sera fermé SANS RÉSULTATS.\n' +
-        '(En compétition réelle, ce heat devrait être rejoué.)\n\n' +
-        'Voulez-vous quand même passer au heat suivant?'
+        'Voulez-vous quand même fermer ce heat?'
       );
       if (!forceClose) {
         return;
       }
-    } else {
-      // Normal confirmation
-      if (!confirm(`Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
+    } else if (pending.length === 0) {
+      // Normal confirmation (only if no pending warning was already shown)
+      if (!confirm(`✅ Toutes les notes sont complètes.
+
+Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         return;
       }
     }
@@ -1990,13 +2050,24 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const surferScoredWaves = React.useMemo(() => {
     if (!selectedSurfer) return [];
     const selectedSurferKey = normalizeJerseyLabel(selectedSurfer);
-    // Récupérer toutes les vagues notées pour ce surfeur (tous juges confondus)
+    // Match scores by heatId, with a metadata fallback for rows that may lack heat_id
     const waves = new Set(mergedScores
-      .filter(s => normalizeJerseyLabel(s.surfer) === selectedSurferKey && ensureHeatId(s.heat_id) === heatId)
+      .filter(s => {
+        if (normalizeJerseyLabel(s.surfer) !== selectedSurferKey) return false;
+        if (Number(s.score) <= 0) return false;
+        // Primary: exact heat_id match
+        if (ensureHeatId(s.heat_id) === heatId) return true;
+        // Fallback: match by competition+division+round meta (for offline/synced scores)
+        const sameComp = (s.competition || '').trim().toUpperCase() === (config.competition || '').trim().toUpperCase();
+        const sameDiv = (s.division || '').trim().toUpperCase() === (config.division || '').trim().toUpperCase();
+        const sameRound = Number(s.round) === Number(config.round);
+        const sameHeat = !s.heat_number || Number(s.heat_number) === Number(config.heatId);
+        return sameComp && sameDiv && sameRound && sameHeat;
+      })
       .map(s => s.wave_number)
     );
     return Array.from(waves).sort((a, b) => a - b);
-  }, [mergedScores, selectedSurfer, heatId]);
+  }, [mergedScores, selectedSurfer, heatId, config.competition, config.division, config.round, config.heatId]);
 
   React.useEffect(() => {
     if (!selectedWave) return;
