@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import { User, Waves, Lock, CreditCard as Edit3, Maximize, Minimize } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
@@ -90,6 +90,7 @@ function JudgeInterface({
   const [isPriorityOrdering, setIsPriorityOrdering] = useState(false);
   const [priorityDraft, setPriorityDraft] = useState<string[]>([]);
   const [interactionWarning, setInteractionWarning] = useState<{ title: string; message: string } | null>(null);
+  const activeInputRef = useRef<HTMLInputElement | null>(null);
 
   // Unsynced safety check
   const pendingSyncCount = useMemo(() => submittedScores.filter(s => s.synced === false).length, [submittedScores]);
@@ -419,19 +420,22 @@ function JudgeInterface({
     return () => window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
   }, [mergeRealtimeScore]);
 
+  useLayoutEffect(() => {
+    if (!activeInputRef.current) return;
+
+    const input = activeInputRef.current;
+    input.focus();
+    input.select();
+  }, [activeInput]);
+
   // Vérifier si la saisie est autorisée
   // BLOQUE : avant démarrage (waiting) et après clôture chief judge (closed)
   // AUTORISE : pendant (running), en pause (paused), et après expiration simple du timer (finished)
   const isTimerActive = () => {
     if (!configSaved) return false;
-    // Bloquer si le heat est officiellement clos par le chef juge
     if (heatStatus === 'closed') return false;
-    // Fallback robuste: si le timer a déjà démarré une fois, on autorise la notation
-    // même en cas de statut realtime transitoirement incohérent.
     const heatHasStarted = Boolean(timer?.startTime);
-    // Bloquer uniquement si le heat est explicitement en attente ET jamais démarré.
     if (heatStatus === 'waiting' && !heatHasStarted) return false;
-    // Autoriser dans tous les autres cas: running, paused, finished
     return true;
   };
 
@@ -1148,10 +1152,13 @@ function JudgeInterface({
                         <td key={wave} className={`${ultraCompactGrid ? 'px-0.5 py-1' : compactGrid ? 'px-1 py-1.5' : 'px-2 py-2'} text-center`}>
                           {isActive ? (
                             <input
+                              ref={activeInputRef}
                               type="number"
                               min="0"
                               max="10"
                               step="0.01"
+                              inputMode="decimal"
+                              enterKeyHint="done"
                               value={inputValue}
                               onChange={(e) => setInputValue(e.target.value)}
                               onKeyDown={handleKeyPress}

@@ -2085,8 +2085,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       alert('Supabase n\'est pas configuré pour exporter l\'événement.');
       return;
     }
+    const eventIdFromUrl = (() => {
+      if (typeof window === 'undefined') return NaN;
+      const raw = new URLSearchParams(window.location.search).get('eventId');
+      return raw ? Number(raw) : NaN;
+    })();
     const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem(ACTIVE_EVENT_STORAGE_KEY) : null;
-    const eventId = eventIdRaw ? Number(eventIdRaw) : NaN;
+    const eventId =
+      activeEventId
+      ?? (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null)
+      ?? (eventIdRaw ? Number(eventIdRaw) : NaN);
     if (!eventId || Number.isNaN(eventId)) {
       alert('Aucun événement actif trouvé. Chargez un événement avant export.');
       return;
@@ -2110,6 +2118,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       let organizer: string | undefined;
       let eventDate: string | undefined;
       let organizerLogoDataUrl: string | undefined;
+      let resolvedEventName = config.competition || 'Compétition';
 
       if (supabase) {
         const { data: dbEventData } = await supabase
@@ -2122,6 +2131,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         const eventData = { ...localEventData, ...(dbEventData || {}) };
 
         if (dbEventData || localEventData.id) {
+          if (typeof eventData.name === 'string' && eventData.name.trim()) {
+            resolvedEventName = eventData.name.trim();
+          }
           organizer = eventData.organizer ?? undefined;
           eventDate = eventData.start_date
             ? new Date(eventData.start_date).toLocaleDateString('fr-FR', {
@@ -2165,7 +2177,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       // Export complete competition PDF
       exportFullCompetitionPDF({
-        eventName: config.competition || 'Compétition',
+        eventName: resolvedEventName,
         organizer,
         organizerLogoDataUrl,
         date: eventDate,
