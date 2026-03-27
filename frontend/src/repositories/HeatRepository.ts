@@ -453,7 +453,7 @@ export class HeatRepository extends BaseRepository {
                 heat_id: heatId,
                 participant_id: matchedParticipant?.id ?? null,
                 position: index + 1,
-                seed: Number.isFinite(Number(matchedParticipant?.seed)) ? Number(matchedParticipant?.seed) : null,
+                seed: Number.isFinite(Number(matchedParticipant?.seed)) ? Number(matchedParticipant?.seed!) : index + 1,
                 color: colorOrder[index] ?? color,
             };
         });
