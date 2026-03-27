@@ -245,6 +245,7 @@ export default function DisplayPage() {
     const [liveHeatCountries, setLiveHeatCountries] = useState<Record<string, string>>({});
     const configRef = useRef(config);
     const countriesRef = useRef(liveHeatCountries);
+    const liveHeatIdRef = useRef('');
 
     useEffect(() => {
         configRef.current = config;
@@ -478,6 +479,10 @@ export default function DisplayPage() {
         [config.competition, config.division, config.round, config.heatId]
     );
 
+    useEffect(() => {
+        liveHeatIdRef.current = currentHeatId;
+    }, [currentHeatId]);
+
     // Load participant names for current heat
     const { participants: heatParticipants, source: heatParticipantsSource } = useHeatParticipants(currentHeatId);
 
@@ -628,13 +633,24 @@ export default function DisplayPage() {
 
         const useLocalPolling = isLocalSupabaseMode();
         let pollingInterval: ReturnType<typeof setInterval> | null = null;
+        let cancelled = false;
+        const applyFetchedScores = (heatId: string, fetched: Score[] | null | undefined) => {
+            if (cancelled || !fetched) return;
+            if (liveHeatIdRef.current !== heatId) return;
+            setScores(normalizeScores(fetched));
+        };
+        const refreshScores = (heatId: string) => {
+            void loadScoresFromDatabase(heatId).then((fetched) => {
+                applyFetchedScores(heatId, fetched);
+            }).catch((error) => {
+                if (!cancelled) {
+                    console.warn('⚠️ Polling des scores display indisponible:', error);
+                }
+            });
+        };
 
         // Charger les scores initiaux pour le heat courant
-        loadScoresFromDatabase(currentHeatId).then((fetched) => {
-            if (fetched) {
-                setScores(normalizeScores(fetched));
-            }
-        });
+        refreshScores(currentHeatId);
 
         const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, nextConfig, status) => {
             setTimer(nextTimer);
@@ -647,11 +663,7 @@ export default function DisplayPage() {
             if (status) setHeatStatus(status);
 
             // Recharger les scores en temps réel si le heat change
-            loadScoresFromDatabase(currentHeatId).then((fetched) => {
-                if (fetched) {
-                    setScores(normalizeScores(fetched));
-                }
-            });
+            refreshScores(liveHeatIdRef.current || currentHeatId);
         });
 
         // Écouter les scores en temps réel (INSERT/UPDATE)
@@ -680,17 +692,12 @@ export default function DisplayPage() {
 
         if (useLocalPolling) {
             pollingInterval = setInterval(() => {
-                loadScoresFromDatabase(currentHeatId).then((fetched) => {
-                    if (fetched) {
-                        setScores(normalizeScores(fetched));
-                    }
-                }).catch((error) => {
-                    console.warn('⚠️ Polling local des scores display indisponible:', error);
-                });
+                refreshScores(liveHeatIdRef.current || currentHeatId);
             }, 1000);
         }
 
         return () => {
+            cancelled = true;
             unsubscribe();
             window.removeEventListener('newScoreRealtime', handleNewScore);
             if (pollingInterval) {

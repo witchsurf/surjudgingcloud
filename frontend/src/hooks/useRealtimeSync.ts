@@ -61,6 +61,16 @@ const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
 const LOCAL_POLL_INTERVAL_MS = 1000;
 const CLOUD_POLL_INTERVAL_MS = 3000;
 
+const hasOfflineAdminSession = () => {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    return window.sessionStorage.getItem('admin_offline_auth') === 'true';
+  } catch {
+    return false;
+  }
+};
+
 const emitHeatUpdate = (
   heatId: string,
   timer: HeatTimer,
@@ -357,6 +367,10 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     }
 
     if (isLocalSupabaseMode()) {
+      return null;
+    }
+
+    if (hasOfflineAdminSession()) {
       return null;
     }
 
