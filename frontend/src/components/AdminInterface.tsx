@@ -10,7 +10,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments } from '../api/supabaseClient';
+import { fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge } from '../api/supabaseClient';
 import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
@@ -18,6 +18,8 @@ import { TimerAudio } from '../utils/audioUtils';
 import { canonicalizeScores } from '../api/modules/scoring.api';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
+
+const generateJudgePersonalCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 
 interface AdminInterfaceProps {
@@ -129,6 +131,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [isTimerOpen, setIsTimerOpen] = useState(true);
   const [floatingTimerTick, setFloatingTimerTick] = useState(Date.now());
   const [availableOfficialJudges, setAvailableOfficialJudges] = useState<Judge[]>([]);
+  const [officialJudgeStatus, setOfficialJudgeStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [creatingOfficialJudgeFor, setCreatingOfficialJudgeFor] = useState<string | null>(null);
   const [eventJudgeAssignments, setEventJudgeAssignments] = useState<HeatJudgeAssignmentRow[]>([]);
   const [assignmentCoverageRows, setAssignmentCoverageRows] = useState<EventJudgeAssignmentCoverageRow[]>([]);
   const [eventJudgeAccuracySummary, setEventJudgeAccuracySummary] = useState<EventJudgeAccuracySummaryRow[]>([]);
@@ -219,33 +223,39 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => window.clearInterval(interval);
   }, [timer.isRunning, isTimerOpen]);
 
+  const loadOfficialJudges = useCallback(async () => {
+    if (!isSupabaseConfigured()) {
+      setAvailableOfficialJudges([]);
+      return [] as Judge[];
+    }
+
+    try {
+      const judges = await fetchActiveJudges();
+      setAvailableOfficialJudges(judges);
+      return judges;
+    } catch (error) {
+      console.warn('Impossible de charger les juges officiels:', error);
+      setAvailableOfficialJudges([]);
+      return [] as Judge[];
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
-    const loadOfficialJudges = async () => {
-      if (!isSupabaseConfigured()) {
-        if (!cancelled) setAvailableOfficialJudges([]);
+    const run = async () => {
+      const judges = await loadOfficialJudges();
+      if (cancelled) {
         return;
       }
-
-      try {
-        const judges = await fetchActiveJudges();
-        if (!cancelled) {
-          setAvailableOfficialJudges(judges);
-        }
-      } catch (error) {
-        console.warn('Impossible de charger les juges officiels:', error);
-        if (!cancelled) {
-          setAvailableOfficialJudges([]);
-        }
-      }
+      setAvailableOfficialJudges(judges);
     };
 
-    void loadOfficialJudges();
+    void run();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadOfficialJudges]);
 
   useEffect(() => {
     let cancelled = false;
@@ -533,6 +543,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const analyticsJudgeNames = React.useMemo(() => {
     const names = new Map<string, string>();
 
+    availableOfficialJudges.forEach((judge) => {
+      const judgeId = (judge.id || '').trim();
+      const judgeName = (judge.name || '').trim();
+      if (judgeId && judgeName) {
+        names.set(judgeId, judgeName);
+      }
+    });
+
     Object.entries(config.judgeNames || {}).forEach(([judgeId, name]) => {
       if (judgeId && name) names.set(judgeId, name);
     });
@@ -569,7 +587,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     });
 
     return names;
-  }, [analyticsEventOverrides, analyticsEventScores, analyticsHeatOverrides, analyticsHeatScores, config.judgeIdentities, config.judgeNames, dbHeatScoreHistory, dbHeatScores, eventJudgeAccuracySummary]);
+  }, [analyticsEventOverrides, analyticsEventScores, analyticsHeatOverrides, analyticsHeatScores, availableOfficialJudges, config.judgeIdentities, config.judgeNames, dbHeatScoreHistory, dbHeatScores, eventJudgeAccuracySummary]);
 
   useEffect(() => {
     if (!judgeAccuracy.length) {
@@ -2040,6 +2058,79 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     });
   };
 
+  const handleCreateOfficialJudge = async (stationId: string) => {
+    const judgeName = (config.judgeNames?.[stationId] || '').trim();
+    const judgeEmail = (config.judgeEmails?.[stationId] || '').trim();
+
+    if (!judgeName) {
+      setOfficialJudgeStatus({
+        type: 'error',
+        message: `Renseigne d'abord un nom pour ${stationId}.`
+      });
+      return;
+    }
+
+    const existingJudge = availableOfficialJudges.find((judge) => {
+      const sameName = (judge.name || '').trim().toLowerCase() === judgeName.toLowerCase();
+      const sameEmail = judgeEmail && (judge.email || '').trim().toLowerCase() === judgeEmail.toLowerCase();
+      return sameName || Boolean(sameEmail);
+    });
+
+    const attachJudgeToStation = (judge: Judge, generatedCode?: string) => {
+      onConfigChange({
+        ...config,
+        judgeIdentities: {
+          ...(config.judgeIdentities || {}),
+          [stationId]: judge.id
+        },
+        judgeNames: {
+          ...config.judgeNames,
+          [stationId]: judge.name || judgeName
+        },
+        judgeEmails: {
+          ...(config.judgeEmails || {}),
+          [stationId]: judge.email || judgeEmail
+        }
+      });
+
+      setOfficialJudgeStatus({
+        type: 'success',
+        message: generatedCode
+          ? `${judge.name} a ete cree comme officiel. Code personnel: ${generatedCode}`
+          : `${judge.name} est maintenant lie a ${stationId}.`
+      });
+    };
+
+    if (existingJudge) {
+      attachJudgeToStation(existingJudge);
+      return;
+    }
+
+    setCreatingOfficialJudgeFor(stationId);
+    setOfficialJudgeStatus(null);
+
+    try {
+      const personalCode = generateJudgePersonalCode();
+      const createdJudge = await createJudge({
+        name: judgeName,
+        email: judgeEmail || undefined,
+        personal_code: personalCode,
+      });
+
+      const refreshedJudges = await loadOfficialJudges();
+      const resolvedJudge = refreshedJudges.find((judge) => judge.id === createdJudge.id) || createdJudge;
+      attachJudgeToStation(resolvedJudge, personalCode);
+    } catch (error) {
+      console.error('Impossible de creer le juge officiel:', error);
+      setOfficialJudgeStatus({
+        type: 'error',
+        message: `Creation du juge officiel impossible pour ${judgeName}.`
+      });
+    } finally {
+      setCreatingOfficialJudgeFor(null);
+    }
+  };
+
   const handleSurferNameChange = (color: string, name: string) => {
     onConfigChange({
       ...config,
@@ -2976,6 +3067,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 Juges / Officiels
               </h3>
             </div>
+            {officialJudgeStatus && (
+              <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+                officialJudgeStatus.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}>
+                {officialJudgeStatus.message}
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {config.judges.map((judgeId, index) => (
                 <div key={judgeId} className="bg-primary-50 border-2 border-primary-950 p-4 rounded-xl shadow-block flex flex-col gap-3">
@@ -2983,6 +3083,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                     const assignedIdentityId = resolveAssignedJudgeIdentity(judgeId);
                     const assignedOfficialJudge = availableOfficialJudges.find((judge) => judge.id === assignedIdentityId);
                     const isOfficialAssigned = Boolean(assignedIdentityId);
+                    const manualJudgeName = (config.judgeNames[judgeId] || '').trim();
+                    const canCreateOfficial = !isOfficialAssigned && manualJudgeName.length > 0;
                     return (
                       <>
                   <div className="flex items-center justify-between">
@@ -3028,6 +3130,20 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                         ? `Officiel lié: ${assignedOfficialJudge?.name || config.judgeNames[judgeId] || judgeId}`
                         : `Aucune identité officielle liée à ${judgeId}`}
                     </p>
+                    {!isOfficialAssigned && (
+                      <button
+                        type="button"
+                        onClick={() => handleCreateOfficialJudge(judgeId)}
+                        disabled={!canCreateOfficial || creatingOfficialJudgeFor === judgeId}
+                        className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                          canCreateOfficial && creatingOfficialJudgeFor !== judgeId
+                            ? 'bg-primary-900 text-white hover:bg-primary-800'
+                            : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {creatingOfficialJudgeFor === judgeId ? 'Creation en cours...' : 'Creer et lier comme juge officiel'}
+                      </button>
+                    )}
                   </div>
                       </>
                     );
