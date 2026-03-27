@@ -263,8 +263,16 @@ export default function JudgePage() {
     // Kiosk mode: show simplified login with position
     if (!currentJudge && positionFromUrl && /^J[1-5]$/i.test(positionFromUrl)) {
         const normalizedPosition = positionFromUrl.toUpperCase();
-        const assignedJudgeName = config.judgeNames?.[normalizedPosition]?.trim();
-        const assignedJudgeIdentity = config.judgeIdentities?.[normalizedPosition]?.trim();
+
+        const safeJudgeNames = Object.fromEntries(
+            Object.entries(config.judgeNames || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
+        );
+        const safeJudgeIdentities = Object.fromEntries(
+            Object.entries(config.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
+        );
+
+        const assignedJudgeName = safeJudgeNames[normalizedPosition]?.trim();
+        const assignedJudgeIdentity = safeJudgeIdentities[normalizedPosition]?.trim();
 
         if (!assignedJudgeName || !assignedJudgeIdentity) {
             return (

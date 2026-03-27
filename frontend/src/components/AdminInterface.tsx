@@ -1227,8 +1227,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       .map((judgeId) => (judgeId || '').trim().toUpperCase())
       .filter(Boolean);
 
+    const safeJudgeNames = Object.fromEntries(
+      Object.entries(config.judgeNames || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
+    );
+
     const missingNames = configuredJudgeIds.filter((judgeId) => {
-      const assignedName = (config.judgeNames?.[judgeId] || '').trim();
+      const assignedName = (safeJudgeNames[judgeId] || '').trim();
       return !assignedName || assignedName.toUpperCase() === judgeId;
     });
 
