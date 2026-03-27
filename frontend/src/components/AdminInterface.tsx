@@ -136,6 +136,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [eventJudgeAssignments, setEventJudgeAssignments] = useState<HeatJudgeAssignmentRow[]>([]);
   const [assignmentCoverageRows, setAssignmentCoverageRows] = useState<EventJudgeAssignmentCoverageRow[]>([]);
   const [eventJudgeAccuracySummary, setEventJudgeAccuracySummary] = useState<EventJudgeAccuracySummaryRow[]>([]);
+  // Stable latch: once a heat is locked/closed, never flicker back to unlocked within session
+  const hasBeenLockedRef = React.useRef(false);
 
   const resolveAssignedJudgeIdentity = useCallback((stationId: string) => {
     return (config.judgeIdentities?.[stationId] || '').trim();
@@ -1234,6 +1236,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [divisionHeatSequence, config.round, config.heatId, heatStatus]);
 
   const isCurrentHeatLocked = isLockedStatus(currentHeatStatus);
+  // Latch: once locked, never un-lock within the current session (prevents DB/realtime race flicker)
+  if (isCurrentHeatLocked) hasBeenLockedRef.current = true;
+  const stableHeatLocked = hasBeenLockedRef.current;
   const floatingTimeLeft = React.useMemo(
     () => getRemainingTimerSeconds(timer, floatingTimerTick),
     [timer, floatingTimerTick, getRemainingTimerSeconds]
@@ -2665,7 +2670,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               {syncError}
             </div>
           )}
-          {isCurrentHeatLocked && (
+          {stableHeatLocked && (
             <div className="w-full mb-4 p-3 bg-orange-100 border border-orange-400 rounded-lg shadow-sm">
               <div className="flex items-start">
                 <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5 mr-3 flex-shrink-0" />
@@ -2700,13 +2705,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             onReset={handleTimerReset}
             onDurationChange={handleTimerDurationChange}
             configSaved={configSaved}
-            disabled={isCurrentHeatLocked || !judgeAssignmentStatus.isReady}
+            disabled={stableHeatLocked || !judgeAssignmentStatus.isReady}
           />
           <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={handleTimerResume}
-              disabled={!configSaved || timer.isRunning || isCurrentHeatLocked || !judgeAssignmentStatus.isReady}
+              disabled={!configSaved || timer.isRunning || stableHeatLocked || !judgeAssignmentStatus.isReady}
               className="py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Reprendre (temps restant)
@@ -2714,7 +2719,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             <button
               type="button"
               onClick={handleTimerRestartFull}
-              disabled={!configSaved || isCurrentHeatLocked || !judgeAssignmentStatus.isReady}
+              disabled={!configSaved || stableHeatLocked || !judgeAssignmentStatus.isReady}
               className="py-2 px-4 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Recommencer (durée complète)

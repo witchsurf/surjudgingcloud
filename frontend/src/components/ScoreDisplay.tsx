@@ -381,7 +381,11 @@ export default function ScoreDisplay({
                     <div className="flex items-center gap-4 sm:gap-6">
                       <div className="flex items-center gap-4">
                         <div className="relative">
-                          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
+                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-sm ${style.badge} flex items-center justify-center`}>
+                            {isPriorityActive && !isInFlight && priorityBadge && (
+                              <span className="text-white font-bebas text-base sm:text-lg leading-none drop-shadow">{priorityBadge}</span>
+                            )}
+                          </div>
                           <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
                             <div className="w-2.5 h-2.5 bg-cta-500 rounded-full" />
                           </div>
@@ -389,11 +393,6 @@ export default function ScoreDisplay({
 
                         <div className="space-y-0.5">
                           <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
-                            {isPriorityActive && (
-                              <span className="text-base sm:text-xl font-bebas tracking-widest text-primary-900">
-                                {isInFlight ? '' : priorityBadge}
-                              </span>
-                            )}
                             {row.displayName}
                           </h3>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -453,7 +452,11 @@ export default function ScoreDisplay({
                       <div className="flex items-center gap-4 sm:gap-6">
                         <div className="flex items-center gap-4">
                           <div className="relative">
-                            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full border-4 border-primary-950 shadow-sm ${style.badge}`} />
+                            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-sm ${style.badge} flex items-center justify-center`}>
+                              {isPriorityActive && !isInFlight && priorityBadge && (
+                                <span className="text-white font-bebas text-base sm:text-lg leading-none drop-shadow">{priorityBadge}</span>
+                              )}
+                            </div>
                             <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
                               <div className="w-2.5 h-2.5 bg-cta-500 rounded-full" />
                             </div>
@@ -461,14 +464,9 @@ export default function ScoreDisplay({
                           
                           <div className="space-y-0.5">
                             <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
-                              {isPriorityActive && (
-                                <span className="text-base sm:text-xl font-bebas tracking-widest text-primary-900">
-                                  {isInFlight ? '' : priorityBadge}
-                                </span>
-                              )}
                               {displayName}
                               {hasPendingScores && (
-                                <span className="text-danger-500 animate-pulse text-2xl leading-none pt-1" title="En attente de notes">*</span>
+                                <span className="text-danger-500 animate-pulse text-3xl leading-none pt-1" title="En attente de notes">*</span>
                               )}
                             </h3>
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
