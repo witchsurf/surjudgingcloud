@@ -998,15 +998,20 @@ export function exportFullCompetitionPDF({
           const headRow = ['#', 'LYCRA', 'TOTAL', 'SURFEUR', 'PAYS'];
           if (hasResults) for (let i = 1; i <= currentHeatMaxWaves; i++) headRow.push(`V${i}`);
 
+          // Column budget: pageW=595, margins=36*2=523 usable
+          // #=12, LYCRA=42, TOTAL=30, PAYS=52, waves=22each, SURFEUR=rest
+          const waveColW = 22;
+          const fixedW = 12 + 42 + 30 + 52 + currentHeatMaxWaves * waveColW;
+          const surferColW = Math.max(80, Math.min(pageW - MARGIN * 2 - fixedW, 130));
           const colW: Record<number, any> = {
-            0: { cellWidth: 14, halign: 'center' as const, fontSize: 8 },
-            1: { cellWidth: 30, halign: 'center' as const, fontStyle: 'bold' },
-            2: { cellWidth: 32, halign: 'center' as const, fontStyle: 'bold', fontSize: 9 },
-            3: { cellWidth: Math.min(pageW - MARGIN * 2 - 14 - 30 - 32 - 30 - currentHeatMaxWaves * 22, 120), halign: 'left' as const, fontStyle: 'bold', fontSize: 8 },
-            4: { cellWidth: 30, halign: 'left' as const, fontSize: 7 },
+            0: { cellWidth: 12, halign: 'center' as const, fontSize: 8 },
+            1: { cellWidth: 42, halign: 'center' as const, fontStyle: 'bold', overflow: 'hidden' },
+            2: { cellWidth: 30, halign: 'center' as const, fontStyle: 'bold', fontSize: 9 },
+            3: { cellWidth: surferColW, halign: 'left' as const, fontStyle: 'bold', fontSize: 8 },
+            4: { cellWidth: 52, halign: 'left' as const, fontSize: 7 },
           };
           for (let i = 0; i < currentHeatMaxWaves; i++) {
-            colW[5 + i] = { cellWidth: 22, halign: 'center' as const, fontSize: 8 };
+            colW[5 + i] = { cellWidth: waveColW, halign: 'center' as const, fontSize: 8 };
           }
 
           autoTable(doc, {
@@ -1041,7 +1046,14 @@ export function exportFullCompetitionPDF({
             tableLineWidth: 0.2,
             margin: { left: MARGIN, right: MARGIN },
             didParseCell: (data) => {
-              // Lycra colour cell
+              // Lycra colour cell — no word-wrap, centred
+              if (data.column.index === 1) {
+                data.cell.styles.overflow = 'hidden';
+              }
+              // PAYS cell — no word-wrap
+              if (data.column.index === 4) {
+                data.cell.styles.overflow = 'hidden';
+              }
               if (data.section === 'body' && data.column.index === 1) {
                 const label = normalizeLycraForPdf(String(data.cell.raw ?? ''));
                 const lycra = LYCRA_COLOURS[label];
