@@ -2055,8 +2055,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         const sameComp = (s.competition || '').trim().toUpperCase() === (config.competition || '').trim().toUpperCase();
         const sameDiv = (s.division || '').trim().toUpperCase() === (config.division || '').trim().toUpperCase();
         const sameRound = Number(s.round) === Number(config.round);
-        const sameHeat = !s.heat_number || Number(s.heat_number) === Number(config.heatId);
-        return sameComp && sameDiv && sameRound && sameHeat;
+        return sameComp && sameDiv && sameRound;
       })
       .map(s => s.wave_number)
     );
