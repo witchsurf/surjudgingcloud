@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { ensureSupabase } from './core.api.ts';
 import type { AppConfig } from '../../types';
 import { resolveEventDisplayName } from '../../utils/eventName';
+import { fetchHeatEntriesWithParticipants } from './heats.api';
 
 export interface EventSummary {
     id: number;
@@ -210,7 +211,7 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
     try {
         const { data: heatData } = await supabase!
             .from('heats')
-            .select('id, heat_size, heat_entries(position, color, seed, participant:participants(name, country))')
+            .select('id, heat_size')
             .eq('event_id', eventId)
             .eq('division', data.division)
             .eq('round', data.round)
@@ -219,20 +220,20 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
 
         if (heatData) {
             heatSize = heatData.heat_size ?? undefined;
-            const entries = (heatData.heat_entries as any[] | null) || [];
+            const entries = await fetchHeatEntriesWithParticipants(heatData.id);
             if (entries.length > 0) {
                 const sortedEntries = entries
-                    .filter((entry: any) => entry.color)
-                    .sort((a: any, b: any) => (a.position || 0) - (b.position || 0));
+                    .filter((entry) => entry.color)
+                    .sort((a, b) => (a.position || 0) - (b.position || 0));
 
-                surfers = Array.from(new Set(sortedEntries.map((entry: any) => {
+                surfers = Array.from(new Set(sortedEntries.map((entry) => {
                     const color = entry.color?.toString().toUpperCase();
                     return color || '';
                 }).filter(Boolean)));
 
                 surferNames = {};
                 surferCountries = {};
-                sortedEntries.forEach((entry: any) => {
+                sortedEntries.forEach((entry) => {
                     const color = entry.color?.toString().toUpperCase();
                     if (color && entry.participant) {
                         if (entry.participant.name) {

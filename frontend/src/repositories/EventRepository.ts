@@ -8,6 +8,7 @@
 import { BaseRepository } from './BaseRepository';
 import type { AppConfig } from '../types';
 import { logger } from '../lib/logger';
+import { heatRepository } from './HeatRepository';
 
 export interface EventSummary {
     id: number;
@@ -344,7 +345,7 @@ export class EventRepository extends BaseRepository {
         try {
             const { data: heatData } = await this.supabase!
                 .from('heats')
-                .select('id, heat_size, heat_entries(position, color, seed, participant:participants(name, country))')
+                .select('id, heat_size')
                 .eq('event_id', eventId)
                 .eq('division', division)
                 .eq('round', round)
@@ -354,22 +355,22 @@ export class EventRepository extends BaseRepository {
             if (!heatData) return {};
 
             const heatSize = heatData.heat_size ?? undefined;
-            const entries = (heatData.heat_entries as any[] | null) || [];
+            const entries = await heatRepository.fetchHeatEntriesWithParticipants(heatData.id);
 
             if (entries.length === 0) return { heatSize };
 
             const sortedEntries = entries
-                .filter((entry: any) => entry.color)
-                .sort((a: any, b: any) => (a.position || 0) - (b.position || 0));
+                .filter((entry) => entry.color)
+                .sort((a, b) => (a.position || 0) - (b.position || 0));
 
             const surfers = sortedEntries
-                .map((entry: any) => entry.color?.toString().toUpperCase() || '')
+                .map((entry) => entry.color?.toString().toUpperCase() || '')
                 .filter(Boolean);
 
             const surferNames: Record<string, string> = {};
             const surferCountries: Record<string, string> = {};
 
-            sortedEntries.forEach((entry: any) => {
+            sortedEntries.forEach((entry) => {
                 const color = entry.color?.toString().toUpperCase();
                 if (color && entry.participant) {
                     if (entry.participant.name) {

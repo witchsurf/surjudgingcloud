@@ -4,6 +4,7 @@ import { getColorSet, type HeatColor } from '../../utils/colorUtils';
 import { ensureHeatId } from '../../utils/heat';
 import type { RoundSpec, HeatSlotSpec } from '../../utils/bracket';
 import type { ParticipantRecord } from './participants.api';
+import { distributeSeedsSnake, expandSeedMap, type ParticipantSeed } from '../../utils/seeding';
 
 export interface HeatRow {
     id: string;
@@ -63,6 +64,91 @@ export interface HeatEntriesWithParticipantRow {
         country: string | null;
         license: string | null;
     } | null;
+}
+
+async function buildRoundOneEntriesFromParticipants(heatId: string): Promise<HeatEntriesWithParticipantRow[]> {
+    const metadata = await fetchHeatMetadata(heatId);
+    if (!metadata?.event_id || !metadata.division || Number(metadata.round) !== 1) {
+        return [];
+    }
+
+    const { data: roundHeats, error: heatsError } = await supabase!
+        .from('heats')
+        .select('id, heat_number, heat_size, color_order')
+        .eq('event_id', metadata.event_id)
+        .ilike('division', metadata.division)
+        .eq('round', 1)
+        .order('heat_number', { ascending: true });
+
+    if (heatsError) throw heatsError;
+    if (!roundHeats?.length) return [];
+
+    const orderedHeats = roundHeats
+        .filter((heat): heat is { id: string; heat_number: number; heat_size: number | null; color_order: string[] | null } =>
+            Boolean(heat?.id) && Number.isFinite(Number(heat.heat_number))
+        )
+        .sort((a, b) => Number(a.heat_number) - Number(b.heat_number));
+
+    const targetHeat = orderedHeats.find((heat) => ensureHeatId(heat.id) === heatId);
+    if (!targetHeat) return [];
+
+    const { data: participantRows, error: participantsError } = await supabase!
+        .from('participants')
+        .select('id, event_id, category, seed, name, country, license')
+        .eq('event_id', metadata.event_id)
+        .ilike('category', metadata.division)
+        .order('seed', { ascending: true });
+
+    if (participantsError) throw participantsError;
+    if (!participantRows?.length) return [];
+
+    const participants = (participantRows as ParticipantRecord[])
+        .filter((participant) => Number.isFinite(Number(participant.seed)))
+        .map((participant) => ({
+            id: participant.id,
+            seed: Number(participant.seed),
+            name: participant.name,
+            country: participant.country ?? undefined,
+            license: participant.license ?? undefined,
+        } satisfies ParticipantSeed))
+        .sort((a, b) => a.seed - b.seed);
+
+    if (!participants.length) return [];
+
+    const heatSizes = orderedHeats.map((heat) => Math.max(0, Number(heat.heat_size) || 0));
+    const maxHeatSize = Math.max(...heatSizes, 0);
+    if (maxHeatSize <= 0) return [];
+
+    const seedMap = distributeSeedsSnake(
+        participants.map((participant) => participant.seed),
+        {
+            heatCount: orderedHeats.length,
+            heatSize: maxHeatSize,
+            heatSizes,
+        }
+    );
+
+    const expanded = expandSeedMap(seedMap, participants);
+    const targetExpandedHeat = expanded.find((heat) => heat.heatNumber === Number(targetHeat.heat_number));
+    if (!targetExpandedHeat) return [];
+
+    const fallbackColors = Array.isArray(targetHeat.color_order) && targetHeat.color_order.length > 0
+        ? targetHeat.color_order
+        : getColorSet(Number(targetHeat.heat_size) || targetExpandedHeat.slots.length);
+
+    return targetExpandedHeat.slots.map((participant, index) => ({
+        color: fallbackColors[index] ?? null,
+        position: index + 1,
+        participant_id: participant?.id ?? null,
+        seed: participant?.seed ?? null,
+        participant: participant
+            ? {
+                name: participant.name,
+                country: participant.country ?? null,
+                license: participant.license ?? null,
+            }
+            : null,
+    }));
 }
 
 export async function deletePlannedHeats(eventId: number, category: string) {
@@ -337,7 +423,16 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
     }));
 
     if (fallbackEntries.length === 0 && rows.length > 0) return typedRows;
-    return fallbackEntries as HeatEntriesWithParticipantRow[];
+    if (fallbackEntries.length > 0) {
+        return fallbackEntries as HeatEntriesWithParticipantRow[];
+    }
+
+    const reconstructedEntries = await buildRoundOneEntriesFromParticipants(normalizedHeatId);
+    if (reconstructedEntries.length > 0) {
+        return reconstructedEntries;
+    }
+
+    return typedRows;
 }
 
 type CategoryHeatUpdateState = {
