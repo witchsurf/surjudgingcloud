@@ -70,14 +70,7 @@ const applyResultsToRounds = (
       ...heat,
       slots: heat.slots.map((slot) => {
         if (slot.placeholder) {
-          // Try multiple placeholder formats:
-          // 1. "R1-H1-P1" (current format, matches supabaseClient regex)
-          // 2. "QUALIFIÉ R1-H1 (P1)" or "Repêchage R1-H1 (P3)" (display format with prefix)
-          // 3. "R1-H1 (P1)" (old format with parentheses)
-
           const placeholder = slot.placeholder.toUpperCase();
-
-          // Format 1: Direct match "R1-H1-P1" or "RP1-H1-P1"
           let info = mapping.get(placeholder);
           if (info) {
             return {
@@ -88,8 +81,6 @@ const applyResultsToRounds = (
               result: null,
             };
           }
-
-          // Format 2: Extract from "QUALIFIÉ R1-H1 (P1)" or "R1-H1 (P1)"
           const match = placeholder.match(/R(P?)(\d+)-H(\d+)\s*\(P(\d+)\)/);
           if (match) {
             const [, prefix, round, heat, pos] = match;
@@ -116,12 +107,10 @@ export function exportBracketToPDF(eventName: string, category: string, rounds: 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   const renderRound = (round: RoundSpec) => {
-    // Each round starts on a dedicated page with a centered header.
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
     doc.text(`${eventName.toUpperCase()} – ${category.toUpperCase()}`, width / 2, 60, { align: 'center' });
 
-    // Add organizer and date if provided
     let headerY = 90;
     if (eventDetails?.organizer || eventDetails?.date) {
       doc.setFontSize(10);
@@ -136,11 +125,10 @@ export function exportBracketToPDF(eventName: string, category: string, rounds: 
     let startY = headerY + 25;
     round.heats.forEach((_, idx) => {
       const { heat, body } = buildHeatTable(round, idx);
-      // Replace missing athlete names with surferNames lookup
       const enrichedBody = body.map(row => {
         const [pos, color, result, athlete, country] = row;
         if (!athlete && surferNames) {
-          const nameFromMap = surferNames[color] ?? '';
+          const nameFromMap = surferNames[color as string] ?? '';
           return [pos, color, result, nameFromMap, country];
         }
         return row;
@@ -348,24 +336,52 @@ export function exportHeatResultsPDF({ eventName, category, config, rounds, hist
   }
 }
 
-// Palette de couleurs pour le PDF
-const PDF_COLORS: Record<string, [number, number, number] | string> = {
-  'ROUGE': [239, 68, 68],
-  'BLANC': [248, 250, 252], // Fond gris clair pour être visible
-  'JAUNE': [234, 179, 8],
-  'BLEU': [59, 130, 246],
-  'VERT': [34, 197, 94],
-  'NOIR': [31, 41, 55]
+// ============================================================
+//  DESIGN SYSTEM – PRO PALETTE
+// ============================================================
+const DS = {
+  // Primary deep navy
+  navy:     [10,  15,  41]  as [number,number,number],
+  navyMid:  [22,  32,  74]  as [number,number,number],
+  navyLight:[37,  56, 120]  as [number,number,number],
+  // Accent
+  violet:   [109,  40, 217] as [number,number,number],
+  gold:     [245, 158,  11] as [number,number,number],
+  // Category stripe
+  teal:     [ 15, 118, 110] as [number,number,number],
+  // Status
+  greenDark:[ 20,  83,  45] as [number,number,number],
+  greenFill:[209, 250, 229] as [number,number,number],
+  redDark:  [153,  27,  27] as [number,number,number],
+  redFill:  [255, 228, 230] as [number,number,number],
+  // Neutral
+  white:    [255, 255, 255] as [number,number,number],
+  gray50:   [249, 250, 251] as [number,number,number],
+  gray100:  [243, 244, 246] as [number,number,number],
+  gray200:  [229, 231, 235] as [number,number,number],
+  gray400:  [156, 163, 175] as [number,number,number],
+  gray700:  [ 55,  65,  81] as [number,number,number],
+  gray900:  [ 17,  24,  39] as [number,number,number],
+};
+
+// Lycra colour fills in PDF
+const LYCRA_COLOURS: Record<string, { fill: [number,number,number]; text: [number,number,number]; border: [number,number,number] }> = {
+  ROUGE: { fill: [220, 38, 38],  text: [255,255,255], border: [185, 28, 28] },
+  BLANC: { fill: [248,250,252],  text: [30, 41, 59],  border: [203,213,225] },
+  JAUNE: { fill: [234,179, 8],   text: [28, 25, 23],  border: [161,138, 0]  },
+  BLEU:  { fill: [37, 99,235],   text: [255,255,255], border: [29, 78,216]  },
+  VERT:  { fill: [22,163, 74],   text: [255,255,255], border: [15,118, 55]  },
+  NOIR:  { fill: [15, 23, 42],   text: [255,255,255], border: [30, 41, 59]  },
 };
 
 const normalizeLycraForPdf = (value: string) => {
   const key = value.trim().toUpperCase();
-  if (key === 'RED') return 'ROUGE';
-  if (key === 'WHITE') return 'BLANC';
+  if (key === 'RED')    return 'ROUGE';
+  if (key === 'WHITE')  return 'BLANC';
   if (key === 'YELLOW') return 'JAUNE';
-  if (key === 'BLUE') return 'BLEU';
-  if (key === 'GREEN') return 'VERT';
-  if (key === 'BLACK') return 'NOIR';
+  if (key === 'BLUE')   return 'BLEU';
+  if (key === 'GREEN')  return 'VERT';
+  if (key === 'BLACK')  return 'NOIR';
   return key;
 };
 
@@ -375,6 +391,9 @@ const getSeedPriority = (color: string) => {
   return idx === -1 ? 99 : idx;
 };
 
+// ============================================================
+//  HEAT SCORECARD PDF (landscape, single heat)
+// ============================================================
 export function exportHeatScorecardPdf({
   config,
   scores,
@@ -392,152 +411,174 @@ export function exportHeatScorecardPdf({
     throw new Error('Configuration de heat invalide pour export PDF');
   }
 
-  // Create landscape document for better width availability
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt' });
-  const width = doc.internal.pageSize.getWidth();
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
   const namesMap = surferNames ?? config.surferNames ?? {};
   const countriesMap = surferCountries ?? config.surferCountries ?? {};
 
-  // --- HEADER PRO ---
-  // Background gradient-like header
-  doc.setFillColor(15, 23, 42); // slate-900
-  doc.rect(0, 0, width, 100, 'F');
+  // ── HEADER BAND ──────────────────────────────────────────
+  // Dark navy band full width
+  doc.setFillColor(...DS.navy);
+  doc.rect(0, 0, pageW, 88, 'F');
 
-  // Event Name
-  doc.setTextColor(255, 255, 255);
+  // Violet left accent stripe
+  doc.setFillColor(...DS.violet);
+  doc.rect(0, 0, 6, 88, 'F');
+
+  // Gold bottom rule
+  doc.setFillColor(...DS.gold);
+  doc.rect(0, 86, pageW, 2, 'F');
+
+  // Event name
+  doc.setTextColor(...DS.white);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  const title = eventData?.name?.toUpperCase() ?? config.competition.toUpperCase();
-  doc.text(title, width / 2, 40, { align: 'center' });
+  doc.setFontSize(24);
+  const title = (eventData?.name ?? config.competition).toUpperCase();
+  doc.text(title, 24, 36);
 
-  // Organizer / Subtitle
-  doc.setFontSize(10);
+  // Subtitle
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(148, 163, 184); // slate-400
+  doc.setFontSize(9);
+  doc.setTextColor(...DS.gray400);
   const organizer = eventData?.organizer ? `Organisé par ${eventData.organizer}` : '';
-  const dateStr = eventData?.start_date ? ` • ${new Date(eventData.start_date).toLocaleDateString('fr-FR')}` : '';
-  doc.text(`${organizer}${dateStr}`, width / 2, 60, { align: 'center' });
+  const dateStr = eventData?.start_date ? new Date(eventData.start_date).toLocaleDateString('fr-FR', { year:'numeric', month:'long', day:'numeric' }) : '';
+  const subtitle = [organizer, dateStr].filter(Boolean).join('  •  ');
+  if (subtitle) doc.text(subtitle, 24, 52);
 
-  // Heat Info Badge
-  doc.setFillColor(30, 41, 59); // slate-800
-  doc.roundedRect(width / 2 - 150, 75, 300, 30, 15, 15, 'F');
-  doc.setTextColor(56, 189, 248); // sky-400
+  // Heat badge (rounded rect on the right)
+  const badgeText = `${config.division}  •  ROUND ${config.round}  •  HEAT ${config.heatId}`;
+  const badgeW = doc.getTextWidth(badgeText) + 28;
+  const badgeX = pageW - badgeW - 20;
+  doc.setFillColor(...DS.navyMid);
+  doc.roundedRect(badgeX, 20, badgeW, 26, 6, 6, 'F');
+  doc.setFillColor(...DS.violet);
+  doc.roundedRect(badgeX, 20, badgeW, 26, 6, 6, 'S');
+  doc.setDrawColor(...DS.violet);
+  doc.setLineWidth(1);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(`${config.division} • R${config.round} • HEAT ${config.heatId}`, width / 2, 94, { align: 'center' });
+  doc.setTextColor(...DS.white);
+  doc.text(badgeText, badgeX + 14, 37);
 
-  // --- CONTENT ---
+  // Generated timestamp
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...DS.gray400);
+  doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, pageW - 20, 72, { align: 'right' });
+
+  // ── TABLE ─────────────────────────────────────────────────
   const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves);
 
   if (!stats.length) {
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text('Aucune note enregistrée pour ce heat.', width / 2, 200, { align: 'center' });
+    doc.setTextColor(...DS.gray700);
+    doc.setFontSize(13);
+    doc.text('Aucune note enregistrée pour ce heat.', pageW / 2, 200, { align: 'center' });
     doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
     return;
   }
 
-  // TRI : Par Rang puis par Seeding (Couleur)
   const ordered = [...stats].sort((a, b) => {
     const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
     if (rankDiff !== 0) return rankDiff;
     return getSeedPriority(a.surfer) - getSeedPriority(b.surfer);
   });
 
-  // VAGUES DYNAMIQUES : Max de vagues surfées
   const maxTaken = Math.max(...stats.map(s => s.waves.filter(w => w.score > 0).length), 0);
-  // On affiche au moins config.waves ou ce qui a été surfé, borné par 1 et le max possible
   const columnsToShow = Math.max(1, Math.min(config.waves, Math.max(maxTaken, 5)));
-  // J'utilise Math.max(maxTaken, 5) pour montrer au moins 5 colonnes vides si rien n'est surfé, pour garder la forme du tableau
+  const waveKeys = Array.from({ length: columnsToShow }, (_, i) => i + 1);
 
-  const displayWavesKey = Array.from({ length: columnsToShow }, (_, i) => i + 1);
-
-  const head: string[] = ['#', 'Lycra', 'Surfeur', 'Pays'];
-  displayWavesKey.forEach(w => head.push(`V${w}`));
-  head.push('Best 2');
+  const head: string[] = ['#', 'LYCRA', 'SURFEUR', 'PAYS', ...waveKeys.map(w => `V${w}`), 'BEST 2'];
 
   const body = ordered.map((stat) => {
     const row: (string | number)[] = [];
     const displayName = namesMap[stat.surfer] ?? stat.surfer;
     const country = countriesMap[stat.surfer] ?? '';
     row.push(stat.rank ?? '-');
-    row.push(colorLabelMap[stat.surfer as keyof typeof colorLabelMap] ?? stat.surfer); // Traduction couleur si possible
+    row.push(normalizeLycraForPdf(colorLabelMap[stat.surfer as keyof typeof colorLabelMap] ?? stat.surfer));
     row.push(displayName);
     row.push(country);
-
-    displayWavesKey.forEach(wIdx => {
+    waveKeys.forEach(wIdx => {
       const wave = stat.waves.find((w) => w.wave === wIdx);
-      row.push(wave && wave.score > 0 ? wave.score.toFixed(2) : '-');
+      row.push(wave && wave.score > 0 ? wave.score.toFixed(2) : '—');
     });
-
     row.push((stat.bestTwo ?? 0).toFixed(2));
     return row;
   });
 
+  // Column styles
+  const waveColStyle = { cellWidth: 32, halign: 'center' as const, fontSize: 9 };
+  const colStyles: Record<number, any> = {
+    0: { cellWidth: 22, halign: 'center', fontStyle: 'bold', fontSize: 11 },
+    1: { cellWidth: 52, halign: 'center', fontStyle: 'bold' },
+    2: { cellWidth: 140, halign: 'left', fontStyle: 'bold' },
+    3: { cellWidth: 55, halign: 'left', fontSize: 8 },
+    [head.length - 1]: { cellWidth: 46, halign: 'center', fontStyle: 'bold', fontSize: 12 },
+  };
+  for (let i = 0; i < columnsToShow; i++) {
+    colStyles[4 + i] = waveColStyle;
+  }
+
   autoTable(doc, {
-    startY: 130,
+    startY: 104,
     head: [head],
     body,
+    theme: 'plain',
     styles: {
       font: 'helvetica',
-      fontSize: 9, // Slightly smaller font
-      halign: 'center',
+      fontSize: 10,
+      cellPadding: { top: 6, bottom: 6, left: 5, right: 5 },
       valign: 'middle',
-      cellPadding: 4
+      textColor: DS.gray900,
     },
     headStyles: {
-      fillColor: [15, 23, 42],
-      textColor: 255,
+      fillColor: DS.navy,
+      textColor: DS.white,
       fontStyle: 'bold',
-      lineWidth: 0
+      fontSize: 8,
+      cellPadding: { top: 5, bottom: 5, left: 5, right: 5 },
     },
-    columnStyles: {
-      0: { cellWidth: 30 }, // Rank
-      1: { cellWidth: 50, fontSize: 8, fontStyle: 'bold' }, // Lycra
-      2: { halign: 'left', fontStyle: 'bold', cellWidth: 120 }, // Nom surfeur (larges for full names)
-      3: { halign: 'left', fontSize: 8, cellWidth: 60 }, // Pays
-      // Wave columns will autosize
-      // Best 2 column bold
-      [head.length - 1]: { fontStyle: 'bold', fillColor: [240, 253, 244], cellWidth: 50, textColor: [22, 101, 52] }
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252]
-    },
-    tableLineColor: [203, 213, 225],
-    tableLineWidth: 0.1,
-    margin: { left: 20, right: 20 }, // Use full width
-
-    // COLORATION LYCRA
+    columnStyles: colStyles,
+    alternateRowStyles: { fillColor: DS.gray50 },
+    tableLineColor: DS.gray200,
+    tableLineWidth: 0.3,
+    margin: { left: 20, right: 20 },
     didParseCell: (data) => {
       if (data.section === 'body' && data.column.index === 1) {
-        const surferColorName = ordered[data.row.index].surfer; // Récupère la couleur brute (ROUGE)
-        const rgb = PDF_COLORS[surferColorName];
-        if (rgb) {
-          if (Array.isArray(rgb)) {
-            data.cell.styles.fillColor = rgb;
-            // Texte blanc sauf pour Jaune et Blanc
-            if (surferColorName === 'JAUNE' || surferColorName === 'BLANC') {
-              data.cell.styles.textColor = [0, 0, 0];
-            } else {
-              data.cell.styles.textColor = [255, 255, 255];
-            }
-          }
+        const label = normalizeLycraForPdf(String(data.cell.raw ?? ''));
+        const lycra = LYCRA_COLOURS[label];
+        if (lycra) {
+          data.cell.styles.fillColor = lycra.fill;
+          data.cell.styles.textColor = lycra.text;
         }
       }
-    }
+      // Gold highlight for BEST 2 column
+      if (data.section === 'body' && data.column.index === head.length - 1) {
+        data.cell.styles.textColor = DS.greenDark;
+        if (data.row.index === 0) {
+          // First place: gold background
+          data.cell.styles.fillColor = [254, 252, 232];
+        }
+      }
+      // Rank column — colour rank 1 gold, 2 silver
+      if (data.section === 'body' && data.column.index === 0) {
+        if (data.row.index === 0) data.cell.styles.textColor = [180, 130, 0];
+        else if (data.row.index === 1) data.cell.styles.textColor = [100, 116, 139];
+      }
+    },
   });
 
-  // Footer
-  const pageHeight = doc.internal.pageSize.getHeight();
-  doc.setFontSize(8);
-  doc.setTextColor(150);
-  doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, width / 2, pageHeight - 15, { align: 'center' });
+  // ── FOOTER ────────────────────────────────────────────────
+  doc.setFontSize(7);
+  doc.setTextColor(...DS.gray400);
+  doc.text('KIOSK Surf Judging System', 24, pageH - 12);
+  doc.text(`Page 1 sur 1`, pageW - 24, pageH - 12, { align: 'right' });
 
   doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
 }
 
 /**
- * Export complete competition PDF with all categories
+ * Export complete competition PDF with all categories – PRO design
  */
 export function exportFullCompetitionPDF({
   eventName,
@@ -550,15 +591,13 @@ export function exportFullCompetitionPDF({
   configuredJudgeCount,
 }: FullCompetitionExportPayload) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
-  const width = doc.internal.pageSize.getWidth();
-  const height = doc.internal.pageSize.getHeight();
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const MARGIN = 36;
 
+  // ── helpers ────────────────────────────────────────────────
   const normalizeDivisionName = (value: string) =>
-    value
-      .toUpperCase()
-      .trim()
-      .replace(/[_\s]+/g, ' ')
-      .replace(/\s+/g, ' ');
+    value.toUpperCase().trim().replace(/[_\s]+/g, ' ').replace(/\s+/g, ' ');
 
   const mergedDivisions = Object.entries(divisions).reduce<Record<string, RoundSpec[]>>((acc, [rawName, rounds]) => {
     const key = normalizeDivisionName(rawName);
@@ -569,14 +608,9 @@ export function exportFullCompetitionPDF({
       const roundKey = Number(round.roundNumber);
       const current = byRound.get(roundKey);
       if (!current) {
-        byRound.set(roundKey, {
-          ...round,
-          name: round.name,
-          heats: [...round.heats],
-        });
+        byRound.set(roundKey, { ...round, name: round.name, heats: [...round.heats] });
         return;
       }
-
       const knownHeatIds = new Set(current.heats.map((h) => (h.heatId || '').toLowerCase()));
       round.heats.forEach((heat) => {
         const normalizedHeatId = (heat.heatId || '').toLowerCase();
@@ -588,7 +622,6 @@ export function exportFullCompetitionPDF({
           if (normalizedHeatId) knownHeatIds.add(normalizedHeatId);
         }
       });
-
       current.heats.sort((a, b) => a.heatNumber - b.heatNumber);
     });
 
@@ -597,14 +630,7 @@ export function exportFullCompetitionPDF({
   }, {});
 
   const normalizePlaceholderKey = (value: string) =>
-    value
-      .toUpperCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[\(\)\[\]]/g, ' ')
-      .replace(/[_-]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    value.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[()[\]]/g, ' ').replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
 
   const normalizeHeatKey = (value?: string | null) => (value || '').toLowerCase().trim();
   const normalizedScoresByHeat: Record<string, Score[]> = {};
@@ -618,22 +644,11 @@ export function exportFullCompetitionPDF({
 
   const getHeatScoringParams = (heatScores: Score[]) => {
     const judgeCount = new Set(heatScores.map((s) => getScoreJudgeStation(s)).filter(Boolean)).size;
-    const maxWaves = Math.max(
-      1,
-      ...heatScores.map((s) => Number(s.wave_number) || 0)
-    );
-    return {
-      judgeCount: Math.max(configuredJudgeCount || 0, judgeCount, 1),
-      maxWaves,
-    };
+    const maxWaves = Math.max(1, ...heatScores.map((s) => Number(s.wave_number) || 0));
+    return { judgeCount: Math.max(configuredJudgeCount || 0, judgeCount, 1), maxWaves };
   };
 
-  const buildQualifierKeyVariants = (
-    divisionName: string,
-    roundNumber: number,
-    heatNumber: number,
-    position: number
-  ) => ([
+  const buildQualifierKeyVariants = (divisionName: string, roundNumber: number, heatNumber: number, position: number) => ([
     `${divisionName} R${roundNumber} H${heatNumber} (P${position})`,
     `QUALIFIE R${roundNumber}-H${heatNumber} (P${position})`,
     `QUALIFIE R${roundNumber}-H${heatNumber} P${position}`,
@@ -655,16 +670,13 @@ export function exportFullCompetitionPDF({
     qualifierMapByDivision.set(key, created);
     return created;
   };
+
   const isPlaceholderLike = (value?: string | null) => {
     if (!value) return false;
     const normalized = normalizePlaceholderKey(value);
-    return normalized.includes('QUALIFI') ||
-      normalized.includes('FINALISTE') ||
-      normalized.includes('REPECH') ||
-      /^R\s*\d+/.test(normalized) ||
-      /^RP\s*\d+/.test(normalized) ||
-      normalized.startsWith('POSITION') ||
-      normalized === 'BYE';
+    return normalized.includes('QUALIFI') || normalized.includes('FINALISTE') ||
+      normalized.includes('REPECH') || /^R\s*\d+/.test(normalized) ||
+      /^RP\s*\d+/.test(normalized) || normalized.startsWith('POSITION') || normalized === 'BYE';
   };
 
   const resolveQualifiedFromText = (divisionName: string, placeholderText: string) => {
@@ -676,20 +688,11 @@ export function exportFullCompetitionPDF({
       const match = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*(?:P\s*)?(\d+)/);
       if (match) {
         const [, roundTxt, heatTxt, posTxt] = match;
-        const fallbackKeys = buildQualifierKeyVariants(
-          divisionName.toUpperCase(),
-          Number(roundTxt),
-          Number(heatTxt),
-          Number(posTxt)
-        );
-        qualified = fallbackKeys
-          .map((key) => divisionMap.get(normalizePlaceholderKey(key)))
-          .find(Boolean);
+        const fallbackKeys = buildQualifierKeyVariants(divisionName.toUpperCase(), Number(roundTxt), Number(heatTxt), Number(posTxt));
+        qualified = fallbackKeys.map((key) => divisionMap.get(normalizePlaceholderKey(key))).find(Boolean);
       }
     }
 
-    // Support placeholders without explicit position, e.g. "QUALIFIE R1-H1".
-    // In this case we consume qualifiers in order (P1, then P2, ...).
     if (!qualified) {
       const noPosMatch = normalized.match(/R\s*(\d+)\s*H\s*(\d+)/);
       if (noPosMatch) {
@@ -700,81 +703,38 @@ export function exportFullCompetitionPDF({
         const startPos = (implicitQualifierCursor.get(cursorKey) ?? 0) + 1;
 
         for (let pos = startPos; pos <= 8; pos += 1) {
-          const fallbackKeys = buildQualifierKeyVariants(
-            divisionName.toUpperCase(),
-            roundNumber,
-            heatNumber,
-            pos
-          );
-          qualified = fallbackKeys
-            .map((key) => divisionMap.get(normalizePlaceholderKey(key)))
-            .find(Boolean);
-          if (qualified) {
-            implicitQualifierCursor.set(cursorKey, pos);
-            break;
-          }
+          const fallbackKeys = buildQualifierKeyVariants(divisionName.toUpperCase(), roundNumber, heatNumber, pos);
+          qualified = fallbackKeys.map((key) => divisionMap.get(normalizePlaceholderKey(key))).find(Boolean);
+          if (qualified) { implicitQualifierCursor.set(cursorKey, pos); break; }
         }
       }
     }
-
     return qualified;
   };
 
   const writeHeatQualifiers = (
-    divisionName: string,
-    roundNumber: number,
-    heatNumber: number,
+    divisionName: string, roundNumber: number, heatNumber: number,
     heatId: string | null,
-    slots: Array<{
-      color?: string;
-      name?: string;
-      country?: string;
-      placeholder?: string;
-      bye?: boolean;
-    }>,
+    slots: Array<{ color?: string; name?: string; country?: string; placeholder?: string; bye?: boolean }>,
     heatScores: Score[]
   ) => {
     if (!heatScores.length) return;
     const divisionMap = getDivisionQualifierMap(divisionName);
-
     const slotByColor = new Map<string, { name?: string; placeholder?: string; country?: string }>();
-    const heatSurfers = slots
-      .filter((slot) => slot.color)
-      .map((slot) => {
-        const normalizedColor = normalizeLycraForPdf(
-          colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color!
-        );
-        slotByColor.set(normalizedColor.toUpperCase(), {
-          name: slot.name,
-          placeholder: slot.placeholder,
-          country: slot.country ?? undefined,
-        });
-        return normalizedColor;
-      });
+
+    const heatSurfers = slots.filter((slot) => slot.color).map((slot) => {
+      const normalizedColor = normalizeLycraForPdf(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color!);
+      slotByColor.set(normalizedColor.toUpperCase(), { name: slot.name, placeholder: slot.placeholder, country: slot.country ?? undefined });
+      return normalizedColor;
+    });
 
     if (!heatSurfers.length) return;
     const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
-    const normalizedHeatScores = heatScores.map((score) => ({
-      ...score,
-      surfer: normalizeLycraForPdf(score.surfer),
-    }));
+    const normalizedHeatScores = heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) }));
     const heatKey = normalizeHeatKey(heatId);
-    const heatInterferences = heatKey
-      ? (normalizedInterferencesByHeat[heatKey] ?? [])
-      : [];
-    const effectiveInterferences = computeEffectiveInterferences(
-      heatInterferences,
-      Math.max(judgeCount, 1)
-    );
-    const stats = calculateSurferStats(
-      normalizedHeatScores,
-      heatSurfers,
-      judgeCount,
-      maxWaves,
-      false,
-      effectiveInterferences
-    );
-
+    const heatInterferences = heatKey ? (normalizedInterferencesByHeat[heatKey] ?? []) : [];
+    const effectiveInterferences = computeEffectiveInterferences(heatInterferences, Math.max(judgeCount, 1));
+    const stats = calculateSurferStats(normalizedHeatScores, heatSurfers, judgeCount, maxWaves, false, effectiveInterferences);
     const orderedStats = [...stats].sort((a, b) => {
       const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
       if (rankDiff !== 0) return rankDiff;
@@ -784,32 +744,19 @@ export function exportFullCompetitionPDF({
     orderedStats.forEach((stat, index) => {
       const slotInfo = slotByColor.get(stat.surfer.toUpperCase());
       if (!slotInfo) return;
-
       const resolvedName = slotInfo.name || slotInfo.placeholder || stat.surfer;
       const resolvedCountry = slotInfo.country;
       const position = index + 1;
-      const keys = buildQualifierKeyVariants(
-        divisionName.toUpperCase(),
-        roundNumber,
-        heatNumber,
-        position
-      );
+      const keys = buildQualifierKeyVariants(divisionName.toUpperCase(), roundNumber, heatNumber, position);
       keys.forEach((key) => {
-        divisionMap.set(normalizePlaceholderKey(key), {
-          name: resolvedName,
-          country: resolvedCountry,
-        });
+        divisionMap.set(normalizePlaceholderKey(key), { name: resolvedName, country: resolvedCountry });
       });
     });
   };
 
-  // Iterative propagation by round:
-  // 1) resolve placeholders from previous heats
-  // 2) compute current heat ranking from scores
-  // 3) write new qualifier keys for next rounds
+  // Propagate qualifiers across rounds
   Object.entries(mergedDivisions).forEach(([divisionName, rounds]) => {
     const orderedRounds = [...rounds].sort((a, b) => a.roundNumber - b.roundNumber);
-
     orderedRounds.forEach((round) => {
       round.heats.forEach((heat) => {
         heat.slots.forEach((slot) => {
@@ -817,167 +764,188 @@ export function exportFullCompetitionPDF({
           if (!candidate || slot.bye) return;
           const qualified = resolveQualifiedFromText(divisionName, candidate);
           if (!qualified) return;
-
           slot.name = qualified.name;
           if (qualified.country) slot.country = qualified.country;
           delete slot.placeholder;
           delete slot.bye;
         });
-
         const heatScores = heat.heatId ? (normalizedScoresByHeat[normalizeHeatKey(heat.heatId)] ?? []) : [];
-        writeHeatQualifiers(
-          divisionName,
-          round.roundNumber,
-          heat.heatNumber,
-          heat.heatId ?? null,
-          heat.slots,
-          heatScores
-        );
+        writeHeatQualifiers(divisionName, round.roundNumber, heat.heatNumber, heat.heatId ?? null, heat.slots, heatScores);
       });
     });
   });
 
-  // --- PDF STYLING ---
-  const COLORS = {
-    primary: [15, 23, 42],   // Slate-900
-    accent: [220, 38, 38],   // Red-600
-    gold: [251, 191, 36],    // Gold-500
-    text: [51, 65, 85],      // Slate-700
-    muted: [148, 163, 184],  // Slate-400
-    border: [226, 232, 240]  // Slate-200
-  };
+  // ============================================================
+  //  PAGE TEMPLATE: COVER PAGE
+  // ============================================================
+  // Full navy background
+  doc.setFillColor(...DS.navy);
+  doc.rect(0, 0, pageW, pageH, 'F');
 
-  const drawHeader = (isFirstPage: boolean) => {
-    if (isFirstPage) {
-      doc.setFillColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-      doc.rect(0, 0, width, 80, 'F');
+  // Violet vertical accent
+  doc.setFillColor(...DS.violet);
+  doc.rect(0, 0, 8, pageH, 'F');
 
-      let textStartX = 40;
-      if (organizerLogoDataUrl) {
-        try {
-          const format = organizerLogoDataUrl.toLowerCase().includes('png') ? 'PNG' : 'JPEG';
-          doc.addImage(organizerLogoDataUrl, format, 40, 15, 50, 50);
-          textStartX = 105;
-        } catch (e) {
-          console.warn('Logo error:', e);
-        }
-      }
+  // Gold top band
+  doc.setFillColor(...DS.gold);
+  doc.rect(8, 0, pageW - 8, 6, 'F');
 
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
-      doc.text(eventName.toUpperCase(), textStartX, 40);
-
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(200, 200, 200);
-      doc.text('RAPPORT COMPLET DE LA COMPÉTITION', textStartX, 55);
-
-      doc.setFontSize(9);
-      doc.setTextColor(255, 255, 255);
-      const orgText = organizer ? `Organisé par : ${organizer}` : '';
-      const dateText = date ? `Dates : ${date}` : '';
-      doc.text(orgText, width - 40, 40, { align: 'right' });
-      doc.text(dateText, width - 40, 55, { align: 'right' });
-
-      return 100;
-    } else {
-      doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-      doc.setLineWidth(0.5);
-      doc.line(40, 45, width - 40, 45);
-
-      doc.setFontSize(8);
-      doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
-      doc.text(`${eventName.toUpperCase()} — RAPPORT COMPLET`, 40, 40);
-      return 60;
+  // Logo image
+  let logoEndY = 80;
+  if (organizerLogoDataUrl) {
+    try {
+      const fmt = organizerLogoDataUrl.toLowerCase().includes('png') ? 'PNG' : 'JPEG';
+      doc.addImage(organizerLogoDataUrl, fmt, MARGIN + 8, 60, 60, 60);
+      logoEndY = 130;
+    } catch (e) {
+      console.warn('Logo error:', e);
     }
+  }
+
+  // Event name — large hero text
+  doc.setTextColor(...DS.white);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(32);
+  doc.text(eventName.toUpperCase(), MARGIN + 8, logoEndY + 40);
+
+  // Divider line under event name
+  doc.setDrawColor(...DS.violet);
+  doc.setLineWidth(2);
+  doc.line(MARGIN + 8, logoEndY + 50, pageW - MARGIN, logoEndY + 50);
+
+  // Subtitle
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...DS.gray400);
+  const coverSubs: string[] = ['RAPPORT COMPLET DE LA COMPÉTITION'];
+  if (organizer) coverSubs.push(`Organisé par  ${organizer}`);
+  if (date) coverSubs.push(`Dates :  ${date}`);
+  let coverSubY = logoEndY + 70;
+  coverSubs.forEach(line => {
+    doc.text(line, MARGIN + 8, coverSubY);
+    coverSubY += 18;
+  });
+
+  // Division summary
+  const divisionNames = Object.keys(mergedDivisions);
+  if (divisionNames.length) {
+    doc.setFontSize(9);
+    doc.setTextColor(...DS.gray400);
+    doc.text(`${divisionNames.length} CATÉGORIE${divisionNames.length > 1 ? 'S' : ''} :`, MARGIN + 8, coverSubY + 20);
+    doc.setTextColor(...DS.white);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(divisionNames.join('  •  '), MARGIN + 8, coverSubY + 36);
+  }
+
+  // Footer of cover
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...DS.gray400);
+  doc.text(`Généré par KIOSK Surf Judging le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, pageW - MARGIN, pageH - 20, { align: 'right' });
+
+  // ============================================================
+  //  drawHeader for content pages (compact running header)
+  // ============================================================
+  const drawContentHeader = () => {
+    // Slim navy band
+    doc.setFillColor(...DS.navy);
+    doc.rect(0, 0, pageW, 38, 'F');
+    doc.setFillColor(...DS.violet);
+    doc.rect(0, 0, 5, 38, 'F');
+    doc.setFillColor(...DS.gold);
+    doc.rect(5, 36, pageW - 5, 2, 'F');
+
+    doc.setTextColor(...DS.white);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(eventName.toUpperCase(), MARGIN, 24);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...DS.gray400);
+    doc.text('RAPPORT COMPLET', pageW - MARGIN, 24, { align: 'right' });
+
+    return 52; // cursorY after header
   };
 
-  let cursorY = drawHeader(true);
+  // ============================================================
+  //  CONTENT PAGES
+  // ============================================================
+  doc.addPage();
+  let cursorY = drawContentHeader();
 
-  // === CONTENT RENDERING ===
-  Object.entries(mergedDivisions).forEach(([categoryName, allRounds]) => {
+  const categories = Object.entries(mergedDivisions);
+
+  categories.forEach(([categoryName, allRounds], catIdx) => {
     if (!allRounds.length) return;
 
-    if (cursorY > height - 100) {
+    // Page break before new category (not the very first)
+    if (catIdx > 0) {
       doc.addPage();
-      cursorY = drawHeader(false);
+      cursorY = drawContentHeader();
     }
 
-    // Category Section Header
-    doc.setFillColor('#F8FAFC'); // Slate-50
-    doc.rect(0, cursorY - 15, width, 40, 'F');
-    doc.setDrawColor(COLORS.border[0], COLORS.border[1], COLORS.border[2]);
-    doc.setLineWidth(0.5);
-    doc.line(0, cursorY - 15, width, cursorY - 15);
-    doc.line(0, cursorY + 25, width, cursorY + 25);
-
+    // ── CATEGORY HEADER BLOCK ─────────────────────────────────
+    // Full-width teal band
+    doc.setFillColor(...DS.teal);
+    doc.rect(0, cursorY, pageW, 32, 'F');
+    doc.setTextColor(...DS.white);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-    doc.text(`CATÉGORIE : ${categoryName.toUpperCase()}`, 40, cursorY + 10);
-    cursorY += 45;
+    doc.setFontSize(13);
+    doc.text(`CATÉGORIE : ${categoryName}`, MARGIN, cursorY + 21);
 
-    // Detect and Sort Rounds
+    cursorY += 42;
+
     const mainRounds: typeof allRounds = [];
     const repRounds: typeof allRounds = [];
-
     allRounds.forEach((r) => {
-      const hasRep = r.heats.some((h) =>
-        h.slots.some((s) => {
-          if (!s.placeholder) return false;
-          const txt = s.placeholder.toUpperCase();
-          return txt.includes('REPÊCHAGE') || txt.includes('(P3)') || txt.includes('(P4)') || /[- ]P?[34]$/.test(txt);
-        })
-      );
+      const hasRep = r.heats.some((h) => h.slots.some((s) => {
+        if (!s.placeholder) return false;
+        const txt = s.placeholder.toUpperCase();
+        return txt.includes('REPÊCHAGE') || txt.includes('(P3)') || txt.includes('(P4)') || /[- ]P?[34]$/.test(txt);
+      }));
       if (hasRep) repRounds.push(r);
       else mainRounds.push(r);
     });
 
     const renderRounds = (roundsToRender: typeof allRounds, isRepechage: boolean) => {
-      roundsToRender.forEach((round, roundIdx) => {
-        if (cursorY > height - 60) {
+      roundsToRender.forEach((round) => {
+        if (cursorY > pageH - 80) {
           doc.addPage();
-          cursorY = drawHeader(false);
+          cursorY = drawContentHeader();
         }
 
-        let displayRoundName = round.name.toUpperCase();
-        if (isRepechage) displayRoundName = `REPÊCHAGE ROUND ${roundIdx + 1} (${round.name})`;
+        const displayRoundName = isRepechage
+          ? `REPÊCHAGE — ${round.name.toUpperCase()}`
+          : round.name.toUpperCase();
 
-        // Round Title Style
+        // Round title pill
+        const pillColor = isRepechage ? DS.redDark : DS.navyLight;
+        const pillText = isRepechage ? DS.redFill : DS.white;
+        const pillW = doc.getTextWidth(displayRoundName) + 20;
+        doc.setFillColor(...pillColor);
+        doc.roundedRect(MARGIN, cursorY, pillW, 18, 3, 3, 'F');
+        doc.setTextColor(...pillText);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(isRepechage ? COLORS.accent[0] : COLORS.primary[0], isRepechage ? COLORS.accent[1] : COLORS.primary[1], isRepechage ? COLORS.accent[2] : COLORS.primary[2]);
-        doc.text(displayRoundName, 40, cursorY);
-
-        // Underline for round
-        const titleWidth = doc.getTextWidth(displayRoundName);
-        doc.setDrawColor(isRepechage ? 252 : 203, isRepechage ? 165 : 213, isRepechage ? 165 : 225); // Lighter accent or slate-300
-        doc.setLineWidth(1);
-        doc.line(40, cursorY + 2, 40 + titleWidth, cursorY + 2);
-
-        cursorY += 18;
+        doc.setFontSize(8);
+        doc.text(displayRoundName, MARGIN + 10, cursorY + 12);
+        cursorY += 24;
 
         round.heats.forEach((heat) => {
           const heatScores = heat.heatId ? normalizedScoresByHeat[normalizeHeatKey(heat.heatId)] ?? [] : [];
           const hasResults = heatScores.length > 0;
 
-          if (cursorY > height - 100) {
+          if (cursorY > pageH - 90) {
             doc.addPage();
-            cursorY = drawHeader(false);
-            // Re-draw round title if broken
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(11);
-            doc.text(`${displayRoundName} (SUITE)`, 40, cursorY);
-            cursorY += 18;
+            cursorY = drawContentHeader();
           }
 
           let surferStats: Array<{ surfer: string; bestTwo: number; rank: number; waves: number[] }> = [];
           let currentHeatMaxWaves = 0;
 
           if (hasResults) {
-            const heatSurfers = heat.slots
-              .filter(s => s.color !== undefined)
+            const heatSurfers = heat.slots.filter(s => s.color !== undefined)
               .map(s => normalizeLycraForPdf(colorLabelMap[s.color as keyof typeof colorLabelMap] || s.color!));
             const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
             const heatInterferences = heat.heatId ? (normalizedInterferencesByHeat[normalizeHeatKey(heat.heatId)] ?? []) : [];
@@ -986,13 +954,11 @@ export function exportFullCompetitionPDF({
               heatScores.map(score => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
               heatSurfers, judgeCount, maxWaves, false, effectiveInterferences
             );
-            
             const maxSurferWaves = Math.max(...stats.map(s => s.waves?.length || 0), 0);
             currentHeatMaxWaves = Math.max(1, Math.min(maxSurferWaves, maxWaves));
-
-            surferStats = stats.map(s => ({ 
-              surfer: s.surfer, 
-              bestTwo: s.bestTwo, 
+            surferStats = stats.map(s => ({
+              surfer: s.surfer,
+              bestTwo: s.bestTwo,
               rank: s.rank,
               waves: (s.waves || []).map(w => w.score)
             }));
@@ -1002,123 +968,124 @@ export function exportFullCompetitionPDF({
             let scoreStr = '';
             let numericVal = 0;
             let surferWaves: number[] = [];
-
             if (hasResults && slot.color) {
-              const colorName = colorLabelMap[slot.color as keyof typeof colorLabelMap] || slot.color;
+              const colorName = normalizeLycraForPdf(colorLabelMap[slot.color as keyof typeof colorLabelMap] || slot.color);
               const stat = surferStats.find(s => s.surfer === colorName);
-              if (stat) { 
-                numericVal = stat.bestTwo; 
-                scoreStr = stat.bestTwo.toFixed(2);
-                surferWaves = stat.waves;
-              }
+              if (stat) { numericVal = stat.bestTwo; scoreStr = stat.bestTwo.toFixed(2); surferWaves = stat.waves; }
             }
             return {
               pos: sIdx + 1,
-              lycra: slot.color ? colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color : `COULOIR ${sIdx + 1}`,
+              lycra: slot.color ? normalizeLycraForPdf(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color) : `—`,
               score: scoreStr || (slot.result != null ? slot.result.toFixed(2) : ''),
               numericVal,
               name: slot.name ?? slot.placeholder ?? '',
-              country: slot.country ?? '',
+              country: (slot.country ?? '').substring(0, 8), // trim long country names
               waves: surferWaves
             };
           });
 
           if (hasResults) bodyData.sort((a, b) => b.numericVal - a.numericVal);
 
+          // Heat sub-header row
+          const heatLabel = `  Heat ${heat.heatNumber}  ${hasResults ? '— RÉSULTATS' : '— PRÉVISIONS'}`;
+          const heatLabelColor = hasResults ? DS.greenDark : DS.gray700;
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(9);
-          doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-          doc.text(`Heat ${heat.heatNumber} ${hasResults ? '— RÉSULTATS' : '— PRÉVISIONS'}`, 45, cursorY);
-          cursorY += 4;
+          doc.setFontSize(8);
+          doc.setTextColor(...heatLabelColor);
+          doc.text(heatLabel, MARGIN, cursorY + 2);
+          cursorY += 7;
 
-          const headRow = ['#', 'Lycra', 'Total', 'Surfeur', 'Pays'];
-          if (hasResults) {
-            for (let i = 1; i <= currentHeatMaxWaves; i++) {
-              headRow.push(`V${i}`);
-            }
-          }
+          const headRow = ['#', 'LYCRA', 'TOTAL', 'SURFEUR', 'PAYS'];
+          if (hasResults) for (let i = 1; i <= currentHeatMaxWaves; i++) headRow.push(`V${i}`);
 
-          // Generate dynamic column styles for table
-          const columnStyles: any = {
-            0: { cellWidth: 15 },
-            1: { cellWidth: 35, fontStyle: 'bold' },
-            2: { cellWidth: 35, fontStyle: 'bold' },
-            3: { halign: 'left', fontStyle: 'bold', cellWidth: 130 },
-            4: { halign: 'left', cellWidth: 40 }
+          const colW: Record<number, any> = {
+            0: { cellWidth: 14, halign: 'center' as const, fontSize: 8 },
+            1: { cellWidth: 30, halign: 'center' as const, fontStyle: 'bold' },
+            2: { cellWidth: 32, halign: 'center' as const, fontStyle: 'bold', fontSize: 9 },
+            3: { cellWidth: Math.min(pageW - MARGIN * 2 - 14 - 30 - 32 - 30 - currentHeatMaxWaves * 22, 120), halign: 'left' as const, fontStyle: 'bold', fontSize: 8 },
+            4: { cellWidth: 30, halign: 'left' as const, fontSize: 7 },
           };
-          if (hasResults) {
-            for (let i = 0; i < currentHeatMaxWaves; i++) {
-              columnStyles[5 + i] = { cellWidth: 25 }; 
-            }
+          for (let i = 0; i < currentHeatMaxWaves; i++) {
+            colW[5 + i] = { cellWidth: 22, halign: 'center' as const, fontSize: 8 };
           }
 
           autoTable(doc, {
             startY: cursorY,
             head: [headRow],
             body: bodyData.map((d, i) => {
-              const row = [i + 1, d.lycra, d.score, d.name, d.country];
-              if (hasResults) {
-                for (let w = 0; w < currentHeatMaxWaves; w++) {
-                  row.push(d.waves && d.waves[w] !== undefined ? d.waves[w].toFixed(2) : '—');
-                }
+              const row: (string | number)[] = [i + 1, d.lycra, d.score, d.name, d.country];
+              if (hasResults) for (let w = 0; w < currentHeatMaxWaves; w++) {
+                row.push(d.waves && d.waves[w] !== undefined && d.waves[w] > 0 ? d.waves[w].toFixed(2) : '—');
               }
               return row;
             }),
+            theme: 'plain',
             styles: {
               font: 'helvetica',
               fontSize: 8,
-              cellPadding: 3,
+              cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
               halign: 'center',
               valign: 'middle',
-              textColor: COLORS.text as any
+              textColor: DS.gray900,
             },
             headStyles: {
-              fillColor: hasResults ? [151, 215, 178] : (isRepechage ? [252, 165, 165] : [203, 213, 225]) as any, // Softer green/red/slate
-              textColor: hasResults ? [22, 101, 52] : (isRepechage ? [153, 27, 27] : [30, 41, 59]) as any,
+              fillColor: hasResults ? DS.greenDark : DS.navyLight,
+              textColor: DS.white,
               fontStyle: 'bold',
-              lineWidth: 0
+              fontSize: 7,
+              cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
             },
-            columnStyles,
-            margin: { left: 40, right: 40 },
-            tableLineColor: [241, 245, 249],
-            tableLineWidth: 0.1,
+            columnStyles: colW,
+            alternateRowStyles: { fillColor: DS.gray50 },
+            tableLineColor: DS.gray200,
+            tableLineWidth: 0.2,
+            margin: { left: MARGIN, right: MARGIN },
             didParseCell: (data) => {
+              // Lycra colour cell
               if (data.section === 'body' && data.column.index === 1) {
-                const label = normalizeLycraForPdf(String(data.cell.raw));
-                const rgb = PDF_COLORS[label];
-                if (Array.isArray(rgb)) {
-                  data.cell.styles.fillColor = rgb;
-                  data.cell.styles.textColor = (label === 'JAUNE' || label === 'BLANC') ? [0, 0, 0] : [255, 255, 255];
+                const label = normalizeLycraForPdf(String(data.cell.raw ?? ''));
+                const lycra = LYCRA_COLOURS[label];
+                if (lycra) {
+                  data.cell.styles.fillColor = lycra.fill;
+                  data.cell.styles.textColor = lycra.text;
                 }
               }
-              // Alternating row colors
-              if (data.section === 'body' && data.row.index % 2 === 0) {
-                if (data.column.index !== 1) { // Don't overwrite lycra color
-                  data.cell.styles.fillColor = [251, 252, 253];
+              // Best-2 / Total column
+              if (hasResults && data.section === 'body' && data.column.index === 2) {
+                if (data.row.index === 0) {
+                  data.cell.styles.fillColor = [254, 252, 232]; // gold tint for 1st
+                  data.cell.styles.textColor = [120, 53, 15];
+                } else {
+                  data.cell.styles.textColor = DS.greenDark;
                 }
               }
             }
           });
 
-          cursorY = (doc as any).lastAutoTable.finalY + 15;
+          cursorY = (doc as any).lastAutoTable.finalY + 10;
         });
-        cursorY += 10;
+
+        cursorY += 8;
       });
     };
 
     renderRounds(mainRounds, false);
     if (repRounds.length > 0) renderRounds(repRounds, true);
-    cursorY += 15;
   });
 
-  // Footer
+  // ============================================================
+  //  FOOTER – every content page
+  // ============================================================
   const pageCount = (doc as any).internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
+  for (let i = 2; i <= pageCount; i++) {
     doc.setPage(i);
+    doc.setFillColor(...DS.navy);
+    doc.rect(0, pageH - 20, pageW, 20, 'F');
     doc.setFontSize(7);
-    doc.setTextColor(COLORS.muted[0], COLORS.muted[1], COLORS.muted[2]);
-    const foot = `Généré par KIOSK Surf Judging le ${new Date().toLocaleDateString('fr-FR')} — Page ${i} sur ${pageCount}`;
-    doc.text(foot, width / 2, height - 15, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...DS.gray400);
+    doc.text(`${eventName.toUpperCase()} — RAPPORT COMPLET DE LA COMPÉTITION`, MARGIN, pageH - 7);
+    doc.text(`Page ${i - 1} sur ${pageCount - 1}`, pageW - MARGIN, pageH - 7, { align: 'right' });
   }
 
   doc.save(`${slugify(eventName)}_competition_complete.pdf`);
