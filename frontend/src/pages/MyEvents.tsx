@@ -8,6 +8,7 @@ import { useConfigStore } from '../stores/configStore';
 import type { AppConfig } from '../types';
 import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/supabaseClient';
 import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
+import { resolveEventDisplayName } from '../utils/eventName';
 import { OfflineAuthWrapper } from '../components/OfflineAuthWrapper';
 import { isDevMode, saveOfflineCredentials, loginAsOfflineAdmin } from '../lib/offlineAuth';
 import { syncEventsFromCloud, getCachedCloudEvents, getLastSyncTime, needsCloudSync, getCloudClient } from '../utils/syncCloudEvents';
@@ -67,7 +68,7 @@ const DEFAULT_APP_CONFIG: AppConfig = {
 const buildConfigFromSnapshot = (eventName: string, snapshot: EventConfigSnapshot | null): AppConfig => {
   const next: AppConfig = {
     ...DEFAULT_APP_CONFIG,
-    competition: eventName || snapshot?.event_name || DEFAULT_APP_CONFIG.competition,
+    competition: resolveEventDisplayName(eventName, snapshot?.event_name || DEFAULT_APP_CONFIG.competition),
     division: snapshot?.division ?? DEFAULT_APP_CONFIG.division,
     round: snapshot?.round ?? DEFAULT_APP_CONFIG.round,
     heatId: snapshot?.heat_number ?? DEFAULT_APP_CONFIG.heatId

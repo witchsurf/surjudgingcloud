@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { ensureSupabase } from './core.api.ts';
 import type { AppConfig } from '../../types';
+import { resolveEventDisplayName } from '../../utils/eventName';
 
 export interface EventSummary {
     id: number;
@@ -32,7 +33,7 @@ export interface EventConfigSnapshot {
     heat_size?: number;
     surferNames?: Record<string, string>;
     surferCountries?: Record<string, string>;
-    eventDetails?: { organizer?: string; date?: string };
+    eventDetails?: { name?: string; organizer?: string; date?: string };
     updated_at: string;
 }
 
@@ -248,16 +249,17 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
         console.warn('Could not fetch heat structure:', err);
     }
 
-    let eventDetails: { organizer?: string; date?: string } | undefined;
+    let eventDetails: { name?: string; organizer?: string; date?: string } | undefined;
     try {
         const { data: eventData } = await supabase!
             .from('events')
-            .select('organizer, start_date')
+            .select('name, organizer, start_date')
             .eq('id', eventId)
             .maybeSingle();
 
         if (eventData) {
             eventDetails = {
+                name: eventData.name,
                 organizer: eventData.organizer,
                 date: eventData.start_date ? new Date(eventData.start_date).toLocaleDateString('fr-FR') : undefined,
             };
@@ -266,9 +268,11 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
         console.warn('Could not fetch event details:', err);
     }
 
+    const resolvedEventName = resolveEventDisplayName(eventDetails?.name, data.event_name);
+
     return {
         event_id: data.event_id,
-        event_name: data.event_name,
+        event_name: resolvedEventName,
         division: data.division,
         round: data.round,
         heat_number: data.heat_number,

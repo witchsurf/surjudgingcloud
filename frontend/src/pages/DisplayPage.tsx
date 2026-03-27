@@ -19,6 +19,7 @@ import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers } from '../utils/heat';
 import { calculateSurferStats } from '../utils/scoring';
+import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
 import type { AppConfig, Score } from '../types';
@@ -289,7 +290,7 @@ export default function DisplayPage() {
 
                 return normalizeConfig({
                     ...prev,
-                    competition: eventName || prev.competition,
+                    competition: resolveEventDisplayName(eventName, prev.competition),
                     division: parsed.division,
                     round: parsed.round,
                     heatId: parsed.heatNumber
@@ -585,7 +586,7 @@ export default function DisplayPage() {
 
                         const newConfig = {
                             ...prev,
-                            competition: snapshot.event_name || prev.competition || '',
+                            competition: resolveEventDisplayName(snapshot.event_name, prev.competition || ''),
                             division: snapshot.division || prev.division || 'OPEN',
                             round: snapshot.round || prev.round || 1,
                             heatId: snapshot.heat_number || prev.heatId || 1,

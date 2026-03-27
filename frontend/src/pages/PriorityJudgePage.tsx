@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
+import { resolveEventDisplayName } from '../utils/eventName';
 import type { AppConfig } from '../types';
 
 export default function PriorityJudgePage() {
@@ -87,7 +88,7 @@ export default function PriorityJudgePage() {
         return subscribeToEventConfig(targetEventId, (row) => {
             setConfig((prev) => ({
                 ...prev,
-                competition: row.event_name || prev.competition,
+                competition: resolveEventDisplayName(row.event_name, prev.competition),
                 division: row.division || prev.division,
                 round: row.round ?? prev.round,
                 heatId: row.heat_number ?? prev.heatId
@@ -137,7 +138,7 @@ export default function PriorityJudgePage() {
 
             setConfig((prev) => ({
                 ...prev,
-                competition: eventName || prev.competition,
+                competition: resolveEventDisplayName(eventName, prev.competition),
                 division: parsed.division,
                 round: parsed.round,
                 heatId: parsed.heatNumber

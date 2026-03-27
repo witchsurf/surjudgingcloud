@@ -31,7 +31,7 @@ export interface EventConfigSnapshot {
     heat_size?: number;
     surferNames?: Record<string, string>;
     surferCountries?: Record<string, string>;
-    eventDetails?: { organizer?: string; date?: string };
+    eventDetails?: { name?: string; organizer?: string; date?: string };
     updated_at: string;
 }
 
@@ -171,9 +171,11 @@ export class EventRepository extends BaseRepository {
                 // Fetch event details
                 const eventDetails = await this.fetchEventDetails(eventId);
 
+                const resolvedEventName = eventDetails?.name?.trim() || data.event_name;
+
                 return {
                     event_id: data.event_id,
-                    event_name: data.event_name,
+                    event_name: resolvedEventName,
                     division: data.division,
                     round: data.round,
                     heat_number: data.heat_number,
@@ -386,17 +388,18 @@ export class EventRepository extends BaseRepository {
         }
     }
 
-    private async fetchEventDetails(eventId: number): Promise<{ organizer?: string; date?: string } | undefined> {
+    private async fetchEventDetails(eventId: number): Promise<{ name?: string; organizer?: string; date?: string } | undefined> {
         try {
             const { data: eventData } = await this.supabase!
                 .from('events')
-                .select('organizer, start_date')
+                .select('name, organizer, start_date')
                 .eq('id', eventId)
                 .maybeSingle();
 
             if (!eventData) return undefined;
 
             return {
+                name: eventData.name,
                 organizer: eventData.organizer,
                 date: eventData.start_date ? new Date(eventData.start_date).toLocaleDateString('fr-FR') : undefined,
             };

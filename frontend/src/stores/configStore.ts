@@ -12,6 +12,7 @@ import { INITIAL_CONFIG } from '../utils/constants';
 import { eventRepository, heatRepository } from '../repositories';
 import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, parseActiveHeatId } from '../api/supabaseClient';
 import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
+import { resolveEventDisplayName } from '../utils/eventName';
 import { logger } from '../lib/logger';
 import type { EventConfigSnapshot } from '../repositories';
 import { supabase } from '../lib/supabase';
@@ -52,7 +53,7 @@ const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
     });
 
     return {
-        competition: snapshot.event_name || '',
+        competition: resolveEventDisplayName(snapshot.eventDetails?.name, snapshot.event_name),
         division: snapshot.division || 'OPEN',
         round: snapshot.round || 1,
         heatId: snapshot.heat_number || 1,
@@ -176,7 +177,7 @@ export const useConfigStore = create<ConfigStore>()(
                             const nextHeatId = ensureHeatId(activeHeat.active_heat_id);
                             const nextConfig = await applyHeatJudgeAssignments({
                                 ...INITIAL_CONFIG,
-                                competition: parsed.competition,
+                                competition: resolveEventDisplayName(parsed.competition, parsed.competition),
                                 division: parsed.division,
                                 round: parsed.round,
                                 heatId: parsed.heatNumber
@@ -261,7 +262,7 @@ export const useConfigStore = create<ConfigStore>()(
                                         });
                                         snapshot = {
                                             ...snapshot,
-                                            event_name: parsed.competition,
+                                            event_name: resolveEventDisplayName(snapshot.eventDetails?.name, snapshot.event_name),
                                             division: parsed.division,
                                             round: parsed.round,
                                             heat_number: parsed.heatNumber,

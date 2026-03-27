@@ -13,6 +13,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
 import type { AppConfig } from '../types';
+import { resolveEventDisplayName } from '../utils/eventName';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
@@ -122,7 +123,7 @@ export default function JudgePage() {
             }
             setConfig((prev) => ({
                 ...prev,
-                competition: row.event_name || prev.competition,
+                competition: resolveEventDisplayName(row.event_name, prev.competition),
                 division: row.division || prev.division,
                 round: row.round ?? prev.round,
                 heatId: row.heat_number ?? prev.heatId
@@ -214,7 +215,7 @@ export default function JudgePage() {
 
                 return {
                     ...prev,
-                    competition: eventName || prev.competition,
+                    competition: resolveEventDisplayName(eventName, prev.competition),
                     division: parsed.division,
                     round: parsed.round,
                     heatId: parsed.heatNumber
