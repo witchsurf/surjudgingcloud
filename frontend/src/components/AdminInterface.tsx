@@ -575,9 +575,25 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     Object.entries(config.judgeIdentities || {}).forEach(([station, identityId]) => {
       const normalizedStation = station.trim().toUpperCase();
-      const judgeName = (safeJudgeNames[normalizedStation] || '').trim();
+      const judgeName = (safeJudgeNames[normalizedStation] || config.judgeNames?.[station] || '').trim();
       if (identityId && judgeName) {
+        // Store with original casing, lowercase, and uppercase to handle DB UUID casing variations
         names.set(identityId, judgeName);
+        names.set(identityId.toLowerCase(), judgeName);
+        names.set(identityId.toUpperCase(), judgeName);
+      }
+      // Also store by station so judgeWorkCount (keyed by station) resolves to names
+      if (normalizedStation && judgeName) {
+        names.set(normalizedStation, judgeName);
+        names.set(station.trim(), judgeName);
+      }
+    });
+    // Ensure station->name entries for judgeWorkCount
+    Object.entries(config.judgeNames || {}).forEach(([station, name]) => {
+      const trimmed = station.trim();
+      if (trimmed && name) {
+        names.set(trimmed, name.trim());
+        names.set(trimmed.toUpperCase(), name.trim());
       }
     });
 

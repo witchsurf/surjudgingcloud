@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminInterface from '../components/AdminInterface';
@@ -38,6 +39,7 @@ export default function AdminPage() {
     const {
         scores,
         judgeWorkCount,
+        setJudgeWorkCount,
         overrideLogs,
         heatStatus
     } = useJudgingStore();
@@ -47,6 +49,22 @@ export default function AdminPage() {
         setTimer,
         setDuration
     } = useCompetitionTimer();
+
+    // Restore judge work count from localStorage on mount
+    React.useEffect(() => {
+        try {
+            const raw = localStorage.getItem('surfJudgingJudgeWorkCount');
+            if (raw) {
+                const parsed = JSON.parse(raw) as Record<string, number>;
+                if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+                    setJudgeWorkCount(parsed);
+                }
+            }
+        } catch {
+            // ignore
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const { closeHeat } = useHeatManager();
     const {
