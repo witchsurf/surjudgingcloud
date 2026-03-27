@@ -143,9 +143,18 @@ const mergeLiveHeatNames = (
     const targetSurfers = (surfers || []).map((s) => normalizeColorCode(s) || s);
 
     targetSurfers.forEach((color) => {
-        if (normalizedIncoming[color] !== undefined) {
-            // Always trust current-heat payload (even placeholders) over previous heat names.
-            merged[color] = normalizedIncoming[color];
+        const incomingName = normalizedIncoming[color];
+        if (incomingName !== undefined) {
+            const isJustColor = normalizeColorCode(incomingName) === color || incomingName.toUpperCase() === color.toUpperCase();
+            const currentName = merged[color];
+            const currentIsReal = Boolean(currentName) && currentName !== color && !isLikelyPlaceholder(currentName);
+
+            // Do not overwrite a real name if the DB merely returned the jersey color again
+            if (isJustColor && currentIsReal) {
+                // Keep the existing real name
+            } else {
+                merged[color] = incomingName;
+            }
         } else if (!merged[color]) {
             merged[color] = color;
         }
