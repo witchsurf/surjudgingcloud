@@ -346,7 +346,7 @@ export class HeatRepository extends BaseRepository {
         return judgeIds
             .map((stationRaw: unknown) => String(stationRaw ?? '').trim().toUpperCase())
             .filter((station: string) => station.length > 0)
-            .map((station) => ({
+            .map((station: string) => ({
                 heat_id: heatId,
                 event_id: eventId,
                 station,
@@ -384,7 +384,13 @@ export class HeatRepository extends BaseRepository {
             .order('position', { ascending: true });
 
         if (error) throw error;
-        return (data ?? []) as Array<{
+        return (data ?? []).map((row: any) => ({
+            color: row.color ?? null,
+            position: row.position,
+            participant_id: row.participant_id ?? null,
+            seed: row.seed ?? null,
+            participant: Array.isArray(row.participant) ? (row.participant[0] ?? null) : (row.participant ?? null),
+        })) as Array<{
             color: string | null;
             position: number;
             participant_id: number | null;
@@ -414,7 +420,7 @@ export class HeatRepository extends BaseRepository {
     private async ensureHeatEntriesFromConfiguredLineup(heatId: string, config: any): Promise<boolean> {
         const eventId = Number.isFinite(Number(config?.event_id)) ? Number(config.event_id) : null;
         const division = String(config?.division ?? '').trim();
-        const surfers = Array.isArray(config?.surfers) ? config.surfers.map((value) => String(value ?? '').trim()).filter(Boolean) : [];
+        const surfers = Array.isArray(config?.surfers) ? config.surfers.map((value: unknown) => String(value ?? '').trim()).filter(Boolean) : [];
         const surferNames = config?.surfer_names ?? config?.surferNames ?? {};
 
         if (!eventId || !division || surfers.length === 0) {
@@ -427,7 +433,7 @@ export class HeatRepository extends BaseRepository {
         }
 
         const requestedNames = surfers
-            .map((color) => String(surferNames?.[color] ?? '').trim())
+            .map((color: string) => String(surferNames?.[color] ?? '').trim())
             .filter(Boolean);
 
         const { data: participantRows, error: participantsError } = await this.supabase!
@@ -450,7 +456,7 @@ export class HeatRepository extends BaseRepository {
                 ? surfers
                 : getColorSet(Number(heatMeta.heat_size) || surfers.length);
 
-        const entryPayload = surfers.map((color, index) => {
+        const entryPayload = surfers.map((color: string, index: number) => {
             const resolvedName = String(surferNames?.[color] ?? '').trim();
             const matchedParticipant = resolvedName
                 ? participantByName.get(resolvedName.toLowerCase()) ?? null
@@ -628,7 +634,7 @@ export class HeatRepository extends BaseRepository {
 
         const entries = await this.fetchHeatEntriesWithParticipantsRaw(heatId);
         const configSurfers = Array.isArray(config?.surfers)
-            ? config.surfers.map((value) => String(value ?? '').trim()).filter(Boolean)
+            ? config.surfers.map((value: unknown) => String(value ?? '').trim()).filter(Boolean)
             : [];
         const configSurferNames = config?.surfer_names ?? config?.surferNames ?? {};
         const configSurferCountries = config?.surfer_countries ?? config?.surferCountries ?? {};
@@ -651,7 +657,7 @@ export class HeatRepository extends BaseRepository {
             return;
         }
 
-        const surferNames = fallbackSurfers.reduce<Record<string, string>>((acc, color) => {
+        const surferNames = fallbackSurfers.reduce<Record<string, string>>((acc: Record<string, string>, color: string) => {
             const fromEntry = normalizedEntries.find((entry) => entry.color === color)?.name ?? '';
             const fromConfig = String(configSurferNames?.[color] ?? '').trim();
             const resolved = fromEntry || fromConfig;
@@ -661,7 +667,7 @@ export class HeatRepository extends BaseRepository {
             return acc;
         }, {});
 
-        const surferCountries = fallbackSurfers.reduce<Record<string, string>>((acc, color) => {
+        const surferCountries = fallbackSurfers.reduce<Record<string, string>>((acc: Record<string, string>, color: string) => {
             const fromEntry = normalizedEntries.find((entry) => entry.color === color)?.country ?? '';
             const fromConfig = String(configSurferCountries?.[color] ?? '').trim();
             const resolved = fromEntry || fromConfig;
