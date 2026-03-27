@@ -332,9 +332,16 @@ export class HeatRepository extends BaseRepository {
 
     private buildJudgeAssignments(heatId: string, config: any): HeatJudgeAssignment[] {
         const judgeIds = Array.isArray(config?.judges) ? config.judges : [];
-        const judgeNames = config?.judge_names ?? config?.judgeNames ?? {};
-        const judgeIdentities = config?.judge_identities ?? config?.judgeIdentities ?? {};
+        const configJudgeNames = config?.judge_names ?? config?.judgeNames ?? {};
+        const configJudgeIdentities = config?.judge_identities ?? config?.judgeIdentities ?? {};
         const eventId = Number.isFinite(Number(config?.event_id)) ? Number(config.event_id) : null;
+
+        const safeJudgeNames = Object.fromEntries(
+            Object.entries(configJudgeNames).map(([k, v]) => [k.trim().toUpperCase(), v])
+        );
+        const safeJudgeIdentities = Object.fromEntries(
+            Object.entries(configJudgeIdentities).map(([k, v]) => [k.trim().toUpperCase(), v])
+        );
 
         return judgeIds
             .map((stationRaw: unknown) => String(stationRaw ?? '').trim().toUpperCase())
@@ -343,8 +350,8 @@ export class HeatRepository extends BaseRepository {
                 heat_id: heatId,
                 event_id: eventId,
                 station,
-                judge_id: String(judgeIdentities?.[station] ?? station).trim() || station,
-                judge_name: String(judgeNames?.[station] ?? station).trim() || station,
+                judge_id: String(safeJudgeIdentities[station] ?? station).trim() || station,
+                judge_name: String(safeJudgeNames[station] ?? station).trim() || station,
             }));
     }
 
