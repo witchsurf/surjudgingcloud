@@ -171,10 +171,10 @@ export default function ParticipantsStructure() {
             ? existingConfig.surfersPerHeat
             : surfersList.length || 4;
 
-      const tournamentType = repechageData && repechageData.length ? 'repechage' : 'elimination';
+      const competitionName = event.name;
 
       const nextConfig: AppConfig = {
-        competition: event.name,
+        competition: competitionName,
         division: category,
         round: firstHeatInfo.roundNumber,
         heatId: firstHeatInfo.heatNumber,
