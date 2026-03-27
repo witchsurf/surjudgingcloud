@@ -177,6 +177,9 @@ export default function AdminPage() {
                         round: config.round,
                         heatNumber: config.heatId,
                         judges: judgesPayload,
+                        surfers: config.surfers || [],
+                        surferNames: config.surferNames || {},
+                        surferCountries: config.surferCountries || {},
                     });
                     setLoadState('loaded');
                     setLoadError(null);

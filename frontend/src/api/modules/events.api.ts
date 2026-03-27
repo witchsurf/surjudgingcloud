@@ -293,6 +293,9 @@ export async function saveEventConfigSnapshot(payload: {
     round: number;
     heatNumber: number;
     judges: Array<{ id: string; name?: string; identityId?: string }>;
+    surfers?: string[];
+    surferNames?: Record<string, string>;
+    surferCountries?: Record<string, string>;
 }): Promise<void> {
     ensureSupabase();
 
@@ -309,6 +312,9 @@ export async function saveEventConfigSnapshot(payload: {
         p_round: payload.round,
         p_heat_number: payload.heatNumber,
         p_judges: judgePayload,
+        p_surfers: payload.surfers || [],
+        p_surfer_names: payload.surferNames || {},
+        p_surfer_countries: payload.surferCountries || {},
     });
 
     if (error) throw error;
