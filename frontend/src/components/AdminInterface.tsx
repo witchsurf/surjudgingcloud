@@ -138,6 +138,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [eventJudgeAccuracySummary, setEventJudgeAccuracySummary] = useState<EventJudgeAccuracySummaryRow[]>([]);
   // Stable latch: once a heat is locked/closed, never flicker back to unlocked within session
   const hasBeenLockedRef = React.useRef(false);
+  // Track which heat the latch was set for, so we can reset on heat change
+  const lockedForHeatRef = React.useRef<string>('');
 
   const resolveAssignedJudgeIdentity = useCallback((stationId: string) => {
     return (config.judgeIdentities?.[stationId] || '').trim();
@@ -1236,7 +1238,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [divisionHeatSequence, config.round, config.heatId, heatStatus]);
 
   const isCurrentHeatLocked = isLockedStatus(currentHeatStatus);
-  // Latch: once locked, never un-lock within the current session (prevents DB/realtime race flicker)
+  // Latch: once locked, never un-lock due to DB/realtime race — BUT reset when user switches heat
+  const currentHeatKey = `${config.round}::${config.heatId}`;
+  if (lockedForHeatRef.current !== currentHeatKey) {
+    // User switched to a different heat — reset the latch
+    hasBeenLockedRef.current = false;
+    lockedForHeatRef.current = currentHeatKey;
+  }
   if (isCurrentHeatLocked) hasBeenLockedRef.current = true;
   const stableHeatLocked = hasBeenLockedRef.current;
   const floatingTimeLeft = React.useMemo(
