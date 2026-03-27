@@ -598,18 +598,7 @@ export class ScoreRepository extends BaseRepository {
         saveScoreIDB(score).catch(() => {});
     }
 
-    private updateScoreInLocalStorage(score: Score, matchIndex: number): void {
-        const scores = this.getScoresFromLocalStorage();
-        if (matchIndex >= 0) {
-            scores[matchIndex] = score;
-        } else {
-            scores.push(score);
-        }
-        localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(scores));
-        window.dispatchEvent(new CustomEvent('localScoresUpdated'));
-        // Async dual-write to IndexedDB (fire-and-forget)
-        saveScoreIDB(score).catch(() => {});
-    }
+
 
     private getScoresFromLocalStorage(): Score[] {
         try {
