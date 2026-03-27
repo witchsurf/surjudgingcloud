@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   traefik:
     image: traefik:v3.0
@@ -41,7 +39,7 @@ services:
       traefik.enable: "true"
       # Routeur Cloud (HTTPS + domaine)
       traefik.http.routers.surfjudging.entrypoints: websecure
-      traefik.http.routers.surfjudging.rule: "Host(`${DOMAIN_NAME}`) || Host(`www.${DOMAIN_NAME}`) || Host(`surfjudging.cloud`) || Host(`www.surfjudging.cloud`)"
+      traefik.http.routers.surfjudging.rule: "Host(`surfjudging.cloud`) || Host(`www.surfjudging.cloud`)"
       traefik.http.routers.surfjudging.tls: "true"
       traefik.http.routers.surfjudging.tls.certresolver: le
       traefik.http.services.surfjudging.loadbalancer.server.port: "80"

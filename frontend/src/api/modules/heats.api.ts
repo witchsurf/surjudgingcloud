@@ -102,18 +102,31 @@ async function buildRoundOneEntriesFromParticipants(heatId: string): Promise<Hea
     if (participantsError) throw participantsError;
     if (!participantRows?.length) return [];
 
-    const participants = (participantRows as ParticipantRecord[])
-        .filter((participant) => Number.isFinite(Number(participant.seed)))
-        .map((participant) => ({
+    const rawParticipants = (participantRows as ParticipantRecord[])
+        .map((participant, index) => ({
             id: participant.id,
-            seed: Number(participant.seed),
+            seed: Number.isFinite(Number(participant.seed)) ? Number(participant.seed) : null,
+            implicitSeed: index + 1,
             name: participant.name,
             country: participant.country ?? undefined,
             license: participant.license ?? undefined,
-        } satisfies ParticipantSeed))
-        .sort((a, b) => a.seed - b.seed);
+        }))
+        .sort((a, b) => {
+            const aSeed = a.seed ?? Number.MAX_SAFE_INTEGER;
+            const bSeed = b.seed ?? Number.MAX_SAFE_INTEGER;
+            if (aSeed !== bSeed) return aSeed - bSeed;
+            return a.implicitSeed - b.implicitSeed;
+        });
 
-    if (!participants.length) return [];
+    if (!rawParticipants.length) return [];
+
+    const participants = rawParticipants.map((participant, index) => ({
+        id: participant.id,
+        seed: participant.seed ?? index + 1,
+        name: participant.name,
+        country: participant.country,
+        license: participant.license,
+    } satisfies ParticipantSeed));
 
     const heatSizes = orderedHeats.map((heat) => Math.max(0, Number(heat.heat_size) || 0));
     const maxHeatSize = Math.max(...heatSizes, 0);
