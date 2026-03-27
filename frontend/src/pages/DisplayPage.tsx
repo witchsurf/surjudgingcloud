@@ -593,6 +593,17 @@ export default function DisplayPage() {
                             ? currentCountries
                             : (Object.keys(snapshotCountries).length > 0 ? snapshotCountries : (prev.surferCountries || {}));
 
+                        // Only use snapshot surfers when the snapshot heat matches the current heat
+                        // (or when we have no surfers yet). This prevents the drift where switching
+                        // heats causes the old heat's surfer list to briefly appear after ~2s.
+                        const snapshotHeatMatches =
+                            !snapshot.heat_number ||
+                            snapshot.heat_number === prev.heatId ||
+                            !prev.surfers?.length;
+                        const resolvedSurfers = snapshotHeatMatches
+                            ? (snapshot.surfers || prev.surfers)
+                            : prev.surfers;
+
                         const newConfig = {
                             ...prev,
                             competition: resolveEventDisplayName(snapshot.event_name, prev.competition || ''),
@@ -601,10 +612,10 @@ export default function DisplayPage() {
                             heatId: snapshot.heat_number || prev.heatId || 1,
                             judges: snapshot.judges?.map(j => j.id) || prev.judges || [],
                             judgeNames: snapshot.judges?.reduce((acc, j) => ({ ...acc, [j.id]: j.name || j.id }), {}) || prev.judgeNames || {},
-                            surfers: snapshot.surfers || prev.surfers,
+                            surfers: resolvedSurfers,
                             surferNames: mergedNames,
                             surferCountries: mergedCountries,
-                            surfersPerHeat: snapshot.surfers?.length || prev.surfersPerHeat || 4,
+                            surfersPerHeat: resolvedSurfers?.length || prev.surfersPerHeat || 4,
                             waves: prev.waves,
                             tournamentType: prev.tournamentType,
                             totalSurfers: prev.totalSurfers,
