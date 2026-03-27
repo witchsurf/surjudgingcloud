@@ -1931,17 +1931,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
 
     if (pending.length > 0) {
-      const missingList = pending.slice(0, 10).join('
-  • ');
+      const missingList = pending.slice(0, 10).join('\n  \u2022 ');
       const forceClose = confirm(
-        `⚠️ NOTES MANQUANTES — ${pending.length} note(s) non saisie(s) :
-
-  • ${missingList}` +
-        (pending.length > 10 ? `
-  • ... et ${pending.length - 10} autre(s)` : '') +
-        '
-
-Fermer quand même ce heat ?'
+        `\u26a0\ufe0f NOTES MANQUANTES \u2014 ${pending.length} note(s) non saisie(s) :\n\n  \u2022 ${missingList}` +
+        (pending.length > 10 ? `\n  \u2022 ... et ${pending.length - 10} autre(s)` : '') +
+        '\n\nFermer quand m\u00eame ce heat ?'
       );
       if (!forceClose) return;
     }
