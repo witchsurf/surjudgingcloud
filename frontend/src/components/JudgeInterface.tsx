@@ -887,7 +887,7 @@ function JudgeInterface({
                 <button
                   type="button"
                   onClick={() => handlePriorityResetEqual().catch(() => { })}
-                  className={`rounded-lg border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
+                  className={`rounded-lg bg-indigo-600 font-medium text-white hover:bg-indigo-700 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
                 >
                   Egalite
                 </button>
@@ -907,7 +907,7 @@ function JudgeInterface({
                       type="button"
                       onClick={() => handlePriorityOrderSave().catch(() => { })}
                       disabled={orderedDraft.length !== normalizedSurfers.length}
-                      className={`rounded-lg bg-indigo-600 font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
+                      className={`rounded-lg border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
                     >
                       Valider l&apos;ordre
                     </button>
@@ -916,7 +916,7 @@ function JudgeInterface({
                   <button
                     type="button"
                     onClick={handlePriorityOrderStart}
-                    className={`rounded-lg bg-indigo-600 font-medium text-white hover:bg-indigo-700 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
+                    className={`rounded-lg border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
                   >
                     Definir l&apos;ordre
                   </button>

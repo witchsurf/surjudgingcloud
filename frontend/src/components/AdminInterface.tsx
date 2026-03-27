@@ -437,15 +437,23 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const currentScore = React.useMemo(() => {
     if (!selectedJudge || !selectedSurfer || !selectedWave) return undefined;
     const selectedSurferKey = normalizeJerseyLabel(selectedSurfer);
+    // Resolve UUID from station, with safe case-insensitive lookup
+    const safeIdentities = Object.fromEntries(
+      Object.entries(config.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
+    );
+    const resolvedJudgeId = safeIdentities[selectedJudge.trim().toUpperCase()] || selectedJudge;
     return mergedScores
-      .filter(score =>
-        ensureHeatId(score.heat_id) === heatId &&
-        score.judge_id === selectedJudge &&
-        normalizeJerseyLabel(score.surfer) === selectedSurferKey &&
-        score.wave_number === Number(selectedWave)
-      )
+      .filter(score => {
+        if (ensureHeatId(score.heat_id) !== heatId) return false;
+        if (normalizeJerseyLabel(score.surfer) !== selectedSurferKey) return false;
+        if (score.wave_number !== Number(selectedWave)) return false;
+        // Match by UUID (judge_id) OR by station (judge_station) as fallback
+        return score.judge_id === resolvedJudgeId
+          || score.judge_station === selectedJudge
+          || score.judge_id === selectedJudge;
+      })
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-  }, [mergedScores, heatId, selectedJudge, selectedSurfer, selectedWave]);
+  }, [mergedScores, heatId, selectedJudge, selectedSurfer, selectedWave, config.judgeIdentities]);
 
   const heatScoreHistory = React.useMemo(() => {
     const localScores = (() => {
@@ -802,10 +810,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
     const moveTargetSurferKey = normalizeJerseyLabel(moveTargetSurfer);
 
+    const safeIdentitiesMove = Object.fromEntries(
+      Object.entries(config.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
+    );
+    const resolvedJudgeIdMove = safeIdentitiesMove[selectedJudge.trim().toUpperCase()] || selectedJudge;
     const targetAlreadyUsed = mergedScores.some(
       (score) =>
         ensureHeatId(score.heat_id) === heatId &&
-        score.judge_id === selectedJudge &&
+        (score.judge_id === resolvedJudgeIdMove || score.judge_station === selectedJudge || score.judge_id === selectedJudge) &&
         normalizeJerseyLabel(score.surfer) === moveTargetSurferKey &&
         score.wave_number === Number(moveTargetWave) &&
         score.id !== currentScore.id
