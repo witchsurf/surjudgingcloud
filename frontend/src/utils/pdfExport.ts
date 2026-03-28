@@ -416,6 +416,15 @@ export function exportHeatScorecardPdf({
   const pageH = doc.internal.pageSize.getHeight();
   const namesMap = surferNames ?? config.surferNames ?? {};
   const countriesMap = surferCountries ?? config.surferCountries ?? {};
+  const logoCandidate = (
+    eventData?.organizerLogoDataUrl ||
+    eventData?.logo_url ||
+    eventData?.logo ||
+    eventData?.organizer_logo_url ||
+    eventData?.image_url ||
+    eventData?.brand_logo_url ||
+    eventData?.config?.organizerLogoDataUrl
+  ) as string | undefined;
 
   // ── HEADER BAND ──────────────────────────────────────────
   // Dark navy band full width
@@ -430,12 +439,21 @@ export function exportHeatScorecardPdf({
   doc.setFillColor(...DS.gold);
   doc.rect(0, 86, pageW, 2, 'F');
 
+  if (logoCandidate && logoCandidate.startsWith('data:image/')) {
+    try {
+      const fmt = logoCandidate.toLowerCase().includes('png') ? 'PNG' : 'JPEG';
+      doc.addImage(logoCandidate, fmt, 20, 16, 48, 48);
+    } catch (error) {
+      console.warn('Heat scorecard logo error:', error);
+    }
+  }
+
   // Event name
   doc.setTextColor(...DS.white);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(24);
   const title = (eventData?.name ?? config.competition).toUpperCase();
-  doc.text(title, 24, 36);
+  doc.text(title, logoCandidate ? 78 : 24, 36);
 
   // Subtitle
   doc.setFont('helvetica', 'normal');
@@ -510,9 +528,9 @@ export function exportHeatScorecardPdf({
   const waveColStyle = { cellWidth: 32, halign: 'center' as const, fontSize: 9 };
   const colStyles: Record<number, any> = {
     0: { cellWidth: 22, halign: 'center', fontStyle: 'bold', fontSize: 11 },
-    1: { cellWidth: 52, halign: 'center', fontStyle: 'bold' },
-    2: { cellWidth: 140, halign: 'left', fontStyle: 'bold' },
-    3: { cellWidth: 55, halign: 'left', fontSize: 8 },
+    1: { cellWidth: 60, halign: 'center', fontStyle: 'bold' },
+    2: { cellWidth: 156, halign: 'left', fontStyle: 'bold' },
+    3: { cellWidth: 72, halign: 'left', fontSize: 8 },
     [head.length - 1]: { cellWidth: 46, halign: 'center', fontStyle: 'bold', fontSize: 12 },
   };
   for (let i = 0; i < columnsToShow; i++) {
@@ -979,7 +997,7 @@ export function exportFullCompetitionPDF({
               score: scoreStr || (slot.result != null ? slot.result.toFixed(2) : ''),
               numericVal,
               name: slot.name ?? slot.placeholder ?? '',
-              country: (slot.country ?? '').substring(0, 8), // trim long country names
+              country: slot.country ?? '',
               waves: surferWaves
             };
           });
@@ -999,16 +1017,16 @@ export function exportFullCompetitionPDF({
           if (hasResults) for (let i = 1; i <= currentHeatMaxWaves; i++) headRow.push(`V${i}`);
 
           // Column budget: pageW=595, margins=36*2=523 usable
-          // #=12, LYCRA=42, TOTAL=30, PAYS=52, waves=28each, SURFEUR=rest
+          // #=12, LYCRA=56, TOTAL=30, PAYS=72, waves=28each, SURFEUR=rest
           const waveColW = 28;
-          const fixedW = 12 + 42 + 30 + 52 + currentHeatMaxWaves * waveColW;
-          const surferColW = Math.max(80, Math.min(pageW - MARGIN * 2 - fixedW, 140));
+          const fixedW = 12 + 56 + 30 + 72 + currentHeatMaxWaves * waveColW;
+          const surferColW = Math.max(92, Math.min(pageW - MARGIN * 2 - fixedW, 160));
           const colW: Record<number, any> = {
             0: { cellWidth: 12, halign: 'center' as const, fontSize: 8 },
-            1: { cellWidth: 42, halign: 'center' as const, fontStyle: 'bold', overflow: 'hidden' },
+            1: { cellWidth: 56, halign: 'center' as const, fontStyle: 'bold', overflow: 'hidden' },
             2: { cellWidth: 30, halign: 'center' as const, fontStyle: 'bold', fontSize: 9 },
             3: { cellWidth: surferColW, halign: 'left' as const, fontStyle: 'bold', fontSize: 8 },
-            4: { cellWidth: 52, halign: 'left' as const, fontSize: 7 },
+            4: { cellWidth: 72, halign: 'left' as const, fontSize: 7 },
           };
           for (let i = 0; i < currentHeatMaxWaves; i++) {
             colW[5 + i] = { cellWidth: waveColW, halign: 'center' as const, fontSize: 8 };

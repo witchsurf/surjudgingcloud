@@ -101,6 +101,18 @@ export function useScoreManager() {
             });
 
             window.dispatchEvent(new CustomEvent('newScoreRealtime', { detail: updatedScore }));
+            window.dispatchEvent(new CustomEvent('scoreOverrideApplied', {
+                detail: {
+                    heatId: ensureHeatId(heatId),
+                    judgeId: request.judgeIdentityId || request.judgeId,
+                    judgeStation: request.judgeStation || request.judgeId,
+                    surfer: request.surfer,
+                    wave: request.waveNumber,
+                    newScore: request.newScore,
+                    reason: request.reason,
+                    action: 'override'
+                }
+            }));
 
             console.log('✅ Override appliqué:', {
                 judge: request.judgeId,

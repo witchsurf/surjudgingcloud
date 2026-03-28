@@ -1915,11 +1915,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const handleCloseHeat = async () => {
     // --- Check for pending scores FIRST ---
-    // Compute expected: for each surfer, find the max wave any judge scored.
-    // Then verify every configured judge has scored every surfer up to that wave.
-    const heatScoresForCheck = (mergedScores || []).filter(
+    // Only consider wave slots that were actually started on this heat:
+    // if at least one judge scored surfer+wave, every configured judge is expected there.
+    let heatScoresForCheck = (mergedScores || []).filter(
       s => ensureHeatId(s.heat_id) === heatId && Number(s.score) > 0
     );
+
+    if (heatScoresForCheck.length === 0) {
+      try {
+        const dbScores = await fetchHeatScores(heatId);
+        heatScoresForCheck = dbScores.filter(
+          s => ensureHeatId(s.heat_id) === heatId && Number(s.score) > 0
+        );
+      } catch (error) {
+        console.warn('Impossible de charger les scores DB pour vérifier les notes manquantes:', error);
+      }
+    }
 
     // Build configured judge IDs (resolved from station names)
     const safeIdent = Object.fromEntries(
@@ -1929,39 +1940,40 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       station => (safeIdent[station.trim().toUpperCase()] || station).trim()
     ).filter(Boolean);
 
-    // Find pending: judge × surfer × wave combos that are missing
+    // Find pending: judge × surfer × wave combos that are missing,
+    // but only for surfer/wave pairs that already have at least one note.
     const pending: string[] = [];
     if (configuredJudgeIds.length > 0 && heatScoresForCheck.length > 0) {
-      // For each surfer, find the max wave number scored by any judge
-      const surferMaxWave = new Map<string, number>();
+      const startedWaveKeys = new Set<string>();
       heatScoresForCheck.forEach(s => {
         const surfer = normalizeJerseyLabel(s.surfer);
-        surferMaxWave.set(surfer, Math.max(surferMaxWave.get(surfer) || 0, s.wave_number));
+        startedWaveKeys.add(`${surfer}::${Number(s.wave_number)}`);
       });
 
       configuredJudgeIds.forEach(judgeId => {
-        surferMaxWave.forEach((maxWave, surfer) => {
-          for (let w = 1; w <= maxWave; w++) {
-            const hasScore = heatScoresForCheck.some(
-              s => normalizeJerseyLabel(s.surfer) === surfer &&
-                   s.wave_number === w &&
-                   (s.judge_id === judgeId || s.judge_station === judgeId)
-            );
-            if (!hasScore) {
-              // Case-insensitive Reverse-lookup: UUID → station (from judgeIdentities), then station → display name
-              const upperJudgeId = judgeId?.trim().toUpperCase();
-              const stationForJudge = Object.entries(config.judgeIdentities || {})
-                .find(([, uuid]) => uuid?.trim().toUpperCase() === upperJudgeId)?.[0] || judgeId;
-              
-              const judgeName = (
-                config.judgeNames?.[stationForJudge] || 
-                config.judgeNames?.[judgeId] || 
-                (availableOfficialJudges.find(j => j.id?.trim().toUpperCase() === upperJudgeId)?.name) ||
-                stationForJudge
-              ).trim();
-              pending.push(`${judgeName} → ${surfer} V${w}`);
-            }
-          }
+        startedWaveKeys.forEach((key) => {
+          const [surfer, waveRaw] = key.split('::');
+          const waveNumber = Number(waveRaw);
+          const hasScore = heatScoresForCheck.some(
+            s => normalizeJerseyLabel(s.surfer) === surfer &&
+                 Number(s.wave_number) === waveNumber &&
+                 ((s.judge_id || '').trim() === judgeId || (s.judge_station || '').trim() === judgeId)
+          );
+
+          if (hasScore) return;
+
+          const upperJudgeId = judgeId?.trim().toUpperCase();
+          const stationForJudge = Object.entries(config.judgeIdentities || {})
+            .find(([, uuid]) => uuid?.trim().toUpperCase() === upperJudgeId)?.[0] || judgeId;
+
+          const judgeName = (
+            config.judgeNames?.[stationForJudge] ||
+            config.judgeNames?.[judgeId] ||
+            (availableOfficialJudges.find(j => j.id?.trim().toUpperCase() === upperJudgeId)?.name) ||
+            stationForJudge
+          ).trim();
+
+          pending.push(`${judgeName} → ${surfer} V${waveNumber}`);
         });
       });
     }
