@@ -285,10 +285,20 @@ export async function fetchAllScoresForEvent(eventId: number): Promise<Record<st
 
 export async function fetchCanonicalScoresForEvent(eventId: number): Promise<Record<string, Score[]>> {
     ensureSupabase();
+    const { data: heats, error: heatsError } = await supabase!
+        .from('heats')
+        .select('id')
+        .eq('event_id', eventId);
+
+    if (heatsError) throw heatsError;
+
+    const heatIds = (heats ?? []).map((row) => ensureHeatId(row.id));
+    if (!heatIds.length) return {};
+
     const { data, error } = await supabase!
         .from('v_scores_canonical_enriched')
         .select('id, event_id, heat_id, competition, division, round, judge_identity_id, judge_station, judge_display_name, surfer, wave_number, score, timestamp, created_at')
-        .eq('event_id', eventId)
+        .in('heat_id', heatIds)
         .order('heat_id', { ascending: true })
         .order('created_at', { ascending: true });
 

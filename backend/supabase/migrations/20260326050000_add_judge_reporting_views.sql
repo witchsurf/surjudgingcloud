@@ -19,7 +19,7 @@ with ranked_scores as (
 resolved_scores as (
   select
     ranked_scores.id,
-    coalesce(ranked_scores.event_id, heat.event_id) as event_id,
+    coalesce(heat.event_id, ranked_scores.event_id) as event_id,
     ranked_scores.heat_id,
     ranked_scores.competition,
     ranked_scores.division,
