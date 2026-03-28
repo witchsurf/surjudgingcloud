@@ -364,10 +364,20 @@ export async function fetchHeatJudgeAssignments(heatId: string): Promise<HeatJud
 
 export async function fetchEventJudgeAssignments(eventId: number): Promise<HeatJudgeAssignmentRow[]> {
     ensureSupabase();
+    const { data: heats, error: heatsError } = await supabase!
+        .from('heats')
+        .select('id')
+        .eq('event_id', eventId);
+
+    if (heatsError) throw heatsError;
+
+    const heatIds = (heats ?? []).map((row: { id: string }) => ensureHeatId(row.id));
+    if (!heatIds.length) return [];
+
     const { data, error } = await supabase!
         .from('heat_judge_assignments')
         .select('heat_id, event_id, station, judge_id, judge_name, assigned_at, updated_at')
-        .eq('event_id', eventId)
+        .in('heat_id', heatIds)
         .order('heat_id', { ascending: true })
         .order('station', { ascending: true });
 
