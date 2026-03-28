@@ -1,5 +1,4 @@
-alter table public.scores disable trigger trg_block_scores_update;
-alter table public.scores disable trigger trg_block_scores_insert;
+alter table public.scores disable trigger user;
 
 create or replace function public.fn_resolve_canonical_heat_id(
   p_heat_id text,
@@ -143,5 +142,4 @@ where h.id = s.heat_id
   and h.event_id is not null
   and s.event_id is distinct from h.event_id;
 
-alter table public.scores enable trigger trg_block_scores_insert;
-alter table public.scores enable trigger trg_block_scores_update;
+alter table public.scores enable trigger user;
