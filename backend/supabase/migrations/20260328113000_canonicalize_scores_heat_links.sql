@@ -89,9 +89,9 @@ where heat_id is not null
   and heat_id <> public.fn_resolve_canonical_heat_id(heat_id, competition, division, round);
 
 update public.score_overrides
-set heat_id = public.fn_resolve_canonical_heat_id(heat_id, competition, division, round)
+set heat_id = public.fn_resolve_canonical_heat_id(heat_id)
 where heat_id is not null
-  and heat_id <> public.fn_resolve_canonical_heat_id(heat_id, competition, division, round);
+  and heat_id <> public.fn_resolve_canonical_heat_id(heat_id);
 
 update public.interference_calls
 set heat_id = public.fn_resolve_canonical_heat_id(heat_id, competition, division, round)
