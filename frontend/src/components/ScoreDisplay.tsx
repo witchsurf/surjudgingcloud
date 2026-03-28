@@ -31,14 +31,14 @@ interface ScoreDisplayProps {
 const LYCRA: Record<string, { badge: string; bg: string; text: string }> = {
   ROUGE: { badge: 'bg-red-500', bg: 'bg-red-500', text: 'text-white' },
   BLEU: { badge: 'bg-blue-500', bg: 'bg-blue-500', text: 'text-white' },
-  BLANC: { badge: 'bg-white', bg: 'bg-slate-100', text: 'text-slate-900' },
+  BLANC: { badge: 'bg-white ring-2 ring-primary-950/20 shadow-inner', bg: 'bg-slate-50', text: 'text-slate-900' },
   JAUNE: { badge: 'bg-yellow-400', bg: 'bg-yellow-400', text: 'text-slate-900' },
   NOIR: { badge: 'bg-gray-900', bg: 'bg-gray-900', text: 'text-white' },
   VERT: { badge: 'bg-green-500', bg: 'bg-green-500', text: 'text-white' },
   // English keys support
   RED: { badge: 'bg-red-500', bg: 'bg-red-500', text: 'text-white' },
   BLUE: { badge: 'bg-blue-500', bg: 'bg-blue-500', text: 'text-white' },
-  WHITE: { badge: 'bg-white', bg: 'bg-slate-100', text: 'text-slate-900' },
+  WHITE: { badge: 'bg-white ring-2 ring-primary-950/20 shadow-inner', bg: 'bg-slate-50', text: 'text-slate-900' },
   YELLOW: { badge: 'bg-yellow-400', bg: 'bg-yellow-400', text: 'text-slate-900' },
   BLACK: { badge: 'bg-gray-900', bg: 'bg-gray-900', text: 'text-white' },
   GREEN: { badge: 'bg-green-500', bg: 'bg-green-500', text: 'text-white' },
@@ -381,7 +381,7 @@ export default function ScoreDisplay({
                     <div className="flex items-center gap-4 sm:gap-6">
                       <div className="flex items-center gap-4">
                         <div className="relative">
-                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-sm ${style.badge} flex items-center justify-center`}>
+                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-md ${style.badge} ring-offset-2 ring-offset-primary-950 flex items-center justify-center`}>
                             {isPriorityActive && !isInFlight && priorityBadge && (
                               <span className="text-white font-bebas text-base sm:text-lg leading-none drop-shadow">{priorityBadge}</span>
                             )}
@@ -452,7 +452,7 @@ export default function ScoreDisplay({
                       <div className="flex items-center gap-4 sm:gap-6">
                         <div className="flex items-center gap-4">
                           <div className="relative">
-                            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-sm ${style.badge} flex items-center justify-center`}>
+                            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-md ${style.badge} ring-offset-2 ring-offset-primary-950 flex items-center justify-center`}>
                               {isPriorityActive && !isInFlight && priorityBadge && (
                                 <span className="text-white font-bebas text-base sm:text-lg leading-none drop-shadow">{priorityBadge}</span>
                               )}

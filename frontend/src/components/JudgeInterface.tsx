@@ -260,6 +260,40 @@ function JudgeInterface({
     }));
     localStorage.setItem('surfJudgingScores', JSON.stringify(normalized));
   }, []);
+  const refetchSocreOverrides = useCallback(async () => {
+    if (!currentHeatId || !judgeId) return;
+    try {
+      console.log('🔄 Re-syncing scores after admin override...');
+      const dbScores = await fetchHeatScores(currentHeatId);
+      const myScores = dbScores.filter(s => 
+        (s.judge_id === judgeId || (s.judge_station || s.judge_id) === judgeStation) &&
+        ensureHeatId(s.heat_id) === ensureHeatId(currentHeatId)
+      );
+      
+      if (myScores.length > 0) {
+        setSubmittedScores(canonicalizeScores(myScores));
+        persistScoresToStorage(myScores);
+      } else {
+        // If all my scores were moved away, clear local
+        setSubmittedScores([]);
+        persistScoresToStorage([]);
+      }
+    } catch (err) {
+      console.warn('Failed to refetch scores after override:', err);
+    }
+  }, [currentHeatId, judgeId, judgeStation, persistScoresToStorage]);
+
+  useEffect(() => {
+    const handleOverride = (e: any) => {
+      const { heatId: targetHeatId } = e.detail || {};
+      if (ensureHeatId(targetHeatId) === ensureHeatId(currentHeatId)) {
+        refetchSocreOverrides();
+      }
+    };
+    window.addEventListener('scoreOverrideApplied', handleOverride);
+    return () => window.removeEventListener('scoreOverrideApplied', handleOverride);
+  }, [currentHeatId, refetchSocreOverrides]);
+
 
   const mergeRealtimeScore = useCallback((incoming: Score) => {
     if (!currentHeatId) return;

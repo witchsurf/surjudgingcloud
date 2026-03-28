@@ -41,19 +41,23 @@ export function useCompetitionTimer() {
         if (timer.isRunning && timer.startTime) {
             interval = window.setInterval(() => {
                 const now = new Date();
-                const elapsed = (now.getTime() - new Date(timer.startTime!).getTime()) / 1000 / 60;
+                const elapsedMs = now.getTime() - new Date(timer.startTime!).getTime();
+                const elapsedMinutes = elapsedMs / 1000 / 60;
+                const durationMs = timer.duration * 60 * 1000;
 
-                if (elapsed >= timer.duration) {
+                // Use ms comparison with a 500ms grace buffer to avoid floating-point miss
+                if (elapsedMs >= durationMs - 500) {
                     // Timer finished
                     const finishedTimer: HeatTimer = {
                         ...timer,
-                        isRunning: false
+                        isRunning: false,
+                        startTime: null
                     };
                     setTimer(finishedTimer);
                     persistTimer(finishedTimer);
                     setHeatStatus('finished');
                 }
-            }, 1000);
+            }, 500);  // Poll at 500ms for more precise end detection
         }
 
         return () => {

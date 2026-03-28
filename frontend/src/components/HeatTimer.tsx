@@ -125,11 +125,17 @@ function HeatTimer({
 
   useEffect(() => {
     if (!timer.isRunning && !timer.startTime) {
+      // Only reset to full duration if purposefully reset (no startTime)
       setTimeLeft(timer.duration * 60);
       setFiveMinuteAlarmPlayed(false);
       setLastCountdownSecond(-1);
       setFinalBeepPlayed(false);
       timerAudio.stopAll?.();
+    } else if (!timer.isRunning && timer.startTime) {
+      // If paused/stopped but startTime exists, double check if we should be at 0
+      const elapsed = Math.floor((Date.now() - new Date(timer.startTime).getTime()) / 1000);
+      const remaining = Math.max(0, timer.duration * 60 - elapsed);
+      if (remaining < 1) setTimeLeft(0);
     }
   }, [timer.duration, timer.isRunning, timer.startTime, timerAudio]);
 

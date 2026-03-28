@@ -870,6 +870,17 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         type: 'success',
         message: `Note déplacée vers ${moveTargetSurferKey} · Vague ${moveTargetWave}.`
       });
+      // Broadcast score change so judge tablets immediately refresh their grid
+      window.dispatchEvent(new CustomEvent('scoreOverrideApplied', {
+        detail: {
+          heatId,
+          judgeId: resolvedJudgeIdMove,
+          action: 'move',
+          fromSurfer: normalizeJerseyLabel(selectedSurfer),
+          toSurfer: moveTargetSurferKey,
+          wave: Number(moveTargetWave)
+        }
+      }));
       onReloadData();
     } catch (error) {
       console.error('❌ Move score erreur:', error);
@@ -1937,8 +1948,17 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                    (s.judge_id === judgeId || s.judge_station === judgeId)
             );
             if (!hasScore) {
-              const judgeName = Object.entries(config.judgeNames || {}).find(([,v]) => v === judgeId)?.[1]
-                || (config.judgeNames?.[judgeId]) || judgeId;
+              // Case-insensitive Reverse-lookup: UUID → station (from judgeIdentities), then station → display name
+              const upperJudgeId = judgeId?.trim().toUpperCase();
+              const stationForJudge = Object.entries(config.judgeIdentities || {})
+                .find(([, uuid]) => uuid?.trim().toUpperCase() === upperJudgeId)?.[0] || judgeId;
+              
+              const judgeName = (
+                config.judgeNames?.[stationForJudge] || 
+                config.judgeNames?.[judgeId] || 
+                (availableOfficialJudges.find(j => j.id?.trim().toUpperCase() === upperJudgeId)?.name) ||
+                stationForJudge
+              ).trim();
               pending.push(`${judgeName} → ${surfer} V${w}`);
             }
           }
