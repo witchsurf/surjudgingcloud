@@ -13,6 +13,10 @@ as $$
 declare
   source_heat record;
   canonical_heat_id text;
+  target_competition text;
+  target_division text;
+  target_round integer;
+  target_heat_number integer;
 begin
   if p_heat_id is null or trim(p_heat_id) = '' then
     return p_heat_id;
@@ -28,30 +32,38 @@ begin
   from public.heats h
   where h.id = p_heat_id;
 
+  target_competition := coalesce(nullif(trim(p_competition), ''), source_heat.competition);
+  target_division := coalesce(nullif(trim(p_division), ''), source_heat.division);
+  target_round := coalesce(p_round, source_heat.round);
+  target_heat_number := coalesce(
+    source_heat.heat_number,
+    nullif(substring(lower(p_heat_id) from '_h([0-9]+)$'), '')::integer
+  );
+
   if found then
     select candidate.id
     into canonical_heat_id
     from public.heats candidate
     where lower(regexp_replace(coalesce(candidate.competition, ''), '[^a-z0-9]+', '', 'g')) =
-          lower(regexp_replace(coalesce(source_heat.competition, ''), '[^a-z0-9]+', '', 'g'))
-      and lower(trim(coalesce(candidate.division, ''))) = lower(trim(coalesce(source_heat.division, '')))
-      and candidate.round = source_heat.round
-      and candidate.heat_number = source_heat.heat_number
+          lower(regexp_replace(coalesce(target_competition, ''), '[^a-z0-9]+', '', 'g'))
+      and lower(trim(coalesce(candidate.division, ''))) = lower(trim(coalesce(target_division, '')))
+      and candidate.round = target_round
+      and candidate.heat_number = target_heat_number
     order by candidate.event_id desc, candidate.id desc
     limit 1;
 
     return coalesce(canonical_heat_id, p_heat_id);
   end if;
 
-  if p_competition is not null and p_division is not null and p_round is not null then
+  if target_competition is not null and target_division is not null and target_round is not null and target_heat_number is not null then
     select candidate.id
     into canonical_heat_id
     from public.heats candidate
     where lower(regexp_replace(coalesce(candidate.competition, ''), '[^a-z0-9]+', '', 'g')) =
-          lower(regexp_replace(coalesce(p_competition, ''), '[^a-z0-9]+', '', 'g'))
-      and lower(trim(coalesce(candidate.division, ''))) = lower(trim(coalesce(p_division, '')))
-      and candidate.round = p_round
-      and candidate.heat_number = nullif(substring(lower(p_heat_id) from '_h([0-9]+)$'), '')::integer
+          lower(regexp_replace(coalesce(target_competition, ''), '[^a-z0-9]+', '', 'g'))
+      and lower(trim(coalesce(candidate.division, ''))) = lower(trim(coalesce(target_division, '')))
+      and candidate.round = target_round
+      and candidate.heat_number = target_heat_number
     order by candidate.event_id desc, candidate.id desc
     limit 1;
   end if;
