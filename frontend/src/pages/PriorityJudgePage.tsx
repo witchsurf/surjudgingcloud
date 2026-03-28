@@ -145,10 +145,10 @@ export default function PriorityJudgePage() {
             }));
         };
 
-        return subscribeToActiveHeatPointer(config.competition, (row) => {
+        return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
         });
-    }, [config.competition, configLoading, setConfig]);
+    }, [activeEventId, config.competition, configLoading, setConfig]);
 
     useEffect(() => {
         if (!configSaved || !config.competition || configLoading) {

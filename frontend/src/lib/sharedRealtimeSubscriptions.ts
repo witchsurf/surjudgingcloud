@@ -20,6 +20,7 @@ export type EventConfigRealtimeRow = {
 };
 
 export type ActiveHeatPointerRealtimeRow = {
+  event_id?: number | null;
   event_name?: string;
   active_heat_id?: string;
 };
@@ -154,14 +155,18 @@ export const subscribeToEventConfig = (
 };
 
 export const subscribeToActiveHeatPointer = (
+  eventId: number | null | undefined,
   eventName: string | undefined,
   listener: Listener<ActiveHeatPointerRealtimeRow>
 ) => {
   const normalizedEventName = (eventName || '').trim();
-  const key = normalizeEventRealtimeKey(normalizedEventName) || 'global';
-  const realtimeFilter = canUseRealtimeEqualityFilter(normalizedEventName)
-    ? `event_name=eq.${normalizedEventName}`
-    : undefined;
+  const eventIdKey = Number.isFinite(Number(eventId)) && Number(eventId) > 0 ? Number(eventId) : null;
+  const key = eventIdKey ?? (normalizeEventRealtimeKey(normalizedEventName) || 'global');
+  const realtimeFilter = eventIdKey
+    ? `event_id=eq.${eventIdKey}`
+    : (canUseRealtimeEqualityFilter(normalizedEventName)
+      ? `event_name=eq.${normalizedEventName}`
+      : undefined);
   const existing = activeHeatPointerRegistry.get(key);
   if (existing) {
     return addListener(activeHeatPointerRegistry as Map<string | number, RegistryState<ActiveHeatPointerRealtimeRow>>, key, existing, listener);
@@ -177,12 +182,13 @@ export const subscribeToActiveHeatPointer = (
   const matchesEvent = (row: ActiveHeatPointerRealtimeRow | null) => {
     if (!row?.active_heat_id) return false;
     if (!key || key === 'global') return true;
+    if (eventIdKey) return Number(row.event_id) === eventIdKey;
     return normalizeEventRealtimeKey(row.event_name) === key;
   };
 
   const refresh = async () => {
     try {
-      const row = await fetchActiveHeatPointer(normalizedEventName || undefined);
+      const row = await fetchActiveHeatPointer(eventIdKey, normalizedEventName || undefined);
       if (!matchesEvent(row)) return;
       emitToListeners(state, row);
     } catch (error) {

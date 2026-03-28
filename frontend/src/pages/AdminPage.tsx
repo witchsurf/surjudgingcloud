@@ -234,11 +234,12 @@ export default function AdminPage() {
                 // Keep tablets/kiosks aligned when admin saves a new target heat/category.
                 if (supabase) {
                     await supabase.from('active_heat_pointer').upsert({
+                        event_id: targetEventId,
                         event_name: config.competition,
                         active_heat_id: currentHeatId,
                         updated_at: new Date().toISOString()
                     }, {
-                        onConflict: 'event_name'
+                        onConflict: 'event_id'
                     });
                 }
 

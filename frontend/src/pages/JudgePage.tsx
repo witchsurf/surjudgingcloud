@@ -223,10 +223,10 @@ export default function JudgePage() {
             });
         };
 
-        return subscribeToActiveHeatPointer(config.competition, (row) => {
+        return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
         });
-    }, [config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl]);
+    }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl]);
 
     // Purge local scores only when heat changes.
     // Do NOT purge on generic config reload, otherwise unsynced tablet scores can disappear.

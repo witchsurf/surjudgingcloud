@@ -597,18 +597,21 @@ export function subscribeToHeatUpdates(eventId: number, category: string, callba
 }
 
 export interface ActiveHeatPointer {
+    event_id?: number | null;
     event_name: string;
     active_heat_id: string;
     updated_at: string;
 }
 
-export async function fetchActiveHeatPointer(eventName?: string): Promise<ActiveHeatPointer | null> {
+export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string): Promise<ActiveHeatPointer | null> {
     ensureSupabase();
     let query = supabase!
         .from('active_heat_pointer')
         .select('*');
 
-    if (eventName) {
+    if (eventId && Number.isFinite(eventId)) {
+        query = query.eq('event_id', eventId);
+    } else if (eventName) {
         query = query.eq('event_name', eventName);
     }
 

@@ -442,11 +442,12 @@ export function useHeatManager() {
                 ).normalized;
 
                 await supabase.from('active_heat_pointer').upsert({
+                    event_id: activeEventId ?? null,
                     event_name: newConfig.competition,
                     active_heat_id: nextHeatPointer,
                     updated_at: new Date().toISOString(),
                 }, {
-                    onConflict: 'event_name',
+                    onConflict: 'event_id',
                 });
 
                 console.log('✅ active_heat_pointer mis à jour:', nextHeatPointer);

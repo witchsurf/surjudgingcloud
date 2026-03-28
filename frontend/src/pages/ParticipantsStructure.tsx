@@ -519,9 +519,12 @@ export default function ParticipantsStructure() {
         const firstHeatId = `${selectedEvent.name.toLowerCase().replace(/\s+/g, '_')}_${previewCategory.toLowerCase().replace(/\s+/g, '_')}_r1_h1`;
         if (supabase) {
           await supabase.from('active_heat_pointer').upsert({
+            event_id: selectedEvent.id,
             event_name: selectedEvent.name,
             active_heat_id: firstHeatId,
             updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'event_id'
           });
           console.log('✅ active_heat_pointer initialisé:', firstHeatId);
         }

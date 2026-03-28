@@ -311,10 +311,10 @@ export default function DisplayPage() {
             });
         };
 
-        return subscribeToActiveHeatPointer(config.competition, (row) => {
+        return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
         });
-    }, [configSaved, config.competition, setConfig]);
+    }, [activeEventId, configSaved, config.competition, setConfig]);
 
     const handleHeatSelect = async (heatId: string) => {
         if (!heatId || !activeEventId) return;

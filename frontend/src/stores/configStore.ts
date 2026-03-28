@@ -248,7 +248,7 @@ export const useConfigStore = create<ConfigStore>()(
                         // If active_heat_pointer is newer/different, prefer it for the active heat
                         if (snapshot?.event_name) {
                             try {
-                                const activeHeat = await fetchActiveHeatPointer(snapshot.event_name);
+                                const activeHeat = await fetchActiveHeatPointer(eventId, snapshot.event_name);
                                 if (activeHeat) {
                                     const parsed = parseActiveHeatId(activeHeat.active_heat_id);
                                     const snapshotUpdatedAt = snapshot.updated_at ? Date.parse(snapshot.updated_at) : NaN;
@@ -353,11 +353,12 @@ export const useConfigStore = create<ConfigStore>()(
 
                     if (supabase) {
                         await supabase.from('active_heat_pointer').upsert({
+                            event_id: eventId,
                             event_name: config.competition,
                             active_heat_id: heatId,
                             updated_at: new Date().toISOString()
                         }, {
-                            onConflict: 'event_name'
+                            onConflict: 'event_id'
                         });
                         logger.info('ConfigStore', 'active_heat_pointer updated', { heatId });
                     }
