@@ -651,14 +651,51 @@ export function exportFullCompetitionPDF({
     value.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[()[\]]/g, ' ').replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
 
   const normalizeHeatKey = (value?: string | null) => (value || '').toLowerCase().trim();
+  const normalizeDivisionLookupKey = (value?: string | null) =>
+    (value || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[_\s]+/g, ' ').trim();
+  const parseHeatNumberFromId = (heatId?: string | null) => {
+    const match = (heatId || '').match(/(?:^|_)h(\d+)$/i);
+    return match ? Number(match[1]) : null;
+  };
+  const buildHeatMetaKey = (divisionName: string, roundNumber: number, heatNumber: number) =>
+    `${normalizeDivisionLookupKey(divisionName)}::${Number(roundNumber)}::${Number(heatNumber)}`;
+
   const normalizedScoresByHeat: Record<string, Score[]> = {};
+  const normalizedScoresByMeta: Record<string, Score[]> = {};
   Object.entries(scores).forEach(([heatKey, heatScores]) => {
     normalizedScoresByHeat[normalizeHeatKey(heatKey)] = heatScores;
+    const sample = heatScores[0];
+    const heatNumber = parseHeatNumberFromId(heatKey);
+    if (!sample || heatNumber == null) return;
+    const metaKey = buildHeatMetaKey(sample.division, sample.round, heatNumber);
+    if (!normalizedScoresByMeta[metaKey]) {
+      normalizedScoresByMeta[metaKey] = heatScores;
+    }
   });
   const normalizedInterferencesByHeat: Record<string, InterferenceCall[]> = {};
+  const normalizedInterferencesByMeta: Record<string, InterferenceCall[]> = {};
   Object.entries(interferenceCalls).forEach(([heatKey, heatCalls]) => {
     normalizedInterferencesByHeat[normalizeHeatKey(heatKey)] = heatCalls;
+    const sample = heatCalls[0];
+    const heatNumber = parseHeatNumberFromId(heatKey);
+    if (!sample || heatNumber == null) return;
+    const metaKey = buildHeatMetaKey(sample.division, sample.round, heatNumber);
+    if (!normalizedInterferencesByMeta[metaKey]) {
+      normalizedInterferencesByMeta[metaKey] = heatCalls;
+    }
   });
+
+  const resolveHeatScores = (divisionName: string, roundNumber: number, heatNumber: number, heatId?: string | null) => {
+    const direct = heatId ? normalizedScoresByHeat[normalizeHeatKey(heatId)] ?? [] : [];
+    if (direct.length > 0) return direct;
+    return normalizedScoresByMeta[buildHeatMetaKey(divisionName, roundNumber, heatNumber)] ?? [];
+  };
+
+  const resolveHeatInterferences = (divisionName: string, roundNumber: number, heatNumber: number, heatId?: string | null) => {
+    const direct = heatId ? normalizedInterferencesByHeat[normalizeHeatKey(heatId)] ?? [] : [];
+    if (direct.length > 0) return direct;
+    return normalizedInterferencesByMeta[buildHeatMetaKey(divisionName, roundNumber, heatNumber)] ?? [];
+  };
 
   const getHeatScoringParams = (heatScores: Score[]) => {
     const judgeCount = new Set(heatScores.map((s) => getScoreJudgeStation(s)).filter(Boolean)).size;
@@ -749,8 +786,7 @@ export function exportFullCompetitionPDF({
     if (!heatSurfers.length) return;
     const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
     const normalizedHeatScores = heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) }));
-    const heatKey = normalizeHeatKey(heatId);
-    const heatInterferences = heatKey ? (normalizedInterferencesByHeat[heatKey] ?? []) : [];
+    const heatInterferences = resolveHeatInterferences(divisionName, roundNumber, heatNumber, heatId);
     const effectiveInterferences = computeEffectiveInterferences(heatInterferences, Math.max(judgeCount, 1));
     const stats = calculateSurferStats(normalizedHeatScores, heatSurfers, judgeCount, maxWaves, false, effectiveInterferences);
     const orderedStats = [...stats].sort((a, b) => {
@@ -787,7 +823,7 @@ export function exportFullCompetitionPDF({
           delete slot.placeholder;
           delete slot.bye;
         });
-        const heatScores = heat.heatId ? (normalizedScoresByHeat[normalizeHeatKey(heat.heatId)] ?? []) : [];
+        const heatScores = resolveHeatScores(divisionName, round.roundNumber, heat.heatNumber, heat.heatId ?? null);
         writeHeatQualifiers(divisionName, round.roundNumber, heat.heatNumber, heat.heatId ?? null, heat.slots, heatScores);
       });
     });
@@ -951,7 +987,7 @@ export function exportFullCompetitionPDF({
         cursorY += 24;
 
         round.heats.forEach((heat) => {
-          const heatScores = heat.heatId ? normalizedScoresByHeat[normalizeHeatKey(heat.heatId)] ?? [] : [];
+          const heatScores = resolveHeatScores(categoryName, round.roundNumber, heat.heatNumber, heat.heatId ?? null);
           const hasResults = heatScores.length > 0;
 
           if (cursorY > pageH - 90) {
@@ -966,7 +1002,7 @@ export function exportFullCompetitionPDF({
             const heatSurfers = heat.slots.filter(s => s.color !== undefined)
               .map(s => normalizeLycraForPdf(colorLabelMap[s.color as keyof typeof colorLabelMap] || s.color!));
             const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
-            const heatInterferences = heat.heatId ? (normalizedInterferencesByHeat[normalizeHeatKey(heat.heatId)] ?? []) : [];
+            const heatInterferences = resolveHeatInterferences(categoryName, round.roundNumber, heat.heatNumber, heat.heatId ?? null);
             const effectiveInterferences = computeEffectiveInterferences(heatInterferences, judgeCount);
             const stats = calculateSurferStats(
               heatScores.map(score => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
