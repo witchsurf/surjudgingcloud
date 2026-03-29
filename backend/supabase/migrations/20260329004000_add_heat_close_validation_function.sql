@@ -19,7 +19,7 @@ as $$
   started_waves as (
     select distinct
       score.heat_id,
-      upper(trim(score.surfer)) as surfer,
+      public.fn_normalize_jersey_label_sql(score.surfer) as surfer,
       score.wave_number
     from public.v_scores_canonical_enriched score
     where score.heat_id = p_heat_id
