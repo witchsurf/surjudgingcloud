@@ -261,11 +261,15 @@ export default function AdminPage() {
 
                 // Keep tablets/kiosks aligned when admin saves a new target heat/category.
                 if (supabase) {
-                    await upsertActiveHeatPointer({
-                        eventId: targetEventId,
-                        eventName: config.competition,
-                        activeHeatId: currentHeatId,
-                    });
+                    try {
+                        await upsertActiveHeatPointer({
+                            eventId: targetEventId,
+                            eventName: config.competition,
+                            activeHeatId: currentHeatId,
+                        });
+                    } catch (pointerError) {
+                        console.warn('⚠️ Impossible de mettre à jour active_heat_pointer pendant la sauvegarde admin:', pointerError);
+                    }
                 }
 
                 // Publier la config en temps réel

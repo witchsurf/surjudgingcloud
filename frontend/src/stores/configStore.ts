@@ -360,12 +360,16 @@ export const useConfigStore = create<ConfigStore>()(
                     );
 
                     if (supabase) {
-                        await upsertActiveHeatPointer({
-                            eventId: eventId,
-                            eventName: config.competition,
-                            activeHeatId: heatId,
-                        });
-                        logger.info('ConfigStore', 'active_heat_pointer updated', { heatId });
+                        try {
+                            await upsertActiveHeatPointer({
+                                eventId: eventId,
+                                eventName: config.competition,
+                                activeHeatId: heatId,
+                            });
+                            logger.info('ConfigStore', 'active_heat_pointer updated', { heatId });
+                        } catch (pointerError) {
+                            logger.warn('ConfigStore', 'active_heat_pointer update failed', pointerError);
+                        }
                     }
 
                     await heatRepository.saveHeatConfig(heatId, {

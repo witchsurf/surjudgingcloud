@@ -655,18 +655,24 @@ const isActiveHeatPointerEventIdSchemaError = (error: unknown) => {
         JSON.stringify(candidate),
     ].join(' ').toLowerCase();
 
-    return text.includes('active_heat_pointer')
-        && text.includes('event_id')
-        && (
-            text.includes('on_conflict')
-            || text.includes('constraint')
-            || text.includes('column')
-            || text.includes('schema cache')
-            || text.includes('42p')
-            || text.includes('42703')
-            || text.includes('pgrst')
-            || text.includes('400')
-        );
+    return (
+        (
+            text.includes('active_heat_pointer')
+            && text.includes('event_id')
+            && (
+                text.includes('on_conflict')
+                || text.includes('constraint')
+                || text.includes('column')
+                || text.includes('schema cache')
+                || text.includes('42p')
+                || text.includes('42703')
+                || text.includes('pgrst')
+                || text.includes('400')
+            )
+        )
+        || text.includes('42p10')
+        || text.includes('there is no unique or exclusion constraint matching the on conflict specification')
+    );
 };
 
 export async function upsertActiveHeatPointer(input: {
