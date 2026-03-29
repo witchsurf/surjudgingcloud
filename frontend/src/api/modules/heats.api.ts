@@ -635,6 +635,95 @@ export interface ActiveHeatPointer {
     updated_at: string;
 }
 
+const isActiveHeatPointerEventIdSchemaError = (error: unknown) => {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as {
+        code?: string;
+        message?: string;
+        details?: string;
+        hint?: string;
+        status?: number;
+        statusCode?: number;
+    };
+    const text = [
+        candidate.code,
+        candidate.message,
+        candidate.details,
+        candidate.hint,
+        String(candidate.status ?? ''),
+        String(candidate.statusCode ?? ''),
+        JSON.stringify(candidate),
+    ].join(' ').toLowerCase();
+
+    return text.includes('active_heat_pointer')
+        && text.includes('event_id')
+        && (
+            text.includes('on_conflict')
+            || text.includes('constraint')
+            || text.includes('column')
+            || text.includes('schema cache')
+            || text.includes('42p')
+            || text.includes('42703')
+            || text.includes('pgrst')
+            || text.includes('400')
+        );
+};
+
+export async function upsertActiveHeatPointer(input: {
+    eventId?: number | null;
+    eventName: string;
+    activeHeatId: string;
+    updatedAt?: string;
+}): Promise<void> {
+    ensureSupabase();
+
+    const payload = {
+        event_id: input.eventId ?? null,
+        event_name: input.eventName,
+        active_heat_id: ensureHeatId(input.activeHeatId),
+        updated_at: input.updatedAt ?? new Date().toISOString(),
+    };
+
+    if (input.eventId && Number.isFinite(input.eventId)) {
+        const { error } = await supabase!
+            .from('active_heat_pointer')
+            .upsert(payload, { onConflict: 'event_id' });
+
+        if (!error) return;
+        if (!isActiveHeatPointerEventIdSchemaError(error)) throw error;
+    }
+
+    const fallbackPayload = {
+        event_name: input.eventName,
+        active_heat_id: ensureHeatId(input.activeHeatId),
+        updated_at: payload.updated_at,
+    };
+
+    const { data: existingRows, error: selectError } = await supabase!
+        .from('active_heat_pointer')
+        .select('active_heat_id')
+        .eq('event_name', input.eventName)
+        .limit(1);
+
+    if (selectError) throw selectError;
+
+    if ((existingRows ?? []).length > 0) {
+        const { error: updateError } = await supabase!
+            .from('active_heat_pointer')
+            .update(fallbackPayload)
+            .eq('event_name', input.eventName);
+
+        if (updateError) throw updateError;
+        return;
+    }
+
+    const { error: insertError } = await supabase!
+        .from('active_heat_pointer')
+        .insert(fallbackPayload);
+
+    if (insertError) throw insertError;
+}
+
 export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string): Promise<ActiveHeatPointer | null> {
     ensureSupabase();
     let query = supabase!

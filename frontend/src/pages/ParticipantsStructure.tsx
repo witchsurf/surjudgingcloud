@@ -23,6 +23,7 @@ import type { AppConfig } from '../types';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { supabase } from '../lib/supabase';
+import { upsertActiveHeatPointer } from '../api/supabaseClient';
 
 type FormatType = 'single-elim' | 'repechage';
 type PreferredHeatSize = 'auto' | 2 | 3 | 4;
@@ -523,13 +524,10 @@ export default function ParticipantsStructure() {
       try {
         const firstHeatId = `${selectedEvent.name.toLowerCase().replace(/\s+/g, '_')}_${previewCategory.toLowerCase().replace(/\s+/g, '_')}_r1_h1`;
         if (supabase) {
-          await supabase.from('active_heat_pointer').upsert({
-            event_id: selectedEvent.id,
-            event_name: selectedEvent.name,
-            active_heat_id: firstHeatId,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'event_id'
+          await upsertActiveHeatPointer({
+            eventId: selectedEvent.id,
+            eventName: selectedEvent.name,
+            activeHeatId: firstHeatId,
           });
           console.log('✅ active_heat_pointer initialisé:', firstHeatId);
         }

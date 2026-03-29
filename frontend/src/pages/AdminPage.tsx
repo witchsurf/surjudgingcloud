@@ -16,7 +16,8 @@ import {
     saveEventConfigSnapshot,
     fetchOrderedHeatSequence,
     fetchEventIdByName,
-    fetchHeatMetadata
+    fetchHeatMetadata,
+    upsertActiveHeatPointer
 } from '../api/supabaseClient';
 import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
@@ -260,13 +261,10 @@ export default function AdminPage() {
 
                 // Keep tablets/kiosks aligned when admin saves a new target heat/category.
                 if (supabase) {
-                    await supabase.from('active_heat_pointer').upsert({
-                        event_id: targetEventId,
-                        event_name: config.competition,
-                        active_heat_id: currentHeatId,
-                        updated_at: new Date().toISOString()
-                    }, {
-                        onConflict: 'event_id'
+                    await upsertActiveHeatPointer({
+                        eventId: targetEventId,
+                        eventName: config.competition,
+                        activeHeatId: currentHeatId,
                     });
                 }
 
@@ -344,35 +342,42 @@ export default function AdminPage() {
         try {
             const targetEventId = await resolveEventIdForCurrentHeat();
             if (!targetEventId) {
-                closeHeat();
+                await closeHeat();
                 return;
             }
 
-            // Fetch the sequence to validate next heat exists  
+            // Validate against the same round/heat sequence semantics as the close workflow.
             const heatSequence = await fetchOrderedHeatSequence(
                 targetEventId,
                 config.division
             );
 
-            const currentIndex = heatSequence.findIndex(h => h.heat_number === config.heatId);
-            const nextHeat = heatSequence[currentIndex + 1];
+            const currentIndex = heatSequence.findIndex((heat) =>
+                Number(heat.round) === Number(config.round)
+                && Number(heat.heat_number) === Number(config.heatId)
+            );
+            const nextHeat = currentIndex >= 0
+                ? heatSequence
+                    .slice(currentIndex + 1)
+                    .find((heat) => !['closed', 'finished'].includes((heat.status || '').toString().trim().toLowerCase()))
+                : null;
 
             if (!nextHeat) {
                 console.log('🏁 Fin de l\'événement - Aucun heat suivant trouvé');
                 alert('✅ C\'était le dernier heat de cette division/round!');
                 // Even on the last heat, we must still close the current heat and stop the timer.
-                closeHeat();
+                await closeHeat();
                 return;
             }
 
             console.log(`✅ Progression validée: R${config.round}H${config.heatId} → R${nextHeat.round}H${nextHeat.heat_number}`);
 
             // Proceed with regular closeHeat
-            closeHeat();
+            await closeHeat();
         } catch (error) {
             console.error('❌ Erreur validation progression:', error);
             // Fallback to regular closeHeat if validation fails
-            closeHeat();
+            await closeHeat();
         }
     }, [config, closeHeat, resolveEventIdForCurrentHeat]);
 

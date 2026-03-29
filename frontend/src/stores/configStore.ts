@@ -10,7 +10,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AppConfig } from '../types';
 import { INITIAL_CONFIG } from '../utils/constants';
 import { eventRepository, heatRepository } from '../repositories';
-import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, parseActiveHeatId } from '../api/supabaseClient';
+import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, parseActiveHeatId, upsertActiveHeatPointer } from '../api/supabaseClient';
 import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { logger } from '../lib/logger';
@@ -360,13 +360,10 @@ export const useConfigStore = create<ConfigStore>()(
                     );
 
                     if (supabase) {
-                        await supabase.from('active_heat_pointer').upsert({
-                            event_id: eventId,
-                            event_name: config.competition,
-                            active_heat_id: heatId,
-                            updated_at: new Date().toISOString()
-                        }, {
-                            onConflict: 'event_id'
+                        await upsertActiveHeatPointer({
+                            eventId: eventId,
+                            eventName: config.competition,
+                            activeHeatId: heatId,
                         });
                         logger.info('ConfigStore', 'active_heat_pointer updated', { heatId });
                     }

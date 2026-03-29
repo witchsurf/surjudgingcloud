@@ -4,13 +4,14 @@ import { useJudgingStore } from '../stores/judgingStore';
 import { useSupabaseSync } from './useSupabaseSync';
 import { useRealtimeSync } from './useRealtimeSync';
 import {
-    fetchOrderedHeatSequence,
-    fetchHeatEntriesWithParticipants,
-    fetchHeatSlotMappings,
-    fetchInterferenceCalls,
-    replaceHeatEntries,
+        fetchOrderedHeatSequence,
+        fetchHeatEntriesWithParticipants,
+        fetchHeatSlotMappings,
+        fetchInterferenceCalls,
+        replaceHeatEntries,
+        upsertActiveHeatPointer,
 } from '../api/supabaseClient';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { canUseSupabaseConnection, isSupabaseConfigured, supabase } from '../lib/supabase';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
@@ -112,6 +113,12 @@ export function useHeatManager() {
             await updateHeatStatus(currentDbHeatId, 'closed', closedAt);
             console.log('✅ Heat fermé:', currentDbHeatId);
         } catch (error) {
+            if (canUseSupabaseConnection() && isSupabaseConfigured()) {
+                console.error('❌ Impossible de fermer le heat côté cloud:', error);
+                const detail = error instanceof Error ? error.message : 'Erreur inconnue';
+                alert(`Impossible de fermer le heat en base.\n\n${detail}\n\nApplique les migrations Supabase manquantes avant de relancer la clôture.`);
+                throw error;
+            }
             console.log('⚠️ Heat fermé en mode local uniquement', error);
         }
 
@@ -434,13 +441,10 @@ export function useHeatManager() {
                     newConfig.heatId
                 ).normalized;
 
-                await supabase.from('active_heat_pointer').upsert({
-                    event_id: activeEventId ?? null,
-                    event_name: newConfig.competition,
-                    active_heat_id: nextHeatPointer,
-                    updated_at: new Date().toISOString(),
-                }, {
-                    onConflict: 'event_id',
+                await upsertActiveHeatPointer({
+                    eventId: activeEventId ?? null,
+                    eventName: newConfig.competition,
+                    activeHeatId: nextHeatPointer,
                 });
 
                 console.log('✅ active_heat_pointer mis à jour:', nextHeatPointer);

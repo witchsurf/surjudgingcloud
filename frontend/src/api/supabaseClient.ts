@@ -44,6 +44,7 @@ export {
     fetchAllEventCategories,
     fetchAllEventHeats,
     fetchActiveHeatPointer,
+    upsertActiveHeatPointer,
     parseActiveHeatId,
     subscribeToHeatUpdates,
     fetchHeatEntriesWithParticipants,

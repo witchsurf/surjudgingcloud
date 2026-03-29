@@ -60,6 +60,32 @@ interface HeatMetadataRow {
     color_order: string[] | null;
 }
 
+const isHeatRealtimeClosedSchemaError = (error: unknown) => {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as {
+        code?: string;
+        message?: string;
+        details?: string;
+        hint?: string;
+        status?: number;
+    };
+    const text = [
+        candidate.code,
+        candidate.message,
+        candidate.details,
+        candidate.hint,
+        String(candidate.status ?? ''),
+        JSON.stringify(candidate),
+    ].join(' ').toLowerCase();
+
+    return text.includes('heat_realtime_config_status_check')
+        || (
+            text.includes('heat_realtime_config')
+            && text.includes('status')
+            && text.includes('23514')
+        );
+};
+
 /**
  * Repository for managing heats
  */
@@ -130,30 +156,45 @@ export class HeatRepository extends BaseRepository {
             updateData.closed_at = closedAt;
         }
 
-        return this.execute(
-            async () => {
-                this.ensureSupabase();
+        if (!this.isOnline) {
+            logger.info('HeatRepository', 'Heat status queued offline', { heatId: normalizedHeatId, status });
+            saveOffline({
+                table: 'heats',
+                action: 'update',
+                payload: { id: normalizedHeatId, data: updateData },
+                timestamp: Date.now()
+            });
+            return;
+        }
 
-                const { error } = await this.supabase!
-                    .from('heats')
-                    .update(updateData)
-                    .eq('id', normalizedHeatId);
+        try {
+            this.ensureSupabase();
 
-                if (error) throw error;
+            const { error } = await this.supabase!
+                .from('heats')
+                .update(updateData)
+                .eq('id', normalizedHeatId);
 
-                logger.info('HeatRepository', 'Heat status updated online', { heatId: normalizedHeatId, status });
-            },
-            () => {
-                logger.info('HeatRepository', 'Heat status queued offline', { heatId: normalizedHeatId, status });
-                saveOffline({
-                    table: 'heats',
-                    action: 'update',
-                    payload: { id: normalizedHeatId, data: updateData },
-                    timestamp: Date.now()
-                });
-            },
-            'updateHeatStatus'
-        );
+            if (error) throw error;
+
+            logger.info('HeatRepository', 'Heat status updated online', { heatId: normalizedHeatId, status });
+        } catch (error) {
+            logger.error('HeatRepository', 'updateHeatStatus - Failed', error);
+
+            if (isHeatRealtimeClosedSchemaError(error)) {
+                throw new Error(
+                    "La base cloud refuse encore le statut 'closed' dans heat_realtime_config. Applique les migrations de workflow/champs avant de fermer un heat en ligne."
+                );
+            }
+
+            logger.info('HeatRepository', 'Heat status queued offline', { heatId: normalizedHeatId, status });
+            saveOffline({
+                table: 'heats',
+                action: 'update',
+                payload: { id: normalizedHeatId, data: updateData },
+                timestamp: Date.now()
+            });
+        }
     }
 
     /**
