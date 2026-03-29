@@ -68,7 +68,9 @@ export const removePrioritySurfer = (state: PriorityState, surfer: string): Prio
 
   if (state.mode === 'opening') {
     const alreadyKnown = state.order.includes(normalized);
-    const nextOrder = alreadyKnown ? state.order : [...state.order, normalized];
+    const nextOrder = alreadyKnown
+      ? [...state.order.filter((item) => item !== normalized), normalized]
+      : [...state.order, normalized];
     const nextInFlight = state.inFlight.includes(normalized)
       ? state.inFlight
       : [...state.inFlight, normalized];
