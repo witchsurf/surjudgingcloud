@@ -1303,6 +1303,19 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     hasBeenLockedRef.current = false;
     lockedForHeatRef.current = currentHeatKey;
   }
+
+  useEffect(() => {
+    setSelectedJudge('');
+    setSelectedSurfer('');
+    setSelectedWave('');
+    setMoveTargetSurfer('');
+    setMoveTargetWave('');
+    setScoreInput('');
+    setOverrideComment('');
+    setOverrideStatus(null);
+    setHeadJudgeOverride(false);
+    setInterferenceType('INT1');
+  }, [heatId]);
   if (isCurrentHeatLocked) hasBeenLockedRef.current = true;
   const stableHeatLocked = hasBeenLockedRef.current;
   const floatingTimeLeft = React.useMemo(
