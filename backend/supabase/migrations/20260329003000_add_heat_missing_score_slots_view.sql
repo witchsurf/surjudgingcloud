@@ -30,7 +30,8 @@ matched_scores as (
     score.heat_id,
     upper(trim(score.surfer)) as surfer,
     score.wave_number,
-    coalesce(nullif(trim(score.judge_identity_id), ''), upper(trim(score.judge_station))) as judge_match_key
+    nullif(trim(score.judge_identity_id), '') as judge_identity_id,
+    upper(trim(score.judge_station)) as judge_station
   from public.v_scores_canonical_enriched score
   where score.score > 0
 )
@@ -49,5 +50,12 @@ left join matched_scores matched
   on matched.heat_id = started.heat_id
  and matched.surfer = started.surfer
  and matched.wave_number = started.wave_number
- and matched.judge_match_key = coalesce(expected.judge_identity_id, expected.judge_station)
+ and (
+   (
+     expected.judge_identity_id is not null
+     and matched.judge_identity_id is not null
+     and lower(matched.judge_identity_id) = lower(expected.judge_identity_id)
+   )
+   or matched.judge_station = expected.judge_station
+ )
 where matched.heat_id is null;

@@ -923,7 +923,7 @@ function JudgeInterface({
         </div>
       </div>
 
-      {(heatStatus === 'finished' || heatStatus === 'closed') && (
+      {heatStatus === 'closed' && (
         <div className="mt-3 rounded-xl border-4 border-primary-950 bg-red-600 px-6 py-4 text-center shadow-block flex-shrink-0">
           <div className="font-bebas text-3xl sm:text-4xl tracking-[0.25em] text-white leading-none">
             HEAT OVER

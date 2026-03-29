@@ -347,7 +347,7 @@ export default function ScoreDisplay({
         </div>
       </div>
 
-      {(heatStatus === 'finished' || heatStatus === 'closed') && (
+      {heatStatus === 'closed' && (
         <div className="bg-red-600 border-4 border-primary-950 rounded-2xl px-6 py-4 shadow-block text-center">
           <div className="text-white font-bebas tracking-[0.25em] text-3xl sm:text-5xl leading-none">
             HEAT OVER
