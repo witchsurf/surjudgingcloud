@@ -69,11 +69,13 @@ export {
     fetchPreferredScoresForEvent,
     fetchEventJudgeAssignmentCoverage,
     fetchEventJudgeAccuracySummary,
+    fetchHeatCloseValidation,
+    fetchHeatMissingScoreSlots,
     fetchInterferenceCalls,
     fetchAllInterferenceCallsForEvent,
     upsertInterferenceCall
 } from './modules/scoring.api';
-export type { RawScoreRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from './modules/scoring.api';
+export type { RawScoreRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatMissingScoreSlotRow, HeatCloseValidationResult } from './modules/scoring.api';
 
 export {
     fetchActiveJudges,

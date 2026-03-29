@@ -13,7 +13,7 @@ const STORAGE_KEYS = {
 export function useCompetitionTimer() {
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { config } = useConfigStore();
-    const { publishTimerStart, publishTimerPause, publishTimerReset } = useRealtimeSync();
+    const { publishTimerStart, publishTimerPause, publishTimerReset, markHeatFinished } = useRealtimeSync();
     const currentHeatId = getHeatIdentifiers(
         config.competition,
         config.division,
@@ -56,6 +56,9 @@ export function useCompetitionTimer() {
                     setTimer(finishedTimer);
                     persistTimer(finishedTimer);
                     setHeatStatus('finished');
+                    void markHeatFinished(currentHeatId).catch((error) => {
+                        console.error('Failed to publish heat finished state:', error);
+                    });
                 }
             }, 500);  // Poll at 500ms for more precise end detection
         }
@@ -63,7 +66,7 @@ export function useCompetitionTimer() {
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [timer.isRunning, timer.startTime, timer.duration, setTimer, persistTimer, setHeatStatus]);
+    }, [timer.isRunning, timer.startTime, timer.duration, setTimer, persistTimer, setHeatStatus, markHeatFinished, currentHeatId]);
 
     const startTimer = async () => {
         if (timer.isRunning) return;

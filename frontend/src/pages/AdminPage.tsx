@@ -15,7 +15,8 @@ import {
     updateEventConfiguration,
     saveEventConfigSnapshot,
     fetchOrderedHeatSequence,
-    fetchEventIdByName
+    fetchEventIdByName,
+    fetchHeatMetadata
 } from '../api/supabaseClient';
 import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
@@ -87,9 +88,43 @@ export default function AdminPage() {
         config.heatId
     ).normalized;
 
+    const eventIdFromUrl = Number(searchParams.get('eventId'));
+
+    const resolveEventIdForCurrentHeat = useCallback(async (): Promise<number | null> => {
+        if (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0) {
+            return eventIdFromUrl;
+        }
+
+        if (activeEventId) {
+            return activeEventId;
+        }
+
+        try {
+            const persistedEventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+            const persistedEventId = persistedEventIdRaw ? Number(persistedEventIdRaw) : NaN;
+            if (Number.isFinite(persistedEventId) && persistedEventId > 0) {
+                return persistedEventId;
+            }
+        } catch {
+            // Ignore storage access failures.
+        }
+
+        if (currentHeatId) {
+            const heatMetadata = await fetchHeatMetadata(currentHeatId);
+            if (heatMetadata?.event_id) {
+                return heatMetadata.event_id;
+            }
+        }
+
+        if (config.competition) {
+            return await fetchEventIdByName(config.competition);
+        }
+
+        return null;
+    }, [activeEventId, config.competition, currentHeatId, eventIdFromUrl]);
+
     // Load participant names for current heat
     const { participants: heatParticipants } = useHeatParticipants(currentHeatId);
-    const eventIdFromUrl = Number(searchParams.get('eventId'));
 
     useEffect(() => {
         const targetEventId = Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0
@@ -155,15 +190,7 @@ export default function AdminPage() {
         setConfigSaved(saved);
 
         if (saved) {
-            const persistedEventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
-            const persistedEventId = persistedEventIdRaw ? Number(persistedEventIdRaw) : NaN;
-            let targetEventId = Number.isFinite(persistedEventId) && persistedEventId > 0
-                ? persistedEventId
-                : activeEventId;
-
-            if (!targetEventId && config.competition) {
-                targetEventId = await fetchEventIdByName(config.competition);
-            }
+            const targetEventId = await resolveEventIdForCurrentHeat();
 
             if (targetEventId && activeEventId !== targetEventId) {
                 setActiveEventId(targetEventId);
@@ -263,7 +290,8 @@ export default function AdminPage() {
         saveHeatConfig,
         publishConfigUpdate,
         currentHeatId,
-        persistConfig
+        persistConfig,
+        resolveEventIdForCurrentHeat
     ]);
 
     const handleReloadData = () => {
@@ -314,9 +342,15 @@ export default function AdminPage() {
     // Validate heat progression before closing
     const handleCloseHeatWithValidation = useCallback(async () => {
         try {
+            const targetEventId = await resolveEventIdForCurrentHeat();
+            if (!targetEventId) {
+                closeHeat();
+                return;
+            }
+
             // Fetch the sequence to validate next heat exists  
             const heatSequence = await fetchOrderedHeatSequence(
-                activeEventId || 0,
+                targetEventId,
                 config.division
             );
 
@@ -340,17 +374,14 @@ export default function AdminPage() {
             // Fallback to regular closeHeat if validation fails
             closeHeat();
         }
-    }, [config, activeEventId, closeHeat]);
+    }, [config, closeHeat, resolveEventIdForCurrentHeat]);
 
     const handleReconnectToDb = useCallback(async () => {
         if (!isSupabaseConfigured()) {
             throw new Error('Supabase n’est pas configuré. Vérifiez les variables VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY.');
         }
 
-        let targetEventId = activeEventId ?? null;
-        if (!targetEventId && config.competition) {
-            targetEventId = await fetchEventIdByName(config.competition);
-        }
+        const targetEventId = await resolveEventIdForCurrentHeat();
 
         if (!targetEventId) {
             throw new Error('Événement introuvable en base. Ouvrez "Mes événements" puis cliquez "Continuer".');
@@ -358,7 +389,7 @@ export default function AdminPage() {
 
         setActiveEventId(targetEventId);
         await loadConfigFromDb(targetEventId);
-    }, [activeEventId, config.competition, loadConfigFromDb, setActiveEventId]);
+    }, [loadConfigFromDb, resolveEventIdForCurrentHeat, setActiveEventId]);
 
     return (
         <AdminInterface

@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { ensureSupabase } from './core.api';
 import { getColorSet, type HeatColor } from '../../utils/colorUtils';
+import { colorLabelMap } from '../../utils/colorUtils';
 import { ensureHeatId } from '../../utils/heat';
 import type { RoundSpec, HeatSlotSpec } from '../../utils/bracket';
 import type { ParticipantRecord } from './participants.api';
@@ -185,6 +186,8 @@ export async function deletePlannedHeats(eventId: number, category: string) {
 export interface CreateHeatsOptions {
     overwrite?: boolean;
     repechage?: RoundSpec[];
+    defaultJudges?: string[];
+    tournamentType?: string;
 }
 
 export async function createHeatsWithEntries(
@@ -198,6 +201,14 @@ export async function createHeatsWithEntries(
     ensureSupabase();
     const heatRows: HeatRow[] = [];
     const entryRows: HeatEntryRow[] = [];
+    const heatConfigRows: Array<{
+        heat_id: string;
+        judges: string[];
+        surfers: string[];
+        judge_names: Record<string, string>;
+        waves: number;
+        tournament_type: string;
+    }> = [];
     const slotMappings: HeatSlotMappingRow[] = [];
     const newHeatIds: string[] = [];
     const trimmedEventName = eventName.trim();
@@ -209,6 +220,10 @@ export async function createHeatsWithEntries(
     });
 
     const missingParticipants: Array<{ seed: number | null; name?: string }> = [];
+    const defaultJudges = Array.isArray(options.defaultJudges) && options.defaultJudges.length > 0
+        ? options.defaultJudges
+        : ['J1', 'J2', 'J3'];
+    const tournamentType = String(options.tournamentType ?? 'elimination').trim() || 'elimination';
 
     const parsePlaceholder = (value?: string | null) => {
         if (!value) return { placeholder: null, sourceRound: null, sourceHeat: null, sourcePosition: null };
@@ -267,6 +282,14 @@ export async function createHeatsWithEntries(
                 round: round.roundNumber, heat_number: heat.heatNumber, heat_size: heat.slots.length,
                 status: 'open', color_order: colorOrder,
             });
+            heatConfigRows.push({
+                heat_id: heatId,
+                judges: defaultJudges,
+                surfers: colorOrder.map((color) => colorLabelMap[color] ?? color),
+                judge_names: {},
+                waves: 15,
+                tournament_type: tournamentType,
+            });
             newHeatIds.push(heatId);
 
             heat.slots.forEach((slot, index) => {
@@ -319,6 +342,15 @@ export async function createHeatsWithEntries(
     } as any);
 
     if (rpcError) throw rpcError;
+
+    if (heatConfigRows.length > 0) {
+        const { error: heatConfigsError } = await supabase!
+            .from('heat_configs')
+            .upsert(heatConfigRows, { onConflict: 'heat_id' });
+
+        if (heatConfigsError) throw heatConfigsError;
+    }
+
     return { heats: heatRows, entries: entryRows };
 }
 

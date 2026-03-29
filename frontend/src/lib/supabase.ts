@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { getColorSet } from '../utils/colorUtils';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -389,6 +390,7 @@ interface OfflineEntry {
 }
 
 const OFFLINE_KEY = 'surfapp_offline_queue'
+const HEAT_CONFIG_REPAIR_TABLE = '__heat_config_repair__'
 
 // Sauvegarder une action hors ligne
 export function saveOffline(entry: OfflineEntry) {
@@ -400,6 +402,190 @@ export function saveOffline(entry: OfflineEntry) {
 // Récupérer la queue offline
 export function getOffline(): OfflineEntry[] {
   return JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]')
+}
+
+function applyOfflineFilters(query: any, filter: Record<string, unknown>) {
+  let nextQuery = query
+  for (const [column, value] of Object.entries(filter)) {
+    if (Array.isArray(value)) {
+      nextQuery = nextQuery.in(column, value)
+    } else if (value === null) {
+      nextQuery = nextQuery.is(column, null)
+    } else {
+      nextQuery = nextQuery.eq(column, value)
+    }
+  }
+  return nextQuery
+}
+
+async function replayOfflineEntry(entry: OfflineEntry) {
+  if (!supabase) {
+    throw new Error('Supabase indisponible pour la synchronisation offline.')
+  }
+
+  if (entry.table === HEAT_CONFIG_REPAIR_TABLE) {
+    await repairHeatConfigSnapshot(entry.payload)
+    return
+  }
+
+  let error: unknown = null
+
+  if (entry.action === 'insert') {
+    const payload = entry.payload?.rows ?? entry.payload
+    const options = entry.payload?.options ?? undefined
+    const result = await supabase.from(entry.table).insert(payload, options)
+    error = result.error
+  } else if (entry.action === 'upsert') {
+    const result = await supabase
+      .from(entry.table)
+      .upsert(entry.payload.rows ?? entry.payload, entry.payload.options ?? undefined)
+    error = result.error
+  } else if (entry.action === 'update') {
+    const data = entry.payload?.data ?? {}
+    let query = supabase.from(entry.table).update(data)
+    if (entry.payload?.filter && typeof entry.payload.filter === 'object') {
+      query = applyOfflineFilters(query, entry.payload.filter)
+    } else if (entry.payload?.id !== undefined) {
+      query = query.eq('id', entry.payload.id)
+    } else {
+      throw new Error(`Offline update sans filtre pour ${entry.table}`)
+    }
+    const result = await query
+    error = result.error
+  } else if (entry.action === 'delete') {
+    let query = supabase.from(entry.table).delete()
+    if (entry.payload?.filter && typeof entry.payload.filter === 'object') {
+      query = applyOfflineFilters(query, entry.payload.filter)
+    } else if (entry.payload?.id !== undefined) {
+      query = query.eq('id', entry.payload.id)
+    } else {
+      throw new Error(`Offline delete sans filtre pour ${entry.table}`)
+    }
+    const result = await query
+    error = result.error
+  }
+
+  if (error) {
+    throw error
+  }
+}
+
+async function repairHeatConfigSnapshot(payload: any) {
+  if (!supabase) {
+    throw new Error('Supabase indisponible pour réparer la config heat offline.')
+  }
+
+  const heatId = String(payload?.heat_id ?? payload?.heatId ?? '').trim()
+  const config = payload?.config ?? {}
+  const assignmentPayload = Array.isArray(payload?.assignments) ? payload.assignments : []
+
+  if (!heatId) {
+    return
+  }
+
+  const { data: heatMeta, error: heatError } = await supabase
+    .from('heats')
+    .select('id, event_id, competition, division, round, heat_number, heat_size, color_order')
+    .eq('id', heatId)
+    .maybeSingle()
+
+  if (heatError) {
+    throw heatError
+  }
+  if (!heatMeta) {
+    return
+  }
+
+  const surfers = Array.isArray(config?.surfers)
+    ? config.surfers.map((value: unknown) => String(value ?? '').trim().toUpperCase()).filter(Boolean)
+    : []
+  const surferNames = config?.surfer_names ?? config?.surferNames ?? {}
+  const surferCountries = config?.surfer_countries ?? config?.surferCountries ?? {}
+
+  if (surfers.length > 0) {
+    const { data: participantRows, error: participantError } = await supabase
+      .from('participants')
+      .select('id, seed, name, country')
+      .eq('event_id', heatMeta.event_id)
+      .ilike('category', String(heatMeta.division ?? ''))
+      .order('seed', { ascending: true })
+
+    if (participantError) {
+      throw participantError
+    }
+
+    const participantByName = new Map(
+      (participantRows ?? []).map((participant: any) => [String(participant.name ?? '').trim().toLowerCase(), participant] as const)
+    )
+
+    const colorOrder = Array.isArray(heatMeta.color_order) && heatMeta.color_order.length > 0
+      ? heatMeta.color_order
+      : getColorSet(Number(heatMeta.heat_size) || surfers.length)
+
+    const entryPayload = surfers.map((color: string, index: number) => {
+      const resolvedName = String(surferNames?.[color] ?? '').trim()
+      const matchedParticipant = resolvedName
+        ? participantByName.get(resolvedName.toLowerCase()) ?? null
+        : null
+
+      return {
+        heat_id: heatId,
+        participant_id: matchedParticipant?.id ?? null,
+        position: index + 1,
+        seed: Number.isFinite(Number(matchedParticipant?.seed)) ? Number(matchedParticipant.seed) : index + 1,
+        color: colorOrder[index] ?? color,
+      }
+    })
+
+    const { error: entriesError } = await supabase
+      .from('heat_entries')
+      .upsert(entryPayload, { onConflict: 'heat_id,position' })
+
+    if (entriesError) {
+      throw entriesError
+    }
+  }
+
+  const judgePayload = assignmentPayload.length > 0
+    ? assignmentPayload.map((assignment: any) => ({
+        id: assignment.station,
+        name: assignment.judge_name ?? assignment.station,
+        identity_id: assignment.judge_id ?? null,
+      }))
+    : (Array.isArray(config?.judges) ? config.judges : [])
+        .map((stationRaw: unknown) => String(stationRaw ?? '').trim().toUpperCase())
+        .filter(Boolean)
+        .map((station: string) => ({
+          id: station,
+          name: String((config?.judge_names ?? config?.judgeNames ?? {})?.[station] ?? station).trim() || station,
+          identity_id: (config?.judge_identities ?? config?.judgeIdentities ?? {})?.[station] ?? null,
+        }))
+
+  if (heatMeta.event_id && heatMeta.division && heatMeta.round && heatMeta.heat_number) {
+    const { error: snapshotError } = await supabase.rpc('upsert_event_last_config', {
+      p_event_id: heatMeta.event_id,
+      p_event_name: String(config?.competition ?? heatMeta.competition ?? heatMeta.event_id).trim(),
+      p_division: heatMeta.division,
+      p_round: heatMeta.round,
+      p_heat_number: heatMeta.heat_number,
+      p_judges: judgePayload,
+      p_surfers: surfers,
+      p_surfer_names: surfers.reduce((acc: Record<string, string>, color: string) => {
+        const resolved = String(surferNames?.[color] ?? '').trim()
+        if (resolved) acc[color] = resolved
+        return acc
+      }, {}),
+      p_surfer_countries: surfers.reduce((acc: Record<string, string>, color: string) => {
+        const resolved = String(surferCountries?.[color] ?? '').trim()
+        if (resolved) acc[color] = resolved
+        return acc
+      }, {}),
+    })
+
+    if (snapshotError) {
+      throw snapshotError
+    }
+  }
 }
 
 // Synchroniser les actions offline dès que Supabase est dispo
@@ -419,14 +605,7 @@ export async function syncOffline() {
 
   for (const entry of queue) {
     try {
-      if (entry.action === 'insert')
-        await supabase.from(entry.table).insert(entry.payload)
-      else if (entry.action === 'upsert')
-        await supabase.from(entry.table).upsert(entry.payload.rows ?? entry.payload, entry.payload.options ?? undefined)
-      else if (entry.action === 'update')
-        await supabase.from(entry.table).update(entry.payload.data).eq('id', entry.payload.id)
-      else if (entry.action === 'delete')
-        await supabase.from(entry.table).delete().eq('id', entry.payload.id)
+      await replayOfflineEntry(entry)
     } catch (err) {
       if (isBenignConflict(entry, err)) {
         console.warn('⚠️ Conflit offline ignoré (déjà synchronisé)', entry.table, err)

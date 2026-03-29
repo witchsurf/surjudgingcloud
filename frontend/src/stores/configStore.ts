@@ -157,16 +157,24 @@ export const useConfigStore = create<ConfigStore>()(
 
                     if (activeHeat) {
                         logger.info('ConfigStore', 'Active heat pointer found', activeHeat);
+                        if (activeHeat.event_id) {
+                            set({ activeEventId: activeHeat.event_id });
+                            await get().loadConfigFromDb(activeHeat.event_id);
+                            return;
+                        }
+
                         const parsed = parseActiveHeatId(activeHeat.active_heat_id);
 
                         if (parsed) {
                             logger.info('ConfigStore', 'Parsed heat config', parsed);
 
-                            // Get event ID from event name using EventRepository
-                            let eventId = await eventRepository.fetchEventIdByName(parsed.competition);
+                            let eventId = activeHeat.event_id ?? null;
                             if (!eventId) {
                                 const heatMetadata = await fetchHeatMetadata(activeHeat.active_heat_id);
                                 eventId = heatMetadata?.event_id ?? null;
+                            }
+                            if (!eventId) {
+                                eventId = await eventRepository.fetchEventIdByName(parsed.competition);
                             }
                             if (eventId) {
                                 set({ activeEventId: eventId });

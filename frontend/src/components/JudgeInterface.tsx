@@ -3,7 +3,7 @@ import { User, Waves, Lock, CreditCard as Edit3, Maximize, Minimize } from 'luci
 import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
-import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
+import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchHeatMetadata, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
@@ -187,7 +187,7 @@ function JudgeInterface({
       console.log('📝 Submitting judge name:', judgeNameInput, 'for', judgeId);
 
       // Get event ID first - gracefully handle if not found
-      const eventId = await fetchEventIdByName(config.competition);
+      const eventId = await resolveCurrentEventId();
       if (!eventId) {
         console.warn('⚠️ Event not found, skipping name update in events table');
         // Still allow judge to proceed - name update is optional
@@ -219,6 +219,31 @@ function JudgeInterface({
       ),
     [config.competition, config.division, config.round, config.heatId]
   );
+
+  const resolveCurrentEventId = useCallback(async (): Promise<number | null> => {
+    if (currentHeatId) {
+      const heatMetadata = await fetchHeatMetadata(currentHeatId);
+      if (heatMetadata?.event_id) {
+        return heatMetadata.event_id;
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      const persistedEventIdRaw =
+        localStorage.getItem('surfJudgingActiveEventId') ||
+        localStorage.getItem('eventId');
+      const persistedEventId = persistedEventIdRaw ? Number(persistedEventIdRaw) : NaN;
+      if (Number.isFinite(persistedEventId) && persistedEventId > 0) {
+        return persistedEventId;
+      }
+    }
+
+    if (config.competition) {
+      return await fetchEventIdByName(config.competition);
+    }
+
+    return null;
+  }, [config.competition, currentHeatId]);
 
   const readScoresFromStorage = useCallback((): Score[] => {
     const savedScores = localStorage.getItem('surfJudgingScores');
@@ -526,7 +551,10 @@ function JudgeInterface({
 
   const handleInterferenceCall = async (surfer: string, wave: number) => {
     if (!currentHeatId) return;
-    const eventId = await fetchEventIdByName(config.competition);
+    const eventId = await resolveCurrentEventId();
+    if (!eventId) {
+      throw new Error('Événement introuvable pour enregistrer l’interférence.');
+    }
     const judgeName = config.judgeNames[judgeId] || judgeId;
     const normalizedSurfer = normalizeSurferKey(surfer);
     await upsertInterferenceCall({

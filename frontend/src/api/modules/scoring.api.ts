@@ -105,6 +105,25 @@ export type EventJudgeAccuracySummaryRow = {
     quality_band: 'excellent' | 'good' | 'watch' | 'needs_review';
 };
 
+export type HeatMissingScoreSlotRow = {
+    event_id: number;
+    heat_id: string;
+    judge_station: string;
+    judge_identity_id?: string | null;
+    judge_display_name: string;
+    surfer: string;
+    wave_number: number;
+};
+
+export type HeatCloseValidationResult = {
+    heat_id: string;
+    event_id: number;
+    has_any_scores: boolean;
+    started_wave_count: number;
+    missing_score_count: number;
+    pending_slots: HeatMissingScoreSlotRow[];
+};
+
 export const normalizeScoreJudgeId = (judgeId?: string) => {
     const upper = (judgeId || '').trim().toUpperCase();
     if (upper === 'KIOSK-J1') return 'J1';
@@ -373,6 +392,53 @@ export async function fetchEventJudgeAccuracySummary(eventId: number): Promise<E
     }
 
     return (data ?? []) as EventJudgeAccuracySummaryRow[];
+}
+
+export async function fetchHeatMissingScoreSlots(heatId: string): Promise<HeatMissingScoreSlotRow[]> {
+    ensureSupabase();
+    const normalizedHeatId = ensureHeatId(heatId);
+    const { data, error } = await supabase!
+        .from('v_heat_missing_score_slots')
+        .select('*')
+        .eq('heat_id', normalizedHeatId)
+        .order('judge_display_name', { ascending: true })
+        .order('surfer', { ascending: true })
+        .order('wave_number', { ascending: true });
+
+    if (error) {
+        if (isMissingViewError(error, 'v_heat_missing_score_slots')) {
+            throw new Error('VIEW_NOT_READY:v_heat_missing_score_slots');
+        }
+        throw error;
+    }
+
+    return (data ?? []) as HeatMissingScoreSlotRow[];
+}
+
+export async function fetchHeatCloseValidation(heatId: string): Promise<HeatCloseValidationResult | null> {
+    ensureSupabase();
+    const normalizedHeatId = ensureHeatId(heatId);
+    const { data, error } = await supabase!
+        .rpc('fn_get_heat_close_validation', { p_heat_id: normalizedHeatId });
+
+    if (error) {
+        if (isMissingViewError(error, 'fn_get_heat_close_validation') || String((error as { message?: string })?.message || '').includes('fn_get_heat_close_validation')) {
+            throw new Error('FUNCTION_NOT_READY:fn_get_heat_close_validation');
+        }
+        throw error;
+    }
+
+    const row = Array.isArray(data) ? data[0] : null;
+    if (!row) return null;
+
+    return {
+        heat_id: row.heat_id,
+        event_id: row.event_id,
+        has_any_scores: Boolean(row.has_any_scores),
+        started_wave_count: Number(row.started_wave_count) || 0,
+        missing_score_count: Number(row.missing_score_count) || 0,
+        pending_slots: Array.isArray(row.pending_slots) ? row.pending_slots : [],
+    } as HeatCloseValidationResult;
 }
 
 export async function fetchInterferenceCalls(heatId: string): Promise<InterferenceCall[]> {

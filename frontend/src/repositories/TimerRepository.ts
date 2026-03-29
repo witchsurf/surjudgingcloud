@@ -41,8 +41,11 @@ export class TimerRepository extends BaseRepository {
                 logger.info('TimerRepository', 'Timer state queued offline', { heatId: normalizedHeatId });
                 saveOffline({
                     table: this.tableName,
-                    action: 'insert', // upsert equivalent for remote sync
-                    payload: payload,
+                    action: 'upsert',
+                    payload: {
+                        rows: payload,
+                        options: { onConflict: 'heat_id' }
+                    },
                     timestamp: Date.now()
                 });
             },

@@ -11,6 +11,7 @@ import { ensureHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
 import { saveScoreIDB, saveScoresBatchIDB } from '../lib/idbStorage';
 import { canonicalizeScores, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
+import { fetchHeatMetadata } from '../api/supabaseClient';
 
 export interface SaveScoreRequest {
     heatId: string;
@@ -107,6 +108,32 @@ export class ScoreRepository extends BaseRepository {
         if (!match) return 1;
         const value = Number.parseInt(match[1], 10);
         return Number.isFinite(value) && value > 0 ? value : 1;
+    }
+
+    private async resolveEventIdForHeat(
+        heatId: string,
+        fallbackEventId?: number | null
+    ): Promise<number | null> {
+        const normalizedHeatId = ensureHeatId(heatId);
+
+        try {
+            const metadata = await fetchHeatMetadata(normalizedHeatId);
+            if (metadata?.event_id != null) {
+                return Number(metadata.event_id);
+            }
+        } catch (error) {
+            logger.warn('ScoreRepository', 'Failed to resolve event_id from heat metadata', {
+                heatId: normalizedHeatId,
+                fallbackEventId,
+                error,
+            });
+        }
+
+        if (fallbackEventId != null && Number.isFinite(Number(fallbackEventId))) {
+            return Number(fallbackEventId);
+        }
+
+        return null;
     }
 
     private async ensureHeatRowsExist(scores: Array<{
@@ -355,13 +382,17 @@ export class ScoreRepository extends BaseRepository {
             // Online operation
             async () => {
                 this.ensureSupabase();
+                const resolvedEventId = await this.resolveEventIdForHeat(
+                    normalizedHeatId,
+                    existingScore?.event_id ?? derivedEventId ?? null
+                );
 
                 // Save score
                 const { error: scoreError } = await this.supabase!
                     .from('scores')
                     .insert({
                         id: updatedScore.id,
-                        event_id: updatedScore.event_id,
+                        event_id: resolvedEventId,
                         heat_id: normalizedHeatId,
                         competition: request.competition,
                         division: request.division,
@@ -480,10 +511,10 @@ export class ScoreRepository extends BaseRepository {
 
         try {
             this.ensureSupabase();
-            
-            // Get context from localStorage or fall back to score's own competition
+
             const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
             const globalEventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
+            const heatEventId = await this.resolveEventIdForHeat(normalizedHeatId, globalEventId ?? null);
 
             // Avoid ON CONFLICT batch cardinality errors when local storage contains duplicated ids.
             const dedupedScores = Array.from(
@@ -502,7 +533,7 @@ export class ScoreRepository extends BaseRepository {
                 competition: s.competition,
                 division: s.division,
                 round: s.round,
-                event_id: globalEventId || s.event_id || null
+                event_id: heatEventId ?? s.event_id ?? globalEventId ?? null
             })));
 
             const { error } = await this.supabase!
@@ -510,7 +541,7 @@ export class ScoreRepository extends BaseRepository {
                 .upsert(dedupedScores.map(s => ({
                     id: s.id,
                     heat_id: s.heat_id,
-                    event_id: globalEventId || s.event_id || null, // Use score's own event_id if global is missing
+                    event_id: heatEventId ?? s.event_id ?? globalEventId ?? null,
                     competition: s.competition || 'Competition',
                     division: s.division || 'OPEN',
                     round: s.round || 1,

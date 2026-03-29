@@ -68,7 +68,6 @@ export function useHeatManager() {
 
     const {
         publishTimerPause,
-        markHeatFinished,
         publishConfigUpdate,
         publishTimerReset
     } = useRealtimeSync();
@@ -104,7 +103,7 @@ export function useHeatManager() {
 
         // 1. Pause Timer & Update Status
         try {
-            await publishTimerPause(currentHeatId);
+            await publishTimerPause(currentDbHeatId);
         } catch (error) {
             console.warn('Impossible de mettre le timer en pause', error);
         }
@@ -114,12 +113,6 @@ export function useHeatManager() {
             console.log('✅ Heat fermé:', currentDbHeatId);
         } catch (error) {
             console.log('⚠️ Heat fermé en mode local uniquement', error);
-        }
-
-        try {
-            await markHeatFinished(currentHeatId);
-        } catch (error) {
-            console.warn('Impossible de marquer le heat comme terminé', error);
         }
 
         // Force local stop immediately so admin UI never keeps counting after close.
@@ -135,7 +128,7 @@ export function useHeatManager() {
             console.warn('Impossible de persister le timer arrêté localement', error);
         }
 
-        setHeatStatus('finished');
+        setHeatStatus('closed');
 
         // 2. Update Judge Work Count
         const newWorkCount = { ...judgeWorkCount };
@@ -161,7 +154,7 @@ export function useHeatManager() {
         }
 
         const currentHeatScores = (scores || []).filter(
-            (score) => ensureHeatId(score.heat_id) === currentHeatId && Number(score.score) > 0
+            (score) => ensureHeatId(score.heat_id) === currentDbHeatId && Number(score.score) > 0
         );
         const hasCurrentHeatResults = currentHeatScores.length > 0;
 
@@ -169,7 +162,7 @@ export function useHeatManager() {
             // Logic to advance qualifiers (complex logic from App.tsx)
             if (hasCurrentHeatResults) {
                 try {
-                const currentEntriesRaw = await fetchHeatEntriesWithParticipants(currentHeatId);
+                const currentEntriesRaw = await fetchHeatEntriesWithParticipants(currentDbHeatId);
                 const currentEntries = normalizeHeatEntries(currentEntriesRaw);
 
                 if (currentEntries.length) {
@@ -191,7 +184,7 @@ export function useHeatManager() {
                         });
                     });
 
-                    const interferenceCalls = await fetchInterferenceCalls(currentHeatId);
+                    const interferenceCalls = await fetchInterferenceCalls(currentDbHeatId);
                     const effectiveInterferences = computeEffectiveInterferences(interferenceCalls, Math.max(config.judges.length, 1));
                     const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves, false, effectiveInterferences)
                         .sort((a, b) => a.rank - b.rank);
@@ -429,7 +422,7 @@ export function useHeatManager() {
 
         setConfig(newConfig);
         persistConfig(newConfig);
-        setHeatStatus(advanced ? 'waiting' : 'finished');
+        setHeatStatus(advanced ? 'waiting' : 'closed');
 
         // Keep kiosk/tablets aligned with the newly selected heat.
         if (advanced && isSupabaseConfigured() && supabase && newConfig.competition) {
@@ -496,7 +489,7 @@ export function useHeatManager() {
         const nextHeatKey = getNextHeatSyncTarget(newConfig, advanced);
 
         try {
-            await publishConfigUpdate(currentHeatId, newConfig); // Inform current heat subscribers
+            await publishConfigUpdate(currentDbHeatId, newConfig); // Inform current heat subscribers
 
             if (nextHeatKey) {
                 // createHeat uses upsert, so calling it only for the actual next heat is safe and idempotent.
@@ -543,7 +536,6 @@ export function useHeatManager() {
         setTimer,
         publishTimerPause,
         updateHeatStatus,
-        markHeatFinished,
         createHeat,
         saveHeatConfig,
         saveTimerState,

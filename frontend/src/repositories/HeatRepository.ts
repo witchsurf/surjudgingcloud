@@ -195,8 +195,11 @@ export class HeatRepository extends BaseRepository {
                 logger.info('HeatRepository', 'Heat config queued offline', { heatId: normalizedHeatId });
                 saveOffline({
                     table: 'heat_configs',
-                    action: 'insert',
-                    payload: payload,
+                    action: 'upsert',
+                    payload: {
+                        rows: payload,
+                        options: { onConflict: 'heat_id' }
+                    },
                     timestamp: Date.now()
                 });
                 if (assignmentPayload.length > 0) {
@@ -210,6 +213,16 @@ export class HeatRepository extends BaseRepository {
                         timestamp: Date.now()
                     });
                 }
+                saveOffline({
+                    table: '__heat_config_repair__',
+                    action: 'upsert',
+                    payload: {
+                        heat_id: normalizedHeatId,
+                        config: payload,
+                        assignments: assignmentPayload,
+                    },
+                    timestamp: Date.now()
+                });
             },
             'saveHeatConfig'
         );

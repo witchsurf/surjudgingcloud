@@ -10,12 +10,12 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge } from '../api/supabaseClient';
 import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
-import { canonicalizeScores } from '../api/modules/scoring.api';
+import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 
@@ -349,6 +349,35 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       ),
     [config.competition, config.division, config.round, config.heatId]
   );
+
+  const resolveEventIdForCurrentHeat = useCallback(async (): Promise<number | null> => {
+    if (activeEventId) {
+      return activeEventId;
+    }
+
+    if (heatId) {
+      const heatMetadata = await fetchHeatMetadata(heatId);
+      if (heatMetadata?.event_id) {
+        return heatMetadata.event_id;
+      }
+    }
+
+    try {
+      const persistedEventIdRaw = localStorage.getItem(ACTIVE_EVENT_STORAGE_KEY) || localStorage.getItem('eventId');
+      const persistedEventId = persistedEventIdRaw ? Number(persistedEventIdRaw) : NaN;
+      if (Number.isFinite(persistedEventId) && persistedEventId > 0) {
+        return persistedEventId;
+      }
+    } catch {
+      // Ignore storage access failures and continue fallback chain.
+    }
+
+    if (config.competition) {
+      return await fetchEventIdByName(config.competition);
+    }
+
+    return null;
+  }, [activeEventId, config.competition, heatId]);
 
   useEffect(() => {
     setPlannedTimerDuration(timer.duration);
@@ -903,7 +932,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     setOverridePending(true);
     try {
-      const eventId = activeEventId ?? await fetchEventIdByName(config.competition);
+      const eventId = await resolveEventIdForCurrentHeat();
+      if (!eventId) {
+        throw new Error('Événement introuvable pour enregistrer l’interférence.');
+      }
       await upsertInterferenceCall({
         event_id: eventId,
         heat_id: heatId,
@@ -1130,10 +1162,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       try {
-        let eventId = activeEventId ?? null;
-        if (!eventId) {
-          eventId = await fetchEventIdByName(config.competition);
-        }
+        const eventId = await resolveEventIdForCurrentHeat();
         if (!eventId) {
           if (!cancelled) setEventDivisionOptions([]);
           return;
@@ -1780,7 +1809,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     setRebuildPending(true);
     try {
-      const eventId = await fetchEventIdByName(config.competition);
+      const eventId = await resolveEventIdForCurrentHeat();
       if (!eventId) {
         throw new Error('Événement introuvable.');
       }
@@ -1914,68 +1943,125 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleCloseHeat = async () => {
-    // --- Check for pending scores FIRST ---
-    // Only consider wave slots that were actually started on this heat:
-    // if at least one judge scored surfer+wave, every configured judge is expected there.
-    let heatScoresForCheck = (mergedScores || []).filter(
-      s => ensureHeatId(s.heat_id) === heatId && Number(s.score) > 0
-    );
+    // First rely on the database view so close validation uses the same source of truth
+    // regardless of local cache, judge aliasing, or offline replay timing.
+    let pending: string[] = [];
+    let hasAnyScoresFromDb: boolean | null = null;
+    try {
+      const closeValidation = await fetchHeatCloseValidation(heatId);
+      if (closeValidation) {
+        hasAnyScoresFromDb = closeValidation.has_any_scores;
+        pending = closeValidation.pending_slots.map((slot) =>
+          `${(slot.judge_display_name || slot.judge_station).trim()} → ${normalizeJerseyLabel(slot.surfer)} V${Number(slot.wave_number)}`
+        );
+      } else {
+        const missingSlots = await fetchHeatMissingScoreSlots(heatId);
+        pending = missingSlots.map((slot) =>
+          `${(slot.judge_display_name || slot.judge_station).trim()} → ${normalizeJerseyLabel(slot.surfer)} V${Number(slot.wave_number)}`
+        );
+      }
+    } catch (error) {
+      if (!(error instanceof Error) || (!error.message.startsWith('FUNCTION_NOT_READY:') && !error.message.startsWith('VIEW_NOT_READY:'))) {
+        console.warn('Impossible de charger la validation DB de fermeture du heat:', error);
+      }
 
-    if (heatScoresForCheck.length === 0) {
       try {
-        const dbScores = await fetchHeatScores(heatId);
-        heatScoresForCheck = dbScores.filter(
+        const missingSlots = await fetchHeatMissingScoreSlots(heatId);
+        pending = missingSlots.map((slot) =>
+        `${(slot.judge_display_name || slot.judge_station).trim()} → ${normalizeJerseyLabel(slot.surfer)} V${Number(slot.wave_number)}`
+        );
+      } catch (viewError) {
+        if (!(viewError instanceof Error) || !viewError.message.startsWith('VIEW_NOT_READY:')) {
+          console.warn('Impossible de charger la vue DB des notes manquantes:', viewError);
+        }
+
+        // Fallback local check if the DB validation is not yet available.
+        let heatScoresForCheck = (mergedScores || []).filter(
           s => ensureHeatId(s.heat_id) === heatId && Number(s.score) > 0
         );
-      } catch (error) {
-        console.warn('Impossible de charger les scores DB pour vérifier les notes manquantes:', error);
-      }
-    }
 
-    // Build configured judge IDs (resolved from station names)
-    const safeIdent = Object.fromEntries(
-      Object.entries(config.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
-    );
-    const configuredJudgeIds = (config.judges || []).map(
-      station => (safeIdent[station.trim().toUpperCase()] || station).trim()
-    ).filter(Boolean);
+        if (heatScoresForCheck.length === 0) {
+          try {
+            const dbScores = await fetchHeatScores(heatId);
+            heatScoresForCheck = dbScores.filter(
+              s => ensureHeatId(s.heat_id) === heatId && Number(s.score) > 0
+            );
+          } catch (scoreError) {
+            console.warn('Impossible de charger les scores DB pour vérifier les notes manquantes:', scoreError);
+          }
+        }
 
-    // Find pending: judge × surfer × wave combos that are missing,
-    // but only for surfer/wave pairs that already have at least one note.
-    const pending: string[] = [];
-    if (configuredJudgeIds.length > 0 && heatScoresForCheck.length > 0) {
-      const startedWaveKeys = new Set<string>();
-      heatScoresForCheck.forEach(s => {
-        const surfer = normalizeJerseyLabel(s.surfer);
-        startedWaveKeys.add(`${surfer}::${Number(s.wave_number)}`);
-      });
-
-      configuredJudgeIds.forEach(judgeId => {
-        startedWaveKeys.forEach((key) => {
-          const [surfer, waveRaw] = key.split('::');
-          const waveNumber = Number(waveRaw);
-          const hasScore = heatScoresForCheck.some(
-            s => normalizeJerseyLabel(s.surfer) === surfer &&
-                 Number(s.wave_number) === waveNumber &&
-                 ((s.judge_id || '').trim() === judgeId || (s.judge_station || '').trim() === judgeId)
+        const safeIdent = Object.fromEntries(
+          Object.entries(config.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), (v || '').trim()])
+        );
+        const configuredJudges = (config.judges || []).map((station) => {
+          const normalizedStation = (station || '').trim().toUpperCase();
+          const identityId = (safeIdent[normalizedStation] || '').trim();
+          const matchKeys = new Set(
+            [normalizedStation, normalizeScoreJudgeId(normalizedStation), identityId, normalizeScoreJudgeId(identityId)]
+              .map((value) => (value || '').trim().toUpperCase())
+              .filter(Boolean)
           );
 
-          if (hasScore) return;
+          return {
+            station,
+            normalizedStation,
+            identityId,
+            matchKeys,
+          };
+        }).filter((judge) => judge.matchKeys.size > 0);
 
-          const upperJudgeId = judgeId?.trim().toUpperCase();
-          const stationForJudge = Object.entries(config.judgeIdentities || {})
-            .find(([, uuid]) => uuid?.trim().toUpperCase() === upperJudgeId)?.[0] || judgeId;
+        if (configuredJudges.length > 0 && heatScoresForCheck.length > 0) {
+          hasAnyScoresFromDb = true;
+          const startedWaveKeys = new Set<string>();
+          heatScoresForCheck.forEach(s => {
+            const surfer = normalizeJerseyLabel(s.surfer);
+            startedWaveKeys.add(`${surfer}::${Number(s.wave_number)}`);
+          });
 
-          const judgeName = (
-            config.judgeNames?.[stationForJudge] ||
-            config.judgeNames?.[judgeId] ||
-            (availableOfficialJudges.find(j => j.id?.trim().toUpperCase() === upperJudgeId)?.name) ||
-            stationForJudge
-          ).trim();
+          configuredJudges.forEach((judge) => {
+            startedWaveKeys.forEach((key) => {
+              const [surfer, waveRaw] = key.split('::');
+              const waveNumber = Number(waveRaw);
+              const hasScore = heatScoresForCheck.some(
+                (s) => {
+                  if (normalizeJerseyLabel(s.surfer) !== surfer || Number(s.wave_number) !== waveNumber) {
+                    return false;
+                  }
 
-          pending.push(`${judgeName} → ${surfer} V${waveNumber}`);
-        });
-      });
+                  const scoreKeys = new Set(
+                    [
+                      getScoreJudgeIdentity(s),
+                      getScoreJudgeStation(s),
+                      normalizeScoreJudgeId(s.judge_id),
+                    ]
+                      .map((value) => (value || '').trim().toUpperCase())
+                      .filter(Boolean)
+                  );
+
+                  return Array.from(scoreKeys).some((scoreKey) => judge.matchKeys.has(scoreKey));
+                }
+              );
+
+              if (hasScore) return;
+
+              const upperJudgeId = (judge.identityId || judge.normalizedStation).trim().toUpperCase();
+              const stationForJudge = judge.station;
+
+              const judgeName = (
+                config.judgeNames?.[stationForJudge] ||
+                config.judgeNames?.[judge.normalizedStation] ||
+                (availableOfficialJudges.find(j => j.id?.trim().toUpperCase() === upperJudgeId)?.name) ||
+                stationForJudge
+              ).trim();
+
+              pending.push(`${judgeName} → ${surfer} V${waveNumber}`);
+            });
+          });
+        } else {
+          hasAnyScoresFromDb = heatScoresForCheck.length > 0;
+        }
+      }
     }
 
     if (pending.length > 0) {
@@ -1988,7 +2074,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       if (!forceClose) return;
     }
 
-    let canCloseWithoutWarning = canCloseHeat();
+    let canCloseWithoutWarning = hasAnyScoresFromDb ?? canCloseHeat();
 
     // Safety net: if local/store state is stale, verify directly from DB before showing warning.
     if (!canCloseWithoutWarning) {
@@ -2023,11 +2109,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
 
     // Failsafe validation
     try {
-      let eventId: number | null = null;
-      // Try to find event ID from config or name
-      if (config.competition) {
-        eventId = await fetchEventIdByName(config.competition);
-      }
+      const eventId = await resolveEventIdForCurrentHeat();
 
       if (eventId) {
         // Optional external workflow hook (disabled by default to avoid cross-division side effects).
@@ -2991,7 +3073,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 <button
                   onClick={async () => {
                     try {
-                      const eventId = await fetchEventIdByName(config.competition);
+                      const eventId = await resolveEventIdForCurrentHeat();
                       if (eventId) {
                         const seq = await fetchOrderedHeatSequence(eventId, config.division);
                         console.log('🔥 Heat Sequence:', seq);

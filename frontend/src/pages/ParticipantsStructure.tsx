@@ -509,7 +509,12 @@ export default function ParticipantsStructure() {
         previewCategory,
         preview.rounds,
         seedMap,
-        { overwrite, repechage: preview.repechage }
+        {
+          overwrite,
+          repechage: preview.repechage,
+          defaultJudges: ['J1', 'J2', 'J3'],
+          tournamentType: format,
+        }
       );
 
       persistJudgeInterfaceConfig(selectedEvent, previewCategory, preview.rounds, preview.repechage);

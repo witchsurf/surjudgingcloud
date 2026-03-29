@@ -313,7 +313,11 @@ const GenerateHeatsPage = () => {
             }))
           })),
           participantsBySeed,
-          { overwrite: true }
+          {
+            overwrite: true,
+            defaultJudges: ['J1', 'J2', 'J3'],
+            tournamentType: selectedFormat,
+          }
         );
       }
 
