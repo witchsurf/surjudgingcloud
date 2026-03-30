@@ -397,8 +397,11 @@ export function useHeatParticipants(heatId: string) {
     const loadingRef = useRef(false);
     const lastLoadRef = useRef(0);
     const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const activeHeatIdRef = useRef(heatId);
+    const requestIdRef = useRef(0);
 
     useEffect(() => {
+        activeHeatIdRef.current = heatId;
         if (!heatId || !supabase) {
             setParticipants({});
             setSource('empty');
@@ -406,6 +409,9 @@ export function useHeatParticipants(heatId: string) {
         }
 
         const loadParticipants = async (force = false) => {
+            const requestedHeatId = heatId;
+            const requestId = requestIdRef.current + 1;
+            requestIdRef.current = requestId;
             const now = Date.now();
             if (!force && (loadingRef.current || now - lastLoadRef.current < PARTICIPANT_RELOAD_THROTTLE_MS)) {
                 return;
@@ -414,9 +420,12 @@ export function useHeatParticipants(heatId: string) {
             loadingRef.current = true;
             setLoading(true);
             setError(null);
+            const isStale = () =>
+                activeHeatIdRef.current !== requestedHeatId || requestIdRef.current !== requestId;
 
             try {
-                const entries = await fetchHeatEntriesWithParticipants(heatId);
+                const entries = await fetchHeatEntriesWithParticipants(requestedHeatId);
+                if (isStale()) return;
                 const entryNames = (entries || []).reduce((acc, entry) => {
                     const color = normalizeColor(entry.color);
                     const name = entry.participant?.name?.trim();
@@ -436,7 +445,8 @@ export function useHeatParticipants(heatId: string) {
                     return;
                 }
 
-                const mappings = await fetchHeatSlotMappings(heatId);
+                const mappings = await fetchHeatSlotMappings(requestedHeatId);
+                if (isStale()) return;
 
                 if (mappings && mappings.length > 0) {
                     const placeholderNames = mappings.reduce((acc, mapping) => {
@@ -449,7 +459,8 @@ export function useHeatParticipants(heatId: string) {
                         return acc;
                     }, {} as Record<string, string>);
 
-                    const resolvedFromSource = (await resolveNamesFromMappings(heatId, mappings)) || {};
+                    const resolvedFromSource = (await resolveNamesFromMappings(requestedHeatId, mappings)) || {};
+                    if (isStale()) return;
                     const merged = {
                         ...placeholderNames,
                         ...entryNames,
@@ -475,14 +486,16 @@ export function useHeatParticipants(heatId: string) {
 
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Unknown error loading participants';
-                console.error('[useHeatParticipants] Failed to load participants', { heatId, error: message });
-                setError(message);
-                setParticipants({});
-                setSource('empty');
-                setLoading(false);
+                if (!isStale()) {
+                    console.error('[useHeatParticipants] Failed to load participants', { heatId: requestedHeatId, error: message });
+                    setError(message);
+                    setLoading(false);
+                }
             } finally {
                 loadingRef.current = false;
-                lastLoadRef.current = Date.now();
+                if (!isStale()) {
+                    lastLoadRef.current = Date.now();
+                }
             }
         };
 

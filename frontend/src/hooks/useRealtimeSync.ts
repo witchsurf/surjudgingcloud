@@ -654,13 +654,18 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
         if (error) {
           console.error('Erreur chargement état initial:', error);
-          // Appeler onUpdate avec des valeurs par défaut même en cas d'erreur
-          const defaultTimer: HeatTimer = {
-            isRunning: false,
-            startTime: null,
-            duration: DEFAULT_TIMER_DURATION
-          };
-          onUpdate(defaultTimer, null, 'waiting');
+          const state = heatChannelRegistry.get(normalizedHeatId);
+          if (state?.lastTimer || state?.lastConfig || state?.lastStatus) {
+            onUpdate(
+              state.lastTimer ?? {
+                isRunning: false,
+                startTime: null,
+                duration: DEFAULT_TIMER_DURATION
+              },
+              state.lastConfig ?? null,
+              state.lastStatus ?? 'waiting'
+            );
+          }
           return;
         }
 
@@ -719,7 +724,20 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
         }
       } catch (err) {
         console.log('⚠️ Chargement initial en mode local uniquement', err instanceof Error ? err.message : err);
-        // Appeler onUpdate avec des valeurs par défaut même en cas d'exception
+        const state = heatChannelRegistry.get(normalizedHeatId);
+        if (state?.lastTimer || state?.lastConfig || state?.lastStatus) {
+          onUpdate(
+            state.lastTimer ?? {
+              isRunning: false,
+              startTime: null,
+              duration: DEFAULT_TIMER_DURATION
+            },
+            state.lastConfig ?? null,
+            state.lastStatus ?? 'waiting'
+          );
+          return;
+        }
+
         const defaultTimer: HeatTimer = {
           isRunning: false,
           startTime: null,

@@ -478,9 +478,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       } catch (error) {
         if (!cancelled) {
           console.warn('⚠️ Impossible de charger les données de correction pour le panel admin:', error);
-          setDbHeatScores([]);
-          setDbHeatScoreHistory([]);
-          setDbOverrideLogs([]);
         }
       }
     };
