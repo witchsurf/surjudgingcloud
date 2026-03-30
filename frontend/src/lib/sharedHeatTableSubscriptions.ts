@@ -10,10 +10,14 @@ type HeatSignalState = {
   pollingInterval: ReturnType<typeof setInterval> | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
   reconnecting: boolean;
+  retryCount: number;
   listeners: Record<HeatSignalType, Map<string, Listener>>;
 };
 
 const HEAT_SIGNAL_POLL_INTERVAL_MS = 2500;
+const HEAT_SIGNAL_RETRY_BASE_MS = 3000;
+const HEAT_SIGNAL_RETRY_MAX_MS = 30000;
+const HEAT_SIGNAL_POLL_ONLY_THRESHOLD = 4;
 
 const heatSignalRegistry = new Map<string, HeatSignalState>();
 let listenerSequence = 0;
@@ -23,6 +27,7 @@ const createState = (): HeatSignalState => ({
   pollingInterval: null,
   retryTimer: null,
   reconnecting: false,
+  retryCount: 0,
   listeners: {
     scores: new Map(),
     interference: new Map(),
@@ -131,7 +136,16 @@ const ensureState = (heatId: string) => {
           if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
             if (state.reconnecting) return;
             state.reconnecting = true;
-            console.warn(`⚠️ Shared stream ${channelName} dropped (${status}), scheduling reconnect...`, err);
+            state.retryCount += 1;
+            const retryDelay = Math.min(
+              HEAT_SIGNAL_RETRY_MAX_MS,
+              HEAT_SIGNAL_RETRY_BASE_MS * 2 ** Math.max(state.retryCount - 1, 0)
+            );
+            const fallbackOnly = state.retryCount >= HEAT_SIGNAL_POLL_ONLY_THRESHOLD;
+            console.warn(
+              `⚠️ Shared stream ${channelName} dropped (${status}), ${fallbackOnly ? 'falling back to polling before next retry' : 'scheduling reconnect'}...`,
+              err
+            );
             state.channel = null;
             supabase!.removeChannel(channel).catch(() => {});
             if (state.retryTimer) clearTimeout(state.retryTimer);
@@ -141,9 +155,10 @@ const ensureState = (heatId: string) => {
                 console.log(`🔄 Reconnecting shared heat stream ${channelName}...`);
                 setupChannel();
               }
-            }, 3000 + Math.random() * 2000);
+            }, fallbackOnly ? retryDelay : retryDelay + Math.random() * 2000);
           } else if (status === 'SUBSCRIBED') {
             state.reconnecting = false;
+            state.retryCount = 0;
             // Heal any missed events upon reconnect by emitting events
             emit(state, 'scores');
             emit(state, 'interference');

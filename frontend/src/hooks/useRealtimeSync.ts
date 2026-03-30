@@ -52,6 +52,7 @@ interface HeatChannelState {
   retryTimer: ReturnType<typeof setTimeout> | null;
   pollingInterval: ReturnType<typeof setInterval> | null;
   reconnecting: boolean;
+  retryCount: number;
 }
 
 const heatChannelRegistry = new Map<string, HeatChannelState>();
@@ -60,6 +61,9 @@ let heatListenerSequence = 0;
 const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
 const LOCAL_POLL_INTERVAL_MS = 1000;
 const CLOUD_POLL_INTERVAL_MS = 3000;
+const REALTIME_RETRY_BASE_MS = 3000;
+const REALTIME_RETRY_MAX_MS = 30000;
+const REALTIME_RETRY_POLL_ONLY_THRESHOLD = 4;
 
 const hasOfflineAdminSession = () => {
   if (typeof window === 'undefined') return false;
@@ -160,6 +164,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
     retryTimer: null,
     pollingInterval: null,
     reconnecting: false,
+    retryCount: 0,
   };
   heatChannelRegistry.set(normalizedHeatId, state);
 
@@ -272,6 +277,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
       }
       if (status === 'SUBSCRIBED') {
         state.reconnecting = false;
+        state.retryCount = 0;
         void refreshHeatSnapshot(normalizedHeatId);
         window.dispatchEvent(new CustomEvent('heatRealtimeResync', {
           detail: { heatId: normalizedHeatId }
@@ -282,7 +288,16 @@ const createHeatChannel = (normalizedHeatId: string) => {
       if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
         if (state.reconnecting) return;
         state.reconnecting = true;
-        console.warn(`⚠️ Heat stream ${channelName} dropped (${status}), scheduling reconnect...`);
+        state.retryCount += 1;
+        const retryDelay = Math.min(
+          REALTIME_RETRY_MAX_MS,
+          REALTIME_RETRY_BASE_MS * 2 ** Math.max(state.retryCount - 1, 0)
+        );
+        const fallbackOnly = state.retryCount >= REALTIME_RETRY_POLL_ONLY_THRESHOLD;
+
+        console.warn(
+          `⚠️ Heat stream ${channelName} dropped (${status}), ${fallbackOnly ? 'falling back to polling before next retry' : 'scheduling reconnect'}...`
+        );
         state.channel = null;
         supabase!.removeChannel(channel).catch(() => {});
         if (state.retryTimer) clearTimeout(state.retryTimer);
@@ -292,7 +307,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
             console.log(`🔄 Reconnecting heat config stream ${channelName}...`);
             setupChannel();
           }
-        }, 3000 + Math.random() * 2000);
+        }, fallbackOnly ? retryDelay : retryDelay + Math.random() * 2000);
       }
     });
   };
