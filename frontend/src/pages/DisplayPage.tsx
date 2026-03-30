@@ -719,11 +719,9 @@ export default function DisplayPage() {
 
         window.addEventListener('newScoreRealtime', handleNewScore);
 
-        if (useLocalPolling) {
-            pollingInterval = setInterval(() => {
-                refreshScores(liveHeatIdRef.current || currentHeatId);
-            }, 1000);
-        }
+        pollingInterval = setInterval(() => {
+            refreshScores(liveHeatIdRef.current || currentHeatId);
+        }, useLocalPolling ? 1000 : 5000);
 
         return () => {
             cancelled = true;

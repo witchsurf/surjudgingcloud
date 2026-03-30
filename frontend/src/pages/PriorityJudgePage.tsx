@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import { getHeatIdentifiers } from '../utils/heat';
+import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
@@ -34,6 +35,33 @@ export default function PriorityJudgePage() {
     const searchParams = new URLSearchParams(window.location.search);
     const eventIdFromUrl = searchParams.get('eventId');
     const isPriorityJudgeSession = currentJudge?.id === 'priority-judge';
+
+    const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
+        const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
+        const nextRound = updates.round ?? prev.round;
+        const nextHeatId = updates.heatId ?? prev.heatId;
+        const previousDivision = (prev.division || '').trim().toUpperCase();
+        const heatChanged =
+            previousDivision !== nextDivision ||
+            prev.round !== nextRound ||
+            prev.heatId !== nextHeatId;
+
+        const merged = {
+            ...prev,
+            ...updates,
+        } as AppConfig;
+
+        if (!heatChanged) {
+            return merged;
+        }
+
+        return {
+            ...merged,
+            priorityState: buildEqualPriorityState(),
+            surferNames: {},
+            surferCountries: {},
+        };
+    };
 
     const handlePriorityConfigChange = async (nextConfig: AppConfig) => {
         setConfig(nextConfig);
@@ -86,8 +114,7 @@ export default function PriorityJudgePage() {
         if (!targetEventId) return;
 
         return subscribeToEventConfig(targetEventId, (row) => {
-            setConfig((prev) => ({
-                ...prev,
+            setConfig((prev) => applyHeatScopedConfig(prev, {
                 competition: resolveEventDisplayName(row.event_name, prev.competition),
                 division: row.division || prev.division,
                 round: row.round ?? prev.round,
@@ -104,10 +131,7 @@ export default function PriorityJudgePage() {
         const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, nextConfig, status) => {
             setTimer(nextTimer);
             if (nextConfig) {
-                setConfig((prev) => ({
-                    ...prev,
-                    ...nextConfig
-                }));
+                setConfig((prev) => applyHeatScopedConfig(prev, nextConfig));
             }
             if (status) {
                 setHeatStatus(status);
@@ -136,8 +160,7 @@ export default function PriorityJudgePage() {
             const parsed = parseActiveHeatId(row.active_heat_id);
             if (!parsed) return;
 
-            setConfig((prev) => ({
-                ...prev,
+            setConfig((prev) => applyHeatScopedConfig(prev, {
                 competition: resolveEventDisplayName(eventName, prev.competition),
                 division: parsed.division,
                 round: parsed.round,

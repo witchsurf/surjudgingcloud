@@ -322,11 +322,22 @@ function JudgeInterface({
 
   useEffect(() => {
     if (!currentHeatId || !isSupabaseConfigured()) return () => { };
-    return subscribeToHeatScores(currentHeatId, () => {
+
+    const unsubscribe = subscribeToHeatScores(currentHeatId, () => {
       refetchSocreOverrides().catch((err) => {
         console.warn('Failed to refetch judge scores after shared heat update:', err);
       });
     });
+    const pollingInterval = window.setInterval(() => {
+      refetchSocreOverrides().catch((err) => {
+        console.warn('Failed to poll judge scores after realtime drift:', err);
+      });
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      window.clearInterval(pollingInterval);
+    };
   }, [currentHeatId, refetchSocreOverrides]);
 
 

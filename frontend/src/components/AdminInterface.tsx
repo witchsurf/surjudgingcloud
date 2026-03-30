@@ -504,11 +504,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         void loadDbScores();
       });
     }
-    if (isLocalSupabaseMode()) {
-      pollingInterval = setInterval(() => {
-        void loadDbScores();
-      }, 2500);
-    }
+    pollingInterval = setInterval(() => {
+      void loadDbScores();
+    }, isLocalSupabaseMode() ? 2500 : 5000);
     return () => {
       cancelled = true;
       window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
@@ -581,8 +579,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   );
 
   const analyticsHeatOverrides = React.useMemo(
-    () => remapOverrideLogsToJudgeIdentity(overrideLogs, currentHeatIdentityMap),
-    [currentHeatIdentityMap, overrideLogs, remapOverrideLogsToJudgeIdentity]
+    () => remapOverrideLogsToJudgeIdentity(effectiveOverrideLogs, currentHeatIdentityMap),
+    [currentHeatIdentityMap, effectiveOverrideLogs, remapOverrideLogsToJudgeIdentity]
   );
 
   const eventIdentityMap = React.useMemo(
