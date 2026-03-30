@@ -619,19 +619,103 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       return localJudgeAccuracy;
     }
 
-    return eventJudgeAccuracySummary.map((row) => ({
-      judgeId: row.judge_identity_id,
-      scoredWaves: row.scored_waves,
-      consensusSamples: row.consensus_samples,
-      meanAbsDeviation: row.mean_abs_deviation,
-      bias: row.bias,
-      withinHalfPointRate: row.within_half_point_rate,
-      overrideCount: row.override_count,
-      overrideRate: row.override_rate,
-      averageOverrideDelta: row.average_override_delta,
-      qualityScore: row.quality_score,
-      qualityBand: row.quality_band,
-    }));
+    const normalizeJudgeProfileKey = (value?: string | null) =>
+      (value || '')
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, ' ');
+
+    const groups = new Map<string, {
+      judgeId: string;
+      judgeName: string;
+      memberIds: Set<string>;
+      scoredWaves: number;
+      consensusSamples: number;
+      deviationWeightedSum: number;
+      biasWeightedSum: number;
+      withinHalfPointWeightedSum: number;
+      overrideCount: number;
+      overrideDeltaWeightedSum: number;
+    }>();
+
+    eventJudgeAccuracySummary.forEach((row) => {
+      const judgeName = (row.judge_display_name || row.judge_identity_id || '').trim();
+      const groupKey = normalizeJudgeProfileKey(judgeName || row.judge_identity_id);
+      if (!groupKey) return;
+
+      const existing = groups.get(groupKey) ?? {
+        judgeId: `event::${groupKey}`,
+        judgeName,
+        memberIds: new Set<string>(),
+        scoredWaves: 0,
+        consensusSamples: 0,
+        deviationWeightedSum: 0,
+        biasWeightedSum: 0,
+        withinHalfPointWeightedSum: 0,
+        overrideCount: 0,
+        overrideDeltaWeightedSum: 0,
+      };
+
+      existing.memberIds.add((row.judge_identity_id || '').trim());
+      existing.scoredWaves += row.scored_waves;
+      existing.consensusSamples += row.consensus_samples;
+      existing.deviationWeightedSum += row.mean_abs_deviation * row.consensus_samples;
+      existing.biasWeightedSum += row.bias * row.consensus_samples;
+      existing.withinHalfPointWeightedSum += row.within_half_point_rate * row.consensus_samples;
+      existing.overrideCount += row.override_count;
+      existing.overrideDeltaWeightedSum += row.average_override_delta * row.override_count;
+      groups.set(groupKey, existing);
+    });
+
+    return Array.from(groups.values())
+      .map((group) => {
+        const meanAbsDeviation = group.consensusSamples > 0
+          ? Number((group.deviationWeightedSum / group.consensusSamples).toFixed(2))
+          : 0;
+        const bias = group.consensusSamples > 0
+          ? Number((group.biasWeightedSum / group.consensusSamples).toFixed(2))
+          : 0;
+        const withinHalfPointRate = group.consensusSamples > 0
+          ? Number((group.withinHalfPointWeightedSum / group.consensusSamples).toFixed(2))
+          : 0;
+        const overrideRate = group.scoredWaves > 0
+          ? Number(((group.overrideCount / group.scoredWaves) * 100).toFixed(2))
+          : 0;
+        const averageOverrideDelta = group.overrideCount > 0
+          ? Number((group.overrideDeltaWeightedSum / group.overrideCount).toFixed(2))
+          : 0;
+        const deviationPenalty = Math.min(45, meanAbsDeviation * 30);
+        const biasPenalty = Math.min(15, Math.abs(bias) * 20);
+        const overridePenalty = Math.min(20, overrideRate * 0.5);
+        const withinBonus = Math.min(10, withinHalfPointRate * 0.1);
+        const qualityScore = Number(
+          Math.max(0, Math.min(100, 100 - deviationPenalty - biasPenalty - overridePenalty + withinBonus)).toFixed(2)
+        );
+        const qualityBand =
+          qualityScore >= 85 ? 'excellent' :
+          qualityScore >= 70 ? 'good' :
+          qualityScore >= 55 ? 'watch' :
+          'needs_review';
+
+        return {
+          judgeId: group.judgeId,
+          scoredWaves: group.scoredWaves,
+          consensusSamples: group.consensusSamples,
+          meanAbsDeviation,
+          bias,
+          withinHalfPointRate,
+          overrideCount: group.overrideCount,
+          overrideRate,
+          averageOverrideDelta,
+          qualityScore,
+          qualityBand,
+        };
+      })
+      .sort((a, b) => {
+        if (b.qualityScore !== a.qualityScore) return b.qualityScore - a.qualityScore;
+        if (a.meanAbsDeviation !== b.meanAbsDeviation) return a.meanAbsDeviation - b.meanAbsDeviation;
+        return a.judgeId.localeCompare(b.judgeId);
+      });
   }, [analyticsScope, eventJudgeAccuracySummary, localJudgeAccuracy]);
 
   const analyticsJudgeNames = React.useMemo(() => {
@@ -699,6 +783,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       if (judgeId && judgeName && !names.has(judgeId)) {
         names.set(judgeId, judgeName);
       }
+      if (judgeName) {
+        names.set(`event::${judgeName.trim().toUpperCase().replace(/\s+/g, ' ')}`, judgeName);
+      }
     });
 
     return names;
@@ -723,14 +810,31 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const selectedJudgeDeviations = React.useMemo(() => {
     if (!selectedJudgeProfileId) return [];
     const analysisScores = analyticsScope === 'event' ? analyticsEventScores : analyticsHeatScores;
+    if (analyticsScope === 'event' && selectedJudgeProfileId.startsWith('event::')) {
+      const expectedName = (analyticsJudgeNames.get(selectedJudgeProfileId) || '').trim().toUpperCase();
+      const matchingJudgeIds = Array.from(new Set(
+        analysisScores
+          .filter((score) => (score.judge_name || '').trim().toUpperCase() === expectedName)
+          .map((score) => score.judge_id)
+          .filter(Boolean)
+      ));
+      return matchingJudgeIds
+        .flatMap((judgeId) => buildJudgeDeviationDetails(analysisScores, judgeId))
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        .slice(0, 8);
+    }
     return buildJudgeDeviationDetails(analysisScores, selectedJudgeProfileId).slice(0, 8);
-  }, [analyticsEventScores, analyticsHeatScores, analyticsScope, selectedJudgeProfileId]);
+  }, [analyticsEventScores, analyticsHeatScores, analyticsJudgeNames, analyticsScope, selectedJudgeProfileId]);
 
   const selectedJudgeOverrides = React.useMemo(() => {
     if (!selectedJudgeProfileId) return [];
     const sourceLogs = analyticsScope === 'event' ? analyticsEventOverrides : analyticsHeatOverrides;
+    if (analyticsScope === 'event' && selectedJudgeProfileId.startsWith('event::')) {
+      const expectedName = (analyticsJudgeNames.get(selectedJudgeProfileId) || '').trim().toUpperCase();
+      return sourceLogs.filter((log) => (log.judge_name || '').trim().toUpperCase() === expectedName);
+    }
     return sourceLogs.filter((log) => log.judge_id === selectedJudgeProfileId);
-  }, [analyticsEventOverrides, analyticsHeatOverrides, analyticsScope, selectedJudgeProfileId]);
+  }, [analyticsEventOverrides, analyticsHeatOverrides, analyticsJudgeNames, analyticsScope, selectedJudgeProfileId]);
 
   const selectedJudgeOverrideSummary = React.useMemo(() => {
     const summary = {
