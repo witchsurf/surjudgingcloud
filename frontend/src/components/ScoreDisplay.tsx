@@ -63,7 +63,9 @@ function normalizePriorityKey(label?: string) {
 
 function getPriorityBadgeTextClass(label?: string) {
   const normalized = normalizePriorityKey(label);
-  return normalized === 'BLANC' || normalized === 'WHITE' ? 'text-primary-900' : 'text-white';
+  return normalized === 'BLANC' || normalized === 'WHITE'
+    ? 'text-primary-950 font-extrabold drop-shadow-none'
+    : 'text-white';
 }
 
 type NeededScoreInfo = {
@@ -441,6 +443,11 @@ export default function ScoreDisplay({
                 const completedWaves = stat.waves.filter(
                   (w) => w.isComplete && w.score > 0
                 );
+                const bestWaveScores = completedWaves
+                  .map((wave) => wave.score)
+                  .sort((a, b) => b - a);
+                const bestWave = bestWaveScores[0] ?? null;
+                const secondBestWave = bestWaveScores[1] ?? null;
                 const wavesCount = completedWaves.length;
                 const displayName = surferNames?.[stat.surfer] ?? stat.surfer;
                 const country = surferCountries?.[stat.surfer];
@@ -494,7 +501,7 @@ export default function ScoreDisplay({
                       </div>
 
                       {/* Bloc droit: score total + analytics */}
-                      <div className="flex items-center gap-6 text-right ml-16 sm:ml-0">
+                      <div className="flex items-center gap-4 sm:gap-6 text-right ml-16 sm:ml-0">
                         <div className="space-y-1">
                           {stat.rank === 1 && winBy != null && (
                             <div className="text-[10px] font-bold text-success-600 bg-success-50 px-2 py-0.5 rounded-full border border-success-100 uppercase tracking-widest inline-block">
@@ -507,6 +514,23 @@ export default function ScoreDisplay({
                               <span>{neededInfo.label}</span>
                             </div>
                           )}
+                        </div>
+
+                        <div className="min-w-[84px] sm:min-w-[96px]">
+                          <div className="flex items-start justify-end gap-4 sm:gap-5">
+                            <div className="text-center">
+                              <div className="text-danger-500 font-bebas text-xl sm:text-2xl leading-none">V1</div>
+                              <div className="text-primary-950 font-black text-xl sm:text-2xl leading-none mt-1">
+                                {bestWave != null ? bestWave.toFixed(2) : '--'}
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-danger-500 font-bebas text-xl sm:text-2xl leading-none">V2</div>
+                              <div className="text-primary-950 font-black text-xl sm:text-2xl leading-none mt-1">
+                                {secondBestWave != null ? secondBestWave.toFixed(2) : '--'}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                         
                         <div className="min-w-[80px]">
