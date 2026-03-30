@@ -9,6 +9,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, promoteOpeningToOrdered, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
+import { sanitizeScoreInput, validateScore } from '../utils/scoring';
 import { canonicalizeScores } from '../api/modules/scoring.api';
 import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 
@@ -605,11 +606,12 @@ function JudgeInterface({
       return;
     }
 
-    const scoreValue = parseFloat(inputValue.replace(',', '.'));
-    if (isNaN(scoreValue) || scoreValue < 0 || scoreValue > 10) {
-      alert('Le score doit être entre 0 et 10');
+    const validation = validateScore(inputValue);
+    if (!validation.isValid || validation.value === undefined) {
+      alert(validation.error || 'Le score est invalide');
       return;
     }
+    const scoreValue = validation.value;
 
     try {
       setIsSubmittingScore(true);
@@ -1236,14 +1238,11 @@ function JudgeInterface({
                           {isActive ? (
                             <input
                               ref={activeInputRef}
-                              type="number"
-                              min="0"
-                              max="10"
-                              step="0.01"
+                              type="text"
                               inputMode="decimal"
                               enterKeyHint="done"
                               value={inputValue}
-                              onChange={(e) => setInputValue(e.target.value)}
+                              onChange={(e) => setInputValue(sanitizeScoreInput(e.target.value))}
                               onKeyDown={handleKeyPress}
                               onBlur={() => {
                                 if (inputValue.trim()) {
@@ -1254,7 +1253,7 @@ function JudgeInterface({
                                 }
                               }}
                               className={`${ultraCompactGrid ? 'w-full min-w-[34px] min-h-[32px] text-sm px-1 py-1' : compactGrid ? 'w-full min-w-[38px] min-h-[36px] text-base px-1 py-1.5' : 'w-16 min-w-[42px] min-h-[40px] text-lg px-1.5 py-2'} text-center font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-4 focus:ring-primary/30 shadow-sm touch-manipulation`}
-                              placeholder="0.00"
+                              placeholder="0.0"
                               autoFocus
                             />
                           ) : scoreData ? (

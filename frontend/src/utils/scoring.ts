@@ -8,12 +8,34 @@ function roundScore(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+export function sanitizeScoreInput(input: string): string {
+  let normalized = (input || '').replace(/\s+/g, '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+  const firstDotIndex = normalized.indexOf('.');
+
+  if (firstDotIndex >= 0) {
+    const integerPart = normalized.slice(0, firstDotIndex + 1);
+    const decimalPart = normalized
+      .slice(firstDotIndex + 1)
+      .replace(/\./g, '')
+      .slice(0, 1);
+    normalized = integerPart + decimalPart;
+  }
+
+  return normalized;
+}
+
 export function validateScore(input: string): ScoreValidation {
-  if (!input.trim()) {
+  const normalizedInput = sanitizeScoreInput(input);
+
+  if (!normalizedInput.trim()) {
     return { isValid: false, error: 'Score requis' };
   }
 
-  const score = parseFloat(input.replace(',', '.'));
+  if (!/^(?:10(?:[.]0)?|[0-9](?:[.][0-9])?)$/.test(normalizedInput)) {
+    return { isValid: false, error: 'Une seule décimale autorisée' };
+  }
+
+  const score = parseFloat(normalizedInput);
 
   if (isNaN(score)) {
     return { isValid: false, error: 'Score invalide' };
@@ -23,8 +45,7 @@ export function validateScore(input: string): ScoreValidation {
     return { isValid: false, error: 'Score doit être entre 0 et 10' };
   }
 
-  // Arrondir à 2 décimales
-  const roundedScore = roundScore(score);
+  const roundedScore = Math.round(score * 10) / 10;
 
   return { isValid: true, value: roundedScore };
 }

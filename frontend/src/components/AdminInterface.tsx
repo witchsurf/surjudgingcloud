@@ -3,7 +3,7 @@ import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCir
 import { useNavigate } from 'react-router-dom';
 import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
-import { validateScore } from '../utils/scoring';
+import { sanitizeScoreInput, validateScore } from '../utils/scoring';
 import { buildJudgeDeviationDetails, calculateJudgeAccuracy, calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
@@ -3934,8 +3934,8 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                       type="text"
                       inputMode="decimal"
                       value={scoreInput}
-                      onChange={(e) => { setScoreInput(e.target.value); setOverrideStatus(null); }}
-                      placeholder="0.00"
+                      onChange={(e) => { setScoreInput(sanitizeScoreInput(e.target.value)); setOverrideStatus(null); }}
+                      placeholder="0.0"
                       className="w-full border border-gray-300 rounded-lg px-3 py-2"
                       required
                     />
