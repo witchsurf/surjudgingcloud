@@ -22,6 +22,7 @@ import { calculateSurferStats } from '../utils/scoring';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
+import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 import type { AppConfig, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
 
@@ -690,6 +691,9 @@ export default function DisplayPage() {
             // Recharger les scores en temps réel si le heat change
             refreshScores(liveHeatIdRef.current || currentHeatId);
         });
+        const unsubscribeScores = subscribeToHeatScores(currentHeatId, () => {
+            refreshScores(liveHeatIdRef.current || currentHeatId);
+        });
 
         // Écouter les scores en temps réel (INSERT/UPDATE)
         const handleNewScore = (event: Event) => {
@@ -724,6 +728,7 @@ export default function DisplayPage() {
         return () => {
             cancelled = true;
             unsubscribe();
+            unsubscribeScores();
             window.removeEventListener('newScoreRealtime', handleNewScore);
             if (pollingInterval) {
                 clearInterval(pollingInterval);

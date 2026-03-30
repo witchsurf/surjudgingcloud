@@ -10,6 +10,7 @@ import { computeEffectiveInterferences } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, promoteOpeningToOrdered, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
 import { canonicalizeScores } from '../api/modules/scoring.api';
+import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 
 interface JudgeInterfaceProps {
   config?: AppConfig;
@@ -317,6 +318,15 @@ function JudgeInterface({
     };
     window.addEventListener('scoreOverrideApplied', handleOverride);
     return () => window.removeEventListener('scoreOverrideApplied', handleOverride);
+  }, [currentHeatId, refetchSocreOverrides]);
+
+  useEffect(() => {
+    if (!currentHeatId || !isSupabaseConfigured()) return () => { };
+    return subscribeToHeatScores(currentHeatId, () => {
+      refetchSocreOverrides().catch((err) => {
+        console.warn('Failed to refetch judge scores after shared heat update:', err);
+      });
+    });
   }, [currentHeatId, refetchSocreOverrides]);
 
 

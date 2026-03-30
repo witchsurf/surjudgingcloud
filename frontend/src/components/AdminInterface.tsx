@@ -16,6 +16,7 @@ import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isL
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
 import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
+import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 
@@ -121,6 +122,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [syncError, setSyncError] = useState<string | null>(null);
   const [dbHeatScores, setDbHeatScores] = useState<Score[]>([]);
   const [dbHeatScoreHistory, setDbHeatScoreHistory] = useState<Score[]>([]);
+  const [dbOverrideLogs, setDbOverrideLogs] = useState<ScoreOverrideLog[]>([]);
   const [analyticsScope, setAnalyticsScope] = useState<'heat' | 'event'>('heat');
   const [eventAccuracyScores, setEventAccuracyScores] = useState<Score[]>([]);
   const [eventAccuracyOverrides, setEventAccuracyOverrides] = useState<ScoreOverrideLog[]>([]);
@@ -417,30 +419,68 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return Array.from(byLogicalKey.values());
   }, [scores, dbHeatScores]);
 
+  const effectiveOverrideLogs = React.useMemo(() => {
+    const byId = new Map<string, ScoreOverrideLog>();
+    [...(overrideLogs || []), ...(dbOverrideLogs || [])].forEach((log) => {
+      if (!log?.id) return;
+      byId.set(log.id, log);
+    });
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    );
+  }, [dbOverrideLogs, overrideLogs]);
+
+  const resetCorrectionForm = useCallback(() => {
+    setSelectedJudge('');
+    setSelectedSurfer('');
+    setSelectedWave('');
+    setMoveTargetSurfer('');
+    setMoveTargetWave('');
+    setScoreInput('');
+    setOverrideComment('');
+    setHeadJudgeOverride(false);
+    setInterferenceType('INT1');
+  }, []);
+
+  const refreshCorrectionPanelData = useCallback(async () => {
+    if (!supabase) throw new Error('Supabase non initialisé');
+
+    const [{ data: scoreRows, error: scoresError }, { data: overrideRows, error: overridesError }] = await Promise.all([
+      supabase
+        .from('scores')
+        .select('*')
+        .eq('heat_id', heatId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('score_overrides')
+        .select('*')
+        .eq('heat_id', heatId)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    if (scoresError) throw scoresError;
+    if (overridesError) throw overridesError;
+
+    const nextScores = (scoreRows || []) as Score[];
+    setDbHeatScoreHistory(nextScores);
+    setDbHeatScores(canonicalizeScores(nextScores));
+    setDbOverrideLogs((overrideRows || []) as ScoreOverrideLog[]);
+  }, [heatId]);
+
   useEffect(() => {
     let cancelled = false;
     let pollingInterval: ReturnType<typeof setInterval> | null = null;
+    let unsubscribeScores: (() => void) | null = null;
 
     const loadDbScores = async () => {
       try {
-        if (!supabase) throw new Error('Supabase non initialisé');
-        const { data, error } = await supabase
-          .from('scores')
-          .select('*')
-          .eq('heat_id', heatId)
-          .order('created_at', { ascending: true });
-
-        if (error) throw error;
-        const nextScores = (data || []) as Score[];
-        if (!cancelled) {
-          setDbHeatScoreHistory(nextScores);
-          setDbHeatScores(canonicalizeScores(nextScores));
-        }
+        await refreshCorrectionPanelData();
       } catch (error) {
         if (!cancelled) {
-          console.warn('⚠️ Impossible de charger les scores DB pour le panel admin:', error);
+          console.warn('⚠️ Impossible de charger les données de correction pour le panel admin:', error);
           setDbHeatScores([]);
           setDbHeatScoreHistory([]);
+          setDbOverrideLogs([]);
         }
       }
     };
@@ -455,6 +495,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     };
 
     window.addEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
+    const handleOverrideEvent = () => {
+      void loadDbScores();
+    };
+    window.addEventListener('scoreOverrideApplied', handleOverrideEvent as EventListener);
+    if (!isLocalSupabaseMode()) {
+      unsubscribeScores = subscribeToHeatScores(heatId, () => {
+        void loadDbScores();
+      });
+    }
     if (isLocalSupabaseMode()) {
       pollingInterval = setInterval(() => {
         void loadDbScores();
@@ -463,11 +512,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => {
       cancelled = true;
       window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
+      window.removeEventListener('scoreOverrideApplied', handleOverrideEvent as EventListener);
+      if (unsubscribeScores) {
+        unsubscribeScores();
+      }
       if (pollingInterval) {
         clearInterval(pollingInterval);
       }
     };
-  }, [heatId]);
+  }, [heatId, refreshCorrectionPanelData]);
 
   const currentScore = React.useMemo(() => {
     if (!selectedJudge || !selectedSurfer || !selectedWave) return undefined;
@@ -835,6 +888,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       });
 
       if (result) {
+        await refreshCorrectionPanelData();
+        resetCorrectionForm();
         setOverrideStatus({
           type: 'success',
           message: `Note mise à jour à ${validation.value.toFixed(2)} (${reasonLabels[result.reason]})`
@@ -884,21 +939,61 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     setOverridePending(true);
     try {
       if (!supabase) throw new Error('Supabase non initialisé');
+      const destinationWave = Number(moveTargetWave);
+      const destinationSurfer = moveTargetSurferKey;
       const { error } = await supabase
         .from('scores')
         .update({
-          surfer: moveTargetSurferKey,
-          wave_number: Number(moveTargetWave),
+          surfer: destinationSurfer,
+          wave_number: destinationWave,
           timestamp: new Date().toISOString()
         })
         .eq('id', currentScore.id);
 
       if (error) throw error;
 
+      const moveComment = [
+        `Déplacement de ${normalizeJerseyLabel(selectedSurfer)} V${selectedWave} vers ${destinationSurfer} V${destinationWave}.`,
+        overrideComment.trim(),
+      ].filter(Boolean).join(' ');
+
+      const { error: logError } = await supabase
+        .from('score_overrides')
+        .insert({
+          id: crypto.randomUUID(),
+          heat_id: heatId,
+          score_id: currentScore.id,
+          judge_id: currentScore.judge_id,
+          judge_name: currentScore.judge_name,
+          judge_station: currentScore.judge_station || selectedJudge,
+          judge_identity_id: currentScore.judge_identity_id || null,
+          surfer: destinationSurfer,
+          wave_number: destinationWave,
+          previous_score: currentScore.score,
+          new_score: currentScore.score,
+          reason: 'correction',
+          comment: moveComment,
+          overridden_by: 'chief_judge',
+          overridden_by_name: 'Chef Judge',
+          created_at: new Date().toISOString(),
+        });
+
+      if (logError) throw logError;
+
+      const updatedScore: Score = {
+        ...currentScore,
+        surfer: destinationSurfer,
+        wave_number: destinationWave,
+        timestamp: new Date().toISOString(),
+      };
+
       setOverrideStatus({
         type: 'success',
-        message: `Note déplacée vers ${moveTargetSurferKey} · Vague ${moveTargetWave}.`
+        message: `Note déplacée vers ${destinationSurfer} · Vague ${destinationWave}.`
       });
+      resetCorrectionForm();
+      await refreshCorrectionPanelData();
+      window.dispatchEvent(new CustomEvent('newScoreRealtime', { detail: updatedScore }));
       // Broadcast score change so judge tablets immediately refresh their grid
       window.dispatchEvent(new CustomEvent('scoreOverrideApplied', {
         detail: {
@@ -906,11 +1001,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           judgeId: resolvedJudgeIdMove,
           action: 'move',
           fromSurfer: normalizeJerseyLabel(selectedSurfer),
-          toSurfer: moveTargetSurferKey,
-          wave: Number(moveTargetWave)
+          toSurfer: destinationSurfer,
+          wave: destinationWave
         }
       }));
-      onReloadData();
     } catch (error) {
       console.error('❌ Move score erreur:', error);
       setOverrideStatus({ type: 'error', message: 'Impossible de déplacer la note.' });
@@ -954,7 +1048,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         type: 'success',
         message: `Interférence ${interferenceType} enregistrée pour ${selectedSurferKey} (vague ${selectedWave}).`
       });
-      onReloadData();
+      resetCorrectionForm();
+      await refreshCorrectionPanelData();
     } catch (error) {
       console.error('❌ Interférence admin erreur:', error);
       setOverrideStatus({ type: 'error', message: 'Impossible d’enregistrer l’interférence.' });
@@ -3885,11 +3980,11 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
           <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
         <div className="p-6 bg-white border-t-4 border-primary-950">
-          {overrideLogs.length === 0 ? (
+          {effectiveOverrideLogs.length === 0 ? (
             <p className="text-sm text-gray-500">Aucune correction enregistrée pour ce heat.</p>
           ) : (
             <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-              {overrideLogs.map(log => (
+              {effectiveOverrideLogs.map(log => (
                 <div key={log.id} className="border border-gray-200 rounded-lg px-4 py-3 text-sm bg-gray-50">
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-900">{config.judgeNames[log.judge_id] || log.judge_name}</span>
