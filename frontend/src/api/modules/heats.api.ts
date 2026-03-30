@@ -675,6 +675,43 @@ const isActiveHeatPointerEventIdSchemaError = (error: unknown) => {
     );
 };
 
+const ACTIVE_HEAT_POINTER_EVENT_ID_CACHE_KEY = 'active_heat_pointer_event_id_upsert_support';
+const ACTIVE_HEAT_POINTER_EVENT_ID_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+let activeHeatPointerEventIdSupport: boolean | null = null;
+
+const readActiveHeatPointerEventIdSupport = () => {
+    if (activeHeatPointerEventIdSupport !== null) return activeHeatPointerEventIdSupport;
+    if (typeof window === 'undefined') return null;
+
+    try {
+        const raw = window.localStorage.getItem(ACTIVE_HEAT_POINTER_EVENT_ID_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { supported?: boolean; at?: number };
+        if (typeof parsed?.supported !== 'boolean' || typeof parsed?.at !== 'number') return null;
+        if (Date.now() - parsed.at > ACTIVE_HEAT_POINTER_EVENT_ID_CACHE_TTL_MS) {
+            window.localStorage.removeItem(ACTIVE_HEAT_POINTER_EVENT_ID_CACHE_KEY);
+            return null;
+        }
+        activeHeatPointerEventIdSupport = parsed.supported;
+        return activeHeatPointerEventIdSupport;
+    } catch {
+        return null;
+    }
+};
+
+const writeActiveHeatPointerEventIdSupport = (supported: boolean) => {
+    activeHeatPointerEventIdSupport = supported;
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(
+            ACTIVE_HEAT_POINTER_EVENT_ID_CACHE_KEY,
+            JSON.stringify({ supported, at: Date.now() })
+        );
+    } catch {
+        // Ignore localStorage failures and keep the in-memory hint only.
+    }
+};
+
 export async function upsertActiveHeatPointer(input: {
     eventId?: number | null;
     eventName: string;
@@ -690,13 +727,19 @@ export async function upsertActiveHeatPointer(input: {
         updated_at: input.updatedAt ?? new Date().toISOString(),
     };
 
-    if (input.eventId && Number.isFinite(input.eventId)) {
+    const eventIdUpsertSupport = readActiveHeatPointerEventIdSupport();
+
+    if (input.eventId && Number.isFinite(input.eventId) && eventIdUpsertSupport !== false) {
         const { error } = await supabase!
             .from('active_heat_pointer')
             .upsert(payload, { onConflict: 'event_id' });
 
-        if (!error) return;
+        if (!error) {
+            writeActiveHeatPointerEventIdSupport(true);
+            return;
+        }
         if (!isActiveHeatPointerEventIdSchemaError(error)) throw error;
+        writeActiveHeatPointerEventIdSupport(false);
     }
 
     const fallbackPayload = {
