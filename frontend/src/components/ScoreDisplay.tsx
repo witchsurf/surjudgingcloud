@@ -516,17 +516,17 @@ export default function ScoreDisplay({
                           )}
                         </div>
 
-                        <div className="min-w-[84px] sm:min-w-[96px]">
-                          <div className="flex items-start justify-end gap-4 sm:gap-5">
-                            <div className="text-center">
-                              <div className="text-danger-500 font-bebas text-xl sm:text-2xl leading-none">V1</div>
-                              <div className="text-primary-950 font-black text-xl sm:text-2xl leading-none mt-1">
+                        <div className="min-w-[116px] sm:min-w-[136px]">
+                          <div className="rounded-xl border-2 border-primary-200 overflow-hidden bg-white shadow-sm">
+                            <div className="grid grid-cols-2 bg-primary-900 text-white">
+                              <div className="px-2 py-1 text-center font-bebas text-lg sm:text-xl leading-none tracking-wide border-r border-primary-700">V1</div>
+                              <div className="px-2 py-1 text-center font-bebas text-lg sm:text-xl leading-none tracking-wide">V2</div>
+                            </div>
+                            <div className="grid grid-cols-2">
+                              <div className="px-2 py-1.5 text-center text-primary-950 font-black text-xl sm:text-2xl leading-none border-r border-primary-100">
                                 {bestWave != null ? bestWave.toFixed(2) : '--'}
                               </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="text-danger-500 font-bebas text-xl sm:text-2xl leading-none">V2</div>
-                              <div className="text-primary-950 font-black text-xl sm:text-2xl leading-none mt-1">
+                              <div className="px-2 py-1.5 text-center text-primary-950 font-black text-xl sm:text-2xl leading-none">
                                 {secondBestWave != null ? secondBestWave.toFixed(2) : '--'}
                               </div>
                             </div>
