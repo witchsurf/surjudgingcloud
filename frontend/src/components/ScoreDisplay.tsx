@@ -61,6 +61,11 @@ function normalizePriorityKey(label?: string) {
   return colorLabelMap[raw as HeatColor] ?? raw;
 }
 
+function getPriorityBadgeTextClass(label?: string) {
+  const normalized = normalizePriorityKey(label);
+  return normalized === 'BLANC' || normalized === 'WHITE' ? 'text-primary-900' : 'text-white';
+}
+
 type NeededScoreInfo = {
   needed: number;
   targetRank: number;
@@ -383,7 +388,7 @@ export default function ScoreDisplay({
                         <div className="relative">
                           <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-md ${style.badge} ring-offset-2 ring-offset-primary-950 flex items-center justify-center`}>
                             {isPriorityActive && !isInFlight && priorityBadge && (
-                              <span className="text-white font-bebas text-base sm:text-lg leading-none drop-shadow">{priorityBadge}</span>
+                              <span className={`${getPriorityBadgeTextClass(row.surfer)} font-bebas text-base sm:text-lg leading-none drop-shadow`}>{priorityBadge}</span>
                             )}
                           </div>
                           <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
@@ -454,7 +459,7 @@ export default function ScoreDisplay({
                           <div className="relative">
                             <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-md ${style.badge} ring-offset-2 ring-offset-primary-950 flex items-center justify-center`}>
                               {isPriorityActive && !isInFlight && priorityBadge && (
-                                <span className="text-white font-bebas text-base sm:text-lg leading-none drop-shadow">{priorityBadge}</span>
+                                <span className={`${getPriorityBadgeTextClass(stat.surfer)} font-bebas text-base sm:text-lg leading-none drop-shadow`}>{priorityBadge}</span>
                               )}
                             </div>
                             <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
