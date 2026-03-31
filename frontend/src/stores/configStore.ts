@@ -53,6 +53,11 @@ const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
         surferNames: snapshot.surferNames
     });
 
+    const inferredSurfers = Array.isArray(snapshot.surfers) && snapshot.surfers.length > 0
+        ? snapshot.surfers
+        : getColorSet(snapshot.heat_size || 0);
+    const fallbackSurfers = inferredSurfers.length > 0 ? inferredSurfers : ['ROUGE', 'BLANC', 'JAUNE'];
+
     return {
         competition: resolveEventDisplayName(snapshot.eventDetails?.name, snapshot.event_name),
         division: snapshot.division || 'OPEN',
@@ -66,10 +71,10 @@ const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
             }
             return acc;
         }, {} as Record<string, string>) || {},
-        surfers: snapshot.surfers || ['ROUGE', 'BLANC', 'JAUNE', 'BLEU'],
+        surfers: fallbackSurfers,
         surferNames: snapshot.surferNames || {},
         surferCountries: snapshot.surferCountries || {},
-        surfersPerHeat: snapshot.surfers?.length || 4,
+        surfersPerHeat: fallbackSurfers.length,
         waves: 15,
         tournamentType: 'elimination' as 'elimination' | 'repechage',
         totalSurfers: 0,

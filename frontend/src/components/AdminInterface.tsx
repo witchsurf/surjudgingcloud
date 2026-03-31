@@ -1552,8 +1552,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const dbStatus = (row?.status || '').toString().trim().toLowerCase();
     const liveStatus = (heatStatus || '').toString().trim().toLowerCase();
 
-    // Prefer the live status when it is more restrictive than the DB sequence.
-    if (liveStatus === 'closed' || liveStatus === 'finished') {
+    // Only a live "closed" status should override the DB sequence.
+    // "finished" can linger during heat switches and must not lock a new OPEN heat.
+    if (liveStatus === 'closed') {
       return liveStatus;
     }
 
@@ -1562,7 +1563,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const isCurrentHeatLocked = isLockedStatus(currentHeatStatus);
   // Latch: once locked, never un-lock due to DB/realtime race — BUT reset when user switches heat
-  const currentHeatKey = `${config.round}::${config.heatId}`;
+  const currentHeatKey = `${config.competition}::${config.division}::${config.round}::${config.heatId}`;
   if (lockedForHeatRef.current !== currentHeatKey) {
     // User switched to a different heat — reset the latch
     hasBeenLockedRef.current = false;

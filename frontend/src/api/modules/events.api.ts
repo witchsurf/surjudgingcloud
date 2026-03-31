@@ -176,7 +176,7 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
     ensureSupabase();
     const { data, error } = await supabase!
         .from('event_last_config')
-        .select('event_id, event_name, division, round, heat_number, judges, updated_at')
+        .select('event_id, event_name, division, round, heat_number, judges, surfers, surfer_names, surfer_countries, updated_at')
         .eq('event_id', eventId)
         .maybeSingle();
 
@@ -203,10 +203,26 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
             .filter((value): value is { id: string; name: string; identityId?: string } => Boolean(value))
         : [];
 
-    let surfers: string[] | undefined;
+    let surfers: string[] | undefined = Array.isArray((data as any).surfers)
+        ? (data as any).surfers.map((value: unknown) => String(value ?? '').trim().toUpperCase()).filter(Boolean)
+        : undefined;
     let heatSize: number | undefined;
-    let surferNames: Record<string, string> | undefined;
-    let surferCountries: Record<string, string> | undefined;
+    let surferNames: Record<string, string> | undefined = data?.surfer_names && typeof data.surfer_names === 'object'
+        ? Object.entries(data.surfer_names as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
+            const normalizedKey = key.trim().toUpperCase();
+            const normalizedValue = String(value ?? '').trim();
+            if (normalizedKey && normalizedValue) acc[normalizedKey] = normalizedValue;
+            return acc;
+        }, {})
+        : undefined;
+    let surferCountries: Record<string, string> | undefined = data?.surfer_countries && typeof data.surfer_countries === 'object'
+        ? Object.entries(data.surfer_countries as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
+            const normalizedKey = key.trim().toUpperCase();
+            const normalizedValue = String(value ?? '').trim();
+            if (normalizedKey && normalizedValue) acc[normalizedKey] = normalizedValue;
+            return acc;
+        }, {})
+        : undefined;
 
     try {
         const { data: heatData } = await supabase!
@@ -226,24 +242,33 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
                     .filter((entry) => entry.color)
                     .sort((a, b) => (a.position || 0) - (b.position || 0));
 
-                surfers = Array.from(new Set(sortedEntries.map((entry) => {
+                const liveSurfers = Array.from(new Set(sortedEntries.map((entry) => {
                     const color = entry.color?.toString().toUpperCase();
                     return color || '';
                 }).filter(Boolean)));
+                if (liveSurfers.length > 0) {
+                    surfers = liveSurfers;
+                }
 
-                surferNames = {};
-                surferCountries = {};
+                const liveSurferNames: Record<string, string> = {};
+                const liveSurferCountries: Record<string, string> = {};
                 sortedEntries.forEach((entry) => {
                     const color = entry.color?.toString().toUpperCase();
                     if (color && entry.participant) {
                         if (entry.participant.name) {
-                            surferNames![color] = entry.participant.name;
+                            liveSurferNames[color] = entry.participant.name;
                         }
                         if (entry.participant.country) {
-                            surferCountries![color] = entry.participant.country;
+                            liveSurferCountries[color] = entry.participant.country;
                         }
                     }
                 });
+                if (Object.keys(liveSurferNames).length > 0) {
+                    surferNames = { ...(surferNames || {}), ...liveSurferNames };
+                }
+                if (Object.keys(liveSurferCountries).length > 0) {
+                    surferCountries = { ...(surferCountries || {}), ...liveSurferCountries };
+                }
             }
         }
     } catch (err) {
