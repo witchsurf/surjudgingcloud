@@ -12,7 +12,7 @@ import {
         upsertActiveHeatPointer,
 } from '../api/supabaseClient';
 import { canUseSupabaseConnection, isSupabaseConfigured, supabase } from '../lib/supabase';
-import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
+import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
@@ -378,8 +378,23 @@ export function useHeatManager() {
         const nextHeatKeyCandidate = nextCandidate ? ensureHeatId(nextCandidate.id) : null;
         if (nextHeatKeyCandidate && isSupabaseConfigured()) {
             try {
-                const nextHeatEntriesRaw = await fetchHeatEntriesWithParticipants(nextHeatKeyCandidate);
+                const [nextHeatEntriesRaw, nextHeatMappingsRaw] = await Promise.all([
+                    fetchHeatEntriesWithParticipants(nextHeatKeyCandidate),
+                    fetchHeatSlotMappings(nextHeatKeyCandidate).catch(() => []),
+                ]);
                 const nextHeatEntries = normalizeHeatEntries(nextHeatEntriesRaw);
+                const inferredHeatSize = Math.max(
+                    Number(nextCandidate?.heat_size ?? 0),
+                    Array.isArray(nextHeatMappingsRaw) ? nextHeatMappingsRaw.length : 0,
+                    nextHeatEntries.length
+                );
+                if ((!Array.isArray(nextCandidate?.color_order) || nextCandidate.color_order.length === 0) && inferredHeatSize > 0) {
+                    const fallbackSurfers = getColorSet(inferredHeatSize).map((color) => colorLabelMap[color] ?? color);
+                    if (fallbackSurfers.length > 0) {
+                        nextSurfers = fallbackSurfers;
+                        nextSurfersPerHeat = inferredHeatSize;
+                    }
+                }
                 const inferredNames: Record<string, string> = {};
                 const inferredCountries: Record<string, string> = {};
 

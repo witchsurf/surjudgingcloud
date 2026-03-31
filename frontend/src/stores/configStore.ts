@@ -10,12 +10,13 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AppConfig } from '../types';
 import { INITIAL_CONFIG } from '../utils/constants';
 import { eventRepository, heatRepository } from '../repositories';
-import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, parseActiveHeatId, upsertActiveHeatPointer } from '../api/supabaseClient';
+import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, fetchHeatSlotMappings, parseActiveHeatId, upsertActiveHeatPointer } from '../api/supabaseClient';
 import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { logger } from '../lib/logger';
 import type { EventConfigSnapshot } from '../repositories';
 import { supabase } from '../lib/supabase';
+import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 
 interface ConfigStore {
     // State
@@ -221,17 +222,51 @@ export const useConfigStore = create<ConfigStore>()(
                         let snapshot = await eventRepository.fetchEventConfigSnapshot(eventId);
 
                         // Fallback: enrich snapshot with lineup names if missing
-                        if (snapshot && (!snapshot.surferNames || Object.keys(snapshot.surferNames).length === 0)) {
+                        if (snapshot) {
                             try {
                                 const heatKey = ensureHeatId(
                                     `${snapshot.event_name}_${snapshot.division}_R${snapshot.round}_H${snapshot.heat_number}`
                                 );
-                                const entries = await fetchHeatEntriesWithParticipants(heatKey);
+                                const [entries, heatMeta, slotMappings] = await Promise.all([
+                                    fetchHeatEntriesWithParticipants(heatKey),
+                                    fetchHeatMetadata(heatKey),
+                                    fetchHeatSlotMappings(heatKey).catch(() => []),
+                                ]);
                                 const surferNames: Record<string, string> = {};
                                 const surferCountries: Record<string, string> = {};
+                                const entryColors = entries
+                                    .map((entry) => String(entry.color ?? '').trim().toUpperCase())
+                                    .filter(Boolean);
+                                const orderedHeatColors = Array.isArray(heatMeta?.color_order)
+                                    ? heatMeta.color_order
+                                        .map((value) => String(value ?? '').trim().toUpperCase())
+                                        .filter(Boolean)
+                                    : [];
+                                const inferredHeatSize = Math.max(
+                                    Number(heatMeta?.heat_size ?? 0),
+                                    Array.isArray(slotMappings) ? slotMappings.length : 0,
+                                    entryColors.length,
+                                    Array.isArray(snapshot.surfers) ? snapshot.surfers.length : 0
+                                );
+                                const fallbackColors = inferredHeatSize > 0
+                                    ? getColorSet(inferredHeatSize).map((color) => colorLabelMap[color] ?? color)
+                                    : [];
+                                const normalizedSnapshotSurfers = Array.isArray(snapshot.surfers)
+                                    ? snapshot.surfers.map((value) => String(value ?? '').trim()).filter(Boolean)
+                                    : [];
+                                const normalizedOrderedHeatColors = orderedHeatColors.map((color) => {
+                                    const heatColor = color as HeatColor;
+                                    return colorLabelMap[heatColor] ?? color;
+                                });
+                                const nextSurfers = normalizedOrderedHeatColors.length > 0
+                                    ? normalizedOrderedHeatColors
+                                    : fallbackColors.length > 0
+                                        ? fallbackColors
+                                        : normalizedSnapshotSurfers;
 
                                 entries.forEach((entry) => {
-                                    const color = entry.color?.toUpperCase();
+                                    const rawColor = String(entry.color ?? '').trim().toUpperCase();
+                                    const color = rawColor ? (colorLabelMap[rawColor as HeatColor] ?? rawColor) : '';
                                     if (!color) return;
                                     if (entry.participant?.name) {
                                         surferNames[color] = entry.participant.name;
@@ -243,7 +278,10 @@ export const useConfigStore = create<ConfigStore>()(
 
                                 snapshot = {
                                     ...snapshot,
-                                    surferNames: Object.keys(surferNames).length ? surferNames : snapshot.surferNames,
+                                    surfers: nextSurfers.length > 0 ? nextSurfers : snapshot.surfers,
+                                    surferNames: Object.keys(surferNames).length
+                                        ? { ...(snapshot.surferNames || {}), ...surferNames }
+                                        : snapshot.surferNames,
                                     surferCountries: Object.keys(surferCountries).length
                                         ? { ...snapshot.surferCountries, ...surferCountries }
                                         : snapshot.surferCountries,
