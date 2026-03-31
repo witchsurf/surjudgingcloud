@@ -11,6 +11,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
 import { resolveEventDisplayName } from '../utils/eventName';
+import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import type { AppConfig } from '../types';
 
 export default function PriorityJudgePage() {
@@ -46,10 +47,7 @@ export default function PriorityJudgePage() {
             prev.round !== nextRound ||
             prev.heatId !== nextHeatId;
 
-        const merged = {
-            ...prev,
-            ...updates,
-        } as AppConfig;
+        const merged = mergeRealtimeConfigPreservingLineup(prev, updates);
 
         if (!heatChanged) {
             return merged;

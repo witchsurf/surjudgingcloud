@@ -21,6 +21,7 @@ import { getHeatIdentifiers } from '../utils/heat';
 import { calculateSurferStats } from '../utils/scoring';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
+import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
 import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 import type { AppConfig, Score } from '../types';
@@ -681,10 +682,9 @@ export default function DisplayPage() {
         const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, nextConfig, status) => {
             setTimer(nextTimer);
             if (nextConfig) {
-                setConfig((prev) => normalizeConfig({
-                    ...prev,
-                    ...nextConfig
-                } as AppConfig));
+                setConfig((prev) => normalizeConfig(
+                    mergeRealtimeConfigPreservingLineup(prev, nextConfig)
+                ));
             }
             if (status) setHeatStatus(status);
 
