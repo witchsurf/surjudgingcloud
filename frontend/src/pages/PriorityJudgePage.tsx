@@ -36,6 +36,8 @@ export default function PriorityJudgePage() {
     const searchParams = new URLSearchParams(window.location.search);
     const eventIdFromUrl = searchParams.get('eventId');
     const isPriorityJudgeSession = currentJudge?.id === 'priority-judge';
+    const rawPosition = searchParams.get('position');
+    const positionFromUrl = rawPosition ? rawPosition.trim() : null;
 
     const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
         const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
@@ -112,6 +114,18 @@ export default function PriorityJudgePage() {
         if (!targetEventId) return;
 
         return subscribeToEventConfig(targetEventId, (row) => {
+            if (positionFromUrl) {
+                const sameHeat =
+                    Boolean(configSaved) &&
+                    (row.division || '').trim().toUpperCase() === (config.division || '').trim().toUpperCase() &&
+                    Number(row.round ?? config.round) === Number(config.round) &&
+                    Number(row.heat_number ?? config.heatId) === Number(config.heatId);
+                if (sameHeat) {
+                    return;
+                }
+                void loadConfigFromDb(targetEventId);
+                return;
+            }
             setConfig((prev) => applyHeatScopedConfig(prev, {
                 competition: resolveEventDisplayName(row.event_name, prev.competition),
                 division: row.division || prev.division,
@@ -119,7 +133,7 @@ export default function PriorityJudgePage() {
                 heatId: row.heat_number ?? prev.heatId
             }));
         });
-    }, [eventIdFromUrl, activeEventId, configLoading, setConfig]);
+    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, configSaved, config.division, config.round, config.heatId, loadConfigFromDb]);
 
     useEffect(() => {
         if (!configSaved || !config.competition || configLoading) {

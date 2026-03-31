@@ -144,6 +144,14 @@ export default function JudgePage() {
 
         return subscribeToEventConfig(targetEventId, (row) => {
             if (positionFromUrl) {
+                const sameHeat =
+                    Boolean(configSaved) &&
+                    (row.division || '').trim().toUpperCase() === (config.division || '').trim().toUpperCase() &&
+                    Number(row.round ?? config.round) === Number(config.round) &&
+                    Number(row.heat_number ?? config.heatId) === Number(config.heatId);
+                if (sameHeat) {
+                    return;
+                }
                 void loadConfigFromDb(targetEventId);
                 return;
             }

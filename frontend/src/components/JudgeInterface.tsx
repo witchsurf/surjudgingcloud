@@ -4,7 +4,7 @@ import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
 import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchHeatMetadata, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isLocalSupabaseMode, isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
@@ -93,6 +93,9 @@ function JudgeInterface({
   const [priorityDraft, setPriorityDraft] = useState<string[]>([]);
   const [interactionWarning, setInteractionWarning] = useState<{ title: string; message: string } | null>(null);
   const activeInputRef = useRef<HTMLInputElement | null>(null);
+  const scoreRefreshInFlightRef = useRef(false);
+  const lastSharedRefreshAtRef = useRef(0);
+  const lastJudgeScoreSignatureRef = useRef('');
 
   // Unsynced safety check
   const pendingSyncCount = useMemo(() => submittedScores.filter(s => s.synced === false).length, [submittedScores]);
@@ -289,7 +292,15 @@ function JudgeInterface({
   }, []);
   const refetchJudgeScores = useCallback(async (reason: 'override' | 'shared_update' = 'shared_update') => {
     if (!currentHeatId || !judgeId) return;
+    const now = Date.now();
+    if (reason === 'shared_update' && (scoreRefreshInFlightRef.current || now - lastSharedRefreshAtRef.current < 1200)) {
+      return;
+    }
     try {
+      scoreRefreshInFlightRef.current = true;
+      if (reason === 'shared_update') {
+        lastSharedRefreshAtRef.current = now;
+      }
       console.log(
         reason === 'override'
           ? '🔄 Re-syncing scores after admin override...'
@@ -300,6 +311,13 @@ function JudgeInterface({
         (s.judge_id === judgeId || (s.judge_station || s.judge_id) === judgeStation) &&
         ensureHeatId(s.heat_id) === ensureHeatId(currentHeatId)
       );
+      const nextSignature = canonicalizeScores(myScores)
+        .map((score) => `${score.id || 'no-id'}:${score.wave_number}:${score.score}:${score.timestamp}`)
+        .join('|');
+      if (reason === 'shared_update' && nextSignature === lastJudgeScoreSignatureRef.current) {
+        return;
+      }
+      lastJudgeScoreSignatureRef.current = nextSignature;
       
       if (myScores.length > 0) {
         setSubmittedScores(canonicalizeScores(myScores));
@@ -311,6 +329,8 @@ function JudgeInterface({
       }
     } catch (err) {
       console.warn('Failed to refetch scores after override:', err);
+    } finally {
+      scoreRefreshInFlightRef.current = false;
     }
   }, [currentHeatId, judgeId, judgeStation, persistScoresToStorage]);
 
@@ -333,15 +353,17 @@ function JudgeInterface({
         console.warn('Failed to refetch judge scores after shared heat update:', err);
       });
     });
-    const pollingInterval = window.setInterval(() => {
-      refetchJudgeScores('shared_update').catch((err) => {
-        console.warn('Failed to poll judge scores after realtime drift:', err);
-      });
-    }, 5000);
+    const pollingInterval = isLocalSupabaseMode()
+      ? window.setInterval(() => {
+          refetchJudgeScores('shared_update').catch((err) => {
+            console.warn('Failed to poll judge scores after realtime drift:', err);
+          });
+        }, 5000)
+      : null;
 
     return () => {
       unsubscribe();
-      window.clearInterval(pollingInterval);
+      if (pollingInterval) window.clearInterval(pollingInterval);
     };
   }, [currentHeatId, refetchJudgeScores]);
 
