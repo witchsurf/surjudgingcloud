@@ -48,6 +48,25 @@ const slugify = (value: string) =>
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '') || 'bracket');
 
+const savePdfDocument = (doc: jsPDF, filename: string) => {
+  try {
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    console.warn('Blob download failed, falling back to jsPDF.save()', error);
+    doc.save(filename);
+  }
+};
+
 const buildHeatTable = (round: RoundSpec, heatIndex: number) => {
   const heat = round.heats[heatIndex];
   const body = heat.slots.map((slot, idx) => [
@@ -164,7 +183,7 @@ export function exportBracketToPDF(eventName: string, category: string, rounds: 
     renderRound(round);
   });
 
-  doc.save(`${slugify(`${eventName}-${category}`)}_bracket.pdf`);
+  savePdfDocument(doc, `${slugify(`${eventName}-${category}`)}_bracket.pdf`);
 }
 
 export function exportBracketToCSV(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[]): string {
@@ -332,7 +351,7 @@ export function exportHeatResultsPDF({ eventName, category, config, rounds, hist
         }
       });
     });
-    doc.save(`${slugify(`${eventName}-${category}-heat${config.heatId}`)}_structure.pdf`);
+    savePdfDocument(doc, `${slugify(`${eventName}-${category}-heat${config.heatId}`)}_structure.pdf`);
   }
 }
 
@@ -492,7 +511,7 @@ export function exportHeatScorecardPdf({
     doc.setTextColor(...DS.gray700);
     doc.setFontSize(13);
     doc.text('Aucune note enregistrée pour ce heat.', pageW / 2, 200, { align: 'center' });
-    doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
+    savePdfDocument(doc, `${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
     return;
   }
 
@@ -592,7 +611,7 @@ export function exportHeatScorecardPdf({
   doc.text('KIOSK Surf Judging System', 24, pageH - 12);
   doc.text(`Page 1 sur 1`, pageW - 24, pageH - 12, { align: 'right' });
 
-  doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
+  savePdfDocument(doc, `${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
 }
 
 /**
@@ -1158,5 +1177,5 @@ export function exportFullCompetitionPDF({
     doc.text(`Page ${i - 1} sur ${pageCount - 1}`, pageW - MARGIN, pageH - 7, { align: 'right' });
   }
 
-  doc.save(`${slugify(eventName)}_competition_complete.pdf`);
+  savePdfDocument(doc, `${slugify(eventName)}_competition_complete.pdf`);
 }
