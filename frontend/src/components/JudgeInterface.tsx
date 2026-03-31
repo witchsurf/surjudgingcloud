@@ -334,7 +334,7 @@ function JudgeInterface({
       });
     });
     const pollingInterval = window.setInterval(() => {
-      refetchSocreOverrides().catch((err) => {
+      refetchJudgeScores('shared_update').catch((err) => {
         console.warn('Failed to poll judge scores after realtime drift:', err);
       });
     }, 5000);
