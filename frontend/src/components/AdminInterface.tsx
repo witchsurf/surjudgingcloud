@@ -22,6 +22,27 @@ const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 
 const generateJudgePersonalCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
+const normalizeJudgeProfileKey = (value?: string | null) =>
+  (value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+
+const getJudgeLookupKeys = (value?: string | null) => {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return [];
+  const upper = trimmed.toUpperCase();
+  const lower = trimmed.toLowerCase();
+  return Array.from(new Set([trimmed, upper, lower]));
+};
+
+const encodeCsvCell = (value: string | number) => {
+  const text = String(value ?? '');
+  return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
 
 interface AdminInterfaceProps {
   config: AppConfig;
@@ -611,17 +632,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     [analyticsConfiguredJudgeIds, analyticsEventOverrides, analyticsEventScores, analyticsHeatOverrides, analyticsHeatScores, analyticsScope]
   );
 
-  const judgeAccuracy = React.useMemo(() => {
-    if (analyticsScope !== 'event' || !eventJudgeAccuracySummary.length) {
-      return localJudgeAccuracy;
-    }
-
-    const normalizeJudgeProfileKey = (value?: string | null) =>
-      (value || '')
-        .trim()
-        .toUpperCase()
-        .replace(/\s+/g, ' ');
-
+  const eventJudgeProfiles = React.useMemo(() => {
     const groups = new Map<string, {
       judgeId: string;
       judgeName: string;
@@ -635,8 +646,39 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       overrideDeltaWeightedSum: number;
     }>();
 
+    const judgeNamesByIdentity = new Map<string, string>();
+    const setJudgeName = (judgeId?: string | null, judgeName?: string | null) => {
+      const trimmedName = (judgeName || '').trim();
+      if (!trimmedName) return;
+      getJudgeLookupKeys(judgeId).forEach((key) => {
+        if (!judgeNamesByIdentity.has(key)) {
+          judgeNamesByIdentity.set(key, trimmedName);
+        }
+      });
+    };
+
+    availableOfficialJudges.forEach((judge) => setJudgeName(judge.id, judge.name));
+    Object.entries(config.judgeIdentities || {}).forEach(([station, identityId]) => {
+      const judgeName = (config.judgeNames?.[station] || config.judgeNames?.[station.trim().toUpperCase()] || '').trim();
+      setJudgeName(identityId, judgeName);
+    });
+    [...analyticsHeatScores, ...analyticsEventScores, ...dbHeatScores, ...dbHeatScoreHistory].forEach((score) => {
+      setJudgeName(score.judge_identity_id || score.judge_id, score.judge_name);
+    });
+    [...analyticsHeatOverrides, ...analyticsEventOverrides].forEach((log) => {
+      setJudgeName(log.judge_identity_id || log.judge_id, log.judge_name);
+    });
+
     eventJudgeAccuracySummary.forEach((row) => {
-      const judgeName = (row.judge_display_name || row.judge_identity_id || '').trim();
+      const judgeIdentityId = (row.judge_identity_id || '').trim();
+      const judgeName = (
+        getJudgeLookupKeys(judgeIdentityId)
+          .map((key) => judgeNamesByIdentity.get(key))
+          .find(Boolean)
+        || row.judge_display_name
+        || row.judge_identity_id
+        || ''
+      ).trim();
       const groupKey = normalizeJudgeProfileKey(judgeName || row.judge_identity_id);
       if (!groupKey) return;
 
@@ -653,7 +695,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         overrideDeltaWeightedSum: 0,
       };
 
-      existing.memberIds.add((row.judge_identity_id || '').trim());
+      if (judgeIdentityId) {
+        existing.memberIds.add(judgeIdentityId);
+      }
       existing.scoredWaves += row.scored_waves;
       existing.consensusSamples += row.consensus_samples;
       existing.deviationWeightedSum += row.mean_abs_deviation * row.consensus_samples;
@@ -664,7 +708,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       groups.set(groupKey, existing);
     });
 
-    return Array.from(groups.values())
+    const rows = Array.from(groups.values())
       .map((group) => {
         const meanAbsDeviation = group.consensusSamples > 0
           ? Number((group.deviationWeightedSum / group.consensusSamples).toFixed(2))
@@ -696,6 +740,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
         return {
           judgeId: group.judgeId,
+          judgeName: group.judgeName,
+          memberIds: Array.from(group.memberIds).sort(),
           scoredWaves: group.scoredWaves,
           consensusSamples: group.consensusSamples,
           meanAbsDeviation,
@@ -713,7 +759,32 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         if (a.meanAbsDeviation !== b.meanAbsDeviation) return a.meanAbsDeviation - b.meanAbsDeviation;
         return a.judgeId.localeCompare(b.judgeId);
       });
-  }, [analyticsScope, eventJudgeAccuracySummary, localJudgeAccuracy]);
+
+    return {
+      rows,
+      namesByProfileId: new Map(rows.map((row) => [row.judgeId, row.judgeName])),
+      membersByProfileId: new Map(rows.map((row) => [row.judgeId, row.memberIds])),
+    };
+  }, [
+    analyticsEventOverrides,
+    analyticsEventScores,
+    analyticsHeatOverrides,
+    analyticsHeatScores,
+    availableOfficialJudges,
+    config.judgeIdentities,
+    config.judgeNames,
+    dbHeatScoreHistory,
+    dbHeatScores,
+    eventJudgeAccuracySummary,
+  ]);
+
+  const judgeAccuracy = React.useMemo(() => {
+    if (analyticsScope !== 'event' || !eventJudgeAccuracySummary.length) {
+      return localJudgeAccuracy;
+    }
+
+    return eventJudgeProfiles.rows;
+  }, [analyticsScope, eventJudgeAccuracySummary.length, eventJudgeProfiles.rows, localJudgeAccuracy]);
 
   const analyticsJudgeNames = React.useMemo(() => {
     const names = new Map<string, string>();
@@ -780,13 +851,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       if (judgeId && judgeName && !names.has(judgeId)) {
         names.set(judgeId, judgeName);
       }
-      if (judgeName) {
-        names.set(`event::${judgeName.trim().toUpperCase().replace(/\s+/g, ' ')}`, judgeName);
+    });
+
+    eventJudgeProfiles.namesByProfileId.forEach((judgeName, judgeId) => {
+      if (judgeId && judgeName) {
+        names.set(judgeId, judgeName);
       }
     });
 
     return names;
-  }, [analyticsEventOverrides, analyticsEventScores, analyticsHeatOverrides, analyticsHeatScores, availableOfficialJudges, config.judgeIdentities, config.judgeNames, dbHeatScoreHistory, dbHeatScores, eventJudgeAccuracySummary]);
+  }, [analyticsEventOverrides, analyticsEventScores, analyticsHeatOverrides, analyticsHeatScores, availableOfficialJudges, config.judgeIdentities, config.judgeNames, dbHeatScoreHistory, dbHeatScores, eventJudgeAccuracySummary, eventJudgeProfiles.namesByProfileId]);
 
   useEffect(() => {
     if (!judgeAccuracy.length) {
@@ -808,30 +882,27 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     if (!selectedJudgeProfileId) return [];
     const analysisScores = analyticsScope === 'event' ? analyticsEventScores : analyticsHeatScores;
     if (analyticsScope === 'event' && selectedJudgeProfileId.startsWith('event::')) {
-      const expectedName = (analyticsJudgeNames.get(selectedJudgeProfileId) || '').trim().toUpperCase();
-      const matchingJudgeIds = Array.from(new Set(
-        analysisScores
-          .filter((score) => (score.judge_name || '').trim().toUpperCase() === expectedName)
-          .map((score) => score.judge_id)
-          .filter(Boolean)
-      ));
+      const matchingJudgeIds = eventJudgeProfiles.membersByProfileId.get(selectedJudgeProfileId) || [];
       return matchingJudgeIds
         .flatMap((judgeId) => buildJudgeDeviationDetails(analysisScores, judgeId))
         .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
         .slice(0, 8);
     }
     return buildJudgeDeviationDetails(analysisScores, selectedJudgeProfileId).slice(0, 8);
-  }, [analyticsEventScores, analyticsHeatScores, analyticsJudgeNames, analyticsScope, selectedJudgeProfileId]);
+  }, [analyticsEventScores, analyticsHeatScores, analyticsScope, eventJudgeProfiles.membersByProfileId, selectedJudgeProfileId]);
 
   const selectedJudgeOverrides = React.useMemo(() => {
     if (!selectedJudgeProfileId) return [];
     const sourceLogs = analyticsScope === 'event' ? analyticsEventOverrides : analyticsHeatOverrides;
     if (analyticsScope === 'event' && selectedJudgeProfileId.startsWith('event::')) {
-      const expectedName = (analyticsJudgeNames.get(selectedJudgeProfileId) || '').trim().toUpperCase();
-      return sourceLogs.filter((log) => (log.judge_name || '').trim().toUpperCase() === expectedName);
+      const matchingJudgeIds = new Set(eventJudgeProfiles.membersByProfileId.get(selectedJudgeProfileId) || []);
+      return sourceLogs.filter((log) => {
+        const judgeId = (log.judge_identity_id || log.judge_id || '').trim();
+        return judgeId ? matchingJudgeIds.has(judgeId) : false;
+      });
     }
     return sourceLogs.filter((log) => log.judge_id === selectedJudgeProfileId);
-  }, [analyticsEventOverrides, analyticsHeatOverrides, analyticsJudgeNames, analyticsScope, selectedJudgeProfileId]);
+  }, [analyticsEventOverrides, analyticsHeatOverrides, analyticsScope, eventJudgeProfiles.membersByProfileId, selectedJudgeProfileId]);
 
   const selectedJudgeOverrideSummary = React.useMemo(() => {
     const summary = {
@@ -920,11 +991,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     if (!judgeAccuracy.length || typeof window === 'undefined') return;
 
     const lines = [
-      ['scope', 'judge_id', 'judge_name', 'quality_score', 'quality_band', 'scored_waves', 'consensus_samples', 'mean_abs_deviation', 'bias', 'within_half_point_rate', 'override_count', 'override_rate', 'average_override_delta'].join(','),
+      ['scope', 'judge_id', 'judge_name', 'quality_score', 'quality_band', 'scored_waves', 'consensus_samples', 'mean_abs_deviation', 'bias', 'within_half_point_rate', 'override_count', 'override_rate', 'average_override_delta'].map(encodeCsvCell).join(';'),
       ...judgeAccuracy.map((row) => ([
         analyticsScope,
         row.judgeId,
-        `"${(analyticsJudgeNames.get(row.judgeId) || row.judgeId).replace(/"/g, '""')}"`,
+        analyticsJudgeNames.get(row.judgeId) || row.judgeId,
         row.qualityScore.toFixed(2),
         row.qualityBand,
         row.scoredWaves,
@@ -935,10 +1006,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         row.overrideCount,
         row.overrideRate.toFixed(2),
         row.averageOverrideDelta.toFixed(2),
-      ].join(',')))
+      ].map(encodeCsvCell).join(';')))
     ];
 
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\ufeff', lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
