@@ -345,7 +345,7 @@ export default function ScoreDisplay({
           </div>
           <button
             type="button"
-            onClick={() => exportHeatScorecardPdf({ config, scores, eventData })}
+            onClick={() => { void exportHeatScorecardPdf({ config, scores, eventData }); }}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cta-500 hover:bg-cta-600 text-white rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-sm"
           >
             <FileText className="w-3.5 h-3.5" />

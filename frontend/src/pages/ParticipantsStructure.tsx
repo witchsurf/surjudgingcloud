@@ -592,7 +592,7 @@ export default function ParticipantsStructure() {
         date: selectedEvent.start_date ? new Date(selectedEvent.start_date).toLocaleDateString('fr-FR') : undefined,
       } : undefined;
 
-      exportBracketToPDF(selectedEvent.name, previewCategory, preview.rounds, preview.repechage, surferNames, eventDetails);
+      void exportBracketToPDF(selectedEvent.name, previewCategory, preview.rounds, preview.repechage, surferNames, eventDetails);
     } else {
       const csv = exportBracketToCSV(selectedEvent.name, previewCategory, preview.rounds, preview.repechage);
       downloadFile(`${previewCategory}_heats.csv`, 'text/csv', csv);

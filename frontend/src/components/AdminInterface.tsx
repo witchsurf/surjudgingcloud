@@ -2776,7 +2776,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       }
 
       // Export complete competition PDF
-      exportFullCompetitionPDF({
+      await exportFullCompetitionPDF({
         eventName: resolvedEventName,
         organizer,
         organizerLogoDataUrl,
@@ -2796,9 +2796,9 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
     }
   };
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     try {
-      exportHeatScorecardPdf({ config, scores });
+      await exportHeatScorecardPdf({ config, scores });
     } catch (error) {
       console.error('Impossible de générer le PDF du heat:', error);
     }

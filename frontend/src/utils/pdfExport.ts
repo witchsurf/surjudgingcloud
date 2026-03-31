@@ -48,8 +48,11 @@ const slugify = (value: string) =>
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '') || 'bracket');
 
-const savePdfDocument = (doc: jsPDF, filename: string) => {
+const savePdfDocument = async (doc: jsPDF, filename: string) => {
   try {
+    await doc.save(filename, { returnPromise: true });
+  } catch (error) {
+    console.warn('jsPDF.save() promise path failed, falling back to blob download', error);
     const blob = doc.output('blob');
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -60,10 +63,7 @@ const savePdfDocument = (doc: jsPDF, filename: string) => {
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch (error) {
-    console.warn('Blob download failed, falling back to jsPDF.save()', error);
-    doc.save(filename);
+    window.setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 };
 
@@ -122,7 +122,7 @@ const applyResultsToRounds = (
   }));
 };
 
-export function exportBracketToPDF(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[], surferNames?: Record<string, string>, eventDetails?: { organizer?: string; date?: string }) {
+export async function exportBracketToPDF(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[], surferNames?: Record<string, string>, eventDetails?: { organizer?: string; date?: string }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   const renderRound = (round: RoundSpec) => {
@@ -183,7 +183,7 @@ export function exportBracketToPDF(eventName: string, category: string, rounds: 
     renderRound(round);
   });
 
-  savePdfDocument(doc, `${slugify(`${eventName}-${category}`)}_bracket.pdf`);
+  await savePdfDocument(doc, `${slugify(`${eventName}-${category}`)}_bracket.pdf`);
 }
 
 export function exportBracketToCSV(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[]): string {
@@ -283,7 +283,7 @@ const buildHeatResultLookup = (history: HeatResultHistory) => {
   return lookup;
 };
 
-export function exportHeatResultsPDF({ eventName, category, config, rounds, history, currentHeatKey }: ExportHeatResultsPayload) {
+export async function exportHeatResultsPDF({ eventName, category, config, rounds, history, currentHeatKey }: ExportHeatResultsPayload) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   doc.setFont('helvetica', 'bold');
@@ -351,7 +351,7 @@ export function exportHeatResultsPDF({ eventName, category, config, rounds, hist
         }
       });
     });
-    savePdfDocument(doc, `${slugify(`${eventName}-${category}-heat${config.heatId}`)}_structure.pdf`);
+    await savePdfDocument(doc, `${slugify(`${eventName}-${category}-heat${config.heatId}`)}_structure.pdf`);
   }
 }
 
@@ -413,7 +413,7 @@ const getSeedPriority = (color: string) => {
 // ============================================================
 //  HEAT SCORECARD PDF (landscape, single heat)
 // ============================================================
-export function exportHeatScorecardPdf({
+export async function exportHeatScorecardPdf({
   config,
   scores,
   surferNames,
@@ -511,7 +511,7 @@ export function exportHeatScorecardPdf({
     doc.setTextColor(...DS.gray700);
     doc.setFontSize(13);
     doc.text('Aucune note enregistrée pour ce heat.', pageW / 2, 200, { align: 'center' });
-    savePdfDocument(doc, `${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
+    await savePdfDocument(doc, `${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
     return;
   }
 
@@ -611,13 +611,13 @@ export function exportHeatScorecardPdf({
   doc.text('KIOSK Surf Judging System', 24, pageH - 12);
   doc.text(`Page 1 sur 1`, pageW - 24, pageH - 12, { align: 'right' });
 
-  savePdfDocument(doc, `${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
+  await savePdfDocument(doc, `${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
 }
 
 /**
  * Export complete competition PDF with all categories – PRO design
  */
-export function exportFullCompetitionPDF({
+export async function exportFullCompetitionPDF({
   eventName,
   organizer,
   organizerLogoDataUrl,
@@ -1177,5 +1177,5 @@ export function exportFullCompetitionPDF({
     doc.text(`Page ${i - 1} sur ${pageCount - 1}`, pageW - MARGIN, pageH - 7, { align: 'right' });
   }
 
-  savePdfDocument(doc, `${slugify(eventName)}_competition_complete.pdf`);
+  await savePdfDocument(doc, `${slugify(eventName)}_competition_complete.pdf`);
 }
