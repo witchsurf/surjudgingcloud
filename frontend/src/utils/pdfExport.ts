@@ -40,7 +40,6 @@ interface FullCompetitionExportPayload {
   scores: Record<string, Score[]>;
   interferenceCalls?: Record<string, InterferenceCall[]>;
   configuredJudgeCount?: number;
-  targetWindow?: Window | null;
 }
 
 const slugify = (value: string) =>
@@ -50,65 +49,6 @@ const slugify = (value: string) =>
   .replace(/^-+|-+$/g, '') || 'bracket');
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-const savePdfDocument = async (doc: jsPDF, filename: string, targetWindow?: Window | null) => {
-  try {
-    if (targetWindow && !targetWindow.closed) {
-      const blob = doc.output('blob');
-      const url = URL.createObjectURL(blob);
-      const escapedFilename = filename
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-      targetWindow.document.open();
-      targetWindow.document.write(`<!doctype html>
-<html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapedFilename}</title>
-    <style>
-      body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: white; }
-      .bar { display: flex; gap: 12px; align-items: center; padding: 12px 16px; background: #111827; border-bottom: 1px solid #334155; }
-      .btn { display: inline-block; padding: 10px 14px; border-radius: 10px; background: #7c3aed; color: white; text-decoration: none; font-weight: 600; }
-      .meta { font-size: 14px; color: #cbd5e1; }
-      iframe { display: block; width: 100vw; height: calc(100vh - 58px); border: 0; background: white; }
-    </style>
-  </head>
-  <body>
-    <div class="bar">
-      <a id="downloadLink" class="btn" href="${url}" download="${escapedFilename}">Telecharger le PDF</a>
-      <div class="meta">${escapedFilename}</div>
-    </div>
-    <iframe src="${url}" title="${escapedFilename}"></iframe>
-    <script>
-      window.setTimeout(() => {
-        const link = document.getElementById('downloadLink');
-        if (link) link.click();
-      }, 150);
-    </script>
-  </body>
-</html>`);
-      targetWindow.document.close();
-      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
-      return;
-    }
-    await doc.save(filename, { returnPromise: true });
-  } catch (error) {
-    console.warn('jsPDF.save() promise path failed, falling back to blob download', error);
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.rel = 'noopener';
-    anchor.style.display = 'none';
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    window.setTimeout(() => URL.revokeObjectURL(url), 30000);
-  }
-};
 
 const buildHeatTable = (round: RoundSpec, heatIndex: number) => {
   const heat = round.heats[heatIndex];
@@ -165,7 +105,7 @@ const applyResultsToRounds = (
   }));
 };
 
-export async function exportBracketToPDF(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[], surferNames?: Record<string, string>, eventDetails?: { organizer?: string; date?: string }) {
+export function exportBracketToPDF(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[], surferNames?: Record<string, string>, eventDetails?: { organizer?: string; date?: string }) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   const renderRound = (round: RoundSpec) => {
@@ -226,7 +166,7 @@ export async function exportBracketToPDF(eventName: string, category: string, ro
     renderRound(round);
   });
 
-  await savePdfDocument(doc, `${slugify(`${eventName}-${category}`)}_bracket.pdf`);
+  doc.save(`${slugify(`${eventName}-${category}`)}_bracket.pdf`);
 }
 
 export function exportBracketToCSV(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[]): string {
@@ -394,7 +334,7 @@ export async function exportHeatResultsPDF({ eventName, category, config, rounds
         }
       });
     });
-    await savePdfDocument(doc, `${slugify(`${eventName}-${category}-heat${config.heatId}`)}_structure.pdf`);
+    doc.save(`${slugify(`${eventName}-${category}-heat${config.heatId}`)}_structure.pdf`);
   }
 }
 
@@ -456,7 +396,7 @@ const getSeedPriority = (color: string) => {
 // ============================================================
 //  HEAT SCORECARD PDF (landscape, single heat)
 // ============================================================
-export async function exportHeatScorecardPdf({
+export function exportHeatScorecardPdf({
   config,
   scores,
   surferNames,
@@ -554,7 +494,7 @@ export async function exportHeatScorecardPdf({
     doc.setTextColor(...DS.gray700);
     doc.setFontSize(13);
     doc.text('Aucune note enregistrée pour ce heat.', pageW / 2, 200, { align: 'center' });
-    await savePdfDocument(doc, `${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
+    doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
     return;
   }
 
@@ -697,13 +637,13 @@ export async function exportHeatScorecardPdf({
   doc.text('KIOSK Surf Judging System', 24, pageH - 12);
   doc.text(`Page 1 sur 1`, pageW - 24, pageH - 12, { align: 'right' });
 
-  await savePdfDocument(doc, `${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
+  doc.save(`${slugify(`${config.competition}-${config.division}-R${config.round}H${config.heatId}`)}_scores.pdf`);
 }
 
 /**
  * Export complete competition PDF with all categories – PRO design
  */
-export async function exportFullCompetitionPDF({
+export function exportFullCompetitionPDF({
   eventName,
   organizer,
   organizerLogoDataUrl,
@@ -712,7 +652,6 @@ export async function exportFullCompetitionPDF({
   scores,
   interferenceCalls = {},
   configuredJudgeCount,
-  targetWindow,
 }: FullCompetitionExportPayload) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -1300,5 +1239,5 @@ export async function exportFullCompetitionPDF({
     doc.text(`Page ${i - 1} sur ${pageCount - 1}`, pageW - MARGIN, pageH - 7, { align: 'right' });
   }
 
-  await savePdfDocument(doc, `${slugify(eventName)}_competition_complete.pdf`, targetWindow);
+  doc.save(`${slugify(eventName)}_competition_complete.pdf`);
 }
