@@ -67,6 +67,13 @@ export interface HeatEntriesWithParticipantRow {
     } | null;
 }
 
+const normalizeJoinedParticipant = (participant: any) => {
+    if (Array.isArray(participant)) {
+        return participant[0] ?? null;
+    }
+    return participant ?? null;
+};
+
 async function buildRoundOneEntriesFromParticipants(heatId: string): Promise<HeatEntriesWithParticipantRow[]> {
     const metadata = await fetchHeatMetadata(heatId);
     if (!metadata?.event_id || !metadata.division || Number(metadata.round) !== 1) {
@@ -457,10 +464,15 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
     const rows = (data ?? []) as any[];
     const typedRows: HeatEntriesWithParticipantRow[] = rows.map((row) => ({
         color: row.color, position: row.position, participant_id: row.participant_id, seed: row.seed,
-        participant: row.participant ? { name: row.participant.name, country: row.participant.country, license: row.participant.license } : null,
+        participant: (() => {
+            const participant = normalizeJoinedParticipant(row.participant);
+            return participant
+                ? { name: participant.name, country: participant.country, license: participant.license }
+                : null;
+        })(),
     }));
 
-    if (rows.length > 0 && rows.some((row) => row.participant?.name)) {
+    if (typedRows.length > 0 && typedRows.some((row) => row.participant?.name)) {
         return typedRows;
     }
 
@@ -861,15 +873,16 @@ export async function fetchCategoryHeats(eventId: number, category: string): Pro
         const slots: HeatSlotSpec[] = colorOrder.map((color, idx) => {
             const entry = heat.heat_entries.find((row: any) => row.position === idx + 1);
             const mapping = heat.heat_slot_mappings?.find((row: any) => row.position === idx + 1);
-            if (entry && entry.participant) {
+            const participant = normalizeJoinedParticipant(entry?.participant);
+            if (entry && participant) {
                 const entryColor = entry.color ? (entry.color.toUpperCase() as HeatColor) : undefined;
                 const resolvedColor = entryColor && allowedColors.includes(entryColor) ? entryColor : color;
                 return {
                     seed: entry.seed,
-                    name: entry.participant.name,
-                    country: entry.participant.country ?? undefined,
-                    license: entry.participant.license ?? undefined,
-                    participantId: entry.participant_id ?? entry.participant.id,
+                    name: participant.name,
+                    country: participant.country ?? undefined,
+                    license: participant.license ?? undefined,
+                    participantId: entry.participant_id ?? participant.id,
                     color: resolvedColor,
                 };
             }
