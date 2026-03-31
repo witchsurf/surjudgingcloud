@@ -56,8 +56,40 @@ const savePdfDocument = async (doc: jsPDF, filename: string, targetWindow?: Wind
     if (targetWindow && !targetWindow.closed) {
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
-      targetWindow.document.title = filename;
-      targetWindow.location.href = url;
+      const escapedFilename = filename
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      targetWindow.document.open();
+      targetWindow.document.write(`<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapedFilename}</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: #0f172a; color: white; }
+      .bar { display: flex; gap: 12px; align-items: center; padding: 12px 16px; background: #111827; border-bottom: 1px solid #334155; }
+      .btn { display: inline-block; padding: 10px 14px; border-radius: 10px; background: #7c3aed; color: white; text-decoration: none; font-weight: 600; }
+      .meta { font-size: 14px; color: #cbd5e1; }
+      iframe { display: block; width: 100vw; height: calc(100vh - 58px); border: 0; background: white; }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <a id="downloadLink" class="btn" href="${url}" download="${escapedFilename}">Telecharger le PDF</a>
+      <div class="meta">${escapedFilename}</div>
+    </div>
+    <iframe src="${url}" title="${escapedFilename}"></iframe>
+    <script>
+      window.setTimeout(() => {
+        const link = document.getElementById('downloadLink');
+        if (link) link.click();
+      }, 150);
+    </script>
+  </body>
+</html>`);
+      targetWindow.document.close();
       window.setTimeout(() => URL.revokeObjectURL(url), 30000);
       return;
     }
