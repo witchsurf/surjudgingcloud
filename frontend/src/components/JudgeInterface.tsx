@@ -287,10 +287,14 @@ function JudgeInterface({
     }));
     localStorage.setItem('surfJudgingScores', JSON.stringify(normalized));
   }, []);
-  const refetchSocreOverrides = useCallback(async () => {
+  const refetchJudgeScores = useCallback(async (reason: 'override' | 'shared_update' = 'shared_update') => {
     if (!currentHeatId || !judgeId) return;
     try {
-      console.log('🔄 Re-syncing scores after admin override...');
+      console.log(
+        reason === 'override'
+          ? '🔄 Re-syncing scores after admin override...'
+          : '🔄 Re-syncing judge scores from shared heat update...'
+      );
       const dbScores = await fetchHeatScores(currentHeatId);
       const myScores = dbScores.filter(s => 
         (s.judge_id === judgeId || (s.judge_station || s.judge_id) === judgeStation) &&
@@ -314,18 +318,18 @@ function JudgeInterface({
     const handleOverride = (e: any) => {
       const { heatId: targetHeatId } = e.detail || {};
       if (ensureHeatId(targetHeatId) === ensureHeatId(currentHeatId)) {
-        refetchSocreOverrides();
+        refetchJudgeScores('override');
       }
     };
     window.addEventListener('scoreOverrideApplied', handleOverride);
     return () => window.removeEventListener('scoreOverrideApplied', handleOverride);
-  }, [currentHeatId, refetchSocreOverrides]);
+  }, [currentHeatId, refetchJudgeScores]);
 
   useEffect(() => {
     if (!currentHeatId || !isSupabaseConfigured()) return () => { };
 
     const unsubscribe = subscribeToHeatScores(currentHeatId, () => {
-      refetchSocreOverrides().catch((err) => {
+      refetchJudgeScores('shared_update').catch((err) => {
         console.warn('Failed to refetch judge scores after shared heat update:', err);
       });
     });
@@ -339,7 +343,7 @@ function JudgeInterface({
       unsubscribe();
       window.clearInterval(pollingInterval);
     };
-  }, [currentHeatId, refetchSocreOverrides]);
+  }, [currentHeatId, refetchJudgeScores]);
 
 
   const mergeRealtimeScore = useCallback((incoming: Score) => {
