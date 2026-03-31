@@ -40,6 +40,7 @@ interface FullCompetitionExportPayload {
   scores: Record<string, Score[]>;
   interferenceCalls?: Record<string, InterferenceCall[]>;
   configuredJudgeCount?: number;
+  targetWindow?: Window | null;
 }
 
 const slugify = (value: string) =>
@@ -48,8 +49,18 @@ const slugify = (value: string) =>
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '') || 'bracket');
 
-const savePdfDocument = async (doc: jsPDF, filename: string) => {
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const savePdfDocument = async (doc: jsPDF, filename: string, targetWindow?: Window | null) => {
   try {
+    if (targetWindow && !targetWindow.closed) {
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      targetWindow.document.title = filename;
+      targetWindow.location.href = url;
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      return;
+    }
     await doc.save(filename, { returnPromise: true });
   } catch (error) {
     console.warn('jsPDF.save() promise path failed, falling back to blob download', error);
@@ -543,14 +554,57 @@ export async function exportHeatScorecardPdf({
     return row;
   });
 
+  const scorecardUsableWidth = pageW - 40;
+  const scorecardBaseWidths = {
+    rank: 22,
+    lycra: 52,
+    surfer: 140,
+    country: 56,
+    bestTwo: 42,
+  };
+  const scorecardReservedWidth =
+    scorecardBaseWidths.rank +
+    scorecardBaseWidths.lycra +
+    scorecardBaseWidths.surfer +
+    scorecardBaseWidths.country +
+    scorecardBaseWidths.bestTwo;
+  const scorecardWaveWidth = clamp(
+    (scorecardUsableWidth - scorecardReservedWidth) / Math.max(columnsToShow, 1),
+    16,
+    32
+  );
+  const scorecardSurferWidth = clamp(
+    scorecardUsableWidth - (
+      scorecardBaseWidths.rank +
+      scorecardBaseWidths.lycra +
+      scorecardBaseWidths.country +
+      scorecardBaseWidths.bestTwo +
+      scorecardWaveWidth * columnsToShow
+    ),
+    92,
+    140
+  );
+  const scorecardCountryWidth = clamp(
+    scorecardUsableWidth - (
+      scorecardBaseWidths.rank +
+      scorecardBaseWidths.lycra +
+      scorecardSurferWidth +
+      scorecardBaseWidths.bestTwo +
+      scorecardWaveWidth * columnsToShow
+    ),
+    44,
+    72
+  );
+  const scorecardWaveFontSize = scorecardWaveWidth <= 18 ? 6 : scorecardWaveWidth <= 22 ? 7 : 9;
+
   // Column styles
-  const waveColStyle = { cellWidth: 32, halign: 'center' as const, fontSize: 9 };
+  const waveColStyle = { cellWidth: scorecardWaveWidth, halign: 'center' as const, fontSize: scorecardWaveFontSize };
   const colStyles: Record<number, any> = {
-    0: { cellWidth: 22, halign: 'center', fontStyle: 'bold', fontSize: 11 },
-    1: { cellWidth: 60, halign: 'center', fontStyle: 'bold' },
-    2: { cellWidth: 156, halign: 'left', fontStyle: 'bold' },
-    3: { cellWidth: 72, halign: 'left', fontSize: 8 },
-    [head.length - 1]: { cellWidth: 46, halign: 'center', fontStyle: 'bold', fontSize: 12 },
+    0: { cellWidth: scorecardBaseWidths.rank, halign: 'center', fontStyle: 'bold', fontSize: 10 },
+    1: { cellWidth: scorecardBaseWidths.lycra, halign: 'center', fontStyle: 'bold', fontSize: 8, overflow: 'hidden' },
+    2: { cellWidth: scorecardSurferWidth, halign: 'left', fontStyle: 'bold', fontSize: 8, overflow: 'linebreak' },
+    3: { cellWidth: scorecardCountryWidth, halign: 'left', fontSize: 7, overflow: 'hidden' },
+    [head.length - 1]: { cellWidth: scorecardBaseWidths.bestTwo, halign: 'center', fontStyle: 'bold', fontSize: 10 },
   };
   for (let i = 0; i < columnsToShow; i++) {
     colStyles[4 + i] = waveColStyle;
@@ -626,6 +680,7 @@ export async function exportFullCompetitionPDF({
   scores,
   interferenceCalls = {},
   configuredJudgeCount,
+  targetWindow,
 }: FullCompetitionExportPayload) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -1071,20 +1126,56 @@ export async function exportFullCompetitionPDF({
           const headRow = ['#', 'LYCRA', 'TOTAL', 'SURFEUR', 'PAYS'];
           if (hasResults) for (let i = 1; i <= currentHeatMaxWaves; i++) headRow.push(`V${i}`);
 
-          // Column budget: pageW=595, margins=36*2=523 usable
-          // #=12, LYCRA=56, TOTAL=30, PAYS=72, waves=28each, SURFEUR=rest
-          const waveColW = 28;
-          const fixedW = 12 + 56 + 30 + 72 + currentHeatMaxWaves * waveColW;
-          const surferColW = Math.max(92, Math.min(pageW - MARGIN * 2 - fixedW, 160));
+          const usableWidth = pageW - MARGIN * 2;
+          const baseWidths = {
+            rank: 12,
+            lycra: 48,
+            total: 28,
+            surfer: 110,
+            country: 52,
+          };
+          const reservedWidth =
+            baseWidths.rank +
+            baseWidths.lycra +
+            baseWidths.total +
+            baseWidths.surfer +
+            baseWidths.country;
+          const waveColW = hasResults
+            ? clamp((usableWidth - reservedWidth) / Math.max(currentHeatMaxWaves, 1), 14, 28)
+            : 0;
+          const surferColW = clamp(
+            usableWidth - (
+              baseWidths.rank +
+              baseWidths.lycra +
+              baseWidths.total +
+              baseWidths.country +
+              currentHeatMaxWaves * waveColW
+            ),
+            88,
+            140
+          );
+          const countryColW = clamp(
+            usableWidth - (
+              baseWidths.rank +
+              baseWidths.lycra +
+              baseWidths.total +
+              surferColW +
+              currentHeatMaxWaves * waveColW
+            ),
+            40,
+            72
+          );
+          const tableFontSize = waveColW > 0 && waveColW <= 16 ? 6 : 8;
+          const headFontSize = waveColW > 0 && waveColW <= 16 ? 6 : 7;
           const colW: Record<number, any> = {
-            0: { cellWidth: 12, halign: 'center' as const, fontSize: 8 },
-            1: { cellWidth: 56, halign: 'center' as const, fontStyle: 'bold', overflow: 'hidden' },
-            2: { cellWidth: 30, halign: 'center' as const, fontStyle: 'bold', fontSize: 9 },
+            0: { cellWidth: baseWidths.rank, halign: 'center' as const, fontSize: tableFontSize },
+            1: { cellWidth: baseWidths.lycra, halign: 'center' as const, fontStyle: 'bold', overflow: 'hidden', fontSize: tableFontSize },
+            2: { cellWidth: baseWidths.total, halign: 'center' as const, fontStyle: 'bold', fontSize: tableFontSize },
             3: { cellWidth: surferColW, halign: 'left' as const, fontStyle: 'bold', fontSize: 8 },
-            4: { cellWidth: 72, halign: 'left' as const, fontSize: 7 },
+            4: { cellWidth: countryColW, halign: 'left' as const, fontSize: tableFontSize, overflow: 'hidden' },
           };
           for (let i = 0; i < currentHeatMaxWaves; i++) {
-            colW[5 + i] = { cellWidth: waveColW, halign: 'center' as const, fontSize: 8 };
+            colW[5 + i] = { cellWidth: waveColW, halign: 'center' as const, fontSize: tableFontSize, overflow: 'hidden' };
           }
 
           autoTable(doc, {
@@ -1100,8 +1191,8 @@ export async function exportFullCompetitionPDF({
             theme: 'plain',
             styles: {
               font: 'helvetica',
-              fontSize: 8,
-              cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
+              fontSize: tableFontSize,
+              cellPadding: { top: 4, bottom: 4, left: 3, right: 3 },
               halign: 'center',
               valign: 'middle',
               textColor: DS.gray900,
@@ -1110,8 +1201,8 @@ export async function exportFullCompetitionPDF({
               fillColor: hasResults ? DS.greenDark : DS.navyLight,
               textColor: DS.white,
               fontStyle: 'bold',
-              fontSize: 7,
-              cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
+              fontSize: headFontSize,
+              cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
             },
             columnStyles: colW,
             alternateRowStyles: { fillColor: DS.gray50 },
@@ -1177,5 +1268,5 @@ export async function exportFullCompetitionPDF({
     doc.text(`Page ${i - 1} sur ${pageCount - 1}`, pageW - MARGIN, pageH - 7, { align: 'right' });
   }
 
-  await savePdfDocument(doc, `${slugify(eventName)}_competition_complete.pdf`);
+  await savePdfDocument(doc, `${slugify(eventName)}_competition_complete.pdf`, targetWindow);
 }

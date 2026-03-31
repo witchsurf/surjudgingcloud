@@ -2685,6 +2685,13 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       alert('Supabase n\'est pas configuré pour exporter l\'événement.');
       return;
     }
+    const targetWindow = typeof window !== 'undefined'
+      ? window.open('', '_blank', 'noopener,noreferrer')
+      : null;
+    if (targetWindow) {
+      targetWindow.document.write('<!doctype html><title>Préparation du PDF…</title><body style="font-family:system-ui;padding:24px">Préparation du PDF complet…</body>');
+      targetWindow.document.close();
+    }
     const eventIdFromUrl = (() => {
       if (typeof window === 'undefined') return NaN;
       const raw = new URLSearchParams(window.location.search).get('eventId');
@@ -2785,10 +2792,14 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         scores: allScores,
         interferenceCalls: allInterferenceCalls,
         configuredJudgeCount: config.judges.length,
+        targetWindow,
       });
 
       console.log('✅ PDF complet généré avec', Object.keys(allDivisions).length, 'catégories');
     } catch (error) {
+      if (targetWindow && !targetWindow.closed) {
+        targetWindow.close();
+      }
       console.error('Impossible de générer le PDF complet', error);
       alert('Impossible de générer le PDF complet pour le moment.');
     } finally {
