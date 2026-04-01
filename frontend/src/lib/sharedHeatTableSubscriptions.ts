@@ -155,7 +155,14 @@ const ensureState = (heatId: string) => {
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'scores', filter: `heat_id=eq.${heatId}` },
-          () => emit(state, 'scores')
+          (payload) => {
+            if (typeof window !== 'undefined' && payload.new) {
+              window.dispatchEvent(new CustomEvent('newScoreRealtime', {
+                detail: payload.new,
+              }));
+            }
+            emit(state, 'scores');
+          }
         )
         .on(
           'postgres_changes',
