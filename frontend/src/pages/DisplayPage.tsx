@@ -659,6 +659,7 @@ export default function DisplayPage() {
         }
 
         const useLocalPolling = isLocalSupabaseMode();
+        const scorePollingIntervalMs = useLocalPolling ? 1000 : 2500;
         let cancelled = false;
         const applyFetchedScores = (heatId: string, fetched: Score[] | null | undefined) => {
             if (cancelled || !fetched) return;
@@ -718,11 +719,9 @@ export default function DisplayPage() {
 
         window.addEventListener('newScoreRealtime', handleNewScore);
 
-        const pollingInterval = useLocalPolling
-            ? setInterval(() => {
-                refreshScores(liveHeatIdRef.current || currentHeatId);
-            }, 1000)
-            : null;
+        const pollingInterval = setInterval(() => {
+            refreshScores(liveHeatIdRef.current || currentHeatId);
+        }, scorePollingIntervalMs);
 
         return () => {
             cancelled = true;
