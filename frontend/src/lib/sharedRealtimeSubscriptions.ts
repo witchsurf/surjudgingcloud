@@ -27,10 +27,32 @@ export type ActiveHeatPointerRealtimeRow = {
 
 const EVENT_CONFIG_POLL_INTERVAL_MS = 3000;
 const ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS = 3000;
+const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
 
 const eventConfigRegistry = new Map<number, RegistryState<EventConfigRealtimeRow>>();
 const activeHeatPointerRegistry = new Map<string, RegistryState<ActiveHeatPointerRealtimeRow>>();
 let listenerSequence = 0;
+
+const updateSharedRealtimeDebug = () => {
+  if (!debugRealtimeEnabled || typeof window === 'undefined') return;
+
+  const root = ((window as typeof window & { __surfRealtimeDebug?: Record<string, unknown> }).__surfRealtimeDebug ??= {});
+  root.sharedRealtime = {
+    eventConfigChannels: Array.from(eventConfigRegistry.entries()).map(([key, state]) => ({
+      key,
+      listeners: state.listeners.size,
+      hasChannel: Boolean(state.channel),
+      hasPolling: Boolean(state.pollingInterval),
+    })),
+    activeHeatChannels: Array.from(activeHeatPointerRegistry.entries()).map(([key, state]) => ({
+      key,
+      listeners: state.listeners.size,
+      hasChannel: Boolean(state.channel),
+      hasPolling: Boolean(state.pollingInterval),
+    })),
+    updatedAt: new Date().toISOString(),
+  };
+};
 
 export const normalizeEventRealtimeKey = (value?: string) =>
   (value || '')
@@ -50,6 +72,7 @@ const addListener = <T>(
   const listenerId = `listener_${listenerSequence += 1}`;
   state.listeners.set(listenerId, listener);
   registry.set(key, state);
+  updateSharedRealtimeDebug();
 
   if (state.lastPayload) {
     listener(state.lastPayload);
@@ -75,6 +98,7 @@ const addListener = <T>(
     }
 
     registry.delete(key);
+    updateSharedRealtimeDebug();
   };
 };
 
@@ -84,6 +108,7 @@ const emitToListeners = <T>(state: RegistryState<T>, payload: T) => {
   }
 
   state.lastPayload = payload;
+  updateSharedRealtimeDebug();
   for (const listener of state.listeners.values()) {
     try {
       listener(payload);
@@ -126,12 +151,13 @@ export const subscribeToEventConfig = (
   };
 
   void refresh();
-  state.pollingInterval = setInterval(() => {
-    void refresh();
-  }, EVENT_CONFIG_POLL_INTERVAL_MS);
+  if (isLocalSupabaseMode()) {
+    state.pollingInterval = setInterval(() => {
+      void refresh();
+    }, EVENT_CONFIG_POLL_INTERVAL_MS);
+  }
 
   if (!isLocalSupabaseMode() && supabase) {
-    void refresh();
     state.channel = supabase
       .channel(`shared-event-config-${eventId}`)
       .on(
@@ -148,7 +174,12 @@ export const subscribeToEventConfig = (
           emitToListeners(state, row);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        updateSharedRealtimeDebug();
+        if (status === 'SUBSCRIBED') {
+          void refresh();
+        }
+      });
   }
 
   return addListener(eventConfigRegistry as Map<string | number, RegistryState<EventConfigRealtimeRow>>, eventId, state, listener);
@@ -197,12 +228,13 @@ export const subscribeToActiveHeatPointer = (
   };
 
   void refresh();
-  state.pollingInterval = setInterval(() => {
-    void refresh();
-  }, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
+  if (isLocalSupabaseMode()) {
+    state.pollingInterval = setInterval(() => {
+      void refresh();
+    }, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
+  }
 
   if (!isLocalSupabaseMode() && supabase) {
-    void refresh();
     state.channel = supabase
       .channel(`shared-active-heat-${key}`)
       .on(
@@ -219,7 +251,12 @@ export const subscribeToActiveHeatPointer = (
           emitToListeners(state, row);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        updateSharedRealtimeDebug();
+        if (status === 'SUBSCRIBED') {
+          void refresh();
+        }
+      });
   }
 
   return addListener(activeHeatPointerRegistry as Map<string | number, RegistryState<ActiveHeatPointerRealtimeRow>>, key, state, listener);

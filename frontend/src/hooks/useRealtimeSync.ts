@@ -75,6 +75,24 @@ const hasOfflineAdminSession = () => {
   }
 };
 
+const updateHeatChannelDebug = () => {
+  if (!debugRealtimeEnabled || typeof window === 'undefined') return;
+
+  const root = ((window as typeof window & { __surfRealtimeDebug?: Record<string, unknown> }).__surfRealtimeDebug ??= {});
+  root.heatRealtime = {
+    heats: Array.from(heatChannelRegistry.entries()).map(([heatId, state]) => ({
+      heatId,
+      listeners: state.listeners.size,
+      hasChannel: Boolean(state.channel),
+      hasPolling: Boolean(state.pollingInterval),
+      reconnecting: state.reconnecting,
+      retryCount: state.retryCount,
+      lastStatus: state.lastStatus,
+    })),
+    updatedAt: new Date().toISOString(),
+  };
+};
+
 const emitHeatUpdate = (
   heatId: string,
   timer: HeatTimer,
@@ -87,6 +105,7 @@ const emitHeatUpdate = (
   state.lastTimer = timer;
   state.lastConfig = config;
   state.lastStatus = status;
+  updateHeatChannelDebug();
 
   for (const listener of state.listeners.values()) {
     try {
@@ -167,8 +186,9 @@ const createHeatChannel = (normalizedHeatId: string) => {
     retryCount: 0,
   };
   heatChannelRegistry.set(normalizedHeatId, state);
+  updateHeatChannelDebug();
 
-  const ensurePolling = () => {
+  const startPolling = () => {
     if (state.pollingInterval) return;
     const intervalMs = isLocalSupabaseMode() ? LOCAL_POLL_INTERVAL_MS : CLOUD_POLL_INTERVAL_MS;
     state.pollingInterval = setInterval(() => {
@@ -176,7 +196,16 @@ const createHeatChannel = (normalizedHeatId: string) => {
     }, intervalMs);
   };
 
-  ensurePolling();
+  const stopPolling = () => {
+    if (!state.pollingInterval) return;
+    clearInterval(state.pollingInterval);
+    state.pollingInterval = null;
+    updateHeatChannelDebug();
+  };
+
+  if (isLocalSupabaseMode()) {
+    startPolling();
+  }
 
   const setupChannel = () => {
     if (!heatChannelRegistry.has(normalizedHeatId)) return;
@@ -237,40 +266,14 @@ const createHeatChannel = (normalizedHeatId: string) => {
 
           emitHeatUpdate(normalizedHeatId, nextTimer, currentState?.lastConfig ?? null, 'closed');
         }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'scores',
-          filter: `heat_id=eq.${normalizedHeatId}`
-        },
-        (payload) => {
-          window.dispatchEvent(new CustomEvent('newScoreRealtime', {
-            detail: payload.new
-          }));
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'scores',
-          filter: `heat_id=eq.${normalizedHeatId}`
-        },
-        (payload) => {
-          window.dispatchEvent(new CustomEvent('newScoreRealtime', {
-            detail: payload.new
-          }));
-        }
       );
 
     state.channel = channel;
+    updateHeatChannelDebug();
 
     channel.subscribe((status) => {
       if (state.channel !== channel) return;
+      updateHeatChannelDebug();
 
       if (debugRealtimeEnabled) {
         console.log(`📡 [${channelName}] status:`, status, 'listeners:', heatChannelRegistry.get(normalizedHeatId)?.listeners.size ?? 0);
@@ -278,6 +281,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
       if (status === 'SUBSCRIBED') {
         state.reconnecting = false;
         state.retryCount = 0;
+        stopPolling();
         void refreshHeatSnapshot(normalizedHeatId);
         window.dispatchEvent(new CustomEvent('heatRealtimeResync', {
           detail: { heatId: normalizedHeatId }
@@ -298,8 +302,10 @@ const createHeatChannel = (normalizedHeatId: string) => {
         console.warn(
           `⚠️ Heat stream ${channelName} dropped (${status}), ${fallbackOnly ? 'falling back to polling before next retry' : 'scheduling reconnect'}...`
         );
+        startPolling();
         state.channel = null;
         supabase!.removeChannel(channel).catch(() => {});
+        updateHeatChannelDebug();
         if (state.retryTimer) clearTimeout(state.retryTimer);
         state.retryTimer = setTimeout(() => {
           state.retryTimer = null;
@@ -342,6 +348,7 @@ const releaseHeatChannel = (normalizedHeatId: string) => {
       console.warn('⚠️ Failed to release realtime channel', normalizedHeatId, error);
     } finally {
       heatChannelRegistry.delete(normalizedHeatId);
+      updateHeatChannelDebug();
     }
   }
 };
@@ -606,7 +613,6 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     const usePollingOnly = isLocalSupabaseMode();
     let listenerId: string | null = null;
-    let pollingInterval: ReturnType<typeof setInterval> | null = null;
     let lastSnapshotKey: string | null = null;
     let missingRealtimeStateLogged = false;
 
@@ -617,6 +623,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
         setLastUpdate(new Date());
         onUpdate(timer, config, status);
       });
+      updateHeatChannelDebug();
 
       if (debugRealtimeEnabled) {
         console.log('🔔 Subscription au heat:', normalizedHeatId, 'listener:', listenerId, 'active listeners:', state.listeners.size);
@@ -749,20 +756,24 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     loadInitialState();
 
-    const pollIntervalMs = usePollingOnly ? LOCAL_POLL_INTERVAL_MS : CLOUD_POLL_INTERVAL_MS;
-    pollingInterval = setInterval(() => {
-      void loadInitialState({ skipIfUnchanged: true });
-    }, pollIntervalMs);
+    if (usePollingOnly) {
+      const pollIntervalMs = LOCAL_POLL_INTERVAL_MS;
+      const pollingInterval = setInterval(() => {
+        void loadInitialState({ skipIfUnchanged: true });
+      }, pollIntervalMs);
+
+      return () => {
+        clearInterval(pollingInterval);
+      };
+    }
 
     // Fonction de nettoyage
     return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
       if (!listenerId) return;
       const currentState = heatChannelRegistry.get(normalizedHeatId);
       if (!currentState) return;
       currentState.listeners.delete(listenerId);
+      updateHeatChannelDebug();
       if (debugRealtimeEnabled) {
         console.log('🔌 Déconnexion subscription heat:', normalizedHeatId, 'listener:', listenerId, 'remaining:', currentState.listeners.size);
       }

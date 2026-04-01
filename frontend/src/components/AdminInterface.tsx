@@ -522,9 +522,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         void loadDbScores();
       });
     }
-    pollingInterval = setInterval(() => {
-      void loadDbScores();
-    }, isLocalSupabaseMode() ? 2500 : 5000);
+    pollingInterval = isLocalSupabaseMode()
+      ? setInterval(() => {
+          void loadDbScores();
+        }, 2500)
+      : null;
     return () => {
       cancelled = true;
       window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);

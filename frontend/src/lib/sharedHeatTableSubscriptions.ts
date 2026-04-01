@@ -9,23 +9,48 @@ type HeatSignalState = {
   channel: RealtimeChannel | null;
   pollingInterval: ReturnType<typeof setInterval> | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
+  emitTimers: Partial<Record<HeatSignalType, ReturnType<typeof setTimeout>>>;
   reconnecting: boolean;
   retryCount: number;
   listeners: Record<HeatSignalType, Map<string, Listener>>;
 };
 
 const HEAT_SIGNAL_POLL_INTERVAL_MS = 2500;
+const HEAT_SIGNAL_EMIT_DEBOUNCE_MS = 150;
 const HEAT_SIGNAL_RETRY_BASE_MS = 3000;
 const HEAT_SIGNAL_RETRY_MAX_MS = 30000;
 const HEAT_SIGNAL_POLL_ONLY_THRESHOLD = 4;
+const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
 
 const heatSignalRegistry = new Map<string, HeatSignalState>();
 let listenerSequence = 0;
+
+const updateHeatSignalDebug = () => {
+  if (!debugRealtimeEnabled || typeof window === 'undefined') return;
+
+  const root = ((window as typeof window & { __surfRealtimeDebug?: Record<string, unknown> }).__surfRealtimeDebug ??= {});
+  root.heatSignals = {
+    heats: Array.from(heatSignalRegistry.entries()).map(([heatId, state]) => ({
+      heatId,
+      hasChannel: Boolean(state.channel),
+      hasPolling: Boolean(state.pollingInterval),
+      reconnecting: state.reconnecting,
+      retryCount: state.retryCount,
+      listeners: {
+        scores: state.listeners.scores.size,
+        interference: state.listeners.interference.size,
+        participants: state.listeners.participants.size,
+      },
+    })),
+    updatedAt: new Date().toISOString(),
+  };
+};
 
 const createState = (): HeatSignalState => ({
   channel: null,
   pollingInterval: null,
   retryTimer: null,
+  emitTimers: {},
   reconnecting: false,
   retryCount: 0,
   listeners: {
@@ -36,13 +61,23 @@ const createState = (): HeatSignalState => ({
 });
 
 const emit = (state: HeatSignalState, type: HeatSignalType) => {
-  for (const listener of state.listeners[type].values()) {
-    try {
-      listener();
-    } catch (error) {
-      console.error('❌ Shared heat signal listener failed:', error);
-    }
+  const existingTimer = state.emitTimers[type];
+  if (existingTimer) {
+    clearTimeout(existingTimer);
   }
+
+  state.emitTimers[type] = setTimeout(() => {
+    delete state.emitTimers[type];
+    updateHeatSignalDebug();
+
+    for (const listener of state.listeners[type].values()) {
+      try {
+        listener();
+      } catch (error) {
+        console.error('❌ Shared heat signal listener failed:', error);
+      }
+    }
+  }, HEAT_SIGNAL_EMIT_DEBOUNCE_MS);
 };
 
 const hasListeners = (state: HeatSignalState) =>
@@ -61,6 +96,11 @@ const release = (heatId: string) => {
     state.retryTimer = null;
   }
 
+  for (const timer of Object.values(state.emitTimers)) {
+    if (timer) clearTimeout(timer);
+  }
+  state.emitTimers = {};
+
   if (state.channel && supabase) {
     try {
       const channel = state.channel;
@@ -74,6 +114,7 @@ const release = (heatId: string) => {
   }
 
   heatSignalRegistry.delete(heatId);
+  updateHeatSignalDebug();
 };
 
 const ensureState = (heatId: string) => {
@@ -82,6 +123,7 @@ const ensureState = (heatId: string) => {
 
   const state = createState();
   heatSignalRegistry.set(heatId, state);
+  updateHeatSignalDebug();
 
   if (isLocalSupabaseMode()) {
     state.pollingInterval = setInterval(() => {
@@ -131,6 +173,7 @@ const ensureState = (heatId: string) => {
           () => emit(state, 'participants')
         )
         .subscribe((status, err) => {
+          updateHeatSignalDebug();
           if (state.channel !== channel) return;
 
           if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
@@ -179,9 +222,11 @@ const subscribe = (heatId: string, type: HeatSignalType, listener: Listener) => 
   const listenerId = `heat-signal-${listenerSequence += 1}`;
 
   state.listeners[type].set(listenerId, listener);
+  updateHeatSignalDebug();
 
   return () => {
     state.listeners[type].delete(listenerId);
+    updateHeatSignalDebug();
     release(normalizedHeatId);
   };
 };
