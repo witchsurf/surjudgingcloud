@@ -399,15 +399,15 @@ export default function ScoreDisplay({
           ) : eventTopScores.length === 0 ? (
             <div className="p-6 text-sm text-primary-500">Aucune note disponible pour cet event.</div>
           ) : (
-            <div className="divide-y-2 divide-primary-50">
+            <div className="divide-y divide-primary-100">
               {eventTopScores.map((entry, index) => (
-                <div key={entry.scoreId || `${entry.heatId}-${entry.surfer}-${entry.waveNumber}-${index}`} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div className="space-y-1">
+                <div key={entry.scoreId || `${entry.heatId}-${entry.surfer}-${entry.waveNumber}-${index}`} className="px-4 py-3 grid grid-cols-[1fr_auto] gap-3 items-center">
+                  <div className="space-y-0.5 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-full bg-cta-500 text-white text-[10px] font-bold uppercase tracking-widest border-2 border-primary-950">
                         #{index + 1}
                       </span>
-                      <span className="text-lg font-bebas tracking-wider text-primary-900">{entry.surferName}</span>
+                      <span className="text-base sm:text-lg font-bebas tracking-wider text-primary-900">{entry.surferName}</span>
                       {entry.surferName.trim().toUpperCase() !== entry.surfer.trim().toUpperCase() && (
                         <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">{entry.surfer}</span>
                       )}
@@ -420,8 +420,8 @@ export default function ScoreDisplay({
                     </div>
                     <div className="text-xs text-slate-500">Note panel apres moyenne des juges</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-3xl sm:text-4xl font-bebas text-primary-900 tracking-tighter leading-none">
+                  <div className="text-right pl-2">
+                    <div className="text-2xl sm:text-3xl font-bebas text-primary-900 tracking-tighter leading-none">
                       {entry.score.toFixed(2)}
                     </div>
                     <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">

@@ -508,6 +508,114 @@ export default function DisplayPage() {
                 })
             );
 
+            const resolvedLineupsByHeat = new Map<string, Record<string, { name: string; country?: string }>>();
+            const orderedDivisionKeys = Object.keys(historyHeats).sort();
+
+            orderedDivisionKeys.forEach((divisionKey) => {
+                const divisionRounds = historyHeats[divisionKey];
+                if (!divisionRounds?.length) return;
+
+                const rounds = JSON.parse(JSON.stringify(divisionRounds)) as RoundSpec[];
+                const qualifierMap = new Map<string, { name: string; country?: string }>();
+                const resolveQualifierEntry = (text: string) => {
+                    const normalized = normalizePlaceholderKey(text);
+                    let resolved = qualifierMap.get(normalized);
+                    if (!resolved) {
+                        const match = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*(?:P\s*)?(\d+)/);
+                        if (match) {
+                            const [, r, h, p] = match;
+                            resolved = buildQualifierKeyVariants(Number(r), Number(h), Number(p))
+                                .map((k) => qualifierMap.get(normalizePlaceholderKey(k)))
+                                .find(Boolean);
+                        }
+                    }
+                    return resolved;
+                };
+
+                rounds
+                    .sort((a, b) => a.roundNumber - b.roundNumber)
+                    .forEach((round) => {
+                        round.heats.forEach((heat) => {
+                            const heatEntries = heat.heatId ? entriesByHeat.get(heat.heatId) || [] : [];
+                            const entryInfoByColor = heatEntries.reduce<Record<string, { name?: string; country?: string }>>((acc, entry) => {
+                                const color = normalizeColorCode(entry.color || '') || entry.color;
+                                const name = entry.participant?.name;
+                                if (!color || !name) return acc;
+                                acc[color] = { name, country: entry.participant?.country || undefined };
+                                return acc;
+                            }, {});
+
+                            heat.slots.forEach((slot) => {
+                                const color = slot.color ? (normalizeColorCode(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color) || slot.color) : '';
+                                if (!color) return;
+
+                                const entryInfo = entryInfoByColor[color];
+                                if (entryInfo?.name && !isLikelyPlaceholder(entryInfo.name)) {
+                                    slot.name = entryInfo.name;
+                                    slot.country = entryInfo.country;
+                                    slot.placeholder = undefined;
+                                }
+
+                                const candidate = slot.placeholder || slot.name;
+                                if (!candidate || !isLikelyPlaceholder(candidate)) return;
+
+                                const resolved = resolveQualifierEntry(candidate);
+                                if (resolved) {
+                                    slot.name = resolved.name;
+                                    slot.country = resolved.country;
+                                    slot.placeholder = undefined;
+                                }
+                            });
+
+                            if (heat.heatId) {
+                                const lineup = heat.slots.reduce<Record<string, { name: string; country?: string }>>((acc, slot) => {
+                                    const color = slot.color ? (normalizeColorCode(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color) || slot.color) : '';
+                                    if (!color || !slot.name || isLikelyPlaceholder(slot.name)) return acc;
+                                    acc[color] = { name: slot.name, country: slot.country || undefined };
+                                    return acc;
+                                }, {});
+                                resolvedLineupsByHeat.set(heat.heatId, lineup);
+                            }
+
+                            if (!heat.heatId) return;
+                            const heatScores = groupedScores[heat.heatId] ?? [];
+                            if (!heatScores.length) return;
+
+                            const namesByColor = heat.slots.reduce<Record<string, string>>((acc, slot) => {
+                                if (!slot.color || !slot.name || isLikelyPlaceholder(slot.name)) return acc;
+                                const color = normalizeColorCode(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color) || slot.color;
+                                if (!color) return acc;
+                                acc[color] = slot.name;
+                                return acc;
+                            }, {});
+                            const countriesByColor = heat.slots.reduce<Record<string, string>>((acc, slot) => {
+                                if (!slot.color || !slot.country) return acc;
+                                const color = normalizeColorCode(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color) || slot.color;
+                                if (!color) return acc;
+                                acc[color] = slot.country;
+                                return acc;
+                            }, {});
+                            const surfers = Object.keys(namesByColor);
+                            if (!surfers.length) return;
+
+                            const normalizedScores = normalizeScores(heatScores);
+                            const judgeCount = getEffectiveJudgeCount(normalizedScores);
+                            const maxWaves = Math.max(1, ...normalizedScores.map((score) => Number(score.wave_number) || 0));
+                            const stats = calculateSurferStats(normalizedScores, surfers, judgeCount, maxWaves, true, []);
+
+                            stats
+                                .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+                                .forEach((stat) => {
+                                    const name = namesByColor[stat.surfer.toUpperCase()];
+                                    if (!name) return;
+                                    const country = countriesByColor[stat.surfer.toUpperCase()];
+                                    buildQualifierKeyVariants(round.roundNumber, heat.heatNumber, stat.rank)
+                                        .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), { name, country }));
+                                });
+                        });
+                    });
+            });
+
             const topEntries = Object.entries(groupedScores)
                 .flatMap(([heatId, heatScores]) => {
                     const normalizedHeatScores = normalizeScores(heatScores || []);
@@ -527,11 +635,25 @@ export default function DisplayPage() {
                     const maxWaves = Math.max(1, ...normalizedHeatScores.map((score) => Number(score.wave_number) || 0));
                     const stats = calculateSurferStats(normalizedHeatScores, surfers, judgeCount, maxWaves, false, []);
                     const parsedHeat = parseActiveHeatId(heatId);
+                    const resolvedLineup = resolvedLineupsByHeat.get(heatId) || {};
 
                     return stats.flatMap<EventTopScoreEntry>((stat) => {
                         const matchingEntry = heatEntries.find((entry) => (normalizeColorCode(entry.color || '') || entry.color) === stat.surfer);
-                        const surferName = matchingEntry?.participant?.name?.trim() || stat.surfer;
-                        const country = matchingEntry?.participant?.country || undefined;
+                        const currentHeatColor = normalizeColorCode(colorLabelMap[stat.surfer as keyof typeof colorLabelMap] ?? stat.surfer) || stat.surfer;
+                        const currentHeatName = heatId === (liveHeatIdRef.current || '') ? (configRef.current.surferNames?.[currentHeatColor] || undefined) : undefined;
+                        const currentHeatCountry = heatId === (liveHeatIdRef.current || '') ? (configRef.current.surferCountries?.[currentHeatColor] || undefined) : undefined;
+                        const resolvedEntry = resolvedLineup[stat.surfer];
+                        const entryName = matchingEntry?.participant?.name?.trim();
+                        const surferName =
+                            (entryName && !isLikelyPlaceholder(entryName) ? entryName : undefined) ||
+                            resolvedEntry?.name ||
+                            currentHeatName ||
+                            stat.surfer;
+                        const country =
+                            matchingEntry?.participant?.country ||
+                            resolvedEntry?.country ||
+                            currentHeatCountry ||
+                            undefined;
 
                         return stat.waves
                             .filter((wave) => wave.isComplete && wave.score > 0)
