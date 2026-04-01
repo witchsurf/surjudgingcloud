@@ -408,7 +408,9 @@ export default function ScoreDisplay({
                         #{index + 1}
                       </span>
                       <span className="text-lg font-bebas tracking-wider text-primary-900">{entry.surferName}</span>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">{entry.surfer}</span>
+                      {entry.surferName.trim().toUpperCase() !== entry.surfer.trim().toUpperCase() && (
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">{entry.surfer}</span>
+                      )}
                       {entry.country && (
                         <span className="text-[10px] font-bold uppercase tracking-widest text-primary-300">{entry.country}</span>
                       )}
@@ -416,9 +418,7 @@ export default function ScoreDisplay({
                     <div className="text-xs uppercase tracking-wide text-slate-500">
                       {entry.division} · R{entry.round} · H{entry.heatNumber} · Vague {entry.waveNumber}
                     </div>
-                    <div className="text-xs text-slate-500">
-                      {entry.judgeName ? `Juge ${entry.judgeName}` : entry.heatId}
-                    </div>
+                    <div className="text-xs text-slate-500">Note panel apres moyenne des juges</div>
                   </div>
                   <div className="text-right">
                     <div className="text-3xl sm:text-4xl font-bebas text-primary-900 tracking-tighter leading-none">

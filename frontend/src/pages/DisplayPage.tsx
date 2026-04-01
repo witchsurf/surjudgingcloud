@@ -18,7 +18,7 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers } from '../utils/heat';
-import { calculateSurferStats } from '../utils/scoring';
+import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
@@ -490,15 +490,11 @@ export default function DisplayPage() {
         setEventTopScoresLoading(true);
         try {
             const groupedScores = await fetchPreferredScoresForEvent(activeEventId);
-            const candidateScores = Object.values(groupedScores)
-                .flat()
-                .sort((a, b) => {
-                    if (b.score !== a.score) return b.score - a.score;
-                    return new Date(b.created_at || b.timestamp || 0).getTime() - new Date(a.created_at || a.timestamp || 0).getTime();
-                })
-                .slice(0, 20);
-
-            const uniqueHeatIds = Array.from(new Set(candidateScores.map((score) => score.heat_id).filter(Boolean)));
+            const uniqueHeatIds = Array.from(new Set(
+                Object.keys(groupedScores)
+                    .map((heatId) => heatId.trim())
+                    .filter(Boolean)
+            ));
             const entriesByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>();
 
             await Promise.all(
@@ -512,27 +508,67 @@ export default function DisplayPage() {
                 })
             );
 
-            const topEntries = candidateScores.map<EventTopScoreEntry>((score) => {
-                const heatEntries = entriesByHeat.get(score.heat_id) || [];
-                const normalizedSurfer = normalizeColorCode(score.surfer) || score.surfer;
-                const matchingEntry = heatEntries.find((entry) => (normalizeColorCode(entry.color || '') || entry.color) === normalizedSurfer);
-                const parsedHeat = parseActiveHeatId(score.heat_id);
+            const topEntries = Object.entries(groupedScores)
+                .flatMap(([heatId, heatScores]) => {
+                    const normalizedHeatScores = normalizeScores(heatScores || []);
+                    if (!normalizedHeatScores.length) return [];
 
-                return {
-                    scoreId: score.id || `${score.heat_id}-${score.surfer}-${score.wave_number}-${score.judge_id}`,
-                    score: score.score,
-                    waveNumber: score.wave_number,
-                    surfer: normalizedSurfer,
-                    surferName: matchingEntry?.participant?.name || normalizedSurfer,
-                    country: matchingEntry?.participant?.country || undefined,
-                    division: normalizeDivision(score.division) || parsedHeat?.division || config.division,
-                    round: score.round || parsedHeat?.round || config.round,
-                    heatNumber: parsedHeat?.heatNumber || Number(config.heatId) || 0,
-                    heatId: score.heat_id,
-                    judgeName: score.judge_name,
-                    timestamp: score.created_at || score.timestamp,
-                };
-            }).slice(0, 10);
+                    const heatEntries = entriesByHeat.get(heatId) || [];
+                    const lineupColors = heatEntries
+                        .map((entry) => normalizeColorCode(entry.color || '') || entry.color)
+                        .filter(Boolean) as string[];
+                    const scoreColors = normalizedHeatScores
+                        .map((score) => normalizeColorCode(score.surfer) || score.surfer)
+                        .filter(Boolean);
+                    const surfers = Array.from(new Set([...lineupColors, ...scoreColors]));
+                    if (!surfers.length) return [];
+
+                    const judgeCount = getEffectiveJudgeCount(normalizedHeatScores);
+                    const maxWaves = Math.max(1, ...normalizedHeatScores.map((score) => Number(score.wave_number) || 0));
+                    const stats = calculateSurferStats(normalizedHeatScores, surfers, judgeCount, maxWaves, false, []);
+                    const parsedHeat = parseActiveHeatId(heatId);
+
+                    return stats.flatMap<EventTopScoreEntry>((stat) => {
+                        const matchingEntry = heatEntries.find((entry) => (normalizeColorCode(entry.color || '') || entry.color) === stat.surfer);
+                        const surferName = matchingEntry?.participant?.name?.trim() || stat.surfer;
+                        const country = matchingEntry?.participant?.country || undefined;
+
+                        return stat.waves
+                            .filter((wave) => wave.isComplete && wave.score > 0)
+                            .map((wave) => {
+                                const waveJudgeIds = Object.keys(wave.judgeScores);
+                                const relatedScores = normalizedHeatScores.filter((score) =>
+                                    (normalizeColorCode(score.surfer) || score.surfer) === stat.surfer &&
+                                    Number(score.wave_number) === wave.wave &&
+                                    waveJudgeIds.includes(getScoreJudgeStation(score))
+                                );
+                                const latestTimestamp = relatedScores
+                                    .map((score) => new Date(score.created_at || score.timestamp || 0).getTime())
+                                    .filter((value) => Number.isFinite(value))
+                                    .sort((a, b) => b - a)[0];
+
+                                return {
+                                    scoreId: `${heatId}-${stat.surfer}-${wave.wave}`,
+                                    score: wave.score,
+                                    waveNumber: wave.wave,
+                                    surfer: stat.surfer,
+                                    surferName,
+                                    country,
+                                    division: normalizeDivision(parsedHeat?.division || normalizedHeatScores[0]?.division || config.division),
+                                    round: parsedHeat?.round || normalizedHeatScores[0]?.round || config.round,
+                                    heatNumber: parsedHeat?.heatNumber || Number(config.heatId) || 0,
+                                    heatId,
+                                    judgeName: '',
+                                    timestamp: latestTimestamp ? new Date(latestTimestamp).toISOString() : undefined,
+                                };
+                            });
+                    });
+                })
+                .sort((a, b) => {
+                    if (b.score !== a.score) return b.score - a.score;
+                    return new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+                })
+                .slice(0, 10);
 
             setEventTopScores(topEntries);
         } catch (error) {
