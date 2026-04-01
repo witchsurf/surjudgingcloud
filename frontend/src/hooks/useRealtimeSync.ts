@@ -196,16 +196,10 @@ const createHeatChannel = (normalizedHeatId: string) => {
     }, intervalMs);
   };
 
-  const stopPolling = () => {
-    if (!state.pollingInterval) return;
-    clearInterval(state.pollingInterval);
-    state.pollingInterval = null;
-    updateHeatChannelDebug();
-  };
-
-  if (isLocalSupabaseMode()) {
-    startPolling();
-  }
+  // Keep a shared per-heat safety poller even in cloud mode.
+  // Timer/config propagation is a critical path: if the websocket silently
+  // stalls, judge/display/admin must still converge without manual refresh.
+  startPolling();
 
   const setupChannel = () => {
     if (!heatChannelRegistry.has(normalizedHeatId)) return;
@@ -281,7 +275,6 @@ const createHeatChannel = (normalizedHeatId: string) => {
       if (status === 'SUBSCRIBED') {
         state.reconnecting = false;
         state.retryCount = 0;
-        stopPolling();
         void refreshHeatSnapshot(normalizedHeatId);
         window.dispatchEvent(new CustomEvent('heatRealtimeResync', {
           detail: { heatId: normalizedHeatId }
