@@ -10,6 +10,7 @@ import {
     fetchHeatMetadata,
     fetchHeatScores,
     fetchHeatEntriesWithParticipants,
+    fetchHeatSlotMappings,
     parseActiveHeatId
 } from '../api/supabaseClient';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
@@ -199,6 +200,49 @@ const resolveFromQualifierMap = (text: string, qualifierMap: Map<string, string>
         }
     }
     return resolved;
+};
+
+const parseSourceFromPlaceholder = (placeholder?: string | null) => {
+    const normalized = (placeholder || '').toUpperCase().trim();
+    if (!normalized) return null;
+
+    const direct = normalized.match(/R(P?)(\d+)-H(\d+)-P(\d+)/);
+    if (direct) {
+        return {
+            round: Number(direct[2]),
+            heat: Number(direct[3]),
+            position: Number(direct[4]),
+        };
+    }
+
+    const displayStyle = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)\s*\(P\s*(\d+)\)/);
+    if (displayStyle) {
+        return {
+            round: Number(displayStyle[1]),
+            heat: Number(displayStyle[2]),
+            position: Number(displayStyle[3]),
+        };
+    }
+
+    const loose = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)\s*[- ]?\s*P\s*(\d+)/);
+    if (loose) {
+        return {
+            round: Number(loose[1]),
+            heat: Number(loose[2]),
+            position: Number(loose[3]),
+        };
+    }
+
+    const noPosition = normalized.match(/R\s*(\d+)\s*[- ]\s*H\s*(\d+)/);
+    if (noPosition) {
+        return {
+            round: Number(noPosition[1]),
+            heat: Number(noPosition[2]),
+            position: null,
+        };
+    }
+
+    return null;
 };
 
 const normalizeScores = (scores: Score[]) => scores.map(score => {
@@ -496,6 +540,7 @@ export default function DisplayPage() {
                     .filter(Boolean)
             ));
             const entriesByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>();
+            const slotMappingsByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatSlotMappings>>>();
 
             await Promise.all(
                 uniqueHeatIds.map(async (heatId) => {
@@ -505,10 +550,17 @@ export default function DisplayPage() {
                     } catch (error) {
                         console.warn('Impossible de charger les participants du heat pour le top event', heatId, error);
                     }
+                    try {
+                        const mappings = await fetchHeatSlotMappings(heatId);
+                        slotMappingsByHeat.set(heatId, mappings);
+                    } catch (error) {
+                        console.warn('Impossible de charger les slot mappings du heat pour le top event', heatId, error);
+                    }
                 })
             );
 
             const resolvedLineupsByHeat = new Map<string, Record<string, { name: string; country?: string }>>();
+            const sourceRanksByHeat = new Map<string, Map<number, { name: string; country?: string }>>();
             const orderedDivisionKeys = Object.keys(historyHeats).sort();
 
             orderedDivisionKeys.forEach((divisionKey) => {
@@ -537,6 +589,7 @@ export default function DisplayPage() {
                     .forEach((round) => {
                         round.heats.forEach((heat) => {
                             const heatEntries = heat.heatId ? entriesByHeat.get(heat.heatId) || [] : [];
+                            const heatSlotMappings = heat.heatId ? slotMappingsByHeat.get(heat.heatId) || [] : [];
                             const entryInfoByColor = heatEntries.reduce<Record<string, { name?: string; country?: string }>>((acc, entry) => {
                                 const color = normalizeColorCode(entry.color || '') || entry.color;
                                 const name = entry.participant?.name;
@@ -563,6 +616,85 @@ export default function DisplayPage() {
                                 if (resolved) {
                                     slot.name = resolved.name;
                                     slot.country = resolved.country;
+                                    slot.placeholder = undefined;
+                                }
+                            });
+
+                            const withSourceBase = heatSlotMappings
+                                .map((mapping) => {
+                                    const parsed = parseSourceFromPlaceholder(mapping.placeholder);
+                                    return {
+                                        ...mapping,
+                                        source_round: parsed?.round ?? mapping.source_round ?? null,
+                                        source_heat: parsed?.heat ?? mapping.source_heat ?? null,
+                                        source_position: parsed?.position ?? mapping.source_position ?? null,
+                                    };
+                                })
+                                .filter((mapping) => mapping.source_round != null && mapping.source_heat != null);
+
+                            const implicitCursor = new Map<string, number>();
+                            const heatMappings = withSourceBase
+                                .sort((a, b) => {
+                                    const aRound = Number(a.source_round ?? 0);
+                                    const bRound = Number(b.source_round ?? 0);
+                                    if (aRound !== bRound) return aRound - bRound;
+                                    const aHeat = Number(a.source_heat ?? 0);
+                                    const bHeat = Number(b.source_heat ?? 0);
+                                    if (aHeat !== bHeat) return aHeat - bHeat;
+                                    return Number(a.position ?? 0) - Number(b.position ?? 0);
+                                })
+                                .map((mapping) => {
+                                    if (mapping.source_position != null) return mapping;
+                                    const key = `${mapping.source_round}-${mapping.source_heat}`;
+                                    const next = (implicitCursor.get(key) ?? 0) + 1;
+                                    implicitCursor.set(key, next);
+                                    return { ...mapping, source_position: next };
+                                })
+                                .filter((mapping) => mapping.source_position != null);
+
+                            heatMappings.forEach((mapping) => {
+                                const slot = heat.slots[(mapping.position || 1) - 1];
+                                const color = slot?.color ? (normalizeColorCode(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color) || slot.color) : '';
+                                if (!slot || !color) return;
+
+                                const sourceHeat = rounds
+                                    .flatMap((candidateRound) => candidateRound.heats.map((candidateHeat) => ({
+                                        roundNumber: candidateRound.roundNumber,
+                                        heat: candidateHeat,
+                                    })))
+                                    .find((candidate) => candidate.roundNumber === Number(mapping.source_round) && candidate.heat.heatNumber === Number(mapping.source_heat));
+
+                                if (!sourceHeat?.heat.heatId) return;
+                                const sourceHeatId = sourceHeat.heat.heatId;
+
+                                if (!sourceRanksByHeat.has(sourceHeatId)) {
+                                    const sourceLineup = resolvedLineupsByHeat.get(sourceHeatId) || {};
+                                    const sourceScores = normalizeScores(groupedScores[sourceHeatId] || []);
+                                    const sourceSurfers = Object.keys(sourceLineup);
+                                    if (sourceSurfers.length && sourceScores.length) {
+                                        const sourceJudgeCount = getEffectiveJudgeCount(sourceScores);
+                                        const sourceMaxWaves = Math.max(1, ...sourceScores.map((score) => Number(score.wave_number) || 0));
+                                        const sourceStats = calculateSurferStats(sourceScores, sourceSurfers, sourceJudgeCount, sourceMaxWaves, true, []);
+                                        const rankMap = new Map<number, { name: string; country?: string }>();
+                                        sourceStats
+                                            .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+                                            .forEach((stat) => {
+                                                if (rankMap.has(stat.rank)) return;
+                                                const sourceEntry = sourceLineup[stat.surfer];
+                                                if (!sourceEntry?.name) return;
+                                                rankMap.set(stat.rank, sourceEntry);
+                                            });
+                                        sourceRanksByHeat.set(sourceHeatId, rankMap);
+                                    }
+                                }
+
+                                const sourceRankMap = sourceRanksByHeat.get(sourceHeatId);
+                                const sourceEntry = sourceRankMap?.get(Number(mapping.source_position));
+                                if (!sourceEntry?.name) return;
+
+                                if (!slot.name || isLikelyPlaceholder(slot.name)) {
+                                    slot.name = sourceEntry.name;
+                                    slot.country = sourceEntry.country;
                                     slot.placeholder = undefined;
                                 }
                             });
