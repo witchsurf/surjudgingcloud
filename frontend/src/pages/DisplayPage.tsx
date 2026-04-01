@@ -22,7 +22,7 @@ import { calculateSurferStats } from '../utils/scoring';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
-import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
+import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 import type { AppConfig, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
@@ -580,76 +580,6 @@ export default function DisplayPage() {
             return prev;
         });
     }, [heatParticipants, heatParticipantsSource, liveHeatCountries, setConfig]);
-
-    // Subscribe to config changes for cross-device sync
-    useEffect(() => {
-        if (!activeEventId) return;
-
-        const applySnapshot = async () => {
-            const snapshot = await fetchEventConfigSnapshot(activeEventId);
-            if (snapshot) {
-                const currentCountries = countriesRef.current;
-
-                try {
-                    setConfig((prev) => {
-                        // If the snapshot is for a different heat, ignore it entirely.
-                        // Heat-specific data sources (useHeatParticipants, fetchHeatEntries)
-                        // will populate the correct surfer names without a stale merge.
-                        const snapshotHeat = snapshot.heat_number;
-                        const snapshotRound = snapshot.round;
-                        const heatMismatch =
-                            snapshotHeat &&
-                            prev.surfers?.length &&
-                            (snapshotHeat !== prev.heatId || snapshotRound !== prev.round);
-                        if (heatMismatch) return prev;
-
-                        const snapshotNames = normalizeSurferMap(snapshot.surferNames || {});
-                        const mergedNames = mergeSurferNames(prev.surferNames, snapshotNames);
-                        const snapshotCountries = normalizeSurferCountries(snapshot.surferCountries || {});
-                        const mergedCountries = Object.keys(currentCountries).length > 0
-                            ? currentCountries
-                            : (Object.keys(snapshotCountries).length > 0 ? snapshotCountries : (prev.surferCountries || {}));
-
-                        const newConfig = {
-                            ...prev,
-                            competition: resolveEventDisplayName(snapshot.event_name, prev.competition || ''),
-                            division: snapshot.division || prev.division || 'OPEN',
-                            round: snapshot.round || prev.round || 1,
-                            heatId: snapshot.heat_number || prev.heatId || 1,
-                            judges: snapshot.judges?.map(j => j.id) || prev.judges || [],
-                            judgeNames: snapshot.judges?.reduce((acc, j) => ({ ...acc, [j.id]: j.name || j.id }), {}) || prev.judgeNames || {},
-                            surfers: snapshot.surfers || prev.surfers,
-                            surferNames: mergedNames,
-                            surferCountries: mergedCountries,
-                            surfersPerHeat: snapshot.surfers?.length || prev.surfersPerHeat || 4,
-                            waves: prev.waves,
-                            tournamentType: prev.tournamentType,
-                            totalSurfers: prev.totalSurfers,
-                            totalHeats: prev.totalHeats,
-                            totalRounds: prev.totalRounds
-                        };
-                        return normalizeConfig(newConfig as AppConfig);
-                    });
-                } catch (error) {
-                    console.error('❌ Display: failed to update config:', error);
-                }
-            }
-        };
-
-        if (isLocalSupabaseMode()) {
-            const pollingInterval = setInterval(() => {
-                void applySnapshot();
-            }, 1000);
-
-            return () => {
-                clearInterval(pollingInterval);
-            };
-        }
-
-        return subscribeToEventConfig(activeEventId, async () => {
-            await applySnapshot();
-        });
-    }, [activeEventId]); // Keep a single subscription per event
 
     // Subscribe to realtime heat timer/config and scores
     useEffect(() => {

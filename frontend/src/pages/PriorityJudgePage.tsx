@@ -9,7 +9,7 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { parseActiveHeatId } from '../api/supabaseClient';
-import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
+import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import type { AppConfig } from '../types';
@@ -105,35 +105,6 @@ export default function PriorityJudgePage() {
 
         loadKioskConfig().finally(() => setConfigLoading(false));
     }, [eventIdFromUrl, loadConfigFromDb, loadKioskConfig, setActiveEventId]);
-
-    useEffect(() => {
-        if (!isSupabaseConfigured() || configLoading) return;
-
-        const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
-        const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
-        if (!targetEventId) return;
-
-        return subscribeToEventConfig(targetEventId, (row) => {
-            if (positionFromUrl) {
-                const sameHeat =
-                    Boolean(configSaved) &&
-                    (row.division || '').trim().toUpperCase() === (config.division || '').trim().toUpperCase() &&
-                    Number(row.round ?? config.round) === Number(config.round) &&
-                    Number(row.heat_number ?? config.heatId) === Number(config.heatId);
-                if (sameHeat) {
-                    return;
-                }
-                void loadConfigFromDb(targetEventId);
-                return;
-            }
-            setConfig((prev) => applyHeatScopedConfig(prev, {
-                competition: resolveEventDisplayName(row.event_name, prev.competition),
-                division: row.division || prev.division,
-                round: row.round ?? prev.round,
-                heatId: row.heat_number ?? prev.heatId
-            }));
-        });
-    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, configSaved, config.division, config.round, config.heatId, loadConfigFromDb]);
 
     useEffect(() => {
         if (!configSaved || !config.competition || configLoading) {

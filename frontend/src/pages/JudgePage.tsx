@@ -136,7 +136,7 @@ export default function JudgePage() {
 
     // Realtime sync for admin config saves (division/round/heat changes).
     useEffect(() => {
-        if (!isSupabaseConfigured() || configLoading) return;
+        if (!isSupabaseConfigured() || configLoading || positionFromUrl) return;
 
         const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
         const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
@@ -210,7 +210,7 @@ export default function JudgePage() {
 
     // Fallback realtime path: switch tablets when active_heat_pointer changes.
     useEffect(() => {
-        if (!isSupabaseConfigured() || configLoading || eventIdFromUrl) return;
+        if (!isSupabaseConfigured() || configLoading) return;
 
         const expectedEvent = normalizeEventRealtimeKey(config.competition);
         const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
