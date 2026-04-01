@@ -24,7 +24,7 @@ import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
-import type { AppConfig, Score } from '../types';
+import type { AppConfig, EventTopScoreEntry, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
 
 const COLOR_MAP: Record<string, string> = {
@@ -255,6 +255,9 @@ export default function DisplayPage() {
     const [historyScores, setHistoryScores] = useState<Score[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [liveHeatCountries, setLiveHeatCountries] = useState<Record<string, string>>({});
+    const [eventTopScores, setEventTopScores] = useState<EventTopScoreEntry[]>([]);
+    const [eventTopScoresOpen, setEventTopScoresOpen] = useState(false);
+    const [eventTopScoresLoading, setEventTopScoresLoading] = useState(false);
     const configRef = useRef(config);
     const countriesRef = useRef(liveHeatCountries);
     const liveHeatIdRef = useRef('');
@@ -277,6 +280,11 @@ export default function DisplayPage() {
         if (activeEventId) {
             fetchAllEventHeats(activeEventId).then(setHistoryHeats).catch(console.error);
         }
+    }, [activeEventId]);
+
+    useEffect(() => {
+        setEventTopScores([]);
+        setEventTopScoresOpen(false);
     }, [activeEventId]);
 
     useEffect(() => {
@@ -473,6 +481,73 @@ export default function DisplayPage() {
             alert("Impossible de charger les résultats de ce heat.");
         } finally {
             setIsLoadingHistory(false);
+        }
+    };
+
+    const loadEventTopScores = async () => {
+        if (!activeEventId) return;
+
+        setEventTopScoresLoading(true);
+        try {
+            const groupedScores = await fetchPreferredScoresForEvent(activeEventId);
+            const candidateScores = Object.values(groupedScores)
+                .flat()
+                .sort((a, b) => {
+                    if (b.score !== a.score) return b.score - a.score;
+                    return new Date(b.created_at || b.timestamp || 0).getTime() - new Date(a.created_at || a.timestamp || 0).getTime();
+                })
+                .slice(0, 20);
+
+            const uniqueHeatIds = Array.from(new Set(candidateScores.map((score) => score.heat_id).filter(Boolean)));
+            const entriesByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>();
+
+            await Promise.all(
+                uniqueHeatIds.map(async (heatId) => {
+                    try {
+                        const entries = await fetchHeatEntriesWithParticipants(heatId);
+                        entriesByHeat.set(heatId, entries);
+                    } catch (error) {
+                        console.warn('Impossible de charger les participants du heat pour le top event', heatId, error);
+                    }
+                })
+            );
+
+            const topEntries = candidateScores.map<EventTopScoreEntry>((score) => {
+                const heatEntries = entriesByHeat.get(score.heat_id) || [];
+                const normalizedSurfer = normalizeColorCode(score.surfer) || score.surfer;
+                const matchingEntry = heatEntries.find((entry) => (normalizeColorCode(entry.color || '') || entry.color) === normalizedSurfer);
+                const parsedHeat = parseActiveHeatId(score.heat_id);
+
+                return {
+                    scoreId: score.id || `${score.heat_id}-${score.surfer}-${score.wave_number}-${score.judge_id}`,
+                    score: score.score,
+                    waveNumber: score.wave_number,
+                    surfer: normalizedSurfer,
+                    surferName: matchingEntry?.participant?.name || normalizedSurfer,
+                    country: matchingEntry?.participant?.country || undefined,
+                    division: normalizeDivision(score.division) || parsedHeat?.division || config.division,
+                    round: score.round || parsedHeat?.round || config.round,
+                    heatNumber: parsedHeat?.heatNumber || Number(config.heatId) || 0,
+                    heatId: score.heat_id,
+                    judgeName: score.judge_name,
+                    timestamp: score.created_at || score.timestamp,
+                };
+            }).slice(0, 10);
+
+            setEventTopScores(topEntries);
+        } catch (error) {
+            console.error('Impossible de charger les meilleures notes de l’event', error);
+            setEventTopScores([]);
+        } finally {
+            setEventTopScoresLoading(false);
+        }
+    };
+
+    const handleToggleEventTopScores = () => {
+        const nextOpen = !eventTopScoresOpen;
+        setEventTopScoresOpen(nextOpen);
+        if (nextOpen && eventTopScores.length === 0 && !eventTopScoresLoading) {
+            void loadEventTopScores();
         }
     };
 
@@ -735,6 +810,10 @@ export default function DisplayPage() {
                             timer={timer}
                             configSaved={configSaved}
                             heatStatus={heatStatus}
+                            eventTopScores={eventTopScores}
+                            eventTopScoresOpen={eventTopScoresOpen}
+                            eventTopScoresLoading={eventTopScoresLoading}
+                            onToggleEventTopScores={activeEventId ? handleToggleEventTopScores : undefined}
                         />
                     ) : (
                         <div className="space-y-6">

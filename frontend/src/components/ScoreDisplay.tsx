@@ -14,6 +14,7 @@ import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import type {
   AppConfig,
   EffectiveInterference,
+  EventTopScoreEntry,
   Score,
   SurferStats,
   HeatTimer as HeatTimerType,
@@ -25,6 +26,10 @@ interface ScoreDisplayProps {
   timer: HeatTimerType;
   configSaved: boolean;
   heatStatus?: 'waiting' | 'running' | 'paused' | 'finished' | 'closed';
+  eventTopScores?: EventTopScoreEntry[];
+  eventTopScoresOpen?: boolean;
+  eventTopScoresLoading?: boolean;
+  onToggleEventTopScores?: () => void;
 }
 
 // Couleurs officielles
@@ -158,6 +163,10 @@ export default function ScoreDisplay({
   timer,
   configSaved,
   heatStatus = 'waiting',
+  eventTopScores = [],
+  eventTopScoresOpen = false,
+  eventTopScoresLoading = false,
+  onToggleEventTopScores,
 }: ScoreDisplayProps) {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [surferStats, setSurferStats] = useState<SurferStats[]>([]);
@@ -351,8 +360,80 @@ export default function ScoreDisplay({
             <FileText className="w-3.5 h-3.5" />
             PDF Scorecard
           </button>
+          {onToggleEventTopScores && (
+            <button
+              type="button"
+              onClick={onToggleEventTopScores}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white hover:bg-primary-50 text-primary-900 rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-sm"
+            >
+              <Trophy className="w-3.5 h-3.5 text-cta-500" />
+              Top notes event
+            </button>
+          )}
         </div>
       </div>
+
+      {onToggleEventTopScores && eventTopScoresOpen && (
+        <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden">
+          <div className="bg-primary-900 px-4 sm:px-6 py-3 border-b-4 border-primary-950 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg sm:text-xl font-bebas tracking-widest text-white flex items-center gap-3">
+                <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-cta-500" />
+                Meilleures notes de l'event
+              </h2>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary-200 mt-1">
+                Surfeur, categorie, round et heat
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleEventTopScores}
+              className="px-3 py-1.5 bg-white text-primary-900 rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest"
+            >
+              Fermer
+            </button>
+          </div>
+
+          {eventTopScoresLoading ? (
+            <div className="p-6 text-sm text-primary-500">Chargement des meilleures notes...</div>
+          ) : eventTopScores.length === 0 ? (
+            <div className="p-6 text-sm text-primary-500">Aucune note disponible pour cet event.</div>
+          ) : (
+            <div className="divide-y-2 divide-primary-50">
+              {eventTopScores.map((entry, index) => (
+                <div key={entry.scoreId || `${entry.heatId}-${entry.surfer}-${entry.waveNumber}-${index}`} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-full bg-cta-500 text-white text-[10px] font-bold uppercase tracking-widest border-2 border-primary-950">
+                        #{index + 1}
+                      </span>
+                      <span className="text-lg font-bebas tracking-wider text-primary-900">{entry.surferName}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">{entry.surfer}</span>
+                      {entry.country && (
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-primary-300">{entry.country}</span>
+                      )}
+                    </div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      {entry.division} · R{entry.round} · H{entry.heatNumber} · Vague {entry.waveNumber}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {entry.judgeName ? `Juge ${entry.judgeName}` : entry.heatId}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl sm:text-4xl font-bebas text-primary-900 tracking-tighter leading-none">
+                      {entry.score.toFixed(2)}
+                    </div>
+                    <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">
+                      Top score
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {heatStatus === 'closed' && (
         <div className="bg-red-600 border-4 border-primary-950 rounded-2xl px-6 py-4 shadow-block text-center">

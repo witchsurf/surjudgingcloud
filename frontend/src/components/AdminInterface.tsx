@@ -43,6 +43,29 @@ const encodeCsvCell = (value: string | number) => {
   return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
+const formatOverrideContext = (heatId: string, score?: Partial<Score>) => {
+  const parsed = fetchHeatContext(heatId, score);
+  return `${parsed.division} · R${parsed.round} · H${parsed.heatNumber}`;
+};
+
+const fetchHeatContext = (heatId: string, score?: Partial<Score>) => {
+  const parsed = (() => {
+    const match = ensureHeatId(heatId).match(/^(.+)_([^_]+)_r(\d+)_h(\d+)$/i);
+    if (!match) return null;
+    return {
+      division: match[2].toUpperCase(),
+      round: Number(match[3]),
+      heatNumber: Number(match[4]),
+    };
+  })();
+
+  return {
+    division: (score?.division || parsed?.division || 'HEAT').toString().toUpperCase(),
+    round: Number(score?.round ?? parsed?.round ?? 0),
+    heatNumber: Number(parsed?.heatNumber ?? 0),
+  };
+};
+
 
 interface AdminInterfaceProps {
   config: AppConfig;
@@ -618,6 +641,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     [eventAccuracyOverrides, eventIdentityMap, remapOverrideLogsToJudgeIdentity]
   );
 
+  const scoreById = React.useMemo(() => {
+    const byId = new Map<string, Score>();
+    [
+      ...dbHeatScoreHistory,
+      ...dbHeatScores,
+      ...analyticsHeatScores,
+      ...analyticsEventScores,
+      ...scores,
+    ].forEach((score) => {
+      if (!score?.id) return;
+      byId.set(score.id, score);
+    });
+    return byId;
+  }, [analyticsEventScores, analyticsHeatScores, dbHeatScoreHistory, dbHeatScores, scores]);
+
   const analyticsConfiguredJudgeIds = React.useMemo(() => {
     if (analyticsScope === 'event') {
       return Array.from(new Set(eventJudgeAssignments.map((assignment) => (assignment.judge_id || '').trim()).filter(Boolean)));
@@ -905,6 +943,20 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
     return sourceLogs.filter((log) => log.judge_id === selectedJudgeProfileId);
   }, [analyticsEventOverrides, analyticsHeatOverrides, analyticsScope, eventJudgeProfiles.membersByProfileId, selectedJudgeProfileId]);
+
+  const selectedJudgeOverridesDetailed = React.useMemo(() => {
+    return selectedJudgeOverrides.map((log) => {
+      const relatedScore = scoreById.get(log.score_id);
+      const context = fetchHeatContext(log.heat_id, relatedScore);
+      return {
+        ...log,
+        contextLabel: formatOverrideContext(log.heat_id, relatedScore),
+        division: context.division,
+        round: context.round,
+        heatNumber: context.heatNumber,
+      };
+    });
+  }, [scoreById, selectedJudgeOverrides]);
 
   const selectedJudgeOverrideSummary = React.useMemo(() => {
     const summary = {
@@ -3530,15 +3582,18 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                       </div>
                       <div className="bg-white border border-slate-200 rounded-lg p-4">
                         <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Dernières corrections du juge</p>
-                        {selectedJudgeOverrides.length === 0 ? (
+                        {selectedJudgeOverridesDetailed.length === 0 ? (
                           <p className="text-sm text-slate-500">Aucune correction enregistrée pour ce juge sur le scope sélectionné.</p>
                         ) : (
                           <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                            {selectedJudgeOverrides.slice(0, 8).map((log) => (
+                            {selectedJudgeOverridesDetailed.slice(0, 8).map((log) => (
                               <div key={log.id} className="rounded-md border border-slate-200 px-3 py-2 text-sm">
                                 <div className="flex items-center justify-between">
                                   <span className="font-medium text-slate-900">{log.surfer} · Vague {log.wave_number}</span>
                                   <span className="text-xs text-slate-500">{reasonLabels[log.reason]}</span>
+                                </div>
+                                <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                                  {log.contextLabel}
                                 </div>
                                 <div className="mt-1 text-slate-700">
                                   {log.previous_score !== null ? `${log.previous_score.toFixed(2)} → ` : ''}

@@ -73,6 +73,21 @@ export interface ScoreOverrideLog {
   created_at: string;
 }
 
+export interface EventTopScoreEntry {
+  scoreId: string;
+  score: number;
+  waveNumber: number;
+  surfer: string;
+  surferName: string;
+  country?: string;
+  division: string;
+  round: number;
+  heatNumber: number;
+  heatId: string;
+  judgeName: string;
+  timestamp?: string;
+}
+
 export interface Heat {
   id?: string;
   competition?: string;
