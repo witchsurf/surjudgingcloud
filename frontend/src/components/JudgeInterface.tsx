@@ -92,6 +92,8 @@ function JudgeInterface({
   const [isPriorityOrdering, setIsPriorityOrdering] = useState(false);
   const [priorityDraft, setPriorityDraft] = useState<string[]>([]);
   const [interactionWarning, setInteractionWarning] = useState<{ title: string; message: string } | null>(null);
+  const [lastSubmitted, setLastSubmitted] = useState<{ surfer: string; wave: number; score: number; ts: number } | null>(null);
+  const [scoreFeedback, setScoreFeedback] = useState<{ score: number; ts: number } | null>(null);
   const activeInputRef = useRef<HTMLInputElement | null>(null);
   const scoreRefreshInFlightRef = useRef(false);
   const lastSharedRefreshAtRef = useRef(0);
@@ -682,6 +684,14 @@ function JudgeInterface({
           });
         }
       }
+
+      // Haptic + visual feedback
+      setLastSubmitted({ surfer: activeInput.surfer, wave: activeInput.wave, score: scoreValue, ts: Date.now() });
+      setScoreFeedback({ score: scoreValue, ts: Date.now() });
+      try { navigator?.vibrate?.(50); } catch { /* vibrate not supported */ }
+      setTimeout(() => setLastSubmitted(null), 600);
+      setTimeout(() => setScoreFeedback(null), 2000);
+
       // Keep control manual after each score to avoid accidental wrong-wave entries.
       setActiveInput(null);
       setInputValue('');
@@ -1287,7 +1297,7 @@ function JudgeInterface({
                               onClick={() => handleCellClick(surfer, wave)}
                               className={`inline-flex items-center justify-center rounded-lg font-bold transition-all duration-200 shadow-sm active:scale-95 touch-manipulation flex-1 w-full ${ultraCompactGrid ? 'min-w-[34px] min-h-[32px] px-0.5 py-0.5 text-xs' : compactGrid ? 'min-w-[38px] min-h-[36px] px-1 py-1 text-sm' : 'min-w-[42px] min-h-[40px] px-2 py-1.5 text-sm'} ${entryMode === 'interference'
                                 ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
-                                : 'bg-green-100 text-green-900 border border-green-300 hover:bg-green-200'}`}
+                                : 'bg-green-100 text-green-900 border border-green-300 hover:bg-green-200'} ${lastSubmitted && lastSubmitted.surfer === surfer && lastSubmitted.wave === wave ? 'animate-score-flash ring-2 ring-green-500' : ''}`}
                             >
                               {scoreData.score.toFixed(2)}
                               {!ultraCompactGrid && !compactGrid && <Edit3 className="w-4 h-4 ml-1" />}
@@ -1364,6 +1374,19 @@ function JudgeInterface({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* SCORE FEEDBACK TOAST */}
+      {scoreFeedback && (
+        <div
+          key={scoreFeedback.ts}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] px-5 py-2.5 bg-green-600 text-white rounded-xl shadow-lg font-bold text-lg flex items-center gap-2 animate-score-toast"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          {scoreFeedback.score.toFixed(1)} enregistré
         </div>
       )}
     </div>

@@ -509,8 +509,12 @@ export function useHeatManager() {
 
         try {
             await publishConfigUpdate(currentDbHeatId, newConfig); // Inform current heat subscribers
+        } catch (error) {
+            console.warn('⚠️ Impossible de publier la fin du heat courant:', error);
+        }
 
-            if (nextHeatKey) {
+        if (nextHeatKey) {
+            try {
                 // createHeat uses upsert, so calling it only for the actual next heat is safe and idempotent.
                 await createHeat({
                     competition: newConfig.competition,
@@ -521,7 +525,7 @@ export function useHeatManager() {
                     surfers: newConfig.surfers.map((surfer) => ({
                         color: surfer,
                         name: surfer,
-                        country: 'SENEGAL',
+                        country: config.surferCountries?.[surfer] || '',
                     })),
                 });
 
@@ -529,9 +533,15 @@ export function useHeatManager() {
                 await saveTimerState(nextHeatKey, { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION });
                 await publishConfigUpdate(nextHeatKey, newConfig);
                 await publishTimerReset(nextHeatKey, DEFAULT_TIMER_DURATION);
+            } catch (error) {
+                console.error('❌ Synchronisation du nouveau heat échouée:', error);
+                const detail = error instanceof Error ? error.message : 'Erreur réseau';
+                setTimeout(() => {
+                    alert(
+                        `⚠️ Le heat a été fermé avec succès, mais la synchronisation vers le heat suivant (R${newConfig.round}H${newConfig.heatId}) a échoué.\n\n${detail}\n\n👉 Pas de perte de données. Rechargez la page ou re-sélectionnez le heat manuellement dans le menu déroulant.`
+                    );
+                }, 300);
             }
-        } catch (error) {
-            console.log('⚠️ Synchronisation du nouveau heat différée:', error);
         }
 
         if (advanced) {

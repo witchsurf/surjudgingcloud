@@ -680,13 +680,16 @@ export default function ScoreDisplay({
                                   {/* Tooltip notes juges - Simplified style */}
                                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:flex flex-col items-center bg-primary-900 text-white text-[10px] p-2 rounded-xl z-50 shadow-block min-w-max border-2 border-primary-950">
                                     <div className="flex gap-4">
-                                      {config.judges.map((jId, idx) => {
-                                        const s = wave.judgeScores[jId];
+                                      {Object.entries(wave.judgeScores).map(([jKey, s], idx) => {
                                         if (s === undefined) return null;
+                                        // Resolve display name: try config.judgeNames by key, then by station match
+                                        const displayName = config.judgeNames[jKey]
+                                          || config.judges.find((gId) => config.judgeNames[gId] && gId === jKey) && config.judgeNames[jKey]
+                                          || `J${idx + 1}`;
                                         return (
-                                          <div key={jId} className="flex flex-col items-center">
+                                          <div key={jKey} className="flex flex-col items-center">
                                             <span className="text-[8px] text-primary-300 uppercase leading-none mb-1">
-                                              {config.judgeNames[jId] || `J${idx + 1}`}
+                                              {displayName}
                                             </span>
                                             <span className="font-bebas text-lg leading-none">
                                               {s.toFixed(1)}
