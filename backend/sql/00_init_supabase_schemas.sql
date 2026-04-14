@@ -139,8 +139,8 @@ GRANT USAGE ON SCHEMA graphql_public TO postgres, anon, authenticated, service_r
 -- ===========================================
 
 -- UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
-CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions;
+-- CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
+-- CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA extensions;
 
 -- ===========================================
 -- 8. FINAL PERMISSIONS

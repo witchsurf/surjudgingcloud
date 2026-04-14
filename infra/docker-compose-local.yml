@@ -17,7 +17,6 @@ services:
       POSTGRES_HOST: /var/run/postgresql
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ../backend/sql:/docker-entrypoint-initdb.d
     networks:
       - surfjudging_network
 

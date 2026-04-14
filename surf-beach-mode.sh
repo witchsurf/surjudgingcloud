@@ -22,9 +22,10 @@ BEACH_SUPABASE_SERVICES="postgres kong auth realtime storage rest"
 BEACH_DISABLED_SERVICES="meta studio"
 
 # IP de la machine virtuelle locale (détectée d'après ton Docker context)
-VM_USER="laraise"
-VM_IP="192.168.1.78"
-VM_DIR="/home/laraise/surjudgingcloud"
+# IP du PC HP ProDesk (Ligue Pro Event Box)
+VM_USER="admin-surfjudging"
+VM_IP="192.168.1.2"
+VM_DIR="/home/admin-surfjudging/surjudgingcloud"
 DEPLOY_ITEMS=(
     ".dockerignore"
     "surf-beach-mode.sh"
@@ -73,9 +74,12 @@ function sync_deploy_items() {
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" vm-zombies.sh "${remote}:${VM_DIR}/vm-zombies.sh" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/Dockerfile "${remote}:${VM_DIR}/infra/Dockerfile" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/docker-compose.yml "${remote}:${VM_DIR}/infra/docker-compose.yml" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/.env "${remote}:${VM_DIR}/infra/.env" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/docker-compose-local.yml "${remote}:${VM_DIR}/infra/docker-compose-local.yml" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/kong.yml "${remote}:${VM_DIR}/infra/kong.yml" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" infra/nginx.conf "${remote}:${VM_DIR}/infra/nginx.conf" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" backend/sql/00_init_supabase_schemas.sql "${remote}:${VM_DIR}/backend/sql/00_init_supabase_schemas.sql" || return 1
+    run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" backend/sql/schema.sql "${remote}:${VM_DIR}/backend/sql/schema.sql" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql "${remote}:${VM_DIR}/backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" backend/sql/FIX_SYNC_SCORING.sql "${remote}:${VM_DIR}/backend/sql/FIX_SYNC_SCORING.sql" || return 1
     run_rsync -avz -e "ssh ${RSYNC_SSH_OPTIONS}" backend/sql/14_ADD_INTERFERENCE_CALLS.sql "${remote}:${VM_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql" || return 1
@@ -412,7 +416,7 @@ function etape_1_preparation() {
     echo -e "Cette étape va envoyer ton code vers le serveur Ubuntu et le recompiler."
     echo ""
     
-    verify_vm || return
+    verify_vm "no" || return
     preflight_deploy_network || return
     
     echo -e "${BLUE}📦 1. Compilation front-end locale...${NC}"

@@ -29,3 +29,36 @@ services:
         paths:
           - /storage/v1
         strip_path: true
+plugins:
+  - name: cors
+    config:
+      origins:
+        - '*'
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Accept-Version
+        - Content-Length
+        - Content-MD5
+        - Content-Type
+        - Date
+        - X-Auth-Token
+        - Authorization
+        - apikey
+        - Prefer
+        - Range
+        - accept-profile
+        - content-profile
+        - x-client-info
+      exposed_headers:
+        - Content-Range
+        - Content-Length
+        - Content-Type
+      credentials: true
+      max_age: 86400
