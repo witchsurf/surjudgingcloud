@@ -37,6 +37,7 @@ DEPLOY_ITEMS=(
     "infra/docker-compose-local.yml"
     "infra/kong.yml"
     "infra/nginx.conf"
+    "backend/sql/PATCH_LOCAL_MISSING_OBJECTS.sql"
     "backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql"
     "backend/sql/FIX_SYNC_SCORING.sql"
     "backend/sql/14_ADD_INTERFERENCE_CALLS.sql"
@@ -230,6 +231,7 @@ function apply_local_schema_fixes_remote() {
             sleep 2
         done
         for sql_file in \
+            "${VM_DIR}/backend/sql/PATCH_LOCAL_MISSING_OBJECTS.sql" \
             "${VM_DIR}/backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql" \
             "${VM_DIR}/backend/sql/FIX_SYNC_SCORING.sql" \
             "${VM_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql"
@@ -442,7 +444,8 @@ function etape_1_preparation() {
         echo "Arrêt de l'ancien système..."
         docker compose stop surfjudging || true
         echo "Lancement avec build runtime-only..."
-        docker compose up -d --build surfjudging
+        COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose build --pull never surfjudging
+        docker compose up -d surfjudging
 EOF
     
     echo ""
