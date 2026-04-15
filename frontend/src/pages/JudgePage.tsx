@@ -9,6 +9,7 @@ import { useScoreManager } from '../hooks/useScoreManager';
 import { getHeatIdentifiers } from '../utils/heat';
 import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { useHeatManager } from '../hooks/useHeatManager';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { parseActiveHeatId } from '../api/supabaseClient';
@@ -23,6 +24,7 @@ export default function JudgePage() {
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { handleScoreSubmit, handleScoreSync } = useScoreManager();
     const { subscribeToHeat, markHeatFinished, syncHeatViaWebhook, isConnected } = useRealtimeSync();
+    const { closeHeat } = useHeatManager();
     const [configLoading, setConfigLoading] = useState(true);
     const prevHeatIdRef = useRef<string | null>(null);
     const prevConfigSavedRef = useRef<boolean>(configSaved);
@@ -71,13 +73,20 @@ export default function JudgePage() {
     const handleHeatClose = async () => {
         if (!currentHeatId) return;
         try {
-            await markHeatFinished(currentHeatId);
-            await syncHeatViaWebhook(currentHeatId, { status: 'finished' });
-            // Optionally reload or notify user
-            alert('Série clôturée et synchronisée avec succès.');
+            // Reuse the same close workflow as the admin page so LAN mode
+            // closes the heat in the local DB path and advances the sequence.
+            await closeHeat();
         } catch (error) {
-            console.error('Erreur lors de la clôture de la série:', error);
-            alert('Erreur lors de la clôture de la série.');
+            console.error('Erreur lors de la clôture complète de la série, fallback finish-only:', error);
+
+            try {
+                await markHeatFinished(currentHeatId);
+                await syncHeatViaWebhook(currentHeatId, { status: 'finished' });
+                alert('Série marquée terminée, mais la clôture complète a rencontré un problème.');
+            } catch (fallbackError) {
+                console.error('Erreur lors du fallback de clôture de la série:', fallbackError);
+                alert('Erreur lors de la clôture de la série.');
+            }
         }
     };
 

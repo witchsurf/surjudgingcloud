@@ -4,7 +4,7 @@ import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
 import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchHeatMetadata, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
-import { isLocalSupabaseMode, isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
@@ -303,11 +303,6 @@ function JudgeInterface({
       if (reason === 'shared_update') {
         lastSharedRefreshAtRef.current = now;
       }
-      console.log(
-        reason === 'override'
-          ? '🔄 Re-syncing scores after admin override...'
-          : '🔄 Re-syncing judge scores from shared heat update...'
-      );
       const dbScores = await fetchHeatScores(currentHeatId);
       const myScores = dbScores.filter(s => 
         (s.judge_id === judgeId || (s.judge_station || s.judge_id) === judgeStation) &&
@@ -320,6 +315,11 @@ function JudgeInterface({
         return;
       }
       lastJudgeScoreSignatureRef.current = nextSignature;
+      console.log(
+        reason === 'override'
+          ? '🔄 Re-syncing scores after admin override...'
+          : '🔄 Judge scores updated from shared heat state'
+      );
       
       if (myScores.length > 0) {
         setSubmittedScores(canonicalizeScores(myScores));
@@ -355,17 +355,9 @@ function JudgeInterface({
         console.warn('Failed to refetch judge scores after shared heat update:', err);
       });
     });
-    const pollingInterval = isLocalSupabaseMode()
-      ? window.setInterval(() => {
-          refetchJudgeScores('shared_update').catch((err) => {
-            console.warn('Failed to poll judge scores after realtime drift:', err);
-          });
-        }, 5000)
-      : null;
 
     return () => {
       unsubscribe();
-      if (pollingInterval) window.clearInterval(pollingInterval);
     };
   }, [currentHeatId, refetchJudgeScores]);
 
