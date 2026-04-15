@@ -101,6 +101,8 @@ const buildHeatsFromRefs = (
     return a.heatNumber - b.heatNumber;
   });
 
+  const positionOffsets: Record<number, number> = {};
+
   sortedRefs.forEach((ref) => {
     // Strategy: Greedy Load Balancing with Collision Avoidance.
     // 1. Identify all buckets with Capacity > 0.
@@ -114,7 +116,7 @@ const buildHeatsFromRefs = (
       return buckets[bIndex].some(r => r.round === ref.round && r.heatNumber === ref.heatNumber);
     };
 
-    let candidates = sizes.map((_, idx) => idx).filter(idx => capacities[idx] > 0);
+    const candidates = sizes.map((_, idx) => idx).filter(idx => capacities[idx] > 0);
 
     // Filter non-colliding
     const safeCandidates = candidates.filter(idx => !checkCollision(idx));
@@ -127,12 +129,24 @@ const buildHeatsFromRefs = (
       return;
     }
 
-    // Sort by Capacity Descending (primary), then Index (secondary)
+    const p = ref.position;
+    if (positionOffsets[p] === undefined) {
+      positionOffsets[p] = 0;
+    }
+
+    // Shift target bucket to cross-seed positions (e.g. P1s start at 0, P2s start at 1, etc.)
+    const targetOffset = (p - 1) % sizes.length;
+    const targetBucket = (positionOffsets[p] + targetOffset) % sizes.length;
+    positionOffsets[p]++;
+
+    // Sort by Capacity Descending (primary), then distance to target bucket
     finalCandidates.sort((a, b) => {
       if (capacities[b] !== capacities[a]) {
         return capacities[b] - capacities[a];
       }
-      return a - b;
+      const distA = (a - targetBucket + sizes.length) % sizes.length;
+      const distB = (b - targetBucket + sizes.length) % sizes.length;
+      return distA - distB;
     });
 
     const chosenIndex = finalCandidates[0];
