@@ -356,17 +356,17 @@ export const generatePreviewHeats = (
     });
   });
 
-  if (totalParticipants === 6 && seriesSize >= 3) {
+  if (totalParticipants === 6 && seriesSize >= 3 && manOnManFromRound === 0) {
     return buildSixPersonBracket(participantsInHeatOrder);
   }
 
   // New rule for 5 participants
-  if (totalParticipants === 5 && seriesSize >= 3) {
+  if (totalParticipants === 5 && seriesSize >= 3 && manOnManFromRound === 0) {
     const final = createHeat(1, 1, participants.map((p, i) => normaliseParticipant(p, i)));
     return [{ round: 1, heats: [final] }];
   }
 
-  if (totalParticipants === 8 && seriesSize >= 4) {
+  if (totalParticipants === 8 && seriesSize >= 4 && manOnManFromRound === 0) {
     return buildEightPersonBracket(participantsInHeatOrder);
   }
 
