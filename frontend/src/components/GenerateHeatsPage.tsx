@@ -60,7 +60,7 @@ const GenerateHeatsPage = () => {
   const { setActiveEventId, setConfig, setConfigSaved, saveConfigToDb } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
   const [categoryManOnManRounds, setCategoryManOnManRounds] = useState<Record<string, number>>({});
-  const [seriesSize, setSeriesSize] = useState('auto');
+  const [categorySeriesSizes, setCategorySeriesSizes] = useState<Record<string, string>>({});
   const [previewData, setPreviewData] = useState<CategoryPreview[]>([]);
   const [eventId, setEventId] = useState<string | null>(null);
   const [eventName, setEventName] = useState<string | null>(null);
@@ -151,11 +151,12 @@ const GenerateHeatsPage = () => {
     void loadContext();
   }, [navigate, searchParams, setActiveEventId]);
 
-  const getSeriesSize = () => {
-    if (seriesSize === 'auto') {
+  const getSeriesSize = (catName: string) => {
+    const size = categorySeriesSizes[catName] || 'auto';
+    if (size === 'auto') {
       return 4;
     }
-    return Math.max(1, parseInt(seriesSize, 10) || 2);
+    return Math.max(1, parseInt(size, 10) || 2);
   };
 
   const groupedParticipants = useMemo(
@@ -174,7 +175,7 @@ const GenerateHeatsPage = () => {
 
   const categoryManOnManOptions = useMemo(
     () => Object.entries(groupedParticipants).reduce<Record<string, ManOnManRoundOption[]>>((acc, [category, list]) => {
-      const baseSeriesSize = getSeriesSize();
+      const baseSeriesSize = getSeriesSize(category);
       const computedSeriesSize = Math.max(
         1,
         Math.min(baseSeriesSize, list.length || baseSeriesSize)
@@ -183,7 +184,7 @@ const GenerateHeatsPage = () => {
       acc[category] = getManOnManRoundOptions(list, selectedFormat, computedSeriesSize);
       return acc;
     }, {}),
-    [groupedParticipants, selectedFormat, seriesSize]
+    [groupedParticipants, selectedFormat, categorySeriesSizes]
   );
 
   useEffect(() => {
@@ -192,7 +193,7 @@ const GenerateHeatsPage = () => {
     try {
       const preview = Object.entries(groupedParticipants)
         .map(([category, list]) => {
-          const baseSeriesSize = getSeriesSize();
+          const baseSeriesSize = getSeriesSize(category);
           const computedSeriesSize = Math.max(
             1,
             Math.min(baseSeriesSize, list.length || baseSeriesSize)
@@ -243,7 +244,7 @@ const GenerateHeatsPage = () => {
     groupedParticipants,
     participants.length,
     selectedFormat,
-    seriesSize
+    categorySeriesSizes
   ]);
 
   const handlePreview = () => {
@@ -326,7 +327,7 @@ const GenerateHeatsPage = () => {
         categories: previewData,
         metadata: {
           format: selectedFormat,
-          seriesSize,
+          categorySeriesSizes,
           categoryManOnManRounds,
           createdAt: new Date().toISOString()
         }
@@ -373,7 +374,7 @@ const GenerateHeatsPage = () => {
           : {},
         tournamentType: selectedFormat,
         totalSurfers: participants.length,
-        surfersPerHeat: firstHeat?.surfers.length ?? getSeriesSize(),
+        surfersPerHeat: firstHeat?.surfers.length ?? getSeriesSize(firstCategory?.category || 'OPEN'),
         totalHeats: previewData.reduce(
           (sum, category) =>
             sum +
@@ -717,30 +718,13 @@ const GenerateHeatsPage = () => {
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Taille de série préférée
-                  </label>
-                  <select
-                    value={seriesSize}
-                    onChange={e => setSeriesSize(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2"
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="2">Man on Man</option>
-                    <option value="3">3 surfeurs</option>
-                    <option value="4">4 surfeurs</option>
-                    <option value="5">5 surfeurs</option>
-                    <option value="6">6 surfeurs</option>
-                  </select>
-                </div>
+              <div className="grid grid-cols-1 gap-8">
                 <div>
                   <label className="block text-sm font-medium mb-2">
                     Information
                   </label>
                   <div className="text-gray-400 text-sm italic py-2">
-                    Le Man-on-Man est maintenant configurable par catégorie dans la prévisualisation ci-dessous.
+                    La taille des séries et le format Man-on-Man sont configurables indépendamment pour chaque catégorie dans la section de prévisualisation ci-dessous.
                   </div>
                 </div>
               </div>
@@ -789,8 +773,30 @@ const GenerateHeatsPage = () => {
                             {category.seriesSize}
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                           <label className="text-sm font-medium text-gray-300">
+                            Taille de série :
+                          </label>
+                          <select
+                            value={categorySeriesSizes[category.category] || 'auto'}
+                            onChange={e => {
+                              const newVal = e.target.value;
+                              setCategorySeriesSizes(prev => ({
+                                ...prev,
+                                [category.category]: newVal
+                              }));
+                            }}
+                            className="bg-gray-800 border border-gray-600 rounded-lg px-3 py-1.5 text-sm"
+                          >
+                            <option value="auto">Auto</option>
+                            <option value="2">2 surfeurs</option>
+                            <option value="3">3 surfeurs</option>
+                            <option value="4">4 surfeurs</option>
+                            <option value="5">5 surfeurs</option>
+                            <option value="6">6 surfeurs</option>
+                          </select>
+
+                          <label className="text-sm font-medium text-gray-300 ml-0 sm:ml-4">
                             Man-on-Man à partir du :
                           </label>
                           <select
