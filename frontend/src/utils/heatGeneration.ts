@@ -101,15 +101,29 @@ const buildHeatsFromRefs = (
     return a.heatNumber - b.heatNumber;
   });
 
-  const positionOffsets: Record<number, number> = {};
+  // Pre-calculate snake targets to mimic standard WSL-style seed distribution (e.g. 1, 2, 3, 3, 2, 1)
+  const snakeTargets: number[] = [];
+  let targetIdx = 0;
+  let direction = 1;
+  for (let i = 0; i < sortedRefs.length; i++) {
+    snakeTargets.push(targetIdx);
+    if (sizes.length > 1) {
+      if (direction === 1) {
+        if (targetIdx === sizes.length - 1) direction = -1;
+        else targetIdx++;
+      } else {
+        if (targetIdx === 0) direction = 1;
+        else targetIdx--;
+      }
+    }
+  }
 
-  sortedRefs.forEach((ref) => {
-    // Strategy: Greedy Load Balancing with Collision Avoidance.
+  sortedRefs.forEach((ref, globalIndex) => {
+    // Strategy: Greedy Load Balancing with Collision Avoidance and Snake Seeding.
     // 1. Identify all buckets with Capacity > 0.
     // 2. Filter out buckets that already contain a surfer from the same Source Heat (Collision).
-    // 3. Sort candidates by Remaining Capacity (Descending).
-    //    Using the bucket with MOST space preserves options for later surfers in smaller buckets.
-    // 4. Tie-breaking: Random or Sequential? Sequential (index) to keep it stable.
+    // 3. Aim for the `targetBucket` based on the Snake distribution to balance heat difficulty.
+    // 4. Default to buckets with Highest Capacity first to maintain size balance.
 
     // Helper to check collision
     const checkCollision = (bIndex: number) => {
@@ -129,15 +143,7 @@ const buildHeatsFromRefs = (
       return;
     }
 
-    const p = ref.position;
-    if (positionOffsets[p] === undefined) {
-      positionOffsets[p] = 0;
-    }
-
-    // Shift target bucket to cross-seed positions (e.g. P1s start at 0, P2s start at 1, etc.)
-    const targetOffset = (p - 1) % sizes.length;
-    const targetBucket = (positionOffsets[p] + targetOffset) % sizes.length;
-    positionOffsets[p]++;
+    const targetBucket = snakeTargets[globalIndex];
 
     // Sort by Capacity Descending (primary), then distance to target bucket
     finalCandidates.sort((a, b) => {
