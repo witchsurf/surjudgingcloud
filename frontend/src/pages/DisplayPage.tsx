@@ -1010,7 +1010,15 @@ export default function DisplayPage() {
     }, [currentHeatId]);
 
     useEffect(() => {
-        if (!activeEventId || !currentHeatId || heatParticipantsSource !== 'empty') return;
+        const hasResolvedHeatParticipants = Object.entries(heatParticipants || {}).some(([color, name]) => {
+            if (!name) return false;
+            const normalizedColor = normalizeColorCode(color) || color;
+            const normalizedName = normalizeColorCode(name) || name;
+            if (normalizedName.toUpperCase() === normalizedColor.toUpperCase()) return false;
+            return !isLikelyPlaceholder(name);
+        });
+
+        if (!activeEventId || !currentHeatId || hasResolvedHeatParticipants) return;
 
         let cancelled = false;
 
@@ -1098,7 +1106,7 @@ export default function DisplayPage() {
         return () => {
             cancelled = true;
         };
-    }, [activeEventId, currentHeatId, heatParticipantsSource, historyHeats, setConfig]);
+    }, [activeEventId, currentHeatId, heatParticipants, historyHeats, setConfig]);
 
     // Sync heat participants into config when they load
     useEffect(() => {
