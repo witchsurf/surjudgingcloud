@@ -60,6 +60,22 @@ const createState = (): HeatSignalState => ({
   },
 });
 
+const startPolling = (state: HeatSignalState) => {
+  if (state.pollingInterval) return;
+
+  state.pollingInterval = setInterval(() => {
+    emit(state, 'scores');
+    emit(state, 'interference');
+    emit(state, 'participants');
+  }, HEAT_SIGNAL_POLL_INTERVAL_MS);
+};
+
+const stopPolling = (state: HeatSignalState) => {
+  if (!state.pollingInterval) return;
+  clearInterval(state.pollingInterval);
+  state.pollingInterval = null;
+};
+
 const emit = (state: HeatSignalState, type: HeatSignalType) => {
   const existingTimer = state.emitTimers[type];
   if (existingTimer) {
@@ -88,7 +104,7 @@ const release = (heatId: string) => {
   if (!state || hasListeners(state)) return;
 
   if (state.pollingInterval) {
-    clearInterval(state.pollingInterval);
+    stopPolling(state);
   }
 
   if (state.retryTimer) {
@@ -126,11 +142,7 @@ const ensureState = (heatId: string) => {
   updateHeatSignalDebug();
 
   if (isLocalSupabaseMode()) {
-    state.pollingInterval = setInterval(() => {
-      emit(state, 'scores');
-      emit(state, 'interference');
-      emit(state, 'participants');
-    }, HEAT_SIGNAL_POLL_INTERVAL_MS);
+    startPolling(state);
   } else if (supabase) {
     const channelName = `shared-heat-signals-${heatId}`;
 
@@ -187,6 +199,7 @@ const ensureState = (heatId: string) => {
             if (state.reconnecting) return;
             state.reconnecting = true;
             state.retryCount += 1;
+            startPolling(state);
             const retryDelay = Math.min(
               HEAT_SIGNAL_RETRY_MAX_MS,
               HEAT_SIGNAL_RETRY_BASE_MS * 2 ** Math.max(state.retryCount - 1, 0)
@@ -209,6 +222,7 @@ const ensureState = (heatId: string) => {
           } else if (status === 'SUBSCRIBED') {
             state.reconnecting = false;
             state.retryCount = 0;
+            stopPolling(state);
             // Heal any missed events upon reconnect by emitting events
             emit(state, 'scores');
             emit(state, 'interference');
