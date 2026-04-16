@@ -137,6 +137,7 @@ export const getSupabaseConfig = () => {
 };
 
 export const { supabaseUrl, supabaseAnonKey, mode } = getSupabaseConfig();
+const debugRealtimeEnabled = resolveEnv('VITE_DEBUG_REALTIME') === 'true';
 
 export const isLocalSupabaseMode = (): boolean => {
   return getSupabaseConfig().mode === 'local';
@@ -164,6 +165,30 @@ export const supabase =
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+      },
+      realtime: {
+        worker: true,
+        heartbeatIntervalMs: 15000,
+        heartbeatCallback: (status) => {
+          if (typeof window !== 'undefined') {
+            ((window as typeof window & { __surfRealtimeDebug?: Record<string, unknown> }).__surfRealtimeDebug ??= {}).heartbeatStatus = {
+              status,
+              updatedAt: new Date().toISOString(),
+            };
+          }
+
+          if (status === 'timeout' || status === 'disconnected') {
+            console.warn(`⚠️ Supabase heartbeat ${status}`);
+          }
+        },
+        ...(debugRealtimeEnabled
+          ? {
+            logLevel: 'info' as const,
+            logger: (kind: string, msg: string, data?: unknown) => {
+              console.log(`[realtime:${kind}] ${msg}`, data ?? '');
+            },
+          }
+          : {}),
       },
     })
     : null;
