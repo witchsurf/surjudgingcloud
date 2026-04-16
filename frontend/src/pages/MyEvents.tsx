@@ -1,7 +1,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { RefreshCw, Cloud, Plus, Users, Calendar, Activity } from 'lucide-react';
+import { RefreshCw, Cloud, Plus, Users, Calendar, Activity, Lock } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, isCloudLocked, mode } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
@@ -10,8 +10,9 @@ import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnap
 import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { OfflineAuthWrapper } from '../components/OfflineAuthWrapper';
-import { isDevMode, saveOfflineCredentials, loginAsOfflineAdmin } from '../lib/offlineAuth';
+import { isDevMode, saveOfflineCredentials, loginAsOfflineAdmin, hasOfflinePin } from '../lib/offlineAuth';
 import { syncEventsFromCloud, getCachedCloudEvents, getLastSyncTime, needsCloudSync, getCloudClient } from '../utils/syncCloudEvents';
+import { OfflineSettingsModal } from '../components/OfflineSettingsModal';
 
 
 
@@ -175,6 +176,8 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [isCloudLoading, setIsCloudLoading] = useState(false);
   const [cloudLoginError, setCloudLoginError] = useState<string | null>(null);
   const [cloudLocked, setCloudLockedState] = useState(isCloudLocked());
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [userHasPin, setUserHasPin] = useState(hasOfflinePin());
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -838,12 +841,27 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   return (
     <div className="min-h-screen bg-slate-950 px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-8 text-white">
-          <p className="text-sm text-blue-300">Bienvenue</p>
-          <h1 className="mt-2 text-3xl font-bold">Mes événements</h1>
-          <p className="mt-2 text-slate-300">
-            Sélectionnez un événement pour reprendre la compétition là où vous l'avez laissée.
-          </p>
+        <div className="mb-8 text-white relative">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm text-blue-300">Bienvenue, {user.email}</p>
+              <h1 className="mt-2 text-3xl font-bold">Mes événements</h1>
+            </div>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-3 bg-slate-900 border border-slate-800 rounded-2xl hover:bg-slate-800 transition-colors group relative"
+              title="Paramètres Offline"
+            >
+              <Lock className={`w-5 h-5 ${userHasPin ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`} />
+              {!userHasPin && (
+                 <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                </span>
+              )}
+            </button>
+          </div>
+
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               onClick={() => loadEvents(user.id)}
@@ -1054,6 +1072,15 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           </div>
         )}
       </div>
+
+      <OfflineSettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => {
+          setIsSettingsOpen(false);
+          setUserHasPin(hasOfflinePin());
+        }} 
+        userEmail={user.email || ''} 
+      />
     </div>
   );
 });

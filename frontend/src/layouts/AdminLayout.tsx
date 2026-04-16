@@ -1,9 +1,11 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Settings, Waves, AlertTriangle } from 'lucide-react';
+import { Settings, Waves, AlertTriangle, Lock, User as UserIcon } from 'lucide-react';
 import SyncStatus from '../components/SyncStatus';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
-
 import { useSync } from '../contexts/SyncContext';
+import { OfflineSettingsModal } from '../components/OfflineSettingsModal';
+import { getOfflineUser } from '../lib/offlineAuth';
+import { useState } from 'react';
 
 // Note: SyncStatus props are currently passed from App.tsx. 
 // We might need a SyncContext or similar if we want to avoid prop drilling here.
@@ -14,6 +16,8 @@ export default function AdminLayout() {
     const location = useLocation();
     const { isConnected, lastUpdate, error: realtimeError } = useRealtimeSync();
     const { syncStatus: syncState, syncPendingScores } = useSync();
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const offlineUser = getOfflineUser();
     // useSupabaseSync manages its own state, but we need the *global* sync status.
     // If we use useSupabaseSync here, it will be a *new* instance.
     // We should probably create a SyncContext or lift useSupabaseSync to a provider.
@@ -45,10 +49,25 @@ export default function AdminLayout() {
                                 <Settings className="w-4 h-4" />
                                 <span>Administration</span>
                             </Link>
+                            
+                            <button
+                                onClick={() => setIsSettingsOpen(true)}
+                                className="px-4 py-2 rounded-lg font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors flex items-center space-x-2"
+                                title="Paramètres Offline"
+                            >
+                                <Lock className="w-4 h-4" />
+                                <span className="hidden sm:inline">Offline PIN</span>
+                            </button>
                         </div>
                     </div>
                 </div>
             </nav>
+
+            <OfflineSettingsModal 
+                isOpen={isSettingsOpen} 
+                onClose={() => setIsSettingsOpen(false)} 
+                userEmail={offlineUser?.email || 'Admin'} 
+            />
 
             <div className="max-w-7xl mx-auto px-4 py-2">
                 <SyncStatus
