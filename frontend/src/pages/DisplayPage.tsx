@@ -24,7 +24,7 @@ import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
-import { supabase } from '../lib/supabase';
+import { isLocalSupabaseMode, supabase } from '../lib/supabase';
 import type { AppConfig, EventTopScoreEntry, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
 
@@ -1143,7 +1143,10 @@ export default function DisplayPage() {
             if (liveHeatIdRef.current !== heatId) return;
             setScores(normalizeScores(fetched));
         };
+        let scoresRefreshInFlight = false;
         const refreshScores = (heatId: string) => {
+            if (scoresRefreshInFlight) return;
+            scoresRefreshInFlight = true;
             void loadScoresFromDatabase(heatId).then((fetched) => {
                 setLastScoresRefreshAt(new Date());
                 applyFetchedScores(heatId, fetched);
@@ -1151,6 +1154,8 @@ export default function DisplayPage() {
                 if (!cancelled) {
                     console.warn('⚠️ Polling des scores display indisponible:', error);
                 }
+            }).finally(() => {
+                scoresRefreshInFlight = false;
             });
         };
 
@@ -1169,6 +1174,12 @@ export default function DisplayPage() {
         const unsubscribeScores = subscribeToHeatScores(currentHeatId, () => {
             refreshScores(liveHeatIdRef.current || currentHeatId);
         });
+        // Keep a low-frequency safety poll on the display even when the socket
+        // looks healthy. Some cloud runs stay connected but silently stop
+        // delivering score inserts, which previously required a manual refresh.
+        const safetyPollInterval = window.setInterval(() => {
+            refreshScores(liveHeatIdRef.current || currentHeatId);
+        }, isLocalSupabaseMode() ? 2500 : 3000);
 
         // Écouter les scores en temps réel (INSERT/UPDATE)
         const handleNewScore = (event: Event) => {
@@ -1199,6 +1210,7 @@ export default function DisplayPage() {
             cancelled = true;
             unsubscribe();
             unsubscribeScores();
+            window.clearInterval(safetyPollInterval);
             window.removeEventListener('newScoreRealtime', handleNewScore);
         };
     }, [configSaved, config.competition, currentHeatId, subscribeToHeat, setTimer, setConfig, setHeatStatus, loadScoresFromDatabase, setScores]);
