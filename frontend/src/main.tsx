@@ -9,6 +9,7 @@ import { initStorageCleanup } from './utils/secureStorage';
 import { processMagicLinkCallback } from './utils/magicLink';
 
 const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+const isPublicDisplayHost = hostname === 'display.surfjudging.cloud';
 const isLocalLanHost =
   hostname === 'localhost' ||
   hostname === '127.0.0.1' ||
@@ -16,7 +17,7 @@ const isLocalLanHost =
   hostname.startsWith('10.') ||
   hostname.startsWith('172.');
 
-if (!isLocalLanHost) {
+if (!isLocalLanHost && !isPublicDisplayHost) {
   const updateSW = registerSW({
     onNeedRefresh() {
       console.log('🔄 New version available – app will auto-update on next visit');
@@ -30,7 +31,14 @@ if (!isLocalLanHost) {
   }
   void updateSW;
 } else {
-  console.log('📴 Service worker disabled on local/LAN host');
+  console.log('📴 Service worker disabled on local/LAN or public display host');
+  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => {
+        registration.unregister().catch(() => {});
+      });
+    }).catch(() => {});
+  }
 }
 
 // Bootstrap: await magic-link session before mounting the app to avoid race conditions
