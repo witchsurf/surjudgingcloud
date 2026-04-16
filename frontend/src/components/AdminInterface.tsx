@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText, PlusCircle, Trophy, Image as ImageIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import QRCode from 'qrcode';
 import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
 import { sanitizeScoreInput, validateScore } from '../utils/scoring';
@@ -150,6 +151,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [eventDivisionOptions, setEventDivisionOptions] = useState<string[]>([]);
   const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number; status?: string }>>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
+  const [displayQrCode, setDisplayQrCode] = useState('');
+  const [judgeAccessLinkCopied, setJudgeAccessLinkCopied] = useState(false);
+  const [judgeAccessQrCode, setJudgeAccessQrCode] = useState('');
   const [priorityLinkCopied, setPriorityLinkCopied] = useState(false);
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [rebuildPending, setRebuildPending] = useState(false);
@@ -1317,6 +1321,57 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return url.toString();
   }, [encodedDisplayPayload, activeEventId]);
 
+  const kioskBaseUrl = React.useMemo(() => {
+    if (typeof window === 'undefined') return '';
+
+    const env = (import.meta as { env?: Record<string, string> }).env ?? {};
+    const envBase =
+      getSupabaseMode() === 'local'
+        ? env.VITE_KIOSK_BASE_URL_LAN ||
+          env.VITE_KIOSK_BASE_URL_LOCAL ||
+          env.VITE_SITE_URL_LAN ||
+          env.VITE_SITE_URL_LOCAL ||
+          env.VITE_SITE_URL ||
+          env.VITE_KIOSK_BASE_URL
+        : getSupabaseMode() === 'cloud'
+          ? env.VITE_KIOSK_BASE_URL_CLOUD ||
+            env.VITE_SITE_URL_CLOUD ||
+            env.VITE_KIOSK_BASE_URL ||
+            env.VITE_SITE_URL
+          : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
+
+    const currentOrigin = window.location.origin;
+    const currentHostname = window.location.hostname;
+    let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost') ? currentOrigin : '';
+
+    if (!kioskBase && envBase) {
+      try {
+        const url = new URL(envBase);
+        const trimmedPath = url.pathname.replace(/\/+$/, '');
+        kioskBase = `${url.origin}${trimmedPath}`;
+      } catch {
+        kioskBase = envBase.replace(/\/+$/, '');
+      }
+    }
+
+    return kioskBase || currentOrigin;
+  }, []);
+
+  const kioskEventId = React.useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const eventIdRaw = window.localStorage.getItem(ACTIVE_EVENT_STORAGE_KEY);
+    const eventIdCandidate = activeEventId ?? (eventIdRaw ? Number(eventIdRaw) : null);
+    const eventId = Number.isFinite(Number(eventIdCandidate)) ? Number(eventIdCandidate) : null;
+    return eventId;
+  }, [activeEventId]);
+
+  const sharedJudgeAccessUrl = React.useMemo(() => {
+    if (!kioskBaseUrl) return '';
+    return kioskEventId
+      ? `${kioskBaseUrl}/judge?eventId=${kioskEventId}`
+      : `${kioskBaseUrl}/judge`;
+  }, [kioskBaseUrl, kioskEventId]);
+
   const priorityJudgeUrl = React.useMemo(() => {
     if (typeof window === 'undefined') return '';
     const url = new URL(window.location.origin);
@@ -1345,6 +1400,17 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   };
 
+  const handleCopyJudgeAccessLink = async () => {
+    if (!sharedJudgeAccessUrl || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(sharedJudgeAccessUrl);
+      setJudgeAccessLinkCopied(true);
+      window.setTimeout(() => setJudgeAccessLinkCopied(false), 2000);
+    } catch (error) {
+      console.warn('Impossible de copier le lien juges:', error);
+    }
+  };
+
   const handleCopyPriorityLink = async () => {
     if (!priorityJudgeUrl || typeof navigator === 'undefined' || !navigator.clipboard) return;
     try {
@@ -1355,6 +1421,78 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       console.warn('Impossible de copier le lien priorité:', error);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const buildDisplayQrCode = async () => {
+      if (!publicDisplayUrl) {
+        if (!cancelled) setDisplayQrCode('');
+        return;
+      }
+
+      try {
+        const dataUrl = await QRCode.toDataURL(publicDisplayUrl, {
+          width: 220,
+          margin: 1,
+          color: {
+            dark: '#1f1147',
+            light: '#ffffff',
+          },
+        });
+        if (!cancelled) {
+          setDisplayQrCode(dataUrl);
+        }
+      } catch (error) {
+        console.warn('Impossible de générer le QR code du display:', error);
+        if (!cancelled) {
+          setDisplayQrCode('');
+        }
+      }
+    };
+
+    buildDisplayQrCode().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [publicDisplayUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const buildJudgeQrCode = async () => {
+      if (!sharedJudgeAccessUrl) {
+        if (!cancelled) setJudgeAccessQrCode('');
+        return;
+      }
+
+      try {
+        const dataUrl = await QRCode.toDataURL(sharedJudgeAccessUrl, {
+          width: 220,
+          margin: 1,
+          color: {
+            dark: '#3b0764',
+            light: '#ffffff',
+          },
+        });
+        if (!cancelled) {
+          setJudgeAccessQrCode(dataUrl);
+        }
+      } catch (error) {
+        console.warn('Impossible de générer le QR code juges:', error);
+        if (!cancelled) {
+          setJudgeAccessQrCode('');
+        }
+      }
+    };
+
+    buildJudgeQrCode().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sharedJudgeAccessUrl]);
 
   const handleAutoReconnect = async () => {
     if (!onReconnectToDb) return;
@@ -3318,6 +3456,21 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               <div className="text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
                 {publicDisplayUrl}
               </div>
+              {displayQrCode ? (
+                <div className="border border-blue-100 bg-blue-50 rounded-xl p-4 flex flex-col items-center text-center">
+                  <p className="text-sm font-medium text-blue-900">
+                    QR code du display public
+                  </p>
+                  <p className="mt-1 text-xs text-blue-700">
+                    Scannez ce code pour ouvrir directement l’affichage public de cet evenement.
+                  </p>
+                  <img
+                    src={displayQrCode}
+                    alt="QR code du display public"
+                    className="mt-3 w-44 h-44 rounded-lg border border-blue-200 bg-white p-2 shadow-sm"
+                  />
+                </div>
+              ) : null}
               <div className="border-t border-gray-200 pt-3">
                 <p className="text-sm text-gray-600 mb-2">
                   Lien tablette dédié pour le juge priorité.
@@ -3896,48 +4049,45 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
           </summary>
           <div className="p-6 bg-white border-t-4 border-primary-950">
+            <div className="mb-5 rounded-xl border border-purple-100 bg-purple-50 p-4">
+              <p className="text-sm font-medium text-purple-900">
+                QR code unique pour les juges
+              </p>
+              <p className="mt-1 text-xs text-purple-700">
+                Chaque juge scanne le meme QR code, puis choisit sa position J1 a J5 sur la page d’acces.
+              </p>
+              {sharedJudgeAccessUrl ? (
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={handleCopyJudgeAccessLink}
+                      className="w-full py-2 px-4 rounded-lg border border-purple-200 text-purple-700 font-medium hover:bg-purple-100 transition-colors"
+                    >
+                      {judgeAccessLinkCopied ? 'Lien juges copié ✅' : 'Copier le lien juges'}
+                    </button>
+                    <div className="text-xs text-gray-500 break-all bg-white p-3 rounded border border-purple-200">
+                      {sharedJudgeAccessUrl}
+                    </div>
+                  </div>
+                  {judgeAccessQrCode ? (
+                    <div className="flex flex-col items-center text-center">
+                      <img
+                        src={judgeAccessQrCode}
+                        alt="QR code d'accès juge"
+                        className="w-44 h-44 rounded-lg border border-purple-200 bg-white p-2 shadow-sm"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             <p className="text-sm text-gray-600 mb-4">Liens directs pour tablettes J1 à J5</p>
             <div className="space-y-2">
               {["J1", "J2", "J3", "J4", "J5"].map(position => {
-                const env = (import.meta as { env?: Record<string, string> }).env ?? {};
-                const envBase =
-                  getSupabaseMode() === 'local'
-                    ? env.VITE_KIOSK_BASE_URL_LAN ||
-                    env.VITE_KIOSK_BASE_URL_LOCAL ||
-                    env.VITE_SITE_URL_LAN ||
-                    env.VITE_SITE_URL_LOCAL ||
-                    env.VITE_SITE_URL ||
-                    env.VITE_KIOSK_BASE_URL
-                    : getSupabaseMode() === 'cloud'
-                      ? env.VITE_KIOSK_BASE_URL_CLOUD ||
-                      env.VITE_SITE_URL_CLOUD ||
-                      env.VITE_KIOSK_BASE_URL ||
-                      env.VITE_SITE_URL
-                      : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
-                const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-                const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
-                // In LAN mode, always prefer the current browser origin so copied links
-                // match the live VM IP currently used by tablets/iPhones.
-                let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost') ? currentOrigin : '';
-                if (!kioskBase && envBase) {
-                  try {
-                    const url = new URL(envBase);
-                    const trimmedPath = url.pathname.replace(/\/+$/, '');
-                    kioskBase = `${url.origin}${trimmedPath}`;
-                  } catch {
-                    kioskBase = envBase.replace(/\/+$/, '');
-                  }
-                }
-                if (!kioskBase) {
-                  kioskBase = currentOrigin;
-                }
-
-                const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem('surfJudgingActiveEventId') : null;
-                const eventIdCandidate = activeEventId ?? (eventIdRaw ? Number(eventIdRaw) : null);
-                const eventId = Number.isFinite(Number(eventIdCandidate)) ? Number(eventIdCandidate) : null;
-                const kioskUrl = eventId
-                  ? `${kioskBase}/judge?position=${position}&eventId=${eventId}`
-                  : `${kioskBase}/judge?position=${position}`;
+                const kioskUrl = kioskEventId
+                  ? `${kioskBaseUrl}/judge?position=${position}&eventId=${kioskEventId}`
+                  : `${kioskBaseUrl}/judge?position=${position}`;
                 return (
                   <div key={position} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                     <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">{position.replace("J", "")}</div>

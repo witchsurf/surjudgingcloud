@@ -381,6 +381,57 @@ export default function JudgePage() {
         return <JudgeLogin judgeId={judgeIdFromUrl} onSuccess={(judge) => login(judge.id, judge.name, judge.id, judge.id)} />;
     }
 
+    if (!currentJudge && !judgeIdFromUrl && !positionFromUrl && eventIdFromUrl) {
+        const judgePositions = ['J1', 'J2', 'J3', 'J4', 'J5'];
+        const safeJudgeNames = Object.fromEntries(
+            Object.entries(config.judgeNames || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
+        );
+
+        const openJudgeStation = (position: string) => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('eventId', eventIdFromUrl);
+            url.searchParams.set('position', position);
+            window.location.assign(url.toString());
+        };
+
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-900 flex items-center justify-center px-4 py-8">
+                <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-3xl">
+                    <div className="text-center mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2">Acces Juges</h1>
+                        <p className="text-gray-700">
+                            Choisissez votre poste pour ouvrir directement la tablette de notation du heat en cours.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {judgePositions.map((position) => {
+                            const assignedName = safeJudgeNames[position]?.trim();
+                            return (
+                                <button
+                                    key={position}
+                                    type="button"
+                                    onClick={() => openJudgeStation(position)}
+                                    className="rounded-xl border-2 border-blue-200 bg-blue-50 p-5 text-left transition hover:-translate-y-0.5 hover:border-blue-400 hover:bg-blue-100"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-2xl font-bold text-blue-900">{position}</span>
+                                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white font-bold">
+                                            {position.replace('J', '')}
+                                        </span>
+                                    </div>
+                                    <p className="mt-3 text-sm text-blue-800">
+                                        {assignedName ? assignedName : 'Poste non assigne'}
+                                    </p>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (!currentJudge && !judgeIdFromUrl && !positionFromUrl) {
         return <div className="p-8 text-center text-white">Lien invalide. Veuillez utiliser le lien fourni par l'administrateur.</div>;
     }
