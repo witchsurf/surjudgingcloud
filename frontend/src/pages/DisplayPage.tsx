@@ -24,6 +24,7 @@ import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
+import { supabase } from '../lib/supabase';
 import type { AppConfig, EventTopScoreEntry, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
 
@@ -402,6 +403,34 @@ const buildResolvedLineupsByHeat = ({
     });
 
     return resolvedLineupsByHeat;
+};
+
+const fetchParticipantCountriesByNames = async (eventId: number, names: string[]) => {
+    const wantedNames = Array.from(
+        new Set(
+            names
+                .map((name) => name.trim().toLowerCase())
+                .filter(Boolean)
+        )
+    );
+    if (!wantedNames.length || !supabase) return {};
+
+    const { data, error } = await supabase
+        .from('participants')
+        .select('name, country')
+        .eq('event_id', eventId);
+
+    if (error) {
+        throw error;
+    }
+
+    return (data || []).reduce<Record<string, string>>((acc, participant: { name?: string; country?: string | null }) => {
+        const normalizedName = String(participant.name || '').trim().toLowerCase();
+        const normalizedCountry = normalizeCountry(participant.country || undefined);
+        if (!normalizedName || !normalizedCountry || !wantedNames.includes(normalizedName)) return acc;
+        acc[normalizedName] = normalizedCountry;
+        return acc;
+    }, {});
 };
 
 const parseSourceFromPlaceholder = (placeholder?: string | null) => {
@@ -822,8 +851,8 @@ export default function DisplayPage() {
                             stat.surfer;
                         const country =
                             matchingEntry?.participant?.country ||
-                            resolvedEntry?.country ||
                             currentHeatCountry ||
+                            resolvedEntry?.country ||
                             undefined;
 
                         return stat.waves
@@ -1008,12 +1037,23 @@ export default function DisplayPage() {
                     if (data.country) acc[color] = data.country;
                     return acc;
                 }, {});
+                const participantCountriesByName = await fetchParticipantCountriesByNames(
+                    activeEventId,
+                    Object.values(fallbackNames)
+                );
+                const validatedCountries = Object.entries(fallbackNames).reduce<Record<string, string>>((acc, [color, name]) => {
+                    const participantCountry = participantCountriesByName[name.trim().toLowerCase()];
+                    const fallbackCountry = fallbackCountries[color];
+                    const resolvedCountry = participantCountry || fallbackCountry;
+                    if (resolvedCountry) acc[color] = resolvedCountry;
+                    return acc;
+                }, {});
 
-                if (Object.keys(fallbackNames).length === 0 && Object.keys(fallbackCountries).length === 0) return;
+                if (Object.keys(fallbackNames).length === 0 && Object.keys(validatedCountries).length === 0) return;
 
                 setLiveHeatCountries((prev) => ({
                     ...prev,
-                    ...fallbackCountries,
+                    ...validatedCountries,
                 }));
 
                 setConfig((prev) => ({
@@ -1021,7 +1061,7 @@ export default function DisplayPage() {
                     surferNames: mergeLiveHeatNames(prev.surferNames, fallbackNames, prev.surfers, 'mappings'),
                     surferCountries: {
                         ...(prev.surferCountries || {}),
-                        ...fallbackCountries,
+                        ...validatedCountries,
                     },
                 }));
             } catch (error) {
