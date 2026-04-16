@@ -14,7 +14,6 @@ import {
     parseActiveHeatId
 } from '../api/supabaseClient';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
-import { isLocalSupabaseMode } from '../lib/supabase';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
@@ -286,7 +285,7 @@ const normalizeConfig = (appConfig: AppConfig) => {
 };
 
 export default function DisplayPage() {
-    const { config, configSaved, activeEventId, setConfig, initializeFromUrl } = useConfigStore();
+    const { config, configSaved, activeEventId, setConfig, initializeFromUrl, loadKioskConfig } = useConfigStore();
     const { scores, timer, setTimer, heatStatus, setHeatStatus, setScores } = useJudgingStore();
     const { subscribeToHeat } = useRealtimeSync();
     const { loadScoresFromDatabase } = useSupabaseSync();
@@ -316,8 +315,27 @@ export default function DisplayPage() {
 
     // Initialize from URL on mount
     useEffect(() => {
-        initializeFromUrl();
-    }, [initializeFromUrl]);
+        let cancelled = false;
+
+        const bootstrapDisplay = async () => {
+            await initializeFromUrl();
+            if (cancelled) return;
+
+            const params = new URLSearchParams(window.location.search);
+            const hasEventId = Number.isFinite(Number(params.get('eventId')));
+            if (!hasEventId && !useConfigStore.getState().activeEventId) {
+                await loadKioskConfig();
+            }
+        };
+
+        bootstrapDisplay().catch((error) => {
+            console.error('Display bootstrap failed:', error);
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [initializeFromUrl, loadKioskConfig]);
 
     // Fetch available heats on mount or when activeEventId changes
     useEffect(() => {
@@ -953,8 +971,6 @@ export default function DisplayPage() {
             return () => { };
         }
 
-        const useLocalPolling = isLocalSupabaseMode();
-        const scorePollingIntervalMs = useLocalPolling ? 1000 : 2500;
         let cancelled = false;
         const applyFetchedScores = (heatId: string, fetched: Score[] | null | undefined) => {
             if (cancelled || !fetched) return;
@@ -982,9 +998,6 @@ export default function DisplayPage() {
                 ));
             }
             if (status) setHeatStatus(status);
-
-            // Recharger les scores en temps réel si le heat change
-            refreshScores(liveHeatIdRef.current || currentHeatId);
         });
         const unsubscribeScores = subscribeToHeatScores(currentHeatId, () => {
             refreshScores(liveHeatIdRef.current || currentHeatId);
@@ -1014,18 +1027,11 @@ export default function DisplayPage() {
 
         window.addEventListener('newScoreRealtime', handleNewScore);
 
-        const pollingInterval = setInterval(() => {
-            refreshScores(liveHeatIdRef.current || currentHeatId);
-        }, scorePollingIntervalMs);
-
         return () => {
             cancelled = true;
             unsubscribe();
             unsubscribeScores();
             window.removeEventListener('newScoreRealtime', handleNewScore);
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-            }
         };
     }, [configSaved, config.competition, currentHeatId, subscribeToHeat, setTimer, setConfig, setHeatStatus, loadScoresFromDatabase, setScores]);
 

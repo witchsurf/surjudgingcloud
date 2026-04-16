@@ -1,0 +1,10 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: surfjudging_cloudflared
+    restart: unless-stopped
+    depends_on:
+      - surfjudging
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}

@@ -44,13 +44,19 @@ import ParticipantsPage from './components/ParticipantsPage';
 import GenerateHeatsPage from './components/GenerateHeatsPage';
 import FixScores from './pages/FixScores';
 
+const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+const isPublicDisplayHostname = hostname === 'display.surfjudging.cloud';
+
 function App() {
     return (
         <SyncProvider>
             <Router>
                 <Routes>
                     <Route path="/fix" element={<FixScores />} />
-                    <Route path="/" element={<LandingPage />} />
+                    <Route
+                        path="/"
+                        element={isPublicDisplayHostname ? <Navigate to="/display" replace /> : <LandingPage />}
+                    />
                     <Route path="/create-event" element={<CreateEvent />} />
                     <Route path="/login" element={<MyEventsPage />} />
                     <Route path="/my-events" element={<MyEventsPage />} />

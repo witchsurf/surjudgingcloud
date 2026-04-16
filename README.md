@@ -222,3 +222,20 @@ En pratique:
 Voir aussi: [docs/priority-judge.md](/Users/sandy/Desktop/judging/docs/priority-judge.md)
 
 # Test
+
+## Cloudflare Tunnel for Public Display
+
+To publish the LAN display through your domain without opening router ports, use the HP mini PC as the local Docker host and add a Cloudflare Tunnel for:
+
+- `display.surfjudging.cloud`
+
+Files provided for that setup:
+
+- [infra/docker-compose-cloudflare.yml](/Users/sandy/Desktop/judging/infra/docker-compose-cloudflare.yml)
+- [infra/.env.cloudflared.example](/Users/sandy/Desktop/judging/infra/.env.cloudflared.example)
+- [docs/cloudflare-display-hp.md](/Users/sandy/Desktop/judging/docs/cloudflare-display-hp.md)
+
+Recommended scope:
+
+- expose only the public display via Cloudflare
+- keep judge/admin and local Supabase services on LAN only
