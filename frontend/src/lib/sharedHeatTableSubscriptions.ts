@@ -195,7 +195,7 @@ const ensureState = (heatId: string) => {
           updateHeatSignalDebug();
           if (state.channel !== channel) return;
 
-          if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+          if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
             if (state.reconnecting) return;
             state.reconnecting = true;
             state.retryCount += 1;
