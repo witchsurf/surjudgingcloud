@@ -36,6 +36,18 @@ interface CloudParticipant {
   license?: string;
 }
 
+type CloudJudge = {
+  id: string;
+  name: string;
+  personal_code?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  certification_level?: string | null;
+  federation?: string | null;
+  active?: boolean | null;
+  created_at?: string | null;
+};
+
 type CloudHeat = {
   id: string;
   event_id: number;
@@ -284,6 +296,7 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
     // 3. Fetch Participants & Heats for these events
     const eventIds = (events || []).map((e: any) => e.id);
     let allParticipants: CloudParticipant[] = [];
+    let allJudges: CloudJudge[] = [];
 
     // We will push data to Local DB if configured
     const canWriteToLocalDB = isSupabaseConfigured() && supabase;
@@ -311,6 +324,21 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
       if (!partError && participants) {
         allParticipants = participants;
         console.log(`✅ Fetched ${participants.length} participants`);
+      }
+
+      const { data: judges, error: judgesError } = await withRetry(
+        () =>
+          cloudSupabase
+            .from('judges')
+            .select('id, name, personal_code, email, phone, certification_level, federation, active, created_at')
+            .order('name', { ascending: true }),
+        'Fetch cloud judges'
+      );
+
+      if (judgesError) console.warn('⚠️ Error fetching judges:', judgesError);
+      else {
+        allJudges = (judges || []) as CloudJudge[];
+        console.log(`✅ Fetched ${allJudges.length} judges`);
       }
 
       // Fetch Heats (including entries)
@@ -385,6 +413,32 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
             );
             if (error) {
               syncIssues.push({ step: 'participants', message: error.message });
+              localSyncError = true;
+            }
+          }
+        }
+
+        // 4b bis) Official judges registry
+        if (allJudges.length > 0) {
+          const judgesPayload = allJudges.map((judge) =>
+            pickDefined(
+              {
+                ...judge,
+                personal_code: judge.personal_code ?? '',
+                federation: judge.federation ?? 'FSS',
+                active: judge.active ?? true,
+              },
+              ['id', 'name', 'personal_code', 'email', 'phone', 'certification_level', 'federation', 'active', 'created_at']
+            )
+          );
+
+          for (const batch of chunkArray(judgesPayload, 500)) {
+            const { error } = await withRetry(
+              () => supabase!.from('judges').upsert(batch, { onConflict: 'id' }),
+              'Upsert local judges'
+            );
+            if (error) {
+              syncIssues.push({ step: 'judges', message: error.message });
               localSyncError = true;
             }
           }

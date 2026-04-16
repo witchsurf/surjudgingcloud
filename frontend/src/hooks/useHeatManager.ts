@@ -356,8 +356,8 @@ export function useHeatManager() {
 
         let nextSurfers = config.surfers;
         let nextSurfersPerHeat = config.surfersPerHeat;
-        let nextSurferNames: Record<string, string> = { ...(config.surferNames ?? {}) };
-        let nextSurferCountries: Record<string, string> = { ...(config.surferCountries ?? {}) };
+        let nextSurferNames: Record<string, string> = advanced ? {} : { ...(config.surferNames ?? {}) };
+        let nextSurferCountries: Record<string, string> = advanced ? {} : { ...(config.surferCountries ?? {}) };
 
         if (nextCandidate && Array.isArray(nextCandidate.color_order) && nextCandidate.color_order.length) {
             const normalizedColors = nextCandidate.color_order
@@ -378,6 +378,20 @@ export function useHeatManager() {
         const nextHeatKeyCandidate = nextCandidate ? ensureHeatId(nextCandidate.id) : null;
         if (nextHeatKeyCandidate && isSupabaseConfigured()) {
             try {
+                const cachedLineup = colorCache[nextHeatKeyCandidate] ?? {};
+                if (Object.keys(cachedLineup).length > 0) {
+                    Object.entries(cachedLineup).forEach(([rawColor, payload]) => {
+                        const label = colorLabelMap[(rawColor as HeatColor)] ?? rawColor;
+                        if (!label) return;
+                        if (payload?.name) {
+                            nextSurferNames[label] = payload.name;
+                        }
+                        if (payload?.country) {
+                            nextSurferCountries[label] = payload.country;
+                        }
+                    });
+                }
+
                 const [nextHeatEntriesRaw, nextHeatMappingsRaw] = await Promise.all([
                     fetchHeatEntriesWithParticipants(nextHeatKeyCandidate),
                     fetchHeatSlotMappings(nextHeatKeyCandidate).catch(() => []),
