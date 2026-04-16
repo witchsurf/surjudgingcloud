@@ -155,6 +155,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [judgeAccessLinkCopied, setJudgeAccessLinkCopied] = useState(false);
   const [judgeAccessQrCode, setJudgeAccessQrCode] = useState('');
   const [priorityLinkCopied, setPriorityLinkCopied] = useState(false);
+  const [priorityQrCode, setPriorityQrCode] = useState('');
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [rebuildPending, setRebuildPending] = useState(false);
   const [offlineAdminPin, setOfflineAdminPin] = useState(() => {
@@ -1493,6 +1494,42 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       cancelled = true;
     };
   }, [sharedJudgeAccessUrl]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const buildPriorityQrCode = async () => {
+      if (!priorityJudgeUrl) {
+        if (!cancelled) setPriorityQrCode('');
+        return;
+      }
+
+      try {
+        const dataUrl = await QRCode.toDataURL(priorityJudgeUrl, {
+          width: 220,
+          margin: 1,
+          color: {
+            dark: '#312e81',
+            light: '#ffffff',
+          },
+        });
+        if (!cancelled) {
+          setPriorityQrCode(dataUrl);
+        }
+      } catch (error) {
+        console.warn('Impossible de générer le QR code priorité:', error);
+        if (!cancelled) {
+          setPriorityQrCode('');
+        }
+      }
+    };
+
+    buildPriorityQrCode().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [priorityJudgeUrl]);
 
   const handleAutoReconnect = async () => {
     if (!onReconnectToDb) return;
@@ -3485,6 +3522,21 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 <div className="mt-2 text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
                   {priorityJudgeUrl}
                 </div>
+                {priorityQrCode ? (
+                  <div className="mt-3 border border-indigo-100 bg-indigo-50 rounded-xl p-4 flex flex-col items-center text-center">
+                    <p className="text-sm font-medium text-indigo-900">
+                      QR code du juge priorité
+                    </p>
+                    <p className="mt-1 text-xs text-indigo-700">
+                      Scannez ce code pour ouvrir directement la tablette du juge priorité.
+                    </p>
+                    <img
+                      src={priorityQrCode}
+                      alt="QR code du juge priorité"
+                      className="mt-3 w-44 h-44 rounded-lg border border-indigo-200 bg-white p-2 shadow-sm"
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : (
