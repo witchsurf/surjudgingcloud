@@ -521,6 +521,7 @@ export default function DisplayPage() {
     const { scores, timer, setTimer, heatStatus, setHeatStatus, setScores } = useJudgingStore();
     const { subscribeToHeat } = useRealtimeSync();
     const { loadScoresFromDatabase } = useSupabaseSync();
+    const debugRealtimePanel = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debugRealtime') === '1';
 
     // -- HISTORY MODE STATE --
     const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
@@ -533,6 +534,9 @@ export default function DisplayPage() {
     const [eventTopScores, setEventTopScores] = useState<EventTopScoreEntry[]>([]);
     const [eventTopScoresOpen, setEventTopScoresOpen] = useState(false);
     const [eventTopScoresLoading, setEventTopScoresLoading] = useState(false);
+    const [debugRealtimeSnapshot, setDebugRealtimeSnapshot] = useState<Record<string, unknown> | null>(null);
+    const [lastScoresRefreshAt, setLastScoresRefreshAt] = useState<Date | null>(null);
+    const [lastRealtimeScoreAt, setLastRealtimeScoreAt] = useState<Date | null>(null);
     const configRef = useRef(config);
     const countriesRef = useRef(liveHeatCountries);
     const liveHeatIdRef = useRef('');
@@ -580,6 +584,19 @@ export default function DisplayPage() {
         setEventTopScores([]);
         setEventTopScoresOpen(false);
     }, [activeEventId]);
+
+    useEffect(() => {
+        if (!debugRealtimePanel || typeof window === 'undefined') return;
+
+        const refresh = () => {
+            const payload = (window as typeof window & { __surfRealtimeDebug?: Record<string, unknown> }).__surfRealtimeDebug ?? null;
+            setDebugRealtimeSnapshot(payload ? JSON.parse(JSON.stringify(payload)) : null);
+        };
+
+        refresh();
+        const interval = window.setInterval(refresh, 1000);
+        return () => window.clearInterval(interval);
+    }, [debugRealtimePanel]);
 
     useEffect(() => {
         if (!configSaved || !config.competition) return;
@@ -1128,6 +1145,7 @@ export default function DisplayPage() {
         };
         const refreshScores = (heatId: string) => {
             void loadScoresFromDatabase(heatId).then((fetched) => {
+                setLastScoresRefreshAt(new Date());
                 applyFetchedScores(heatId, fetched);
             }).catch((error) => {
                 if (!cancelled) {
@@ -1156,6 +1174,7 @@ export default function DisplayPage() {
         const handleNewScore = (event: Event) => {
             const customEvent = event as CustomEvent;
             const newScore = customEvent.detail;
+            setLastRealtimeScoreAt(new Date());
 
             // Mettre à jour le store avec le nouveau score
             // On utilise la forme fonctionnelle pour garantir l'état le plus récent
@@ -1248,6 +1267,20 @@ export default function DisplayPage() {
             {/* CONTENT AREA */}
             <main className="flex-grow py-8 px-4">
                 <div className="max-w-7xl mx-auto">
+                    {debugRealtimePanel && (
+                        <div className="mb-4 rounded-xl border-2 border-primary-950 bg-white/95 p-4 shadow-block text-xs text-primary-950 overflow-auto">
+                            <div className="font-bebas text-xl tracking-wider mb-2">DEBUG REALTIME</div>
+                            <div className="grid gap-1 mb-3">
+                                <div>Heat courant: <span className="font-mono">{currentHeatId || 'n/a'}</span></div>
+                                <div>Dernier refresh scores: <span className="font-mono">{lastScoresRefreshAt?.toISOString() || 'n/a'}</span></div>
+                                <div>Dernier score websocket: <span className="font-mono">{lastRealtimeScoreAt?.toISOString() || 'n/a'}</span></div>
+                                <div>Nb scores en mémoire: <span className="font-mono">{scores.length}</span></div>
+                            </div>
+                            <pre className="whitespace-pre-wrap break-words text-[10px] leading-4">
+                                {JSON.stringify(debugRealtimeSnapshot, null, 2)}
+                            </pre>
+                        </div>
+                    )}
                     {viewMode === 'live' ? (
                         <ScoreDisplay
                             config={liveDisplayConfig}
