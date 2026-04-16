@@ -191,9 +191,84 @@ export function useHeatManager() {
                         });
                     });
 
+                    const currentCacheEntries = colorCache[currentDbHeatId] ?? {};
+                    const scoredColors = Array.from(
+                        new Set(
+                            currentHeatScores
+                                .map((score) => String(score.surfer ?? '').trim().toUpperCase())
+                                .filter(Boolean)
+                        )
+                    );
+
+                    let participantByName = new Map<string, { id: number; seed: number | null; country?: string | null }>();
+                    if (activeEventId && supabase) {
+                        try {
+                            const { data: participantRows, error: participantError } = await supabase
+                                .from('participants')
+                                .select('id, seed, name, country')
+                                .eq('event_id', activeEventId)
+                                .ilike('category', String(config.division ?? ''));
+
+                            if (participantError) {
+                                throw participantError;
+                            }
+
+                            participantByName = new Map(
+                                (participantRows ?? []).map((participant: any) => [
+                                    String(participant.name ?? '').trim().toLowerCase(),
+                                    {
+                                        id: participant.id,
+                                        seed: Number.isFinite(Number(participant.seed)) ? Number(participant.seed) : null,
+                                        country: participant.country ?? null,
+                                    }
+                                ] as const)
+                            );
+                        } catch (error) {
+                            console.warn('Impossible de charger le répertoire participants pour résoudre les qualifiés', error);
+                        }
+                    }
+
+                    const currentHeatColors = Array.from(
+                        new Set([
+                            ...(config.surfers || []).map((surfer) => surfer.trim().toUpperCase()),
+                            ...scoredColors,
+                        ].filter(Boolean))
+                    );
+
+                    currentHeatColors.forEach((colorKey) => {
+                        const existing = entryByColor.get(colorKey) ?? {};
+                        const fallbackName =
+                            existing.name ||
+                            config.surferNames?.[colorKey] ||
+                            currentCacheEntries[colorKey]?.name ||
+                            '';
+                        const matchedParticipant = fallbackName
+                            ? participantByName.get(fallbackName.trim().toLowerCase()) ?? null
+                            : null;
+
+                        entryByColor.set(colorKey, {
+                            participantId: existing.participantId ?? matchedParticipant?.id ?? null,
+                            seed: existing.seed ?? matchedParticipant?.seed ?? null,
+                            colorCode: existing.colorCode ?? colorKey,
+                            name: fallbackName || existing.name || colorKey,
+                            country: existing.country
+                                ?? currentCacheEntries[colorKey]?.country
+                                ?? config.surferCountries?.[colorKey]
+                                ?? matchedParticipant?.country
+                                ?? undefined,
+                        });
+                    });
+
                     const interferenceCalls = await fetchInterferenceCalls(currentDbHeatId);
                     const effectiveInterferences = computeEffectiveInterferences(interferenceCalls, Math.max(config.judges.length, 1));
-                    const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves, false, effectiveInterferences)
+                    const stats = calculateSurferStats(
+                        currentHeatScores,
+                        currentHeatColors,
+                        config.judges.length,
+                        config.waves,
+                        false,
+                        effectiveInterferences
+                    )
                         .sort((a, b) => a.rank - b.rank);
 
                     const entryByRank = new Map<number, any>();
