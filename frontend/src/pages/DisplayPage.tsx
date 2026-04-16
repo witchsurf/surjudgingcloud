@@ -970,10 +970,18 @@ export default function DisplayPage() {
                 }, {});
 
                 setLiveHeatCountries(countries);
+                setConfig((prev) => ({
+                    ...prev,
+                    surferCountries: countries,
+                }));
             } catch (error) {
                 if (!cancelled) {
                     console.warn('Impossible de charger les pays du heat courant', error);
                     setLiveHeatCountries({});
+                    setConfig((prev) => ({
+                        ...prev,
+                        surferCountries: {},
+                    }));
                 }
             }
         };
@@ -1059,10 +1067,7 @@ export default function DisplayPage() {
                 setConfig((prev) => ({
                     ...prev,
                     surferNames: mergeLiveHeatNames(prev.surferNames, fallbackNames, prev.surfers, 'mappings'),
-                    surferCountries: {
-                        ...(prev.surferCountries || {}),
-                        ...validatedCountries,
-                    },
+                    surferCountries: validatedCountries,
                 }));
             } catch (error) {
                 if (!cancelled) {
