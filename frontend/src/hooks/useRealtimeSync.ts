@@ -139,6 +139,11 @@ const refreshHeatSnapshot = async (normalizedHeatId: string) => {
       return;
     }
 
+    if (debugRealtimeEnabled) {
+      const modeDebug = isLocalSupabaseMode() ? 'LOCAL' : 'CLOUD';
+      console.log(`🔄 [${modeDebug}] Refreshing heat snapshot:`, normalizedHeatId);
+    }
+
     if (heatError && heatError.code !== 'PGRST116') {
       console.warn('⚠️ Failed to refresh heat status snapshot:', normalizedHeatId, heatError);
     }

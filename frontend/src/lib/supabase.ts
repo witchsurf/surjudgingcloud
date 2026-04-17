@@ -77,12 +77,9 @@ export const setSupabaseOverrides = (url?: string, anonKey?: string) => {
 export const getSupabaseConfig = () => {
   const storedMode = getSupabaseMode();
   const cloudLocked = isCloudLocked();
-  let mode = cloudLocked ? 'local' : storedMode;
-  const overrideUrl = readStored(SUPABASE_URL_OVERRIDE_KEY);
-  const overrideAnon = readStored(SUPABASE_ANON_OVERRIDE_KEY);
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const urlMode = searchParams?.get('mode') as SupabaseMode;
 
-  // FORCE local mode when served from a private/local network IP
-  // This takes priority over whatever localStorage may have saved from a previous session
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const isServedFromLocalNetwork =
     hostname.startsWith('192.168.') ||
@@ -91,15 +88,28 @@ export const getSupabaseConfig = () => {
     hostname === 'localhost' ||
     hostname === '127.0.0.1';
 
-  if (isServedFromLocalNetwork) {
+  // 1. URL parameter takes absolute precedence
+  if (urlMode === 'cloud' || urlMode === 'local') {
+    mode = urlMode;
+  } 
+  // 2. Otherwise follow cloud lock
+  else if (cloudLocked) {
     mode = 'local';
-  } else if (!mode) {
-    // Auto-detect mode from env/override URL only if not already set
-    const currentUrl = overrideUrl || resolveEnv('VITE_SUPABASE_URL') || window.location.origin;
-    if (currentUrl.includes('192.168') || currentUrl.includes('10.0.0') || currentUrl.includes('localhost') || currentUrl.includes(':8000') || currentUrl.includes(':8080')) {
-      mode = 'local';
-    } else {
-      mode = 'cloud';
+  }
+  // 3. Otherwise follow hostname detection (default for LAN)
+  else if (isServedFromLocalNetwork) {
+    mode = 'local';
+  }
+  // 4. Finally fallback to stored mode or auto-detect
+  else if (!mode) {
+    mode = storedMode || null;
+    if (!mode) {
+      const currentUrl = overrideUrl || resolveEnv('VITE_SUPABASE_URL') || window.location.origin;
+      if (currentUrl.includes('192.168') || currentUrl.includes('10.0.0') || currentUrl.includes('localhost') || currentUrl.includes(':8000') || currentUrl.includes(':8080')) {
+        mode = 'local';
+      } else {
+        mode = 'cloud';
+      }
     }
   }
 
