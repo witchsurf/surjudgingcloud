@@ -180,6 +180,9 @@ export const subscribeToEventConfig = (
           filter: `event_id=eq.${eventId}`
         },
         (payload) => {
+          if (debugRealtimeEnabled) {
+            console.log('📡 [Realtime] received EVENT_CONFIG update:', payload);
+          }
           const row = payload.new as EventConfigRealtimeRow | null;
           if (!row) return;
           emitToListeners(state, row);
@@ -261,6 +264,9 @@ export const subscribeToActiveHeatPointer = (
           ...(realtimeFilter ? { filter: realtimeFilter } : {})
         },
         (payload) => {
+          if (debugRealtimeEnabled) {
+            console.log('📡 [Realtime] received ACTIVE_HEAT update:', payload);
+          }
           const row = payload.new as ActiveHeatPointerRealtimeRow | null;
           if (!matchesEvent(row)) return;
           emitToListeners(state, row);

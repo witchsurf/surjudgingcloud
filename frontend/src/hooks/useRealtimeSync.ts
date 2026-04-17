@@ -234,6 +234,9 @@ const createHeatChannel = (normalizedHeatId: string) => {
           filter: `heat_id=eq.${normalizedHeatId}`
         },
         (payload) => {
+          if (debugRealtimeEnabled) {
+            console.log('📡 [Realtime] received HEAT_CONFIG update:', payload);
+          }
           const data = payload.new as RealtimeHeatConfig;
           if (!data) return;
 
@@ -255,6 +258,9 @@ const createHeatChannel = (normalizedHeatId: string) => {
           filter: `id=eq.${normalizedHeatId}`
         },
         (payload) => {
+          if (debugRealtimeEnabled) {
+            console.log('📡 [Realtime] received HEATS (closed) update:', payload);
+          }
           const row = payload.new as { status?: string } | null;
           const normalizedStatus = (row?.status || '').toString().trim().toLowerCase();
           if (normalizedStatus !== 'closed') return;
