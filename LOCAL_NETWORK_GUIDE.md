@@ -35,13 +35,13 @@ Le fichier `supabase.ts` détecte automatiquement que si l'URL dans le navigateu
 
 ---
 
-## 🏄 L'Outil Simplifié : `surf-beach-mode.sh`
+## 🏄 L'Outil Simplifié : `scripts/field-menu.sh`
 
 Pour rendre la transition vers le réseau local extrêmement simple et sans ligne de commande compliquée, un script interactif a été créé sur votre Mac.
 
 Ouvrez un terminal, placez-vous dans le dossier du projet, et lancez :
 ```bash
-./surf-beach-mode.sh
+./scripts/field-menu.sh
 ```
 
 Un menu apparaîtra avec deux options simples :

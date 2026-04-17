@@ -37,6 +37,7 @@ Commande recommandée:
 
 ```bash
 ./scripts/field-ops.sh
+./scripts/field-menu.sh
 ```
 
 Comportement:
@@ -51,6 +52,7 @@ Exemples:
 ./scripts/field-ops.sh
 ./scripts/field-ops.sh --home
 ./scripts/field-ops.sh --field --full-stack
+./scripts/field-menu.sh
 ```
 
 ## 2. Déployer le frontend sur le HP
@@ -66,17 +68,14 @@ Ce script:
 - recharge `nginx`
 - vérifie que le bundle servi sur le HP correspond bien au bundle local
 
-## 3. Mode plage simplifié
-
-`surf-beach-mode.sh` utilise désormais:
+## 3. Refresh stack locale HP
 
 ```bash
-./surf-beach-mode.sh
-SURF_HP_PROFILE=home ./surf-beach-mode.sh
-SURF_HP_IP=10.0.0.28 ./surf-beach-mode.sh
+./scripts/hp-refresh-stack.sh
+SURF_HP_PROFILE=home ./scripts/hp-refresh-stack.sh
 ```
 
-Par défaut, le mode plage vise bien `192.168.1.2`.
+Par défaut, le profil utilisé est `field`, donc `192.168.1.2`.
 
 ## 4. Sync cloud -> base locale
 
@@ -107,4 +106,4 @@ Ordre conseillé:
 1. `./scripts/hp-healthcheck.sh`
 2. `./scripts/hp-deploy-frontend.sh`
 3. Re-test UI
-4. En dernier recours seulement: relance plus large via `./surf-beach-mode.sh`
+4. Si la stack locale HP semble bancale: `./scripts/hp-refresh-stack.sh`

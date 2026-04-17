@@ -13,7 +13,7 @@ Usage: ./scripts/field-ops.sh [--field|--home] [--full-stack] [--skip-deploy] [-
 Defaults:
   --field          Use HP on D-LINK / beach LAN (192.168.1.2)
   --home           Use HP on home LAN (10.0.0.28)
-  --full-stack     Also run ./surf-beach-mode.sh to refresh the full local stack
+  --full-stack     Also refresh the HP local stack before frontend deploy
   --skip-deploy    Do not rebuild/redeploy the frontend artifact
   --skip-healthcheck
                    Skip the final healthcheck
@@ -80,7 +80,7 @@ fi
 if [[ "$FULL_STACK" == "1" ]]; then
   echo
   echo "==> Refreshing full beach stack"
-  (cd "$ROOT_DIR" && ./surf-beach-mode.sh)
+  (cd "$ROOT_DIR" && ./scripts/hp-refresh-stack.sh)
 fi
 
 if [[ "$SKIP_DEPLOY" != "1" ]]; then
