@@ -36,23 +36,22 @@ Ce script contrôle:
 Commande recommandée:
 
 ```bash
-./scripts/field-ops.sh
-./scripts/field-menu.sh
+./beach
+./home
 ```
 
 Comportement:
-- profil `field` par défaut (`192.168.1.2`)
-- préflight réseau
-- déploiement frontend sur le HP
-- healthcheck final
+- `./beach` ouvre le menu régie sur le profil `field` (`192.168.1.2`)
+- `./home` ouvre le même menu sur le profil `home` (`10.0.0.28`)
+- depuis le menu, tu peux lancer healthcheck, déploiement frontend, ou refresh stack
 
 Exemples:
 
 ```bash
+./beach
+./home
 ./scripts/field-ops.sh
 ./scripts/field-ops.sh --home
-./scripts/field-ops.sh --field --full-stack
-./scripts/field-menu.sh
 ```
 
 ## 2. Déployer le frontend sur le HP
