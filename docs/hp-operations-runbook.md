@@ -37,11 +37,13 @@ Commande recommandée:
 
 ```bash
 ./beach
+./event-box
 ./home
 ```
 
 Comportement:
 - `./beach` ouvre le menu régie sur le profil `field` (`192.168.1.2`)
+- `./event-box` ouvre le menu de préparation Event Box sur le profil `home` (`10.0.0.28`)
 - `./home` ouvre le même menu sur le profil `home` (`10.0.0.28`)
 - depuis le menu, tu peux lancer healthcheck, déploiement frontend, ou refresh stack
 
@@ -49,6 +51,7 @@ Exemples:
 
 ```bash
 ./beach
+./event-box
 ./home
 ./scripts/field-ops.sh
 ./scripts/field-ops.sh --home

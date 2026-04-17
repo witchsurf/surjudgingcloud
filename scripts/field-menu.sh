@@ -19,14 +19,23 @@ choose_profile() {
 
 while true; do
   clear
+  if [[ "$PROFILE" == "home" ]]; then
+    TITLE="📦 Surf Judging Event Box"
+    ACTION_ONE="Prepare Event Box"
+    ACTION_FOUR="Refresh Event Box local stack"
+  else
+    TITLE="🏄 Surf Judging Beach Ops"
+    ACTION_ONE="Run Beach Ops"
+    ACTION_FOUR="Refresh Beach local stack"
+  fi
   echo "======================================================"
-  echo "🏄 Surf Judging Field Menu"
+  echo "$TITLE"
   echo "Profile : $PROFILE"
   echo "======================================================"
-  echo "1. One-click ops"
+  echo "1. $ACTION_ONE"
   echo "2. Healthcheck only"
   echo "3. Deploy frontend only"
-  echo "4. Refresh HP local stack"
+  echo "4. $ACTION_FOUR"
   echo "5. Change network profile"
   echo "0. Quit"
   echo
