@@ -112,6 +112,8 @@ const isLikelyPlaceholder = (name?: string) => {
     return normalized.includes('QUALIFI') ||
         normalized.includes('FINALISTE') ||
         normalized.includes('REPECH') ||
+        normalized.includes('VAINQUEUR') ||
+        normalized.includes('PENDING') ||
         normalized.startsWith('R') ||
         normalized.startsWith('RP') ||
         normalized.startsWith('POSITION') ||
@@ -1283,9 +1285,10 @@ export default function DisplayPage() {
         // Keep a low-frequency safety poll on the display even when the socket
         // looks healthy. Some cloud runs stay connected but silently stop
         // delivering score inserts, which previously required a manual refresh.
+        // We use a longer interval (30s) in cloud mode to reduce load.
         const safetyPollInterval = window.setInterval(() => {
             refreshScores(liveHeatIdRef.current || currentHeatId);
-        }, isLocalSupabaseMode() ? 2500 : 10000);
+        }, isLocalSupabaseMode() ? 2500 : 30000);
 
         // Écouter les scores en temps réel (INSERT/UPDATE)
         const handleNewScore = (event: Event) => {

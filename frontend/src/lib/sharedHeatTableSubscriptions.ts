@@ -63,11 +63,12 @@ const createState = (): HeatSignalState => ({
 const startPolling = (state: HeatSignalState) => {
   if (state.pollingInterval) return;
 
+  const intervalMs = isLocalSupabaseMode() ? HEAT_SIGNAL_POLL_INTERVAL_MS : 10000;
   state.pollingInterval = setInterval(() => {
     emit(state, 'scores');
     emit(state, 'interference');
     emit(state, 'participants');
-  }, HEAT_SIGNAL_POLL_INTERVAL_MS);
+  }, intervalMs);
 };
 
 const stopPolling = (state: HeatSignalState) => {
