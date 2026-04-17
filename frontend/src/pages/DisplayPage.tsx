@@ -6,6 +6,7 @@ import { useJudgingStore } from '../stores/judgingStore';
 import {
     fetchEventConfigSnapshot,
     fetchAllEventHeats,
+    fetchAllInterferenceCallsForEvent,
     fetchPreferredScoresForEvent,
     fetchHeatMetadata,
     fetchHeatScores,
@@ -19,6 +20,7 @@ import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers } from '../utils/heat';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
+import { computeEffectiveInterferences } from '../utils/interference';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
@@ -207,12 +209,14 @@ const buildResolvedLineupsByHeat = ({
     entriesByHeat,
     slotMappingsByHeat,
     realtimeLineupsByHeat,
+    interferenceCallsByHeat,
     groupedScores,
 }: {
     historyHeats: Record<string, RoundSpec[]>;
     entriesByHeat: Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>;
     slotMappingsByHeat: Map<string, Awaited<ReturnType<typeof fetchHeatSlotMappings>>>;
     realtimeLineupsByHeat: Map<string, Record<string, { name: string; country?: string }>>;
+    interferenceCallsByHeat: Awaited<ReturnType<typeof fetchAllInterferenceCallsForEvent>>;
     groupedScores: Record<string, Score[]>;
 }) => {
     const resolvedLineupsByHeat = new Map<string, Record<string, { name: string; country?: string }>>();
@@ -341,7 +345,18 @@ const buildResolvedLineupsByHeat = ({
                             if (sourceSurfers.length && sourceScores.length) {
                                 const sourceJudgeCount = getEffectiveJudgeCount(sourceScores);
                                 const sourceMaxWaves = Math.max(1, ...sourceScores.map((score) => Number(score.wave_number) || 0));
-                                const sourceStats = calculateSurferStats(sourceScores, sourceSurfers, sourceJudgeCount, sourceMaxWaves, true, []);
+                                const sourceEffectiveInterferences = computeEffectiveInterferences(
+                                    interferenceCallsByHeat[sourceHeatId] || [],
+                                    Math.max(sourceJudgeCount, 1)
+                                );
+                                const sourceStats = calculateSurferStats(
+                                    sourceScores,
+                                    sourceSurfers,
+                                    sourceJudgeCount,
+                                    sourceMaxWaves,
+                                    true,
+                                    sourceEffectiveInterferences
+                                );
                                 const rankMap = new Map<number, { name: string; country?: string }>();
                                 sourceStats
                                     .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
@@ -403,7 +418,18 @@ const buildResolvedLineupsByHeat = ({
                     const normalizedScores = normalizeScores(heatScores);
                     const judgeCount = getEffectiveJudgeCount(normalizedScores);
                     const maxWaves = Math.max(1, ...normalizedScores.map((score) => Number(score.wave_number) || 0));
-                    const stats = calculateSurferStats(normalizedScores, surfers, judgeCount, maxWaves, true, []);
+                    const effectiveInterferences = computeEffectiveInterferences(
+                        interferenceCallsByHeat[heat.heatId] || [],
+                        Math.max(judgeCount, 1)
+                    );
+                    const stats = calculateSurferStats(
+                        normalizedScores,
+                        surfers,
+                        judgeCount,
+                        maxWaves,
+                        true,
+                        effectiveInterferences
+                    );
 
                     stats
                         .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
@@ -865,6 +891,7 @@ export default function DisplayPage() {
         setEventTopScoresLoading(true);
         try {
             const groupedScores = await fetchPreferredScoresForEvent(activeEventId);
+            const interferenceCallsByHeat = await fetchAllInterferenceCallsForEvent(activeEventId);
             const uniqueHeatIds = Array.from(new Set(
                 Object.keys(groupedScores)
                     .map((heatId) => heatId.trim())
@@ -872,6 +899,7 @@ export default function DisplayPage() {
             ));
             const entriesByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>();
             const slotMappingsByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatSlotMappings>>>();
+            const realtimeLineupsByHeat = await fetchRealtimeLineupsByHeat(uniqueHeatIds);
 
             await Promise.all(
                 uniqueHeatIds.map(async (heatId) => {
@@ -894,6 +922,8 @@ export default function DisplayPage() {
                 historyHeats,
                 entriesByHeat,
                 slotMappingsByHeat,
+                realtimeLineupsByHeat,
+                interferenceCallsByHeat,
                 groupedScores,
             });
 
@@ -1089,6 +1119,7 @@ export default function DisplayPage() {
         const resolveLiveLineupFromHistory = async () => {
             try {
                 const groupedScores = await fetchPreferredScoresForEvent(activeEventId);
+                const interferenceCallsByHeat = await fetchAllInterferenceCallsForEvent(activeEventId);
                 const uniqueHeatIds = Array.from(
                     new Set(
                         Object.keys(groupedScores)
@@ -1122,6 +1153,7 @@ export default function DisplayPage() {
                     entriesByHeat,
                     slotMappingsByHeat,
                     realtimeLineupsByHeat,
+                    interferenceCallsByHeat,
                     groupedScores,
                 });
 
