@@ -719,7 +719,8 @@ export default function DisplayPage() {
                     round: parsed.round,
                     heatId: parsed.heatNumber,
                     surferNames: {},
-                    surferCountries: {}
+                    surferCountries: {},
+                    priorityState: { mode: 'equal', order: [], inFlight: [] }
                 } as AppConfig);
             });
         };

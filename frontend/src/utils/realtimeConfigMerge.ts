@@ -46,6 +46,10 @@ export const mergeRealtimeConfigPreservingLineup = (
 
   if (!sameHeatScope(prev, next)) {
     merged.surfersPerHeat = Array.isArray(merged.surfers) ? merged.surfers.length : merged.surfersPerHeat;
+    // Clear stale priority when switching heat
+    if (!next.priorityState) {
+        merged.priorityState = { mode: 'equal', order: [], inFlight: [] };
+    }
     return merged;
   }
 
