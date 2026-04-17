@@ -316,6 +316,7 @@ export default function AdminPage() {
         if (!configSaved || !config.competition) return;
 
         console.log('📡 Admin: subscribing to own heat timer:', currentHeatId);
+        setHeatStatus('waiting');
 
         const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, _nextConfig, status) => {
             setLocalTimer(nextTimer);

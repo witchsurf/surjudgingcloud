@@ -1803,8 +1803,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     setOverrideStatus(null);
     setHeadJudgeOverride(false);
     setInterferenceType('INT1');
-  }, [heatId]);
-  if (isCurrentHeatLocked) hasBeenLockedRef.current = true;
+  }, [currentHeatKey]);
+
+  useEffect(() => {
+    if (isCurrentHeatLocked) {
+        hasBeenLockedRef.current = true;
+    }
+  }, [isCurrentHeatLocked]);
+
   const stableHeatLocked = hasBeenLockedRef.current;
   const floatingTimeLeft = React.useMemo(
     () => getRemainingTimerSeconds(timer, floatingTimerTick),

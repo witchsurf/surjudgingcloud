@@ -176,6 +176,8 @@ export default function JudgePage() {
             return () => { };
         }
 
+        setHeatStatus('waiting');
+
         const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, nextConfig, status) => {
             setTimer(nextTimer);
             if (nextConfig) {
