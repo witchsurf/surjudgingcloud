@@ -139,7 +139,7 @@ export default function JudgePage() {
 
     // Realtime sync for admin config saves (division/round/heat changes).
     useEffect(() => {
-        if (!isSupabaseConfigured() || configLoading || positionFromUrl) return;
+        if (!isSupabaseConfigured() || configLoading) return;
 
         const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
         const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
@@ -147,15 +147,16 @@ export default function JudgePage() {
 
         return subscribeToEventConfig(targetEventId, (row) => {
             if (positionFromUrl) {
+                // Kiosk mode: if the heat changed, reload full config from DB.
+                // If same heat, heat_realtime_config polling (below) is sufficient.
                 const sameHeat =
                     Boolean(configSaved) &&
                     (row.division || '').trim().toUpperCase() === (config.division || '').trim().toUpperCase() &&
                     Number(row.round ?? config.round) === Number(config.round) &&
                     Number(row.heat_number ?? config.heatId) === Number(config.heatId);
-                if (sameHeat) {
-                    return;
+                if (!sameHeat) {
+                    void loadConfigFromDb(targetEventId);
                 }
-                void loadConfigFromDb(targetEventId);
                 return;
             }
             setConfig((prev) => applyHeatScopedConfig(prev, {
@@ -165,7 +166,8 @@ export default function JudgePage() {
                 heatId: row.heat_number ?? prev.heatId
             }));
         });
-    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, loadConfigFromDb]);
+    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, loadConfigFromDb, configSaved, config.division, config.round, config.heatId]);
+
 
     // Subscribe to realtime timer/config for the current heat
     useEffect(() => {
