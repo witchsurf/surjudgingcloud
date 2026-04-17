@@ -7,6 +7,8 @@ const SUPABASE_MODE_STORAGE_KEY = 'supabase_mode';
 const SUPABASE_URL_OVERRIDE_KEY = 'supabase_url_override';
 const SUPABASE_ANON_OVERRIDE_KEY = 'supabase_anon_override';
 const SUPABASE_CLOUD_LOCK_KEY = 'supabase_cloud_lock';
+const overrideUrl = typeof window !== 'undefined' ? window.localStorage.getItem(SUPABASE_URL_OVERRIDE_KEY) : null;
+const overrideAnon = typeof window !== 'undefined' ? window.localStorage.getItem(SUPABASE_ANON_OVERRIDE_KEY) : null;
 
 const resolveEnv = (key: string): string | undefined => {
   return (import.meta as { env?: Record<string, string> }).env?.[key];
@@ -79,9 +81,6 @@ export const getSupabaseConfig = () => {
   const cloudLocked = isCloudLocked();
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const urlMode = searchParams?.get('mode') as SupabaseMode;
-  
-  const overrideUrl = readStored(SUPABASE_URL_OVERRIDE_KEY);
-  const overrideAnon = readStored(SUPABASE_ANON_OVERRIDE_KEY);
 
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const isServedFromLocalNetwork =
