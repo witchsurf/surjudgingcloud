@@ -31,6 +31,28 @@ Ce script contrôle:
 - réponse de `http://HP:8000/rest/v1/events`
 - alignement du bundle servi localement et publiquement sur `display.surfjudging.cloud`
 
+## 1bis. One-click ops
+
+Commande recommandée:
+
+```bash
+./scripts/field-ops.sh
+```
+
+Comportement:
+- profil `field` par défaut (`192.168.1.2`)
+- préflight réseau
+- déploiement frontend sur le HP
+- healthcheck final
+
+Exemples:
+
+```bash
+./scripts/field-ops.sh
+./scripts/field-ops.sh --home
+./scripts/field-ops.sh --field --full-stack
+```
+
 ## 2. Déployer le frontend sur le HP
 
 ```bash
