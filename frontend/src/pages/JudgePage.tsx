@@ -166,7 +166,7 @@ export default function JudgePage() {
                 heatId: row.heat_number ?? prev.heatId
             }));
         });
-    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, loadConfigFromDb, configSaved, config.division, config.round, config.heatId]);
+    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, loadConfigFromDb, configSaved]);
 
 
     // Subscribe to realtime timer/config for the current heat
@@ -211,7 +211,7 @@ export default function JudgePage() {
             }
         });
         return unsubscribe;
-    }, [configSaved, config.competition, currentHeatId, config.heatId, config.round, config.division, subscribeToHeat, setTimer, setConfig, setHeatStatus, configLoading]);
+    }, [configSaved, config.competition, currentHeatId, subscribeToHeat, setTimer, setConfig, setHeatStatus, configLoading]);
 
     // Fallback realtime path: switch tablets when active_heat_pointer changes.
     useEffect(() => {

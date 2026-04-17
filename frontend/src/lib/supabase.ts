@@ -88,6 +88,8 @@ export const getSupabaseConfig = () => {
     hostname === 'localhost' ||
     hostname === '127.0.0.1';
 
+  let mode: SupabaseMode | null = cloudLocked ? 'local' : storedMode;
+
   // 1. URL parameter takes absolute precedence
   if (urlMode === 'cloud' || urlMode === 'local') {
     mode = urlMode;
