@@ -206,11 +206,13 @@ const buildResolvedLineupsByHeat = ({
     historyHeats,
     entriesByHeat,
     slotMappingsByHeat,
+    realtimeLineupsByHeat,
     groupedScores,
 }: {
     historyHeats: Record<string, RoundSpec[]>;
     entriesByHeat: Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>;
     slotMappingsByHeat: Map<string, Awaited<ReturnType<typeof fetchHeatSlotMappings>>>;
+    realtimeLineupsByHeat: Map<string, Record<string, { name: string; country?: string }>>;
     groupedScores: Record<string, Score[]>;
 }) => {
     const resolvedLineupsByHeat = new Map<string, Record<string, { name: string; country?: string }>>();
@@ -244,6 +246,7 @@ const buildResolvedLineupsByHeat = ({
                 round.heats.forEach((heat) => {
                     const heatEntries = heat.heatId ? entriesByHeat.get(heat.heatId) || [] : [];
                     const heatSlotMappings = heat.heatId ? slotMappingsByHeat.get(heat.heatId) || [] : [];
+                    const realtimeLineup = heat.heatId ? realtimeLineupsByHeat.get(heat.heatId) || {} : {};
                     const entryInfoByColor = heatEntries.reduce<Record<string, { name?: string; country?: string }>>((acc, entry) => {
                         const color = normalizeColorCode(entry.color || '') || entry.color;
                         const name = entry.participant?.name;
@@ -260,6 +263,13 @@ const buildResolvedLineupsByHeat = ({
                         if (entryInfo?.name && !isLikelyPlaceholder(entryInfo.name)) {
                             slot.name = entryInfo.name;
                             slot.country = entryInfo.country;
+                            slot.placeholder = undefined;
+                        }
+
+                        const realtimeEntry = realtimeLineup[color];
+                        if ((!slot.name || isLikelyPlaceholder(slot.name)) && realtimeEntry?.name) {
+                            slot.name = realtimeEntry.name;
+                            slot.country = realtimeEntry.country;
                             slot.placeholder = undefined;
                         }
 
@@ -322,7 +332,10 @@ const buildResolvedLineupsByHeat = ({
                         const sourceHeatId = sourceHeat.heat.heatId;
 
                         if (!sourceRanksByHeat.has(sourceHeatId)) {
-                            const sourceLineup = resolvedLineupsByHeat.get(sourceHeatId) || {};
+                            const sourceLineup = {
+                                ...(realtimeLineupsByHeat.get(sourceHeatId) || {}),
+                                ...(resolvedLineupsByHeat.get(sourceHeatId) || {}),
+                            };
                             const sourceScores = normalizeScores(groupedScores[sourceHeatId] || []);
                             const sourceSurfers = Object.keys(sourceLineup);
                             if (sourceSurfers.length && sourceScores.length) {
@@ -360,7 +373,10 @@ const buildResolvedLineupsByHeat = ({
                             acc[color] = { name: slot.name, country: slot.country || undefined };
                             return acc;
                         }, {});
-                        resolvedLineupsByHeat.set(heat.heatId, lineup);
+                        resolvedLineupsByHeat.set(heat.heatId, {
+                            ...realtimeLineup,
+                            ...lineup,
+                        });
                     }
 
                     if (!heat.heatId) return;
@@ -431,6 +447,54 @@ const fetchParticipantCountriesByNames = async (eventId: number, names: string[]
         acc[normalizedName] = normalizedCountry;
         return acc;
     }, {});
+};
+
+const fetchRealtimeLineupsByHeat = async (heatIds: string[]) => {
+    if (!heatIds.length || !supabase) return new Map<string, Record<string, { name: string; country?: string }>>();
+
+    const { data, error } = await supabase
+        .from('heat_realtime_config')
+        .select('heat_id, config_data')
+        .in('heat_id', heatIds);
+
+    if (error) {
+        throw error;
+    }
+
+    return ((data || []) as Array<{ heat_id?: string; config_data?: Record<string, unknown> | null }>).reduce(
+        (acc, row) => {
+            const heatId = (row.heat_id || '').trim();
+            if (!heatId) return acc;
+
+            const configData = row.config_data || {};
+            const surferNames = normalizeSurferMap(
+                typeof configData.surferNames === 'object' && configData.surferNames
+                    ? (configData.surferNames as Record<string, string>)
+                    : {}
+            );
+            const surferCountries = normalizeSurferCountries(
+                typeof configData.surferCountries === 'object' && configData.surferCountries
+                    ? (configData.surferCountries as Record<string, string>)
+                    : {}
+            );
+
+            const lineup = Object.entries(surferNames).reduce<Record<string, { name: string; country?: string }>>((lineupAcc, [color, name]) => {
+                if (!name || isLikelyPlaceholder(name)) return lineupAcc;
+                lineupAcc[color] = {
+                    name,
+                    country: surferCountries[color] || undefined,
+                };
+                return lineupAcc;
+            }, {});
+
+            if (Object.keys(lineup).length > 0) {
+                acc.set(heatId, lineup);
+            }
+
+            return acc;
+        },
+        new Map<string, Record<string, { name: string; country?: string }>>()
+    );
 };
 
 const parseSourceFromPlaceholder = (placeholder?: string | null) => {
@@ -1036,6 +1100,7 @@ export default function DisplayPage() {
 
                 const entriesByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>();
                 const slotMappingsByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatSlotMappings>>>();
+                const realtimeLineupsByHeat = await fetchRealtimeLineupsByHeat(uniqueHeatIds);
 
                 await Promise.all(
                     uniqueHeatIds.map(async (heatId) => {
@@ -1056,6 +1121,7 @@ export default function DisplayPage() {
                     historyHeats,
                     entriesByHeat,
                     slotMappingsByHeat,
+                    realtimeLineupsByHeat,
                     groupedScores,
                 });
 
