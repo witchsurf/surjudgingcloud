@@ -647,6 +647,17 @@ export interface ActiveHeatPointer {
     updated_at: string;
 }
 
+export interface HeatRealtimeConfigWriteInput {
+    status?: 'waiting' | 'running' | 'paused' | 'finished' | 'closed';
+    timerStartTime?: string | null;
+    setTimerStartTime?: boolean;
+    timerDurationMinutes?: number | null;
+    setTimerDuration?: boolean;
+    configData?: unknown | null;
+    setConfigData?: boolean;
+    updatedBy?: string;
+}
+
 const isActiveHeatPointerEventIdSchemaError = (error: unknown) => {
     if (!error || typeof error !== 'object') return false;
     const candidate = error as {
@@ -685,6 +696,36 @@ const isActiveHeatPointerEventIdSchemaError = (error: unknown) => {
         || text.includes('42p10')
         || text.includes('there is no unique or exclusion constraint matching the on conflict specification')
     );
+};
+
+const isRpcUnavailableError = (error: unknown, functionName: string) => {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as {
+        code?: string;
+        message?: string;
+        details?: string;
+        hint?: string;
+        status?: number;
+        statusCode?: number;
+    };
+    const text = [
+        candidate.code,
+        candidate.message,
+        candidate.details,
+        candidate.hint,
+        String(candidate.status ?? ''),
+        String(candidate.statusCode ?? ''),
+        JSON.stringify(candidate),
+    ].join(' ').toLowerCase();
+    const normalizedFunctionName = functionName.toLowerCase();
+
+    return (
+        text.includes('pgrst202')
+        || text.includes('schema cache')
+        || text.includes('could not find the function')
+        || text.includes('function')
+        || text.includes('42883')
+    ) && text.includes(normalizedFunctionName);
 };
 
 const ACTIVE_HEAT_POINTER_EVENT_ID_CACHE_KEY = 'active_heat_pointer_event_id_upsert_support';
@@ -739,6 +780,21 @@ export async function upsertActiveHeatPointer(input: {
         updated_at: input.updatedAt ?? new Date().toISOString(),
     };
 
+    const { error: rpcError } = await supabase!.rpc('upsert_active_heat_pointer', {
+        p_event_id: payload.event_id,
+        p_event_name: payload.event_name,
+        p_active_heat_id: payload.active_heat_id,
+        p_updated_at: payload.updated_at,
+    });
+
+    if (!rpcError) {
+        return;
+    }
+
+    if (!isRpcUnavailableError(rpcError, 'upsert_active_heat_pointer')) {
+        throw rpcError;
+    }
+
     const eventIdUpsertSupport = readActiveHeatPointerEventIdSupport();
 
     if (input.eventId && Number.isFinite(input.eventId) && eventIdUpsertSupport !== false) {
@@ -783,6 +839,99 @@ export async function upsertActiveHeatPointer(input: {
         .insert(fallbackPayload);
 
     if (insertError) throw insertError;
+}
+
+const buildHeatRealtimePatch = (input: HeatRealtimeConfigWriteInput) => {
+    const patch: Record<string, unknown> = {
+        updated_by: input.updatedBy ?? 'system',
+    };
+
+    if (typeof input.status === 'string' && input.status.trim()) {
+        patch.status = input.status;
+    }
+    if (input.setTimerStartTime) {
+        patch.timer_start_time = input.timerStartTime ?? null;
+    }
+    if (input.setTimerDuration) {
+        patch.timer_duration_minutes = input.timerDurationMinutes ?? null;
+    }
+    if (input.setConfigData) {
+        patch.config_data = input.configData ?? null;
+    }
+
+    return patch;
+};
+
+const fallbackUpsertHeatRealtimeConfig = async (
+    normalizedHeatId: string,
+    input: HeatRealtimeConfigWriteInput
+) => {
+    const patch = buildHeatRealtimePatch(input);
+
+    const { data: existingRow, error: readError } = await supabase!
+        .from('heat_realtime_config')
+        .select('heat_id')
+        .eq('heat_id', normalizedHeatId)
+        .maybeSingle();
+
+    if (readError && readError.code !== 'PGRST116') {
+        throw readError;
+    }
+
+    if (existingRow) {
+        const { error: updateError } = await supabase!
+            .from('heat_realtime_config')
+            .update(patch)
+            .eq('heat_id', normalizedHeatId);
+
+        if (updateError) throw updateError;
+        return;
+    }
+
+    const insertPayload: Record<string, unknown> = {
+        heat_id: normalizedHeatId,
+        updated_by: input.updatedBy ?? 'system',
+        status: input.status ?? 'waiting',
+        timer_start_time: input.setTimerStartTime ? (input.timerStartTime ?? null) : null,
+        timer_duration_minutes: input.setTimerDuration ? (input.timerDurationMinutes ?? null) : null,
+        config_data: input.setConfigData ? (input.configData ?? null) : null,
+    };
+
+    const { error: insertError } = await supabase!
+        .from('heat_realtime_config')
+        .insert(insertPayload);
+
+    if (insertError) throw insertError;
+};
+
+export async function upsertHeatRealtimeConfig(
+    heatId: string,
+    input: HeatRealtimeConfigWriteInput
+): Promise<void> {
+    ensureSupabase();
+
+    const normalizedHeatId = ensureHeatId(heatId);
+    const { error } = await supabase!.rpc('upsert_heat_realtime_config', {
+        p_heat_id: normalizedHeatId,
+        p_status: input.status ?? null,
+        p_set_timer_start_time: Boolean(input.setTimerStartTime),
+        p_timer_start_time: input.setTimerStartTime ? (input.timerStartTime ?? null) : null,
+        p_set_timer_duration: Boolean(input.setTimerDuration),
+        p_timer_duration_minutes: input.setTimerDuration ? (input.timerDurationMinutes ?? null) : null,
+        p_set_config_data: Boolean(input.setConfigData),
+        p_config_data: input.setConfigData ? (input.configData ?? null) : null,
+        p_updated_by: input.updatedBy ?? 'system',
+    });
+
+    if (!error) {
+        return;
+    }
+
+    if (!isRpcUnavailableError(error, 'upsert_heat_realtime_config')) {
+        throw error;
+    }
+
+    await fallbackUpsertHeatRealtimeConfig(normalizedHeatId, input);
 }
 
 export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string): Promise<ActiveHeatPointer | null> {

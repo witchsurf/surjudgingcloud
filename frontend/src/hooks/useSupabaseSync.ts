@@ -4,6 +4,8 @@ import type { Score, Heat, ScoreOverrideLog } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
 import { ensureHeatId, buildHeatId } from '../utils/heat';
 import { heatRepository, timerRepository, scoreRepository } from '../repositories';
+import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
+import { recordScoreOverrideSecure } from '../api/supabaseClient';
 
 function extractHeatNumber(heatId: string): number | null {
   const match = /_h(\d+)$/i.exec(heatId.trim());
@@ -88,30 +90,26 @@ export function useSupabaseSync() {
     if (pendingLogs.length === 0) return;
 
     try {
-      const payload = pendingLogs.map(log => ({
-        id: log.id,
-        heat_id: log.heat_id,
-        score_id: log.score_id,
-        judge_id: log.judge_id,
-        judge_name: log.judge_name,
-        judge_station: log.judge_station ?? log.judge_id,
-        judge_identity_id: log.judge_identity_id ?? null,
-        surfer: log.surfer,
-        wave_number: log.wave_number,
-        previous_score: log.previous_score,
-        new_score: log.new_score,
-        reason: log.reason,
-        comment: log.comment,
-        overridden_by: log.overridden_by,
-        overridden_by_name: log.overridden_by_name,
-        created_at: log.created_at
-      }));
-
-      const { error } = await supabase!
-        .from('score_overrides')
-        .upsert(payload, { onConflict: 'id' });
-
-      if (error) throw error;
+      for (const log of pendingLogs) {
+        await recordScoreOverrideSecure({
+          id: log.id,
+          heat_id: log.heat_id,
+          score_id: log.score_id,
+          judge_id: log.judge_id,
+          judge_name: log.judge_name,
+          judge_station: log.judge_station ?? log.judge_id,
+          judge_identity_id: log.judge_identity_id ?? null,
+          surfer: log.surfer,
+          wave_number: log.wave_number,
+          previous_score: log.previous_score,
+          new_score: log.new_score,
+          reason: log.reason,
+          comment: log.comment,
+          overridden_by: log.overridden_by,
+          overridden_by_name: log.overridden_by_name,
+          created_at: log.created_at,
+        });
+      }
 
       const merged = localLogs.map(log => ({ ...log, synced: true }));
       writeLocalOverrideLogs(merged);
@@ -229,9 +227,9 @@ export function useSupabaseSync() {
       // but TimerRepository will handle the actual timer state later.
       if (canReachSupabase() && isSupabaseConfigured()) {
         try {
-          await supabase!
-            .from('heat_realtime_config')
-            .upsert({ heat_id: newHeat.id }, { onConflict: 'heat_id', ignoreDuplicates: true });
+          await upsertHeatRealtimeConfig(newHeat.id, {
+            updatedBy: 'system',
+          });
         } catch (error) {
            console.error('❌ Erreur initialisation heat_realtime_config:', error);
         }

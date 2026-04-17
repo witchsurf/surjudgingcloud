@@ -52,6 +52,66 @@ const isMissingInterferenceTableError = (error: unknown) => {
     return text.includes('interference_calls') && (text.includes('404') || text.includes('not found') || text.includes('pgrst'));
 };
 
+const isRpcUnavailableError = (error: unknown, functionName: string) => {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as {
+        code?: string;
+        message?: string;
+        details?: string;
+        status?: number;
+        statusCode?: number;
+        hint?: string;
+    };
+    const text = [
+        candidate.code,
+        candidate.message,
+        candidate.details,
+        candidate.hint,
+        String(candidate.status ?? ''),
+        String(candidate.statusCode ?? ''),
+        JSON.stringify(candidate),
+    ].join(' ').toLowerCase();
+    return text.includes(functionName.toLowerCase()) && (
+        text.includes('pgrst202')
+        || text.includes('schema cache')
+        || text.includes('could not find the function')
+        || text.includes('42883')
+    );
+};
+
+const mapSecureScoreRpcError = (error: unknown): Error => {
+    if (error instanceof Error) {
+        const message = error.message.toLowerCase();
+        if (message.includes('authenticated admin session required')) {
+            return new Error("Cette action demande une vraie session admin en ligne. Reconnectez-vous avec l'email admin.");
+        }
+        return error;
+    }
+
+    if (!error || typeof error !== 'object') {
+        return new Error('Une erreur inconnue est survenue.');
+    }
+
+    const candidate = error as {
+        message?: string;
+        details?: string;
+        hint?: string;
+        code?: string;
+    };
+    const text = [
+        candidate.message,
+        candidate.details,
+        candidate.hint,
+        candidate.code,
+    ].join(' ').toLowerCase();
+
+    if (text.includes('authenticated admin session required')) {
+        return new Error("Cette action demande une vraie session admin en ligne. Reconnectez-vous avec l'email admin.");
+    }
+
+    return new Error(candidate.message || candidate.details || 'Une erreur inconnue est survenue.');
+};
+
 export type RawScoreRow = {
     id?: string;
     event_id?: number;
@@ -123,6 +183,35 @@ export type HeatCloseValidationResult = {
     missing_score_count: number;
     pending_slots: HeatMissingScoreSlotRow[];
 };
+
+export interface SecureScoreOverrideInput {
+    id: string;
+    heat_id: string;
+    score_id: string;
+    judge_id: string;
+    judge_name?: string | null;
+    judge_station?: string | null;
+    judge_identity_id?: string | null;
+    surfer: string;
+    wave_number: number;
+    previous_score?: number | null;
+    new_score?: number | null;
+    reason?: string | null;
+    comment?: string | null;
+    overridden_by?: string | null;
+    overridden_by_name?: string | null;
+    created_at?: string | null;
+}
+
+export interface SecureScoreCorrectionInput {
+    score_id: string;
+    heat_id?: string | null;
+    surfer?: string | null;
+    wave_number?: number | null;
+    score?: number | null;
+    timestamp?: string | null;
+    override_log?: SecureScoreOverrideInput | null;
+}
 
 export const normalizeScoreJudgeId = (judgeId?: string) => {
     const upper = (judgeId || '').trim().toUpperCase();
@@ -513,4 +602,100 @@ export async function upsertInterferenceCall(input: {
         throw error;
     }
     interferenceCache.delete(payload.heat_id);
+}
+
+export async function recordScoreOverrideSecure(input: SecureScoreOverrideInput): Promise<void> {
+    ensureSupabase();
+
+    const { error } = await supabase!.rpc('record_score_override_secure', {
+        p_id: input.id,
+        p_heat_id: ensureHeatId(input.heat_id),
+        p_score_id: input.score_id,
+        p_judge_id: input.judge_id,
+        p_judge_name: input.judge_name ?? null,
+        p_judge_station: input.judge_station ?? input.judge_id,
+        p_judge_identity_id: input.judge_identity_id ?? null,
+        p_surfer: input.surfer,
+        p_wave_number: input.wave_number,
+        p_previous_score: input.previous_score ?? null,
+        p_new_score: input.new_score ?? null,
+        p_reason: input.reason ?? null,
+        p_comment: input.comment ?? null,
+        p_overridden_by: input.overridden_by ?? null,
+        p_overridden_by_name: input.overridden_by_name ?? null,
+        p_created_at: input.created_at ?? new Date().toISOString(),
+    });
+
+    if (error && !isRpcUnavailableError(error, 'record_score_override_secure')) {
+        throw mapSecureScoreRpcError(error);
+    }
+
+    if (error) {
+        const { error: fallbackError } = await supabase!.from('score_overrides').upsert({
+            id: input.id,
+            heat_id: ensureHeatId(input.heat_id),
+            score_id: input.score_id,
+            judge_id: input.judge_id,
+            judge_name: input.judge_name ?? null,
+            judge_station: input.judge_station ?? input.judge_id,
+            judge_identity_id: input.judge_identity_id ?? null,
+            surfer: input.surfer,
+            wave_number: input.wave_number,
+            previous_score: input.previous_score ?? null,
+            new_score: input.new_score ?? null,
+            reason: input.reason ?? null,
+            comment: input.comment ?? null,
+            overridden_by: input.overridden_by ?? null,
+            overridden_by_name: input.overridden_by_name ?? null,
+            created_at: input.created_at ?? new Date().toISOString(),
+        }, { onConflict: 'id' });
+
+        if (fallbackError) throw mapSecureScoreRpcError(fallbackError);
+    }
+}
+
+export async function applyScoreCorrectionSecure(input: SecureScoreCorrectionInput): Promise<void> {
+    ensureSupabase();
+
+    const { error } = await supabase!.rpc('apply_score_correction_secure', {
+        p_score_id: input.score_id,
+        p_heat_id: input.heat_id ? ensureHeatId(input.heat_id) : null,
+        p_set_surfer: Object.prototype.hasOwnProperty.call(input, 'surfer'),
+        p_surfer: input.surfer ?? null,
+        p_set_wave_number: Object.prototype.hasOwnProperty.call(input, 'wave_number'),
+        p_wave_number: input.wave_number ?? null,
+        p_set_score: Object.prototype.hasOwnProperty.call(input, 'score'),
+        p_score: input.score ?? null,
+        p_timestamp: input.timestamp ?? new Date().toISOString(),
+        p_log_id: input.override_log?.id ?? null,
+        p_log_reason: input.override_log?.reason ?? null,
+        p_log_comment: input.override_log?.comment ?? null,
+        p_log_overridden_by: input.override_log?.overridden_by ?? null,
+        p_log_overridden_by_name: input.override_log?.overridden_by_name ?? null,
+        p_log_created_at: input.override_log?.created_at ?? null,
+    });
+
+    if (error && !isRpcUnavailableError(error, 'apply_score_correction_secure')) {
+        throw mapSecureScoreRpcError(error);
+    }
+
+    if (error) {
+        const updatePayload: Record<string, unknown> = {
+            timestamp: input.timestamp ?? new Date().toISOString(),
+        };
+        if (Object.prototype.hasOwnProperty.call(input, 'surfer')) updatePayload.surfer = input.surfer ?? null;
+        if (Object.prototype.hasOwnProperty.call(input, 'wave_number')) updatePayload.wave_number = input.wave_number ?? null;
+        if (Object.prototype.hasOwnProperty.call(input, 'score')) updatePayload.score = input.score ?? null;
+
+        let query = supabase!.from('scores').update(updatePayload).eq('id', input.score_id);
+        if (input.heat_id) {
+            query = query.eq('heat_id', ensureHeatId(input.heat_id));
+        }
+        const { error: fallbackError } = await query;
+        if (fallbackError) throw mapSecureScoreRpcError(fallbackError);
+
+        if (input.override_log) {
+            await recordScoreOverrideSecure(input.override_log);
+        }
+    }
 }

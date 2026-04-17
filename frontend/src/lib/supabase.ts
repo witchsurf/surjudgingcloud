@@ -138,6 +138,9 @@ export const getSupabaseConfig = () => {
 
 export const { supabaseUrl, supabaseAnonKey, mode } = getSupabaseConfig();
 const debugRealtimeEnabled = resolveEnv('VITE_DEBUG_REALTIME') === 'true';
+const isVitestRuntime =
+  resolveEnv('VITEST') === 'true'
+  || resolveEnv('MODE') === 'test';
 
 export const isLocalSupabaseMode = (): boolean => {
   return getSupabaseConfig().mode === 'local';
@@ -167,7 +170,7 @@ export const supabase =
         detectSessionInUrl: false,
       },
       realtime: {
-        worker: true,
+        worker: !isVitestRuntime,
         heartbeatIntervalMs: 15000,
         heartbeatCallback: (status) => {
           if (typeof window !== 'undefined') {
@@ -450,6 +453,33 @@ async function replayOfflineEntry(entry: OfflineEntry) {
 
   if (entry.table === HEAT_CONFIG_REPAIR_TABLE) {
     await repairHeatConfigSnapshot(entry.payload)
+    return
+  }
+
+  if (entry.table === 'heat_realtime_config' && (entry.action === 'upsert' || entry.action === 'update')) {
+    const payload = entry.payload?.rows ?? entry.payload?.data ?? entry.payload ?? {}
+    const heatId = String(payload?.heat_id ?? '').trim()
+
+    if (!heatId) {
+      throw new Error('Synchronisation offline heat_realtime_config sans heat_id')
+    }
+
+    const { error } = await supabase.rpc('upsert_heat_realtime_config', {
+      p_heat_id: heatId,
+      p_status: typeof payload?.status === 'string' ? payload.status : null,
+      p_set_timer_start_time: Object.prototype.hasOwnProperty.call(payload, 'timer_start_time'),
+      p_timer_start_time: Object.prototype.hasOwnProperty.call(payload, 'timer_start_time') ? payload.timer_start_time : null,
+      p_set_timer_duration: Object.prototype.hasOwnProperty.call(payload, 'timer_duration_minutes'),
+      p_timer_duration_minutes: Object.prototype.hasOwnProperty.call(payload, 'timer_duration_minutes') ? payload.timer_duration_minutes : null,
+      p_set_config_data: Object.prototype.hasOwnProperty.call(payload, 'config_data'),
+      p_config_data: Object.prototype.hasOwnProperty.call(payload, 'config_data') ? payload.config_data : null,
+      p_updated_by: typeof payload?.updated_by === 'string' ? payload.updated_by : 'offline_sync',
+    })
+
+    if (error) {
+      throw error
+    }
+
     return
   }
 

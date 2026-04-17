@@ -4,6 +4,7 @@ import type { AppConfig, HeatTimer, KioskConfig, HeatSyncRequest } from '../type
 import { ensureHeatId } from '../utils/heat';
 import { DEFAULT_TIMER_DURATION, INITIAL_CONFIG } from '../utils/constants';
 import { parseActiveHeatId } from '../api/supabaseClient';
+import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface RealtimeHeatConfig {
@@ -196,10 +197,12 @@ const createHeatChannel = (normalizedHeatId: string) => {
     }, intervalMs);
   };
 
-  // Keep a shared per-heat safety poller even in cloud mode.
-  // Timer/config propagation is a critical path: if the websocket silently
-  // stalls, judge/display/admin must still converge without manual refresh.
-  startPolling();
+  // Keep the poller active in local mode where websocket delivery is less
+  // predictable. In cloud mode we only enable polling as a degraded fallback
+  // after channel failures to avoid constant duplicate database reads.
+  if (isLocalSupabaseMode()) {
+    startPolling();
+  }
 
   const setupChannel = () => {
     if (!heatChannelRegistry.has(normalizedHeatId)) return;
@@ -275,6 +278,10 @@ const createHeatChannel = (normalizedHeatId: string) => {
       if (status === 'SUBSCRIBED') {
         state.reconnecting = false;
         state.retryCount = 0;
+        if (!isLocalSupabaseMode() && state.pollingInterval) {
+          clearInterval(state.pollingInterval);
+          state.pollingInterval = null;
+        }
         void refreshHeatSnapshot(normalizedHeatId);
         window.dispatchEvent(new CustomEvent('heatRealtimeResync', {
           detail: { heatId: normalizedHeatId }
@@ -409,23 +416,16 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     try {
       await ensureAuthenticatedSession();
 
-      // 1. Timer persistence and broadcasting now consolidated in heat_realtime_config
-
-      // 2. Update heat_realtime_config for broadcasting
-      const { error } = await supabase!
-        .from('heat_realtime_config')
-        .upsert({
-          heat_id: normalizedHeatId,
-          status: 'running',
-          timer_start_time: new Date().toISOString(),
-          timer_duration_minutes: duration,
-          config_data: config,
-          updated_by: 'admin'
-        }, {
-          onConflict: 'heat_id'
-        });
-
-      if (error) throw error;
+      await upsertHeatRealtimeConfig(normalizedHeatId, {
+        status: 'running',
+        setTimerStartTime: true,
+        timerStartTime: new Date().toISOString(),
+        setTimerDuration: true,
+        timerDurationMinutes: duration,
+        setConfigData: true,
+        configData: config,
+        updatedBy: 'admin',
+      });
 
       setLastUpdate(new Date());
       console.log('🚀 Timer START publié en temps réel:', normalizedHeatId);
@@ -463,12 +463,14 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
         realtimePauseUpdate.timer_duration_minutes = Number(remainingDuration.toFixed(4));
         realtimePauseUpdate.timer_start_time = null;
       }
-      const { error } = await supabase!
-        .from('heat_realtime_config')
-        .update(realtimePauseUpdate)
-        .eq('heat_id', normalizedHeatId);
-
-      if (error) throw error;
+      await upsertHeatRealtimeConfig(normalizedHeatId, {
+        status: realtimePauseUpdate.status,
+        setTimerStartTime: true,
+        timerStartTime: realtimePauseUpdate.timer_start_time ?? null,
+        setTimerDuration: typeof realtimePauseUpdate.timer_duration_minutes === 'number',
+        timerDurationMinutes: realtimePauseUpdate.timer_duration_minutes ?? null,
+        updatedBy: realtimePauseUpdate.updated_by,
+      });
 
       setLastUpdate(new Date());
       console.log('⏸️ Timer PAUSE publié en temps réel:', normalizedHeatId);
@@ -493,17 +495,14 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       // 1. Timer state update consolidated in heat_realtime_config below
 
       // 2. Update heat_realtime_config for broadcasting
-      const { error } = await supabase!
-        .from('heat_realtime_config')
-        .update({
-          status: 'waiting',
-          timer_start_time: null,
-          timer_duration_minutes: duration,
-          updated_by: 'admin'
-        })
-        .eq('heat_id', normalizedHeatId);
-
-      if (error) throw error;
+      await upsertHeatRealtimeConfig(normalizedHeatId, {
+        status: 'waiting',
+        setTimerStartTime: true,
+        timerStartTime: null,
+        setTimerDuration: true,
+        timerDurationMinutes: duration,
+        updatedBy: 'admin',
+      });
 
       setLastUpdate(new Date());
       console.log('🔄 Timer RESET publié en temps réel:', normalizedHeatId);
@@ -524,16 +523,12 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     try {
       await ensureAuthenticatedSession();
-      const { error } = await supabase!
-        .from('heat_realtime_config')
-        .update({
-          status: 'finished',
-          timer_start_time: null,
-          updated_by: 'admin'
-        })
-        .eq('heat_id', normalizedHeatId);
-
-      if (error) throw error;
+      await upsertHeatRealtimeConfig(normalizedHeatId, {
+        status: 'finished',
+        setTimerStartTime: true,
+        timerStartTime: null,
+        updatedBy: 'admin',
+      });
 
       setLastUpdate(new Date());
       console.log('🏁 Heat marqué comme terminé:', normalizedHeatId);
@@ -553,17 +548,11 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
 
     try {
       await ensureAuthenticatedSession();
-      const { error } = await supabase!
-        .from('heat_realtime_config')
-        .upsert({
-          heat_id: normalizedHeatId,
-          config_data: config,
-          updated_by: 'admin'
-        }, {
-          onConflict: 'heat_id'
-        });
-
-      if (error) throw error;
+      await upsertHeatRealtimeConfig(normalizedHeatId, {
+        setConfigData: true,
+        configData: config,
+        updatedBy: 'admin',
+      });
 
       setLastUpdate(new Date());
       console.log('📋 Config mise à jour en temps réel:', normalizedHeatId);

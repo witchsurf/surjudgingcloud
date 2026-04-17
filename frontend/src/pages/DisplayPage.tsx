@@ -1285,7 +1285,7 @@ export default function DisplayPage() {
         // delivering score inserts, which previously required a manual refresh.
         const safetyPollInterval = window.setInterval(() => {
             refreshScores(liveHeatIdRef.current || currentHeatId);
-        }, isLocalSupabaseMode() ? 2500 : 3000);
+        }, isLocalSupabaseMode() ? 2500 : 10000);
 
         // Écouter les scores en temps réel (INSERT/UPDATE)
         const handleNewScore = (event: Event) => {

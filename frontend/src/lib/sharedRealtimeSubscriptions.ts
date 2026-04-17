@@ -164,7 +164,9 @@ export const subscribeToEventConfig = (
   };
 
   void refresh();
-  startPolling(state, refresh, EVENT_CONFIG_POLL_INTERVAL_MS);
+  if (isLocalSupabaseMode() || !supabase) {
+    startPolling(state, refresh, EVENT_CONFIG_POLL_INTERVAL_MS);
+  }
 
   if (!isLocalSupabaseMode() && supabase) {
     state.channel = supabase
@@ -186,10 +188,12 @@ export const subscribeToEventConfig = (
       .subscribe((status) => {
         updateSharedRealtimeDebug();
         if (status === 'SUBSCRIBED') {
+          stopPolling(state);
           void refresh();
           return;
         }
         if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
+          startPolling(state, refresh, EVENT_CONFIG_POLL_INTERVAL_MS);
           console.warn(`⚠️ Shared event config channel dropped for event ${eventId}: ${status}`);
         }
       });
@@ -241,7 +245,9 @@ export const subscribeToActiveHeatPointer = (
   };
 
   void refresh();
-  startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
+  if (isLocalSupabaseMode() || !supabase) {
+    startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
+  }
 
   if (!isLocalSupabaseMode() && supabase) {
     state.channel = supabase
@@ -263,10 +269,12 @@ export const subscribeToActiveHeatPointer = (
       .subscribe((status) => {
         updateSharedRealtimeDebug();
         if (status === 'SUBSCRIBED') {
+          stopPolling(state);
           void refresh();
           return;
         }
         if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
+          startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
           console.warn(`⚠️ Shared active heat channel dropped for key ${key}: ${status}`);
         }
       });

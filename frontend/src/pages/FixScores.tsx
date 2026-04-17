@@ -1,6 +1,7 @@
 
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { applyScoreCorrectionSecure } from '../api/supabaseClient';
 
 export default function FixScores() {
     const [status, setStatus] = useState('Ready');
@@ -32,10 +33,18 @@ export default function FixScores() {
         console.log(`Fixing ${name}...`);
 
         // 1. Reset all to 0.5 to clear previous high scores
-        await supabase!.from('scores')
-            .update({ score: 0.5 })
+        const { data: resetRows } = await supabase!.from('scores')
+            .select('id, heat_id')
             .eq('heat_id', HEAT_ID)
             .ilike('surfer', `%${name}%`);
+
+        for (const row of (resetRows || [])) {
+            await applyScoreCorrectionSecure({
+                score_id: row.id,
+                heat_id: row.heat_id,
+                score: 0.5,
+            });
+        }
 
         // 2. Set Wave 1
         // We need to find specific Row IDs... this is tricky with update.
@@ -56,15 +65,27 @@ export default function FixScores() {
 
         // Update first row
         if (rows[0]) {
-            await supabase!.from('scores').update({ score: s1 }).eq('id', rows[0].id);
+            await applyScoreCorrectionSecure({
+                score_id: rows[0].id,
+                heat_id: HEAT_ID,
+                score: s1,
+            });
         }
         // Update second row
         if (rows[1]) {
-            await supabase!.from('scores').update({ score: s2 }).eq('id', rows[1].id);
+            await applyScoreCorrectionSecure({
+                score_id: rows[1].id,
+                heat_id: HEAT_ID,
+                score: s2,
+            });
         }
         // Set rest low
         for (let i = 2; i < rows.length; i++) {
-            await supabase!.from('scores').update({ score: 0.5 }).eq('id', rows[i].id);
+            await applyScoreCorrectionSecure({
+                score_id: rows[i].id,
+                heat_id: HEAT_ID,
+                score: 0.5,
+            });
         }
     };
 
@@ -76,7 +97,11 @@ export default function FixScores() {
         const others = all.filter(s => !excludeNames.some(n => s.surfer.toUpperCase().includes(n)));
 
         for (const row of others) {
-            await supabase!.from('scores').update({ score: 1.0 }).eq('id', row.id);
+            await applyScoreCorrectionSecure({
+                score_id: row.id,
+                heat_id: HEAT_ID,
+                score: 1.0,
+            });
         }
     };
 
@@ -109,10 +134,18 @@ export default function FixScores() {
             }
 
             // 2. Update Scores (Preserve History)
-            await supabase.from('scores')
-                .update({ surfer: NEW_NAME })
+            const { data: scoreRows } = await supabase.from('scores')
+                .select('id, heat_id')
                 .eq('heat_id', TARGET_HEAT)
                 .ilike('surfer', `%djibril%`);
+
+            for (const row of (scoreRows || [])) {
+                await applyScoreCorrectionSecure({
+                    score_id: row.id,
+                    heat_id: row.heat_id,
+                    surfer: NEW_NAME,
+                });
+            }
 
             setStatus('Swap Complete! Adama Samb is now in. Check Judge/Display.');
         } catch (e: any) {

@@ -11,7 +11,8 @@ import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useHeatManager } from '../hooks/useHeatManager';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
 import type { AppConfig } from '../types';
@@ -93,23 +94,15 @@ export default function JudgePage() {
     const handlePriorityConfigChange = async (nextConfig: AppConfig) => {
         setConfig(nextConfig);
 
-        if (!isSupabaseConfigured() || !supabase || !currentHeatId) {
+        if (!isSupabaseConfigured() || !currentHeatId) {
             return;
         }
 
-        const { error } = await supabase
-            .from('heat_realtime_config')
-            .upsert({
-                heat_id: currentHeatId,
-                config_data: nextConfig,
-                updated_by: 'priority_judge'
-            }, {
-                onConflict: 'heat_id'
-            });
-
-        if (error) {
-            throw error;
-        }
+        await upsertHeatRealtimeConfig(currentHeatId, {
+            setConfigData: true,
+            configData: nextConfig,
+            updatedBy: 'priority_judge',
+        });
     };
 
     // Load kiosk configuration:

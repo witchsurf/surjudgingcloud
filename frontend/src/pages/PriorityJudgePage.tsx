@@ -7,12 +7,13 @@ import { getHeatIdentifiers } from '../utils/heat';
 import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import type { AppConfig } from '../types';
+import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
 
 export default function PriorityJudgePage() {
     const { currentJudge, login } = useAuthStore();
@@ -66,23 +67,15 @@ export default function PriorityJudgePage() {
     const handlePriorityConfigChange = async (nextConfig: AppConfig) => {
         setConfig(nextConfig);
 
-        if (!isSupabaseConfigured() || !supabase || !currentHeatId) {
+        if (!isSupabaseConfigured() || !currentHeatId) {
             return;
         }
 
-        const { error } = await supabase
-            .from('heat_realtime_config')
-            .upsert({
-                heat_id: currentHeatId,
-                config_data: nextConfig,
-                updated_by: 'priority_judge'
-            }, {
-                onConflict: 'heat_id'
-            });
-
-        if (error) {
-            throw error;
-        }
+        await upsertHeatRealtimeConfig(currentHeatId, {
+            setConfigData: true,
+            configData: nextConfig,
+            updatedBy: 'priority_judge',
+        });
     };
 
     useEffect(() => {

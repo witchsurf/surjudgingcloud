@@ -10,7 +10,7 @@ import type { Score, ScoreOverrideLog, OverrideReason } from '../types';
 import { ensureHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
 import { saveScoreIDB, saveScoresBatchIDB } from '../lib/idbStorage';
-import { canonicalizeScores, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
+import { canonicalizeScores, recordScoreOverrideSecure, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
 import { fetchHeatMetadata } from '../api/supabaseClient';
 
 export interface SaveScoreRequest {
@@ -108,6 +108,87 @@ export class ScoreRepository extends BaseRepository {
         if (!match) return 1;
         const value = Number.parseInt(match[1], 10);
         return Number.isFinite(value) && value > 0 ? value : 1;
+    }
+
+    private isUpsertScoreSecureUnavailable(error: unknown): boolean {
+        if (!error || typeof error !== 'object') return false;
+        const candidate = error as {
+            code?: string;
+            message?: string;
+            details?: string;
+            hint?: string;
+            status?: number;
+            statusCode?: number;
+        };
+        const text = [
+            candidate.code,
+            candidate.message,
+            candidate.details,
+            candidate.hint,
+            String(candidate.status ?? ''),
+            String(candidate.statusCode ?? ''),
+            JSON.stringify(candidate),
+        ].join(' ').toLowerCase();
+
+        return (
+            text.includes('upsert_score_secure')
+            && (
+                text.includes('pgrst202')
+                || text.includes('schema cache')
+                || text.includes('could not find the function')
+                || text.includes('42883')
+            )
+        );
+    }
+
+    private async upsertScoreSecure(score: Score): Promise<void> {
+        this.ensureSupabase();
+
+        const { error } = await this.supabase!.rpc('upsert_score_secure', {
+            p_id: score.id,
+            p_event_id: score.event_id ?? null,
+            p_heat_id: score.heat_id,
+            p_competition: score.competition,
+            p_division: score.division,
+            p_round: score.round,
+            p_judge_id: score.judge_id,
+            p_judge_name: score.judge_name,
+            p_judge_station: score.judge_station || score.judge_id,
+            p_judge_identity_id: score.judge_identity_id ?? null,
+            p_surfer: score.surfer,
+            p_wave_number: score.wave_number,
+            p_score: score.score,
+            p_timestamp: score.timestamp || new Date().toISOString(),
+            p_created_at: score.created_at || new Date().toISOString(),
+        });
+
+        if (error && !this.isUpsertScoreSecureUnavailable(error)) {
+            throw error;
+        }
+
+        if (error) {
+            const { error: fallbackError } = await this.supabase!
+                .from('scores')
+                .upsert({
+                    id: score.id,
+                    event_id: score.event_id,
+                    heat_id: score.heat_id,
+                    competition: score.competition,
+                    division: score.division,
+                    round: score.round,
+                    judge_id: score.judge_id,
+                    judge_name: score.judge_name,
+                    judge_station: score.judge_station || score.judge_id,
+                    judge_identity_id: score.judge_identity_id,
+                    surfer: score.surfer,
+                    wave_number: score.wave_number,
+                    score: score.score,
+                    timestamp: score.timestamp,
+                    created_at: score.created_at
+                }, { onConflict: 'id' });
+
+            if (fallbackError) throw fallbackError;
+        }
     }
 
     private async resolveEventIdForHeat(
@@ -234,27 +315,9 @@ export class ScoreRepository extends BaseRepository {
                     event_id: newScore.event_id ?? null
                 }]);
 
-                const { error } = await this.supabase!
-                    .from('scores')
-                    .upsert({
-                        id: newScore.id,
-                        event_id: newScore.event_id,
-                        heat_id: newScore.heat_id,
-                        competition: newScore.competition,
-                        division: newScore.division,
-                        round: newScore.round,
-                        judge_id: newScore.judge_id,
-                        judge_name: newScore.judge_name,
-                        judge_station: newScore.judge_station,
-                        judge_identity_id: newScore.judge_identity_id,
-                        surfer: newScore.surfer,
-                        wave_number: newScore.wave_number,
-                        score: newScore.score,
-                        timestamp: newScore.timestamp,
-                        created_at: newScore.created_at
-                    }, { onConflict: 'id' });
-
-                if (error) {
+                try {
+                    await this.upsertScoreSecure(newScore);
+                } catch (error) {
                     logger.error('ScoreRepository', 'saveScore DB error details', this.formatDbError(error));
                     throw error;
                 }
@@ -388,51 +451,30 @@ export class ScoreRepository extends BaseRepository {
                 );
 
                 // Save score
-                const { error: scoreError } = await this.supabase!
-                    .from('scores')
-                    .insert({
-                        id: updatedScore.id,
-                        event_id: resolvedEventId,
-                        heat_id: normalizedHeatId,
-                        competition: request.competition,
-                        division: request.division,
-                        round: request.round,
-                        judge_id: request.judgeId,
-                        judge_name: request.judgeName,
-                        judge_station: updatedScore.judge_station,
-                        judge_identity_id: updatedScore.judge_identity_id,
-                        surfer: request.surfer,
-                        wave_number: request.waveNumber,
-                        score: request.newScore,
-                        timestamp: updatedScore.timestamp,
-                        created_at: updatedScore.created_at
-                    });
-
-                if (scoreError) throw scoreError;
+                await this.upsertScoreSecure({
+                    ...updatedScore,
+                    event_id: resolvedEventId ?? updatedScore.event_id,
+                });
 
                 // Save override log
-                const { error: logError } = await this.supabase!
-                    .from('score_overrides')
-                    .upsert({
-                        id: overrideLog.id,
-                        heat_id: overrideLog.heat_id,
-                        score_id: overrideLog.score_id,
-                        judge_id: overrideLog.judge_id,
-                        judge_name: overrideLog.judge_name,
-                        judge_station: overrideLog.judge_station,
-                        judge_identity_id: overrideLog.judge_identity_id,
-                        surfer: overrideLog.surfer,
-                        wave_number: overrideLog.wave_number,
-                        previous_score: overrideLog.previous_score,
-                        new_score: overrideLog.new_score,
-                        reason: overrideLog.reason,
-                        comment: overrideLog.comment,
-                        overridden_by: overrideLog.overridden_by,
-                        overridden_by_name: overrideLog.overridden_by_name,
-                        created_at: overrideLog.created_at
-                    }, { onConflict: 'id' });
-
-                if (logError) throw logError;
+                await recordScoreOverrideSecure({
+                    id: overrideLog.id,
+                    heat_id: overrideLog.heat_id,
+                    score_id: overrideLog.score_id,
+                    judge_id: overrideLog.judge_id,
+                    judge_name: overrideLog.judge_name,
+                    judge_station: overrideLog.judge_station,
+                    judge_identity_id: overrideLog.judge_identity_id,
+                    surfer: overrideLog.surfer,
+                    wave_number: overrideLog.wave_number,
+                    previous_score: overrideLog.previous_score,
+                    new_score: overrideLog.new_score,
+                    reason: overrideLog.reason,
+                    comment: overrideLog.comment,
+                    overridden_by: overrideLog.overridden_by,
+                    overridden_by_name: overrideLog.overridden_by_name,
+                    created_at: overrideLog.created_at,
+                });
 
                 // Update local storage
                 this.saveScoreToLocalStorage(updatedScore);

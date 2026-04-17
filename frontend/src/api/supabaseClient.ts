@@ -45,6 +45,7 @@ export {
     fetchAllEventHeats,
     fetchActiveHeatPointer,
     upsertActiveHeatPointer,
+    upsertHeatRealtimeConfig,
     parseActiveHeatId,
     subscribeToHeatUpdates,
     fetchHeatEntriesWithParticipants,
@@ -54,7 +55,7 @@ export {
     fetchEventJudgeAssignments,
     replaceHeatEntries
 } from './modules/heats.api';
-export type { ActiveHeatPointer, HeatRow, HeatEntryRow, HeatSlotMappingRow, HeatJudgeAssignmentRow, CreateHeatsOptions } from './modules/heats.api';
+export type { ActiveHeatPointer, HeatRealtimeConfigWriteInput, HeatRow, HeatEntryRow, HeatSlotMappingRow, HeatJudgeAssignmentRow, CreateHeatsOptions } from './modules/heats.api';
 
 export {
     normalizeScoreJudgeId,
@@ -72,11 +73,13 @@ export {
     fetchEventJudgeAccuracySummary,
     fetchHeatCloseValidation,
     fetchHeatMissingScoreSlots,
+    applyScoreCorrectionSecure,
     fetchInterferenceCalls,
     fetchAllInterferenceCallsForEvent,
+    recordScoreOverrideSecure,
     upsertInterferenceCall
 } from './modules/scoring.api';
-export type { RawScoreRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatMissingScoreSlotRow, HeatCloseValidationResult } from './modules/scoring.api';
+export type { RawScoreRow, SecureScoreCorrectionInput, SecureScoreOverrideInput, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatMissingScoreSlotRow, HeatCloseValidationResult } from './modules/scoring.api';
 
 export {
     fetchActiveJudges,

@@ -11,7 +11,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure } from '../api/supabaseClient';
 import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
@@ -1170,25 +1170,19 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       if (!supabase) throw new Error('Supabase non initialisé');
       const destinationWave = Number(moveTargetWave);
       const destinationSurfer = moveTargetSurferKey;
-      const { error } = await supabase
-        .from('scores')
-        .update({
-          surfer: destinationSurfer,
-          wave_number: destinationWave,
-          timestamp: new Date().toISOString()
-        })
-        .eq('id', currentScore.id);
-
-      if (error) throw error;
 
       const moveComment = [
         `Déplacement de ${normalizeJerseyLabel(selectedSurfer)} V${selectedWave} vers ${destinationSurfer} V${destinationWave}.`,
         overrideComment.trim(),
       ].filter(Boolean).join(' ');
 
-      const { error: logError } = await supabase
-        .from('score_overrides')
-        .insert({
+      await applyScoreCorrectionSecure({
+        score_id: currentScore.id,
+        heat_id: heatId,
+        surfer: destinationSurfer,
+        wave_number: destinationWave,
+        timestamp: new Date().toISOString(),
+        override_log: {
           id: crypto.randomUUID(),
           heat_id: heatId,
           score_id: currentScore.id,
@@ -1205,9 +1199,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           overridden_by: 'chief_judge',
           overridden_by_name: 'Chef Judge',
           created_at: new Date().toISOString(),
-        });
-
-      if (logError) throw logError;
+        },
+      });
 
       const updatedScore: Score = {
         ...currentScore,
