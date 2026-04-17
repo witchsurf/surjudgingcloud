@@ -1,6 +1,5 @@
 # Docker Compose pour Supabase Self-Hosted en Réseau Local
 # Usage: docker-compose -f docker-compose-local.yml up -d
-version: '3.8'
 
 services:
   # PostgreSQL Database
@@ -33,6 +32,11 @@ services:
       SUPABASE_URL: http://kong:8000
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+    depends_on:
+      kong:
+        condition: service_started
+      meta:
+        condition: service_started
     networks:
       - surfjudging_network
 
@@ -41,6 +45,10 @@ services:
     image: kong:2.8.1
     container_name: surfjudging_kong
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
     ports:
       - "8000:8000" # API
       - "8443:8443" # API HTTPS
@@ -53,6 +61,15 @@ services:
       KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
     volumes:
       - ./kong.yml:/var/lib/kong/kong.yml:ro
+    depends_on:
+      auth:
+        condition: service_started
+      rest:
+        condition: service_started
+      realtime:
+        condition: service_started
+      storage:
+        condition: service_started
     networks:
       - surfjudging_network
 
@@ -75,6 +92,9 @@ services:
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
       GOTRUE_EXTERNAL_EMAIL_ENABLED: true
       GOTRUE_MAILER_AUTOCONFIRM: true
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - surfjudging_network
 
@@ -100,6 +120,9 @@ services:
       DNS_NODES: "''"
     command: >
       sh -c "/app/bin/migrate && /app/bin/realtime eval 'Realtime.Release.seeds(Realtime.Repo)' && /app/bin/server"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - surfjudging_network
 
@@ -122,6 +145,11 @@ services:
       GLOBAL_S3_BUCKET: stub
     volumes:
       - storage-data:/var/lib/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rest:
+        condition: service_started
     networks:
       - surfjudging_network
 
@@ -138,6 +166,9 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: "false"
       PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
       PGRST_APP_SETTINGS_JWT_EXP: 3600
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - surfjudging_network
 
@@ -153,6 +184,9 @@ services:
       PG_META_DB_NAME: postgres
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-your-super-secret-password}
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - surfjudging_network
 

@@ -1,5 +1,5 @@
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { RefreshCw, Cloud, Plus, Users, Calendar, Activity, Lock } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
@@ -178,6 +178,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [cloudLocked, setCloudLockedState] = useState(isCloudLocked());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [userHasPin, setUserHasPin] = useState(hasOfflinePin());
+  const localAutoSyncAttemptedRef = useRef(false);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -506,6 +507,39 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       clearTimeout(timer);
     };
   }, [handleSyncFromCloud, cloudLocked]);
+
+  useEffect(() => {
+    if (mode !== 'local') return;
+    if (cloudLocked || syncing || loadingEvents) return;
+    if (localAutoSyncAttemptedRef.current) return;
+
+    const shouldAutoSync = events.length === 0 || needsCloudSync();
+    if (!shouldAutoSync) return;
+
+    let cancelled = false;
+    const attemptLocalAutoSync = async () => {
+      try {
+        const cloudClient = getCloudClient();
+        const { data: { session }, error: sessionError } = await cloudClient.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!session?.access_token || cancelled) return;
+
+        localAutoSyncAttemptedRef.current = true;
+        console.log('🔁 Local mode auto-sync: refreshing local DB from cloud session...');
+        await handleSyncFromCloud();
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('Local auto-sync skipped or failed:', err);
+        }
+      }
+    };
+
+    const timer = setTimeout(attemptLocalAutoSync, 800);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cloudLocked, events.length, handleSyncFromCloud, loadingEvents, syncing]);
 
   const handleSendMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();

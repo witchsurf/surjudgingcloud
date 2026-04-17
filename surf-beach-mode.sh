@@ -21,10 +21,10 @@ FRONTEND_DEPS_STAMP=".deploy-deps.sha256"
 BEACH_SUPABASE_SERVICES="postgres kong auth realtime storage rest"
 BEACH_DISABLED_SERVICES="meta studio"
 
-# IP de la machine virtuelle locale (détectée d'après ton Docker context)
 # IP du PC HP ProDesk (Ligue Pro Event Box)
+# Surchargable via SURF_HP_IP=...
 VM_USER="admin-surfjudging"
-VM_IP="192.168.1.2"
+VM_IP="${SURF_HP_IP:-10.0.0.28}"
 VM_DIR="/home/admin-surfjudging/surjudgingcloud"
 DEPLOY_ITEMS=(
     ".dockerignore"
