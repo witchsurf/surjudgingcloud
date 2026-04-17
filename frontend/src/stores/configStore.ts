@@ -46,6 +46,16 @@ interface ConfigStore {
 
 const configLoadInFlight = new Map<number, Promise<void>>();
 
+const areConfigsEquivalent = (left: AppConfig, right: AppConfig): boolean => {
+    if (Object.is(left, right)) return true;
+
+    try {
+        return JSON.stringify(left) === JSON.stringify(right);
+    } catch {
+        return false;
+    }
+};
+
 // Helper to build config from snapshot
 const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
     logger.debug('ConfigStore', 'Building config from snapshot', {
@@ -127,9 +137,13 @@ export const useConfigStore = create<ConfigStore>()(
             isKioskMode: false,
 
             // Basic setters
-            setConfig: (config) => set((state) => ({
-                config: typeof config === 'function' ? config(state.config) : config
-            })),
+            setConfig: (config) => set((state) => {
+                const nextConfig = typeof config === 'function' ? config(state.config) : config;
+                if (areConfigsEquivalent(state.config, nextConfig)) {
+                    return state;
+                }
+                return { config: nextConfig };
+            }),
 
             setConfigSaved: (saved) => set({ configSaved: saved }),
 
