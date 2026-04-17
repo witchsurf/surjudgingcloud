@@ -63,7 +63,7 @@ while true; do
       choose_profile
       ;;
     6)
-      node ./scripts/hp-photocopy-db.mjs
+      (cd frontend && node scripts/hp-photocopy-db.mjs)
       read -r -p "Entrée pour continuer..."
       ;;
     0)

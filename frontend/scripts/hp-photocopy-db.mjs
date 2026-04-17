@@ -18,7 +18,7 @@ const __dirname = path.dirname(__filename);
 // Helper to load env from frontend/.env.local if not already in process.env
 function loadEnv() {
   try {
-    const envPath = path.resolve(__dirname, '../frontend/.env.local');
+    const envPath = path.resolve(__dirname, '../.env.local');
     if (fs.existsSync(envPath)) {
       const content = fs.readFileSync(envPath, 'utf8');
       content.split('\n').forEach(line => {
