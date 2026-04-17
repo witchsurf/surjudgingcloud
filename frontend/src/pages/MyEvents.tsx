@@ -457,7 +457,10 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     } catch (err: any) {
       let msg = err?.message ?? 'Échec de la connexion cloud.';
       if (msg === 'Failed to fetch') {
-        msg = 'Erreur réseau : Vérifiez que votre Mac a accès à Internet (Cloud) ET au réseau de la VM (.69).';
+        const isCurrentlyLocal = mode === 'local' || isCloudLocked();
+        msg = isCurrentlyLocal 
+          ? 'Erreur réseau : Vérifiez que votre Mac a accès au serveur HP Local.'
+          : 'Erreur réseau : Vérifiez votre connexion Internet (Cloud).';
       }
       setCloudLoginError(formatAuthError(msg));
     } finally {

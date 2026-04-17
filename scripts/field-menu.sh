@@ -37,6 +37,7 @@ while true; do
   echo "3. Deploy frontend only"
   echo "4. $ACTION_FOUR"
   echo "5. Change network profile"
+  echo "6. Photocopy Cloud DB to Field Box (Preparation)"
   echo "0. Quit"
   echo
   read -r -p "Choix: " choice
@@ -60,6 +61,10 @@ while true; do
       ;;
     5)
       choose_profile
+      ;;
+    6)
+      node ./scripts/hp-photocopy-db.mjs
+      read -r -p "Entrée pour continuer..."
       ;;
     0)
       exit 0
