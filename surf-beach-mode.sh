@@ -22,9 +22,21 @@ BEACH_SUPABASE_SERVICES="postgres kong auth realtime storage rest"
 BEACH_DISABLED_SERVICES="meta studio"
 
 # IP du PC HP ProDesk (Ligue Pro Event Box)
-# Surchargable via SURF_HP_IP=...
+# Profils:
+#   - field -> 192.168.1.2 (D-LINK / plage)
+#   - home  -> 10.0.0.28   (réseau maison)
+# Surcharges possibles:
+#   - SURF_HP_PROFILE=field|home
+#   - SURF_HP_IP=...
 VM_USER="admin-surfjudging"
-VM_IP="${SURF_HP_IP:-10.0.0.28}"
+SURF_HP_PROFILE="${SURF_HP_PROFILE:-field}"
+if [ -n "${SURF_HP_IP:-}" ]; then
+    VM_IP="${SURF_HP_IP}"
+elif [ "$SURF_HP_PROFILE" = "home" ]; then
+    VM_IP="10.0.0.28"
+else
+    VM_IP="192.168.1.2"
+fi
 VM_DIR="/home/admin-surfjudging/surjudgingcloud"
 DEPLOY_ITEMS=(
     ".dockerignore"

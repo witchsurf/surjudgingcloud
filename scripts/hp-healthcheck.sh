@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HP_HOST="${SURF_HP_HOST:-10.0.0.28}"
+HP_PROFILE="${SURF_HP_PROFILE:-field}"
+if [[ -n "${SURF_HP_HOST:-}" ]]; then
+  HP_HOST="${SURF_HP_HOST}"
+elif [[ "$HP_PROFILE" == "home" ]]; then
+  HP_HOST="10.0.0.28"
+else
+  HP_HOST="192.168.1.2"
+fi
 HP_USER="${SURF_HP_USER:-admin-surfjudging}"
 DISPLAY_URL="${SURF_HP_DISPLAY_URL:-https://display.surfjudging.cloud/display}"
 LOCAL_DISPLAY_URL="http://${HP_HOST}:8080/display"
 LOCAL_API_URL="http://${HP_HOST}:8000/rest/v1/events?select=id&limit=1"
-LEGACY_HP_IP="${SURF_HP_LEGACY_IP:-192.168.1.2}"
+LEGACY_HP_IP="${SURF_HP_LEGACY_IP:-$([[ "$HP_HOST" == "192.168.1.2" ]] && echo "10.0.0.28" || echo "192.168.1.2")}"
 
 section() {
   printf '\n== %s ==\n' "$1"

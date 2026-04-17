@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HP_HOST="${SURF_HP_HOST:-10.0.0.28}"
+HP_PROFILE="${SURF_HP_PROFILE:-field}"
+if [[ -n "${SURF_HP_HOST:-}" ]]; then
+  HP_HOST="${SURF_HP_HOST}"
+elif [[ "$HP_PROFILE" == "home" ]]; then
+  HP_HOST="10.0.0.28"
+else
+  HP_HOST="192.168.1.2"
+fi
 HP_USER="${SURF_HP_USER:-admin-surfjudging}"
 HP_BASE_DIR="${SURF_HP_BASE_DIR:-/home/admin-surfjudging/surjudgingcloud}"
 HP_DIST_STAGING="${SURF_HP_DIST_STAGING:-/home/admin-surfjudging/judging-dist}"

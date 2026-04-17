@@ -2,15 +2,19 @@
 
 Ce mémo donne la procédure la plus sûre pour garder le HP aligné avec `main` et vérifier rapidement la stack plage.
 
-## Adresse active
+## Profils réseau HP
 
-- HP courant: `10.0.0.28`
-- Ancienne IP à ignorer sauf besoin réseau spécifique: `192.168.1.2`
+- `field` -> `192.168.1.2`
+  - réseau D-LINK sur la plage
+  - IP fixée dans le routeur
+- `home` -> `10.0.0.28`
+  - réseau maison avec Internet
 
-Les scripts ci-dessous utilisent `10.0.0.28` par défaut.
+Les scripts ci-dessous utilisent désormais le profil `field` par défaut.
 Tu peux surcharger avec:
 
 ```bash
+SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
 SURF_HP_HOST=10.0.0.42 ./scripts/hp-healthcheck.sh
 ```
 
@@ -45,10 +49,12 @@ Ce script:
 `surf-beach-mode.sh` utilise désormais:
 
 ```bash
+./surf-beach-mode.sh
+SURF_HP_PROFILE=home ./surf-beach-mode.sh
 SURF_HP_IP=10.0.0.28 ./surf-beach-mode.sh
 ```
 
-Par défaut, l’IP ciblée est déjà `10.0.0.28`.
+Par défaut, le mode plage vise bien `192.168.1.2`.
 
 ## 4. Sync cloud -> base locale
 
