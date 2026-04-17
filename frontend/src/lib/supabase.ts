@@ -79,6 +79,9 @@ export const getSupabaseConfig = () => {
   const cloudLocked = isCloudLocked();
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const urlMode = searchParams?.get('mode') as SupabaseMode;
+  
+  const overrideUrl = readStored(SUPABASE_URL_OVERRIDE_KEY);
+  const overrideAnon = readStored(SUPABASE_ANON_OVERRIDE_KEY);
 
   const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
   const isServedFromLocalNetwork =
