@@ -679,20 +679,13 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
           lastSnapshotKey = snapshotKey;
 
           const timer: HeatTimer = {
-            isRunning: data.status === 'running',
-            startTime: data.timer_start_time ? new Date(data.timer_start_time) : null,
+            isRunning: !heatIsClosed && data.status === 'running',
+            startTime: !heatIsClosed && data.timer_start_time ? new Date(data.timer_start_time) : null,
             duration: data.timer_duration_minutes || DEFAULT_TIMER_DURATION
           };
 
           const config = data.config_data ?? null;
-          console.log('📋 État initial chargé:', { timer, config });
-          onUpdate(
-            heatIsClosed
-              ? { ...timer, isRunning: false, startTime: null }
-              : timer,
-            config,
-            heatIsClosed ? 'closed' : data.status
-          );
+          onUpdate(timer, config, heatIsClosed ? 'closed' : data.status);
         } else {
           const missingKey = heatIsClosed ? '__closed__' : '__missing__';
           if (options?.skipIfUnchanged && lastSnapshotKey === missingKey) {

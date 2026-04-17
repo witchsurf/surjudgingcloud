@@ -18,6 +18,7 @@ import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEve
 import type { AppConfig } from '../types';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
+import { PendingJudgeAssignmentPoller } from '../components/PendingJudgeAssignmentPoller';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
@@ -308,16 +309,21 @@ export default function JudgePage() {
                     <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-xl text-center">
                         <h1 className="text-2xl font-bold text-gray-900 mb-3">Affectation juge incomplète</h1>
                         <p className="text-gray-700 mb-4">
-                            La position <span className="font-semibold text-blue-700">{normalizedPosition}</span> n’a pas une identité officielle complète dans la configuration du heat courant.
+                            La position <span className="font-semibold text-blue-700">{normalizedPosition}</span> n'a pas une identité officielle complète dans la configuration du heat courant.
                         </p>
                         <p className="text-sm text-gray-500 mb-6">
-                            Pour éviter toute ambiguïté d’identité, la tablette est verrouillée tant que l’administrateur n’a pas affecté le juge officiel en base pour ce heat.
+                            En attente de l'affectation par l'administrateur... La page se rafraîchit automatiquement.
                         </p>
+                        <PendingJudgeAssignmentPoller
+                            position={normalizedPosition}
+                            eventId={activeEventId}
+                            onReady={() => window.location.reload()}
+                        />
                         <button
                             onClick={() => window.location.reload()}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
-                            Rafraîchir
+                            Rafraîchir maintenant
                         </button>
                     </div>
                 </div>
