@@ -23,6 +23,16 @@ import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase'
 import { supabase } from '../lib/supabase';
 import type { AppConfig } from '../types';
 
+const shallowArrayEqual = (left: string[] = [], right: string[] = []) =>
+    left.length === right.length && left.every((value, index) => value === right[index]);
+
+const shallowRecordEqual = (left: Record<string, string> = {}, right: Record<string, string> = {}) => {
+    const leftEntries = Object.entries(left);
+    const rightEntries = Object.entries(right);
+    if (leftEntries.length !== rightEntries.length) return false;
+    return leftEntries.every(([key, value]) => right[key] === value);
+};
+
 export default function AdminPage() {
     const [searchParams] = useSearchParams();
     const {
@@ -148,15 +158,20 @@ export default function AdminPage() {
     const handleConfigChange = useCallback((newConfig: AppConfig) => {
         setConfig(newConfig);
 
-        // Check if only judgeEmails changed (don't mark as unsaved for email-only changes)
-        const onlyEmailsChanged =
+        const structurallySameConfig =
             config.competition === newConfig.competition &&
             config.division === newConfig.division &&
             config.round === newConfig.round &&
             config.heatId === newConfig.heatId &&
-            config.surfers === newConfig.surfers;
+            shallowArrayEqual(config.surfers, newConfig.surfers) &&
+            shallowArrayEqual(config.judges, newConfig.judges) &&
+            shallowRecordEqual(config.surferNames, newConfig.surferNames) &&
+            shallowRecordEqual(config.surferCountries, newConfig.surferCountries) &&
+            shallowRecordEqual(config.judgeNames, newConfig.judgeNames) &&
+            shallowRecordEqual(config.judgeIdentities, newConfig.judgeIdentities) &&
+            (config.secretKey || '') === (newConfig.secretKey || '');
 
-        if (configSaved && !onlyEmailsChanged) {
+        if (configSaved && !structurallySameConfig) {
             setConfigSaved(false);
         }
 
