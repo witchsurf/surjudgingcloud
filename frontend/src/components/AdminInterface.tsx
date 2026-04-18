@@ -2173,7 +2173,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleTimerStartImpl = async () => {
-    if (!configSaved || isCurrentHeatLocked) return;
+    if (!configSaved || stableHeatLocked || isCurrentHeatLocked) return;
     if (!judgeAssignmentStatus.isReady) {
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
       return;

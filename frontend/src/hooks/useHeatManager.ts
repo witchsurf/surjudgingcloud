@@ -389,6 +389,7 @@ export function useHeatManager() {
         }
 
         // 4. Determine Next Heat
+        let nextDivision = config.division;
         let nextRound = config.round;
         let nextHeatNumber = config.heatId;
         let nextCandidate: any = null;
@@ -432,8 +433,36 @@ export function useHeatManager() {
             }
         }
 
-        // No automatic division switch: chief judge chooses next division manually from dropdown.
-        const nextDivision = config.division;
+        if (!nextCandidate && activeEventId && isSupabaseConfigured() && supabase) {
+            try {
+                const { data: fallbackHeats, error: fallbackError } = await supabase
+                    .from('heats')
+                    .select('id, division, round, heat_number, heat_size, color_order, status')
+                    .eq('event_id', activeEventId)
+                    .neq('id', currentDbHeatId)
+                    .order('round', { ascending: true })
+                    .order('division', { ascending: true })
+                    .order('heat_number', { ascending: true });
+
+                if (fallbackError) {
+                    throw fallbackError;
+                }
+
+                nextCandidate = (fallbackHeats ?? []).find((item: any) =>
+                    !['closed', 'finished'].includes((item.status || '').toString().trim().toLowerCase())
+                ) ?? null;
+
+                if (nextCandidate) {
+                    nextDivision = nextCandidate.division || config.division;
+                    nextRound = nextCandidate.round;
+                    nextHeatNumber = nextCandidate.heat_number;
+                    console.log(`✅ Fallback progression event-wide: ${config.division} R${config.round}H${config.heatId} → ${nextDivision} R${nextRound}H${nextHeatNumber}`);
+                }
+            } catch (error) {
+                console.warn('Impossible de déterminer le prochain heat à l’échelle de l’événement', error);
+            }
+        }
+
         if (!nextCandidate) {
             console.log(eventHasRemainingHeats
                 ? `✅ Division ${config.division} terminée (ou aucun heat ouvert restant dans cette division)`
