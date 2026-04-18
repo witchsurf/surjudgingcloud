@@ -6,6 +6,22 @@ FULL_STACK="0"
 SKIP_DEPLOY="0"
 SKIP_HEALTHCHECK="0"
 
+wait_for_port() {
+  local host="$1"
+  local port="$2"
+  local attempts="${3:-15}"
+  local delay="${4:-2}"
+
+  for ((i=1; i<=attempts; i++)); do
+    if nc -zvw2 "$host" "$port" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+
+  return 1
+}
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/field-ops.sh [--field|--home] [--full-stack] [--skip-deploy] [--skip-healthcheck]
@@ -53,6 +69,10 @@ done
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export SURF_HP_PROFILE="$PROFILE"
 
+if [[ "$PROFILE" == "field" && "$FULL_STACK" == "0" ]]; then
+  FULL_STACK="1"
+fi
+
 if [[ "$PROFILE" == "home" ]]; then
   HP_HOST="${SURF_HP_HOST:-10.0.0.28}"
 else
@@ -77,10 +97,23 @@ if ! nc -zvw2 "$HP_HOST" 22 >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! nc -zvw2 "$HP_HOST" 8000 >/dev/null 2>&1; then
+  echo
+  echo "==> Local API port 8000 is down, forcing stack refresh"
+  FULL_STACK="1"
+fi
+
 if [[ "$FULL_STACK" == "1" ]]; then
   echo
   echo "==> Refreshing full beach stack"
   (cd "$ROOT_DIR" && ./scripts/hp-refresh-stack.sh)
+
+  echo
+  echo "==> Waiting for local API to come back"
+  if ! wait_for_port "$HP_HOST" 8000 20 2; then
+    echo "Local API did not come back on $HP_HOST:8000 after stack refresh" >&2
+    exit 1
+  fi
 fi
 
 if [[ "$SKIP_DEPLOY" != "1" ]]; then

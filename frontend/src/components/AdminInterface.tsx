@@ -1395,10 +1395,44 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     window.open(publicDisplayUrl, '_blank', 'noopener');
   };
 
-  const handleCopyDisplayLink = async () => {
-    if (!publicDisplayUrl || typeof navigator === 'undefined' || !navigator.clipboard) return;
+  const copyTextSafely = async (value: string) => {
+    if (!value || typeof navigator === 'undefined') return false;
+
     try {
-      await navigator.clipboard.writeText(publicDisplayUrl);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+    } catch (error) {
+      console.warn('Clipboard API indisponible, fallback copy:', error);
+    }
+
+    if (typeof document === 'undefined') return false;
+
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.pointerEvents = 'none';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return copied;
+    } catch (error) {
+      console.warn('Impossible de copier le texte:', error);
+      return false;
+    }
+  };
+
+  const handleCopyDisplayLink = async () => {
+    if (!publicDisplayUrl) return;
+    try {
+      const copied = await copyTextSafely(publicDisplayUrl);
+      if (!copied) return;
       setDisplayLinkCopied(true);
       window.setTimeout(() => setDisplayLinkCopied(false), 2000);
     } catch (error) {
@@ -1407,9 +1441,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleCopyJudgeAccessLink = async () => {
-    if (!sharedJudgeAccessUrl || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    if (!sharedJudgeAccessUrl) return;
     try {
-      await navigator.clipboard.writeText(sharedJudgeAccessUrl);
+      const copied = await copyTextSafely(sharedJudgeAccessUrl);
+      if (!copied) return;
       setJudgeAccessLinkCopied(true);
       window.setTimeout(() => setJudgeAccessLinkCopied(false), 2000);
     } catch (error) {
@@ -1418,9 +1453,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleCopyPriorityLink = async () => {
-    if (!priorityJudgeUrl || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    if (!priorityJudgeUrl) return;
     try {
-      await navigator.clipboard.writeText(priorityJudgeUrl);
+      const copied = await copyTextSafely(priorityJudgeUrl);
+      if (!copied) return;
       setPriorityLinkCopied(true);
       window.setTimeout(() => setPriorityLinkCopied(false), 2000);
     } catch (error) {
@@ -4280,7 +4316,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   <div key={position} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
                     <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">{position.replace("J", "")}</div>
                     <input value={kioskUrl} readOnly className="flex-1 px-2 py-1 text-xs font-mono border rounded" />
-                    <button onClick={() => navigator.clipboard.writeText(kioskUrl)} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded">Copier</button>
+                    <button onClick={() => { void copyTextSafely(kioskUrl); }} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded">Copier</button>
                   </div>
                 );
               })}
