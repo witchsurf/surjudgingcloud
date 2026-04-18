@@ -302,6 +302,63 @@ Si quelque chose sent mauvais :
 
 2. si le frontend semble en retard :
 
+## Checklist HP serveur
+
+Le HP est un serveur local. Son écran branché n’est pas un indicateur fiable de santé applicative.
+
+Ce qu’on accepte comme normal sur l’écran du HP :
+- console Ubuntu
+- logs Docker
+- prompt `login:`
+
+Cela ne veut pas dire que le HP est en panne.
+
+### HP serveur OK
+
+Depuis un poste du réseau maison :
+
+```bash
+ping 10.0.0.28
+curl -I http://10.0.0.28:8080
+curl "http://10.0.0.28:8000/rest/v1/events?select=id&limit=1"
+```
+
+Le HP est considéré `OK` si :
+- le ping répond
+- `:8080` renvoie `200 OK`
+- `:8000` renvoie du JSON
+
+### HP serveur KO
+
+Le HP est considéré `KO` si :
+- pas de ping
+- ou le frontend local ne répond pas sur `:8080`
+- ou l’API locale ne répond pas sur `:8000`
+
+### Règle d’exploitation
+
+- écran console sur le HP : acceptable
+- pas de réseau / pas de web / pas d’API : incident réel
+
+### Test complet recommandé
+
+```bash
+ping 10.0.0.28
+curl -I http://10.0.0.28:8080
+curl "http://10.0.0.28:8000/rest/v1/events?select=id&limit=1"
+curl "http://10.0.0.28:8000/rest/v1/heats?select=id&limit=1"
+```
+
+### Si un test échoue
+
+1. vérifier que le HP est allumé
+2. vérifier qu’il est bien connecté au bon réseau
+3. lancer :
+
+```bash
+SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
+```
+
 ```bash
 ./scripts/hp-deploy-frontend.sh
 ```
