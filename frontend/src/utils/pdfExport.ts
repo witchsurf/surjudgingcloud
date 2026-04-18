@@ -6,6 +6,7 @@ import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { colorLabelMap } from './colorUtils';
 import { calculateSurferStats } from './scoring';
 import { computeEffectiveInterferences } from './interference';
+import { inferImplicitMappingsForHeat } from './heatSlotMappingInference';
 
 interface HeatResultHistoryEntry {
   heatKey: string;
@@ -856,6 +857,34 @@ export function exportFullCompetitionPDF({
   // Propagate qualifiers across rounds
   Object.entries(mergedDivisions).forEach(([divisionName, rounds]) => {
     const orderedRounds = [...rounds].sort((a, b) => a.roundNumber - b.roundNumber);
+
+    const sequence = orderedRounds.flatMap((round) =>
+      round.heats
+        .filter((heat) => Boolean(heat.heatId))
+        .map((heat) => ({
+          id: heat.heatId as string,
+          round: round.roundNumber,
+          heat_number: heat.heatNumber,
+          heat_size: heat.slots.length,
+        }))
+    );
+
+    // Historical data can have empty future slots without explicit mappings.
+    // Infer placeholder lineage from the bracket geometry so qualifier propagation
+    // still resolves names in exported PDFs.
+    orderedRounds.forEach((round) => {
+      if (round.roundNumber <= 1) return;
+      round.heats.forEach((heat) => {
+        if (!heat.heatId) return;
+        const inferred = inferImplicitMappingsForHeat(sequence, heat.heatId);
+        inferred.forEach((mapping) => {
+          const slot = heat.slots[mapping.position - 1];
+          if (!slot || slot.name || slot.placeholder || slot.bye) return;
+          slot.placeholder = mapping.placeholder;
+        });
+      });
+    });
+
     orderedRounds.forEach((round) => {
       round.heats.forEach((heat) => {
         heat.slots.forEach((slot) => {
