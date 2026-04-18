@@ -24,6 +24,9 @@ rsync -az \
   "$ROOT_DIR/backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql" \
   "$ROOT_DIR/backend/sql/FIX_SYNC_SCORING.sql" \
   "$ROOT_DIR/backend/sql/14_ADD_INTERFERENCE_CALLS.sql" \
+  "$ROOT_DIR/backend/sql/UPGRADE_SYNC_SCHEMA_20260417.sql" \
+  "$ROOT_DIR/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql" \
+  "$ROOT_DIR/backend/supabase/migrations/20260417223000_move_qualifier_propagation_to_db.sql" \
   "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/"
 
 echo "==> Refreshing HP local stack"
@@ -42,14 +45,14 @@ fi
 if [ -f nginx.conf ]; then
   mv nginx.conf infra/nginx.conf
 fi
-for sql in PATCH_LOCAL_MISSING_OBJECTS.sql FIX_LOCAL_SYNC_SCHEMA.sql FIX_SYNC_SCORING.sql 14_ADD_INTERFERENCE_CALLS.sql; do
+for sql in PATCH_LOCAL_MISSING_OBJECTS.sql FIX_LOCAL_SYNC_SCHEMA.sql FIX_SYNC_SCORING.sql 14_ADD_INTERFERENCE_CALLS.sql UPGRADE_SYNC_SCHEMA_20260417.sql UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql 20260417223000_move_qualifier_propagation_to_db.sql; do
   if [ -f "\$sql" ]; then
     mv "\$sql" "backend/sql/\$sql"
   fi
 done
 
 cd infra
-docker compose -f docker-compose-local.yml up -d postgres auth realtime storage rest kong surfjudging
+docker compose -f docker-compose-local.yml up -d postgres auth realtime storage rest kong
 docker compose -f docker-compose-local.yml stop meta studio >/dev/null 2>&1 || true
 
 until docker exec surfjudging_postgres pg_isready -U postgres >/dev/null 2>&1; do
@@ -61,7 +64,10 @@ for sql_file in \
   "${HP_BASE_DIR}/backend/sql/PATCH_LOCAL_MISSING_OBJECTS.sql" \
   "${HP_BASE_DIR}/backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql" \
   "${HP_BASE_DIR}/backend/sql/FIX_SYNC_SCORING.sql" \
-  "${HP_BASE_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql"
+  "${HP_BASE_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql" \
+  "${HP_BASE_DIR}/backend/sql/UPGRADE_SYNC_SCHEMA_20260417.sql" \
+  "${HP_BASE_DIR}/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql" \
+  "${HP_BASE_DIR}/backend/sql/20260417223000_move_qualifier_propagation_to_db.sql"
 do
   if [ -f "\${sql_file}" ]; then
     echo "Applying \$(basename "\${sql_file}")"

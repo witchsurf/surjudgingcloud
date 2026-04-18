@@ -11,13 +11,14 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores } from '../api/supabaseClient';
 import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
 import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
 import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
+import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 
@@ -2321,6 +2322,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         throw new Error('Événement introuvable.');
       }
 
+      try {
+        const updatedSlots = await rebuildDivisionQualifiersFromScores(eventId, config.division);
+        setOverrideStatus({
+          type: 'success',
+          message: `Qualifiés recalculés côté base pour ${config.division}. Slots mis à jour: ${updatedSlots}.`
+        });
+        onReloadData();
+        return;
+      } catch (error) {
+        if (error instanceof Error && !error.message.startsWith('RPC_UNAVAILABLE:')) {
+          throw error;
+        }
+        console.warn('Rebuild métier côté base indisponible, fallback client conservé', error);
+      }
+
       const sequence = await fetchOrderedHeatSequence(eventId, config.division);
       if (!sequence.length) {
         throw new Error(`Aucun heat trouvé pour la division ${config.division}.`);
@@ -2346,7 +2362,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       let updatedTargetHeats = 0;
 
       for (const targetHeat of sequence) {
-        const mappings = await fetchHeatSlotMappings(targetHeat.id);
+        let mappings = await fetchHeatSlotMappings(targetHeat.id);
+        if (!mappings.length && supabase) {
+          const inferredMappings = inferImplicitMappingsForHeat(sequence, targetHeat.id);
+          if (inferredMappings.length) {
+            const { error: mappingsError } = await supabase
+              .from('heat_slot_mappings')
+              .upsert(inferredMappings, { onConflict: 'heat_id,position' });
+
+            if (mappingsError) {
+              console.warn(`Impossible de reconstruire les mappings du heat ${targetHeat.id}`, mappingsError);
+            } else {
+              mappings = inferredMappings;
+            }
+          }
+        }
         if (!mappings.length) continue;
 
         const targetEntries = await fetchHeatEntriesWithParticipants(targetHeat.id);

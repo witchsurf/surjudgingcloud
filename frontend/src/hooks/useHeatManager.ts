@@ -9,6 +9,7 @@ import {
         fetchHeatSlotMappings,
         fetchInterferenceCalls,
         replaceHeatEntries,
+        propagateQualifiersForSourceHeat,
         upsertActiveHeatPointer,
 } from '../api/supabaseClient';
 import { canUseSupabaseConnection, isSupabaseConfigured, supabase } from '../lib/supabase';
@@ -19,6 +20,7 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { eventRepository } from '../repositories';
 import { HEAT_COLOR_CACHE_KEY, DEFAULT_TIMER_DURATION } from '../utils/constants';
 import { getNextHeatSyncTarget } from '../utils/heatWorkflow';
+import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 import type { AppConfig } from '../types';
 
 // Helper to normalize heat entries
@@ -164,8 +166,22 @@ export function useHeatManager() {
             (score) => ensureHeatId(score.heat_id) === currentDbHeatId && Number(score.score) > 0
         );
         const hasCurrentHeatResults = currentHeatScores.length > 0;
+        let qualifiersHandledByDatabase = false;
 
-        if (activeEventId && isSupabaseConfigured()) {
+        if (hasCurrentHeatResults && activeEventId && isSupabaseConfigured()) {
+            try {
+                const updatedSlots = await propagateQualifiersForSourceHeat(currentDbHeatId);
+                qualifiersHandledByDatabase = true;
+                console.log(`✅ Qualifiés propagés côté base pour ${currentDbHeatId}: ${updatedSlots} slot(s)`);
+            } catch (error) {
+                if (error instanceof Error && !error.message.startsWith('RPC_UNAVAILABLE:')) {
+                    throw error;
+                }
+                console.warn('Propagation métier côté base indisponible, fallback client conservé', error);
+            }
+        }
+
+        if (activeEventId && isSupabaseConfigured() && !qualifiersHandledByDatabase) {
             // Logic to advance qualifiers (complex logic from App.tsx)
             if (hasCurrentHeatResults) {
                 try {
@@ -288,7 +304,23 @@ export function useHeatManager() {
                     });
 
                     for (const heatMeta of sequence) {
-                        const mappings = await fetchHeatSlotMappings(heatMeta.id);
+                        let mappings = await fetchHeatSlotMappings(heatMeta.id);
+                        if (!mappings.length && supabase) {
+                            const inferredMappings = inferImplicitMappingsForHeat(sequence, heatMeta.id);
+                            if (inferredMappings.length) {
+                                try {
+                                    const { error: mappingsError } = await supabase
+                                        .from('heat_slot_mappings')
+                                        .upsert(inferredMappings, { onConflict: 'heat_id,position' });
+                                    if (mappingsError) {
+                                        throw mappingsError;
+                                    }
+                                    mappings = inferredMappings;
+                                } catch (error) {
+                                    console.warn(`Impossible de reconstruire les mappings du heat ${heatMeta.id}`, error);
+                                }
+                            }
+                        }
                         if (!mappings.length) continue;
 
                         const targetColorOrder = (heatMeta.color_order ?? []).map((c: string) => c?.toUpperCase?.() ?? '');

@@ -46,6 +46,8 @@ export {
     fetchActiveHeatPointer,
     upsertActiveHeatPointer,
     upsertHeatRealtimeConfig,
+    propagateQualifiersForSourceHeat,
+    rebuildDivisionQualifiersFromScores,
     parseActiveHeatId,
     subscribeToHeatUpdates,
     fetchHeatEntriesWithParticipants,

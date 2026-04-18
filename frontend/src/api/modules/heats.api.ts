@@ -934,6 +934,42 @@ export async function upsertHeatRealtimeConfig(
     await fallbackUpsertHeatRealtimeConfig(normalizedHeatId, input);
 }
 
+export async function propagateQualifiersForSourceHeat(heatId: string): Promise<number> {
+    ensureSupabase();
+
+    const normalizedHeatId = ensureHeatId(heatId);
+    const { data, error } = await supabase!.rpc('fn_propagate_qualifiers_for_source_heat', {
+        p_source_heat_id: normalizedHeatId,
+    });
+
+    if (error) {
+        if (isRpcUnavailableError(error, 'fn_propagate_qualifiers_for_source_heat')) {
+            throw new Error('RPC_UNAVAILABLE:fn_propagate_qualifiers_for_source_heat');
+        }
+        throw error;
+    }
+
+    return Number(data ?? 0);
+}
+
+export async function rebuildDivisionQualifiersFromScores(eventId: number, division: string): Promise<number> {
+    ensureSupabase();
+
+    const { data, error } = await supabase!.rpc('rebuild_division_qualifiers_from_scores', {
+        p_event_id: eventId,
+        p_division: division,
+    });
+
+    if (error) {
+        if (isRpcUnavailableError(error, 'rebuild_division_qualifiers_from_scores')) {
+            throw new Error('RPC_UNAVAILABLE:rebuild_division_qualifiers_from_scores');
+        }
+        throw error;
+    }
+
+    return Number(data ?? 0);
+}
+
 export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string): Promise<ActiveHeatPointer | null> {
     ensureSupabase();
     let query = supabase!
