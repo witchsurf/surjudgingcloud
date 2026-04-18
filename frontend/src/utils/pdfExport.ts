@@ -713,7 +713,7 @@ export function exportFullCompetitionPDF({
     const sample = heatScores[0];
     const heatNumber = parseHeatNumberFromId(heatKey);
     if (!sample || heatNumber == null) return;
-    const metaKey = buildHeatMetaKey(sample.division, sample.round, heatNumber);
+    const metaKey = buildHeatMetaKey(sample.division ?? '', sample.round ?? 0, heatNumber);
     if (!normalizedScoresByMeta[metaKey]) {
       normalizedScoresByMeta[metaKey] = heatScores;
     }
@@ -725,7 +725,7 @@ export function exportFullCompetitionPDF({
     const sample = heatCalls[0];
     const heatNumber = parseHeatNumberFromId(heatKey);
     if (!sample || heatNumber == null) return;
-    const metaKey = buildHeatMetaKey(sample.division, sample.round, heatNumber);
+    const metaKey = buildHeatMetaKey(sample.division ?? '', sample.round ?? 0, heatNumber);
     if (!normalizedInterferencesByMeta[metaKey]) {
       normalizedInterferencesByMeta[metaKey] = heatCalls;
     }
