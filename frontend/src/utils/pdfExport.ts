@@ -757,11 +757,18 @@ export function exportFullCompetitionPDF({
     `FINALISTE R${roundNumber}-H${heatNumber} (P${position})`,
     `FINALISTE R${roundNumber}-H${heatNumber} P${position}`,
     `FINALISTE R${roundNumber} H${heatNumber} P${position}`,
+    `VAINQUEUR R${roundNumber}-H${heatNumber} (P${position})`,
+    `VAINQUEUR R${roundNumber}-H${heatNumber} P${position}`,
+    `VAINQUEUR R${roundNumber} H${heatNumber} P${position}`,
+    `WINNER R${roundNumber}-H${heatNumber} (P${position})`,
+    `WINNER R${roundNumber}-H${heatNumber} P${position}`,
+    `WINNER R${roundNumber} H${heatNumber} P${position}`,
     `R${roundNumber}-H${heatNumber}-P${position}`,
     `R${roundNumber} H${heatNumber} P${position}`,
   ]);
 
   const qualifierMapByDivision = new Map<string, Map<string, { name: string; country?: string }>>();
+  const bestSecondByDivision = new Map<string, Map<number, { name: string; country?: string; score: number }>>();
   const implicitQualifierCursor = new Map<string, number>();
   const getDivisionQualifierMap = (divisionName: string) => {
     const key = divisionName.toUpperCase().trim();
@@ -771,17 +778,34 @@ export function exportFullCompetitionPDF({
     qualifierMapByDivision.set(key, created);
     return created;
   };
+  const getDivisionBestSecondMap = (divisionName: string) => {
+    const key = divisionName.toUpperCase().trim();
+    const existing = bestSecondByDivision.get(key);
+    if (existing) return existing;
+    const created = new Map<number, { name: string; country?: string; score: number }>();
+    bestSecondByDivision.set(key, created);
+    return created;
+  };
+  const parseBestSecondRound = (value?: string | null) => {
+    if (!value) return null;
+    const normalized = normalizePlaceholderKey(value);
+    const match = normalized.match(/MEILLEUR\s*2E\s*R\s*(\d+)/);
+    return match ? Number(match[1]) : null;
+  };
 
   const isPlaceholderLike = (value?: string | null) => {
     if (!value) return false;
     const normalized = normalizePlaceholderKey(value);
     return normalized.includes('QUALIFI') || normalized.includes('FINALISTE') ||
-      normalized.includes('REPECH') || /^R\s*\d+/.test(normalized) ||
+      normalized.includes('REPECH') || normalized.includes('VAINQUEUR') ||
+      normalized.includes('WINNER') || normalized.includes('MEILLEUR 2') ||
+      /^R\s*\d+/.test(normalized) ||
       /^RP\s*\d+/.test(normalized) || normalized.startsWith('POSITION') || normalized === 'BYE';
   };
 
   const resolveQualifiedFromText = (divisionName: string, placeholderText: string) => {
     const divisionMap = getDivisionQualifierMap(divisionName);
+    const bestSecondMap = getDivisionBestSecondMap(divisionName);
     const normalized = normalizePlaceholderKey(placeholderText);
     let qualified = divisionMap.get(normalized);
 
@@ -810,6 +834,12 @@ export function exportFullCompetitionPDF({
         }
       }
     }
+    if (!qualified) {
+      const bestSecondRound = parseBestSecondRound(placeholderText);
+      if (bestSecondRound != null) {
+        qualified = bestSecondMap.get(bestSecondRound);
+      }
+    }
     return qualified;
   };
 
@@ -821,6 +851,7 @@ export function exportFullCompetitionPDF({
   ) => {
     if (!heatScores.length) return;
     const divisionMap = getDivisionQualifierMap(divisionName);
+    const bestSecondMap = getDivisionBestSecondMap(divisionName);
     const slotByColor = new Map<string, { name?: string; placeholder?: string; country?: string }>();
 
     const heatSurfers = slots.filter((slot) => slot.color).map((slot) => {
@@ -852,6 +883,22 @@ export function exportFullCompetitionPDF({
         divisionMap.set(normalizePlaceholderKey(key), { name: resolvedName, country: resolvedCountry });
       });
     });
+
+    const bestSecond = orderedStats.find((stat) => stat.rank === 2);
+    if (bestSecond) {
+      const slotInfo = slotByColor.get(bestSecond.surfer.toUpperCase());
+      if (slotInfo) {
+        const resolvedName = slotInfo.name || slotInfo.placeholder || bestSecond.surfer;
+        const currentBestSecond = bestSecondMap.get(roundNumber);
+        if (!currentBestSecond || bestSecond.bestTwo > currentBestSecond.score) {
+          bestSecondMap.set(roundNumber, {
+            name: resolvedName,
+            country: slotInfo.country,
+            score: bestSecond.bestTwo,
+          });
+        }
+      }
+    }
   };
 
   // Propagate qualifiers across rounds

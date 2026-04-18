@@ -50,6 +50,9 @@ const isPlaceholderLike = (value?: string | null) => {
     return v.includes('QUALIFI') ||
         v.includes('FINALISTE') ||
         v.includes('REPECH') ||
+        v.includes('VAINQUEUR') ||
+        v.includes('WINNER') ||
+        v.includes('MEILLEUR 2') ||
         v.startsWith('R') ||
         v.startsWith('RP') ||
         v.startsWith('POSITION') ||
@@ -271,11 +274,24 @@ async function resolveNamesFromMappings(
                 `FINALISTE R${roundNumber}-H${heatNumber} (P${position})`,
                 `FINALISTE R${roundNumber}-H${heatNumber} P${position}`,
                 `FINALISTE R${roundNumber} H${heatNumber} P${position}`,
+                `VAINQUEUR R${roundNumber}-H${heatNumber} (P${position})`,
+                `VAINQUEUR R${roundNumber}-H${heatNumber} P${position}`,
+                `VAINQUEUR R${roundNumber} H${heatNumber} P${position}`,
+                `WINNER R${roundNumber}-H${heatNumber} (P${position})`,
+                `WINNER R${roundNumber}-H${heatNumber} P${position}`,
+                `WINNER R${roundNumber} H${heatNumber} P${position}`,
                 `R${roundNumber}-H${heatNumber}-P${position}`,
                 `R${roundNumber} H${heatNumber} P${position}`,
             ]);
 
             const qualifierMap = new Map<string, string>();
+            const bestSecondByRound = new Map<number, { name: string; score: number }>();
+            const parseBestSecondRound = (text?: string) => {
+                if (!text) return null;
+                const normalized = normalizePlaceholderKey(text);
+                const match = normalized.match(/MEILLEUR\s*2E\s*R\s*(\d+)/);
+                return match ? Number(match[1]) : null;
+            };
 
             const resolveFromPlaceholderText = (text?: string) => {
                 if (!text) return undefined;
@@ -288,6 +304,12 @@ async function resolveNamesFromMappings(
                         resolved = buildQualifierKeyVariants(Number(r), Number(h), Number(p))
                             .map((k) => qualifierMap.get(normalizePlaceholderKey(k)))
                             .find(Boolean);
+                    }
+                }
+                if (!resolved) {
+                    const bestSecondRound = parseBestSecondRound(text);
+                    if (bestSecondRound != null) {
+                        resolved = bestSecondByRound.get(bestSecondRound)?.name;
                     }
                 }
                 return resolved;
@@ -343,6 +365,20 @@ async function resolveNamesFromMappings(
                             buildQualifierKeyVariants(round.roundNumber, heat.heatNumber, stat.rank)
                                 .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), name));
                         });
+
+                    const bestSecond = stats
+                        .filter((stat) => stat.rank === 2)
+                        .sort((a, b) => b.bestTwo - a.bestTwo)[0];
+                    const bestSecondName = bestSecond ? namesByColor[bestSecond.surfer.toUpperCase()] : undefined;
+                    if (bestSecond && bestSecondName) {
+                        const currentBestSecond = bestSecondByRound.get(round.roundNumber);
+                        if (!currentBestSecond || bestSecond.bestTwo > currentBestSecond.score) {
+                            bestSecondByRound.set(round.roundNumber, {
+                                name: bestSecondName,
+                                score: bestSecond.bestTwo,
+                            });
+                        }
+                    }
                 }
             }
 

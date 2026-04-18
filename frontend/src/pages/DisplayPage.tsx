@@ -113,6 +113,8 @@ const isLikelyPlaceholder = (name?: string) => {
         normalized.includes('FINALISTE') ||
         normalized.includes('REPECH') ||
         normalized.includes('VAINQUEUR') ||
+        normalized.includes('WINNER') ||
+        normalized.includes('MEILLEUR 2') ||
         normalized.includes('PENDING') ||
         normalized.startsWith('R') ||
         normalized.startsWith('RP') ||
@@ -187,11 +189,28 @@ const buildQualifierKeyVariants = (roundNumber: number, heatNumber: number, posi
     `FINALISTE R${roundNumber}-H${heatNumber} (P${position})`,
     `FINALISTE R${roundNumber}-H${heatNumber} P${position}`,
     `FINALISTE R${roundNumber} H${heatNumber} P${position}`,
+    `VAINQUEUR R${roundNumber}-H${heatNumber} (P${position})`,
+    `VAINQUEUR R${roundNumber}-H${heatNumber} P${position}`,
+    `VAINQUEUR R${roundNumber} H${heatNumber} P${position}`,
+    `WINNER R${roundNumber}-H${heatNumber} (P${position})`,
+    `WINNER R${roundNumber}-H${heatNumber} P${position}`,
+    `WINNER R${roundNumber} H${heatNumber} P${position}`,
     `R${roundNumber}-H${heatNumber}-P${position}`,
     `R${roundNumber} H${heatNumber} P${position}`,
 ]);
 
-const resolveFromQualifierMap = (text: string, qualifierMap: Map<string, string>) => {
+const parseBestSecondRound = (text?: string | null) => {
+    if (!text) return null;
+    const normalized = normalizePlaceholderKey(text);
+    const match = normalized.match(/MEILLEUR\s*2E\s*R\s*(\d+)/);
+    return match ? Number(match[1]) : null;
+};
+
+const resolveFromQualifierMap = (
+    text: string,
+    qualifierMap: Map<string, string>,
+    bestSecondByRound?: Map<number, string>
+) => {
     const normalized = normalizePlaceholderKey(text);
     let resolved = qualifierMap.get(normalized);
     if (!resolved) {
@@ -201,6 +220,12 @@ const resolveFromQualifierMap = (text: string, qualifierMap: Map<string, string>
             resolved = buildQualifierKeyVariants(Number(r), Number(h), Number(p))
                 .map((k) => qualifierMap.get(normalizePlaceholderKey(k)))
                 .find(Boolean);
+        }
+    }
+    if (!resolved) {
+        const bestSecondRound = parseBestSecondRound(text);
+        if (bestSecondRound != null) {
+            resolved = bestSecondByRound?.get(bestSecondRound);
         }
     }
     return resolved;
@@ -231,6 +256,7 @@ const buildResolvedLineupsByHeat = ({
 
         const rounds = JSON.parse(JSON.stringify(divisionRounds)) as RoundSpec[];
         const qualifierMap = new Map<string, { name: string; country?: string }>();
+        const bestSecondByRound = new Map<number, { name: string; country?: string; score: number }>();
         const resolveQualifierEntry = (text: string) => {
             const normalized = normalizePlaceholderKey(text);
             let resolved = qualifierMap.get(normalized);
@@ -241,6 +267,12 @@ const buildResolvedLineupsByHeat = ({
                     resolved = buildQualifierKeyVariants(Number(r), Number(h), Number(p))
                         .map((k) => qualifierMap.get(normalizePlaceholderKey(k)))
                         .find(Boolean);
+                }
+            }
+            if (!resolved) {
+                const bestSecondRound = parseBestSecondRound(text);
+                if (bestSecondRound != null) {
+                    resolved = bestSecondByRound.get(bestSecondRound);
                 }
             }
             return resolved;
@@ -442,6 +474,21 @@ const buildResolvedLineupsByHeat = ({
                             buildQualifierKeyVariants(round.roundNumber, heat.heatNumber, stat.rank)
                                 .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), { name, country }));
                         });
+
+                    const bestSecond = stats
+                        .filter((stat) => stat.rank === 2)
+                        .sort((a, b) => b.bestTwo - a.bestTwo)[0];
+                    const bestSecondName = bestSecond ? namesByColor[bestSecond.surfer.toUpperCase()] : undefined;
+                    if (bestSecond && bestSecondName) {
+                        const currentBestSecond = bestSecondByRound.get(round.roundNumber);
+                        if (!currentBestSecond || bestSecond.bestTwo > currentBestSecond.score) {
+                            bestSecondByRound.set(round.roundNumber, {
+                                name: bestSecondName,
+                                country: countriesByColor[bestSecond.surfer.toUpperCase()],
+                                score: bestSecond.bestTwo,
+                            });
+                        }
+                    }
                 });
             });
     });
@@ -768,6 +815,7 @@ export default function DisplayPage() {
                     const rounds = JSON.parse(JSON.stringify(divisionRounds)) as RoundSpec[];
                     const allScores = await fetchPreferredScoresForEvent(activeEventId);
                     const qualifierMap = new Map<string, string>();
+                    const bestSecondByRound = new Map<number, { name: string; score: number }>();
 
                     rounds
                         .sort((a, b) => a.roundNumber - b.roundNumber)
@@ -776,7 +824,9 @@ export default function DisplayPage() {
                                 heat.slots.forEach((slot) => {
                                     const candidate = slot.placeholder || slot.name;
                                     if (!candidate || !isLikelyPlaceholder(candidate)) return;
-                                    const resolved = resolveFromQualifierMap(candidate, qualifierMap);
+                                    const resolved = resolveFromQualifierMap(candidate, qualifierMap, new Map(
+                                        Array.from(bestSecondByRound.entries()).map(([key, value]) => [key, value.name])
+                                    ));
                                     if (resolved) {
                                         slot.name = resolved;
                                         slot.placeholder = undefined;
@@ -818,6 +868,20 @@ export default function DisplayPage() {
                                         buildQualifierKeyVariants(round.roundNumber, heat.heatNumber, stat.rank)
                                             .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), name));
                                     });
+
+                                const bestSecond = stats
+                                    .filter((stat) => stat.rank === 2)
+                                    .sort((a, b) => b.bestTwo - a.bestTwo)[0];
+                                const bestSecondName = bestSecond ? namesByColor[bestSecond.surfer.toUpperCase()] : undefined;
+                                if (bestSecond && bestSecondName) {
+                                    const currentBestSecond = bestSecondByRound.get(round.roundNumber);
+                                    if (!currentBestSecond || bestSecond.bestTwo > currentBestSecond.score) {
+                                        bestSecondByRound.set(round.roundNumber, {
+                                            name: bestSecondName,
+                                            score: bestSecond.bestTwo,
+                                        });
+                                    }
+                                }
                             });
                         });
 
@@ -832,7 +896,9 @@ export default function DisplayPage() {
                             const candidate = slot.name || slot.placeholder;
                             if (!candidate) return;
                             const resolved = isLikelyPlaceholder(candidate)
-                                ? resolveFromQualifierMap(candidate, qualifierMap)
+                                ? resolveFromQualifierMap(candidate, qualifierMap, new Map(
+                                    Array.from(bestSecondByRound.entries()).map(([key, value]) => [key, value.name])
+                                ))
                                 : candidate;
                             if (resolved && (!surferNames[color] || isLikelyPlaceholder(surferNames[color]))) {
                                 surferNames[color] = resolved;
