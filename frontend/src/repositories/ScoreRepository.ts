@@ -578,29 +578,27 @@ export class ScoreRepository extends BaseRepository {
                 event_id: heatEventId ?? s.event_id ?? globalEventId ?? null
             })));
 
-            const { error } = await this.supabase!
-                .from('scores')
-                .upsert(dedupedScores.map(s => ({
-                    id: s.id,
-                    heat_id: s.heat_id,
-                    event_id: heatEventId ?? s.event_id ?? globalEventId ?? null,
-                    competition: s.competition || 'Competition',
-                    division: s.division || 'OPEN',
-                    round: s.round || 1,
-                    judge_id: s.judge_id,
-                    judge_name: s.judge_name,
-                    judge_station: s.judge_station || s.judge_id,
-                    judge_identity_id: s.judge_identity_id || null,
-                    surfer: s.surfer,
-                    wave_number: s.wave_number,
-                    score: s.score,
-                    timestamp: s.timestamp || new Date().toISOString(),
-                    created_at: s.created_at || new Date().toISOString()
-                })), { onConflict: 'id' });
-
-            if (error) {
-                logger.error('ScoreRepository', 'syncScores DB error details', this.formatDbError(error));
-                throw error;
+            for (const score of dedupedScores) {
+                try {
+                    await this.upsertScoreSecure({
+                        ...score,
+                        event_id: heatEventId ?? score.event_id ?? globalEventId ?? null,
+                        competition: score.competition || 'Competition',
+                        division: score.division || 'OPEN',
+                        round: score.round || 1,
+                        judge_station: score.judge_station || score.judge_id,
+                        judge_identity_id: score.judge_identity_id || null,
+                        timestamp: score.timestamp || new Date().toISOString(),
+                        created_at: score.created_at || new Date().toISOString(),
+                    });
+                } catch (error) {
+                    logger.error('ScoreRepository', 'syncScores DB error details', {
+                        ...this.formatDbError(error),
+                        scoreId: score.id,
+                        heatId: normalizedHeatId,
+                    });
+                    throw error;
+                }
             }
 
             // Mark all as synced in local storage
