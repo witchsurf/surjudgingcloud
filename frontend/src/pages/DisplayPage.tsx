@@ -656,7 +656,7 @@ const normalizeConfig = (appConfig: AppConfig) => {
 };
 
 export default function DisplayPage() {
-    const { config, configSaved, activeEventId, setConfig, initializeFromUrl, loadKioskConfig } = useConfigStore();
+    const { config, configSaved, activeEventId, setConfig, initializeFromUrl, loadKioskConfig, loadConfigFromDb } = useConfigStore();
     const { scores, timer, setTimer, heatStatus, setHeatStatus, setScores } = useJudgingStore();
     const { subscribeToHeat } = useRealtimeSync();
     const { loadScoresFromDatabase } = useSupabaseSync();
@@ -750,32 +750,36 @@ export default function DisplayPage() {
             const parsed = parseActiveHeatId(row.active_heat_id);
             if (!parsed) return;
 
-            setConfig((prev) => {
-                const unchanged =
-                    prev.round === parsed.round &&
-                    prev.heatId === parsed.heatNumber &&
-                    (prev.division || '').toUpperCase() === parsed.division.toUpperCase();
-                if (unchanged) return prev;
+            const currentDivision = (config.division || '').trim().toUpperCase();
+            const nextDivision = parsed.division.trim().toUpperCase();
+            const heatChanged =
+                Number(config.round) !== Number(parsed.round) ||
+                Number(config.heatId) !== Number(parsed.heatNumber) ||
+                currentDivision !== nextDivision;
 
-                // Clear surfer names/countries when switching heat to prevent
-                // stale data from the previous heat polluting the merge queue
-                return normalizeConfig({
-                    ...prev,
-                    competition: resolveEventDisplayName(eventName, prev.competition),
-                    division: parsed.division,
-                    round: parsed.round,
-                    heatId: parsed.heatNumber,
-                    surferNames: {},
-                    surferCountries: {},
-                    priorityState: { mode: 'equal', order: [], inFlight: [] }
-                } as AppConfig);
-            });
+            if (!heatChanged) return;
+
+            if (activeEventId) {
+                void loadConfigFromDb(activeEventId);
+                return;
+            }
+
+            setConfig((prev) => normalizeConfig({
+                ...prev,
+                competition: resolveEventDisplayName(eventName, prev.competition),
+                division: parsed.division,
+                round: parsed.round,
+                heatId: parsed.heatNumber,
+                surferNames: {},
+                surferCountries: {},
+                priorityState: { mode: 'equal', order: [], inFlight: [] }
+            } as AppConfig));
         };
 
         return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
         });
-    }, [activeEventId, configSaved, config.competition, setConfig]);
+    }, [activeEventId, configSaved, config.competition, config.division, config.round, config.heatId, setConfig, loadConfigFromDb]);
 
     const handleHeatSelect = async (heatId: string) => {
         if (!heatId || !activeEventId) return;

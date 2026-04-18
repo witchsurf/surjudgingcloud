@@ -136,6 +136,20 @@ export default function PriorityJudgePage() {
             const parsed = parseActiveHeatId(row.active_heat_id);
             if (!parsed) return;
 
+            const currentDivision = (config.division || '').trim().toUpperCase();
+            const nextDivision = parsed.division.trim().toUpperCase();
+            const heatChanged =
+                currentDivision !== nextDivision ||
+                Number(config.round) !== Number(parsed.round) ||
+                Number(config.heatId) !== Number(parsed.heatNumber);
+
+            if (!heatChanged) return;
+
+            if (activeEventId) {
+                void loadConfigFromDb(activeEventId);
+                return;
+            }
+
             setConfig((prev) => applyHeatScopedConfig(prev, {
                 competition: resolveEventDisplayName(eventName, prev.competition),
                 division: parsed.division,
@@ -147,7 +161,7 @@ export default function PriorityJudgePage() {
         return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
         });
-    }, [activeEventId, config.competition, configLoading, setConfig]);
+    }, [activeEventId, config.competition, config.division, config.round, config.heatId, configLoading, setConfig, loadConfigFromDb]);
 
     useEffect(() => {
         if (!configSaved || !config.competition || configLoading) {
