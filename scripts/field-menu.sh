@@ -38,12 +38,17 @@ while true; do
   echo "4. $ACTION_FOUR"
   echo "5. Change network profile"
   echo "6. Photocopy Cloud DB to Field Box (Preparation)"
+  echo "7. Sync Field Box DB to Cloud"
   echo "0. Quit"
   echo
   read -r -p "Choix: " choice
 
   case "$choice" in
     1)
+      if [[ "$PROFILE" == "home" ]]; then
+        (cd frontend && node scripts/hp-photocopy-db.mjs)
+        (cd frontend && node scripts/repair-broken-qualifiers.mjs --target=local)
+      fi
       ./scripts/field-ops.sh "--$PROFILE"
       read -r -p "Entrée pour continuer..."
       ;;
@@ -64,6 +69,13 @@ while true; do
       ;;
     6)
       (cd frontend && node scripts/hp-photocopy-db.mjs)
+      if [[ "$PROFILE" == "home" ]]; then
+        (cd frontend && node scripts/repair-broken-qualifiers.mjs --target=local)
+      fi
+      read -r -p "Entrée pour continuer..."
+      ;;
+    7)
+      (cd frontend && node scripts/hp-push-db-to-cloud.mjs)
       read -r -p "Entrée pour continuer..."
       ;;
     0)

@@ -90,6 +90,34 @@ Résultat attendu :
 - le HP contient déjà tout ce qu’il faut avant de partir
 - sur la plage, on n’a pas besoin de “dépendre du cloud” pour démarrer
 
+### 1 bis. Remonter la production terrain vers le cloud
+
+Quand des scores ont été saisis localement sur la box et qu’on veut réaligner le cloud :
+
+1. ouvrir le menu :
+
+```bash
+./event-box
+```
+
+2. lancer :
+- `Sync Field Box DB to Cloud`
+
+Ce bouton pousse depuis la base locale vers le cloud :
+- `scores`
+- `interference_calls`
+- `heat_realtime_config`
+- `active_heat_pointer`
+
+Puis il déclenche côté cloud :
+- propagation des qualifiés sur les heats fermés
+- rebuild par division pour sécuriser les rounds suivants
+
+Règle métier importante :
+- on ne considère pas `heat_entries` qualifiés comme une vérité brute à copier
+- on pousse les faits source terrain
+- puis on recalcule les qualifiés côté cloud
+
 ### 2. Sur la plage : exploitation live
 
 Commande recommandée :
@@ -217,6 +245,8 @@ Version interactive du workflow :
 - healthcheck
 - deploy frontend
 - refresh stack
+- photocopy cloud -> local
+- sync local -> cloud
 
 ## Sync cloud -> local
 
@@ -234,6 +264,20 @@ Le comportement actuel a été simplifié :
 Règle d’exploitation :
 - la sync cloud sur la plage ne doit pas être le workflow normal
 - le workflow normal est de partir avec une Event Box déjà prête
+
+## Sync local -> cloud
+
+La logique cible est :
+
+1. la box locale produit les données terrain
+2. un bouton explicite pousse ces données vers le cloud
+3. le cloud rejoue ensuite la logique métier de propagation
+
+Ce flux est volontairement asymétrique :
+- `cloud -> local` pour la structure et la préparation
+- `local -> cloud` pour les faits terrain les plus récents
+
+Cela évite une “fusion magique” fragile entre bases.
 
 ## Ce qu’il faut retenir techniquement
 
