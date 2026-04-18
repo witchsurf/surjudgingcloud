@@ -170,14 +170,19 @@ export class HeatRepository extends BaseRepository {
         try {
             this.ensureSupabase();
 
-            const { error } = await this.supabase!
+            const { data, error } = await this.supabase!
                 .from('heats')
                 .update(updateData)
-                .eq('id', normalizedHeatId);
+                .eq('id', normalizedHeatId)
+                .select('id, status')
+                .maybeSingle();
 
             if (error) throw error;
+            if (!data) {
+                throw new Error(`Aucune ligne heat mise à jour pour ${normalizedHeatId}. La fermeture n'a pas été persistée en base.`);
+            }
 
-            logger.info('HeatRepository', 'Heat status updated online', { heatId: normalizedHeatId, status });
+            logger.info('HeatRepository', 'Heat status updated online', { heatId: normalizedHeatId, status: data.status });
         } catch (error) {
             logger.error('HeatRepository', 'updateHeatStatus - Failed', error);
 
@@ -187,13 +192,9 @@ export class HeatRepository extends BaseRepository {
                 );
             }
 
-            logger.info('HeatRepository', 'Heat status queued offline', { heatId: normalizedHeatId, status });
-            saveOffline({
-                table: 'heats',
-                action: 'update',
-                payload: { id: normalizedHeatId, data: updateData },
-                timestamp: Date.now()
-            });
+            throw error instanceof Error
+                ? error
+                : new Error('Impossible de fermer le heat en base de données.');
         }
     }
 

@@ -342,11 +342,7 @@ export function useSupabaseSync() {
 
   // Mettre à jour le statut d'un heat
   const updateHeatStatus = useCallback(async (heatId: string, status: 'open' | 'closed', closedAt?: string) => {
-    try {
-      await heatRepository.updateHeatStatus(heatId, status, closedAt);
-    } catch (error) {
-      console.error('❌ Erreur lors de la mise à jour du heat:', error);
-    }
+    await heatRepository.updateHeatStatus(heatId, status, closedAt);
   }, []);
 
   // Charger les scores depuis Supabase
