@@ -9,7 +9,7 @@ import { buildJudgeDeviationDetails, calculateJudgeAccuracy, calculateSurferStat
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
-import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
+import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
 import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores } from '../api/supabaseClient';
 import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/supabaseClient';
@@ -192,6 +192,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const hasBeenLockedRef = React.useRef(false);
   // Track which heat the latch was set for, so we can reset on heat change
   const lockedForHeatRef = React.useRef<string>('');
+  const configRef = React.useRef(config);
+  const lineupLoadRequestRef = React.useRef(0);
+
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   const resolveAssignedJudgeIdentity = useCallback((stationId: string) => {
     return (config.judgeIdentities?.[stationId] || '').trim();
@@ -1638,7 +1644,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [syncDivisionsFromParticipants]);
 
   const handleConfigChange = (field: keyof AppConfig, value: any) => {
-    onConfigChange({ ...config, [field]: value });
+    const isHeatSelectionField = field === 'division' || field === 'round' || field === 'heatId';
+    const nextConfig = {
+      ...config,
+      [field]: value,
+      ...(isHeatSelectionField
+        ? {
+            surferNames: {},
+            surferCountries: {},
+          }
+        : {}),
+    };
+    onConfigChange(nextConfig);
   };
 
   useEffect(() => {
@@ -1700,6 +1717,91 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       cancelled = true;
     };
   }, [activeEventId, config.division, config.round, config.heatId]);
+
+  useEffect(() => {
+    if (!loadedFromDb || !heatId || !isSupabaseConfigured()) return;
+
+    let cancelled = false;
+    const requestId = lineupLoadRequestRef.current + 1;
+    lineupLoadRequestRef.current = requestId;
+
+    const loadSelectedHeatLineup = async () => {
+      try {
+        const [entries, heatMeta, slotMappings] = await Promise.all([
+          fetchHeatEntriesWithParticipants(heatId),
+          fetchHeatMetadata(heatId),
+          fetchHeatSlotMappings(heatId).catch(() => []),
+        ]);
+
+        if (cancelled || lineupLoadRequestRef.current !== requestId) return;
+
+        const entryColors = entries
+          .map((entry) => String(entry.color ?? '').trim().toUpperCase())
+          .filter(Boolean);
+        const orderedHeatColors = Array.isArray(heatMeta?.color_order)
+          ? heatMeta.color_order
+              .map((value) => String(value ?? '').trim().toUpperCase())
+              .filter(Boolean)
+          : [];
+        const inferredHeatSize = Math.max(
+          Number(heatMeta?.heat_size ?? 0),
+          Array.isArray(slotMappings) ? slotMappings.length : 0,
+          entryColors.length,
+          Array.isArray(configRef.current.surfers) ? configRef.current.surfers.length : 0
+        );
+        const fallbackColors = inferredHeatSize > 0
+          ? getColorSet(inferredHeatSize).map((color) => colorLabelMap[color] ?? color)
+          : [];
+        const normalizedOrderedHeatColors = orderedHeatColors.map((color) => {
+          const heatColor = color as HeatColor;
+          return colorLabelMap[heatColor] ?? color;
+        });
+        const nextSurfers = normalizedOrderedHeatColors.length > 0
+          ? normalizedOrderedHeatColors
+          : fallbackColors;
+
+        const surferNames: Record<string, string> = {};
+        const surferCountries: Record<string, string> = {};
+
+        entries.forEach((entry) => {
+          const rawColor = String(entry.color ?? '').trim().toUpperCase();
+          const color = rawColor ? (colorLabelMap[rawColor as HeatColor] ?? rawColor) : '';
+          if (!color) return;
+          if (entry.participant?.name) {
+            surferNames[color] = entry.participant.name;
+          }
+          if (entry.participant?.country) {
+            surferCountries[color] = entry.participant.country;
+          }
+        });
+
+        const currentConfig = configRef.current;
+        const sameHeat =
+          currentConfig.division === config.division &&
+          Number(currentConfig.round) === Number(config.round) &&
+          Number(currentConfig.heatId) === Number(config.heatId);
+
+        if (!sameHeat) return;
+
+        onConfigChange({
+          ...currentConfig,
+          surfers: nextSurfers.length > 0 ? nextSurfers : currentConfig.surfers,
+          surferNames,
+          surferCountries,
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('Impossible de recharger le lineup du heat sélectionné dans l’admin:', error);
+        }
+      }
+    };
+
+    void loadSelectedHeatLineup();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadedFromDb, heatId, config.division, config.round, config.heatId, onConfigChange]);
 
   // Dropdowns visual states
   const isCategoryClosed = useCallback((div: string) => {
