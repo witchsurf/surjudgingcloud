@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { createHeatsWithEntries, fetchParticipants } from '../api/supabaseClient';
+import { createHeatsWithEntries, fetchEventIdByName, fetchParticipants } from '../api/supabaseClient';
 import {
   generatePreviewHeats,
   getManOnManRoundOptions,
@@ -54,6 +54,27 @@ const isBracketPlaceholderName = (value?: string | null) => {
   );
 };
 
+const parsePositiveEventId = (value: unknown): number | null => {
+  const numeric = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric;
+};
+
+const readStoredEventDbId = () => {
+  try {
+    const raw = localStorage.getItem('eventData');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return (
+      parsePositiveEventId(parsed?.eventDbId) ??
+      parsePositiveEventId(parsed?.event_db_id) ??
+      parsePositiveEventId(parsed?.event_id)
+    );
+  } catch {
+    return null;
+  }
+};
+
 const GenerateHeatsPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -68,7 +89,12 @@ const GenerateHeatsPage = () => {
 
   useEffect(() => {
     const urlEventId = searchParams.get('eventId');
-    const storedEventId = urlEventId || localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+    const storedEventDbId = readStoredEventDbId();
+    const storedEventId =
+      urlEventId ||
+      (storedEventDbId ? String(storedEventDbId) : null) ||
+      localStorage.getItem('surfJudgingActiveEventId') ||
+      localStorage.getItem('eventId');
 
     if (!storedEventId) {
       alert('Aucun événement sélectionné. Veuillez créer ou sélectionner un événement.');
@@ -145,6 +171,16 @@ const GenerateHeatsPage = () => {
       } catch (error) {
         console.warn('Impossible de charger les participants:', error);
         setParticipants([]);
+      }
+
+      try {
+        const raw = localStorage.getItem('eventData');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.name) setEventName(parsed.name);
+        }
+      } catch (error) {
+        console.warn('Impossible de charger le nom de l’événement depuis le stockage local:', error);
       }
     };
 
@@ -262,7 +298,10 @@ const GenerateHeatsPage = () => {
       // Robust ID retrieval: State -> Active Key -> Legacy Key
       let currentEventId = eventId;
       if (!currentEventId) {
-        currentEventId = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
+        currentEventId =
+          String(readStoredEventDbId() ?? '') ||
+          localStorage.getItem('surfJudgingActiveEventId') ||
+          localStorage.getItem('eventId');
       }
 
       if (!currentEventId) {
@@ -277,8 +316,42 @@ const GenerateHeatsPage = () => {
         );
       }
 
-      const numericId = parseInt(currentEventId || '', 10);
-      if (!numericId || isNaN(numericId) || numericId <= 0) {
+      let numericId = parsePositiveEventId(currentEventId);
+      if (!numericId) {
+        const fromStorage = readStoredEventDbId();
+        if (fromStorage) {
+          numericId = fromStorage;
+          currentEventId = String(fromStorage);
+        }
+      }
+
+      if (!numericId) {
+        const eventData = JSON.parse(localStorage.getItem('eventData') || 'null');
+        const candidateName =
+          eventName ||
+          eventData?.name ||
+          eventData?.competition ||
+          null;
+
+        if (candidateName) {
+          const resolvedId = await fetchEventIdByName(candidateName);
+          if (resolvedId) {
+            numericId = resolvedId;
+            currentEventId = String(resolvedId);
+            localStorage.setItem('eventId', currentEventId);
+            localStorage.setItem('surfJudgingActiveEventId', currentEventId);
+            localStorage.setItem('eventData', JSON.stringify({
+              ...eventData,
+              eventDbId: resolvedId,
+              id: eventData?.id ?? resolvedId,
+            }));
+            setEventId(currentEventId);
+            setActiveEventId(resolvedId);
+          }
+        }
+      }
+
+      if (!numericId) {
         throw new Error(`ID d'événement invalide (${currentEventId}). Veuillez recharger la page.`);
       }
 
