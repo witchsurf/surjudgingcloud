@@ -1366,6 +1366,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return eventId;
   }, [activeEventId]);
 
+  const shouldShowKioskPanel = React.useMemo(
+    () => configSaved || loadedFromDb || Boolean(kioskEventId),
+    [configSaved, loadedFromDb, kioskEventId]
+  );
+
   const sharedJudgeAccessUrl = React.useMemo(() => {
     if (!kioskBaseUrl) return '';
     return kioskEventId
@@ -3679,7 +3684,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       </details>
 
       {/* Close Heat */}
-      {configSaved && (
+      {shouldShowKioskPanel && (
         <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
           <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
             <div className="flex items-center space-x-3">
