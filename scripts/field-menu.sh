@@ -39,6 +39,7 @@ while true; do
   echo "5. Change network profile"
   echo "6. Photocopy Cloud DB to Field Box (Preparation)"
   echo "7. Sync Field Box DB to Cloud"
+  echo "8. Repair public display tunnel"
   echo "0. Quit"
   echo
   read -r -p "Choix: " choice
@@ -76,6 +77,10 @@ while true; do
       ;;
     7)
       (cd frontend && node scripts/hp-push-db-to-cloud.mjs)
+      read -r -p "Entrée pour continuer..."
+      ;;
+    8)
+      ./scripts/hp-restart-cloudflare-tunnel.sh
       read -r -p "Entrée pour continuer..."
       ;;
     0)
