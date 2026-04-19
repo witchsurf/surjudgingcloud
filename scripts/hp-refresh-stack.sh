@@ -32,6 +32,7 @@ rsync -az \
   "$ROOT_DIR/backend/supabase/migrations/20260329006000_repair_heat_close_schema_drift.sql" \
   "$ROOT_DIR/backend/supabase/migrations/20260417133000_consolidate_live_config_writes.sql" \
   "$ROOT_DIR/backend/supabase/migrations/20260417223000_move_qualifier_propagation_to_db.sql" \
+  "$ROOT_DIR/backend/supabase/migrations/20260418183000_allow_open_in_heat_realtime_config.sql" \
   "$ROOT_DIR/backend/supabase/migrations/20260418192000_support_best_second_qualifier_propagation.sql" \
   "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/"
 
@@ -51,7 +52,7 @@ fi
 if [ -f nginx.conf ]; then
   mv nginx.conf infra/nginx.conf
 fi
-for sql in PATCH_LOCAL_MISSING_OBJECTS.sql FIX_LOCAL_SYNC_SCHEMA.sql FIX_SYNC_SCORING.sql 14_ADD_INTERFERENCE_CALLS.sql UPGRADE_SYNC_SCHEMA_20260417.sql UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql 20260329003000_add_heat_missing_score_slots_view.sql 20260329004000_add_heat_close_validation_function.sql 20260329005000_fix_missing_score_slot_surfer_normalization.sql 20260329006000_repair_heat_close_schema_drift.sql 20260417133000_consolidate_live_config_writes.sql 20260417223000_move_qualifier_propagation_to_db.sql 20260418192000_support_best_second_qualifier_propagation.sql; do
+for sql in PATCH_LOCAL_MISSING_OBJECTS.sql FIX_LOCAL_SYNC_SCHEMA.sql FIX_SYNC_SCORING.sql 14_ADD_INTERFERENCE_CALLS.sql UPGRADE_SYNC_SCHEMA_20260417.sql UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql 20260329003000_add_heat_missing_score_slots_view.sql 20260329004000_add_heat_close_validation_function.sql 20260329005000_fix_missing_score_slot_surfer_normalization.sql 20260329006000_repair_heat_close_schema_drift.sql 20260417133000_consolidate_live_config_writes.sql 20260417223000_move_qualifier_propagation_to_db.sql 20260418183000_allow_open_in_heat_realtime_config.sql 20260418192000_support_best_second_qualifier_propagation.sql; do
   if [ -f "\$sql" ]; then
     mv "\$sql" "backend/sql/\$sql"
   fi
@@ -79,6 +80,7 @@ for sql_file in \
   "${HP_BASE_DIR}/backend/sql/20260329006000_repair_heat_close_schema_drift.sql" \
   "${HP_BASE_DIR}/backend/sql/20260417133000_consolidate_live_config_writes.sql" \
   "${HP_BASE_DIR}/backend/sql/20260417223000_move_qualifier_propagation_to_db.sql" \
+  "${HP_BASE_DIR}/backend/sql/20260418183000_allow_open_in_heat_realtime_config.sql" \
   "${HP_BASE_DIR}/backend/sql/20260418192000_support_best_second_qualifier_propagation.sql"
 do
   if [ -f "\${sql_file}" ]; then
