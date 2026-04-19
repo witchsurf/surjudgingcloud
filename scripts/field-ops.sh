@@ -122,6 +122,10 @@ if [[ "$SKIP_DEPLOY" != "1" ]]; then
   (cd "$ROOT_DIR" && ./scripts/hp-deploy-frontend.sh)
 fi
 
+echo
+echo "==> Repairing broken qualifier hydration on local DB"
+(cd "$ROOT_DIR/frontend" && node scripts/repair-broken-qualifiers.mjs --target=local)
+
 if [[ "$SKIP_HEALTHCHECK" != "1" ]]; then
   echo
   echo "==> Final healthcheck"
