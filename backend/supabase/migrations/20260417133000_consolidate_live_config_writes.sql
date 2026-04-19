@@ -130,6 +130,7 @@ drop policy if exists "active_heat_pointer_read_all" on public.active_heat_point
 drop policy if exists "active_heat_pointer_write_authenticated" on public.active_heat_pointer;
 drop policy if exists "allow_public_read_active_pointer" on public.active_heat_pointer;
 drop policy if exists "anon_upsert_active_heat_pointer" on public.active_heat_pointer;
+drop policy if exists "public can read active_heat_pointer" on public.active_heat_pointer;
 
 create policy "public can read active_heat_pointer"
   on public.active_heat_pointer
@@ -143,6 +144,7 @@ drop policy if exists "event_last_config_public_read" on public.event_last_confi
 drop policy if exists "event_last_config_public_write" on public.event_last_config;
 drop policy if exists "event_last_config_read_own" on public.event_last_config;
 drop policy if exists "event_last_config_write_own" on public.event_last_config;
+drop policy if exists "public can read event_last_config" on public.event_last_config;
 
 create policy "public can read event_last_config"
   on public.event_last_config
@@ -162,6 +164,7 @@ drop policy if exists "heat_realtime_config_public_read" on public.heat_realtime
 drop policy if exists "heat_realtime_config_public_write" on public.heat_realtime_config;
 drop policy if exists "heat_realtime_config_update_auth" on public.heat_realtime_config;
 drop policy if exists "heat_realtime_config_upsert_public" on public.heat_realtime_config;
+drop policy if exists "public can read heat_realtime_config" on public.heat_realtime_config;
 
 create policy "public can read heat_realtime_config"
   on public.heat_realtime_config
