@@ -68,6 +68,7 @@ done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export SURF_HP_PROFILE="$PROFILE"
+export SURF_HP_HOST="${SURF_HP_HOST:-}"
 
 if [[ "$PROFILE" == "field" && "$FULL_STACK" == "0" ]]; then
   FULL_STACK="1"
@@ -78,6 +79,7 @@ if [[ "$PROFILE" == "home" ]]; then
 else
   HP_HOST="${SURF_HP_HOST:-192.168.1.2}"
 fi
+export SURF_HP_HOST="$HP_HOST"
 
 echo "======================================================"
 echo "🏄 Surf Judging Field Ops"
