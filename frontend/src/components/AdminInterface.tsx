@@ -3438,6 +3438,9 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       }
 
       // 3. Export
+      console.log('✅ Divisions trouvées pour export:', Object.keys(divisionsData));
+      console.log('✅ Total séries traitées:', allHeats.length);
+      
       exportFinalRankingToPDF({
         eventName: resolvedEventName,
         organizer,
@@ -3449,7 +3452,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         divisions: Object.keys(divisionsData)
       });
 
-      console.log('✅ Classement final généré');
+      console.log('✅ Classement final généré avec succès');
     } catch (error) {
       console.error('Erreur export ranking:', error);
       alert('Erreur lors de la génération du classement.');

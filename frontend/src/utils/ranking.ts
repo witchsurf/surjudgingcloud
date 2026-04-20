@@ -151,17 +151,23 @@ export function calculateFinalRankings(
   }
 
   // 2. Transformer en liste et trier globalement
-  const entries: FinalRankEntry[] = Array.from(surferTerminus.values()).map(t => ({
-    rank: 0, // calculated later
-    name: t.name,
-    country: t.country,
-    points: 0,
-    exitRound: t.round,
-    exitPosition: t.position,
-    heatTotal: t.total,
-    bestWave: t.bestWave,
-    division
-  }));
+  const entries: FinalRankEntry[] = Array.from(surferTerminus.values())
+    .filter(t => {
+        // Double check for placeholders in the final terminus map
+        const n = (t.name || '').toUpperCase();
+        return !n.includes('VAINQUEUR') && !n.includes('PERDANT') && !n.includes('BYE');
+    })
+    .map(t => ({
+      rank: 0, // calculated later
+      name: t.name,
+      country: t.country,
+      points: 0,
+      exitRound: t.round,
+      exitPosition: t.position,
+      heatTotal: t.total,
+      bestWave: t.bestWave,
+      division
+    }));
 
   // Tri ISA :
   // 1. Round d'élimination (DESC)
