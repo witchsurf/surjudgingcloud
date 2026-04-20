@@ -81,7 +81,7 @@ Ce script :
 - charge les variables Supabase
 - copie les tables cloud utiles vers la base locale HP
 - nettoie/remplace localement les données de ces événements pour garder la parité des IDs
-- répare les hydratations de qualifiés si nécessaire
+- audite les hydratations de qualifiés en lecture seule
 - lance un healthcheck final
 
 Ce script ne fait pas :
@@ -157,7 +157,7 @@ Point d’entrée recommandé pour préparer le prochain événement.
 Action :
 
 - Cloud Supabase -> HP Supabase local.
-- Répare les qualifiés cassés si besoin.
+- Audite les qualifiés cassés en lecture seule par défaut.
 - Healthcheck final.
 
 Options :
@@ -165,7 +165,7 @@ Options :
 ```bash
 ./scripts/hp-sync-cloud-to-local.sh --home
 ./scripts/hp-sync-cloud-to-local.sh --field
-./scripts/hp-sync-cloud-to-local.sh --home --skip-repair
+./scripts/hp-sync-cloud-to-local.sh --home --repair-qualifiers
 ./scripts/hp-sync-cloud-to-local.sh --home --skip-healthcheck
 ```
 
@@ -204,7 +204,7 @@ Action :
 - reconstruit l’hydratation des qualifiés
 - gère la logique de snaking et meilleur deuxième
 
-À utiliser après une sync si des heats suivants affichent `BYE` ou des slots vides alors que les scores existent.
+À utiliser directement seulement en mode secours, si l’audit signale des heats cassés ou si des heats suivants affichent `BYE`/slots vides alors que les scores existent.
 
 ### `./scripts/hp-healthcheck.sh`
 
@@ -263,7 +263,7 @@ Action :
 - préflight réseau
 - refresh stack si nécessaire
 - déploiement frontend
-- réparation qualifiés
+- audit qualifiés
 - healthcheck
 
 À utiliser surtout pour une remise en état ou un déploiement complet, pas pour une simple préparation d’événement.
@@ -280,6 +280,13 @@ Options importantes :
 - `Refresh local stack` reste disponible pour maintenance.
 
 ## Règle De Décision Simple
+
+La réparation des qualifiés ne fait pas partie du chemin normal. Si le fix métier est bon, l’audit doit retourner `0` heat cible. On ne lance une réparation qu’en secours explicite :
+
+```bash
+./scripts/hp-sync-cloud-to-local.sh --home --repair-qualifiers
+```
+
 
 Si l’événement est prêt dans le cloud et que le code HP est bon :
 

@@ -2,12 +2,12 @@
 set -euo pipefail
 
 PROFILE="home"
-SKIP_REPAIR="0"
+REPAIR_QUALIFIERS="0"
 SKIP_HEALTHCHECK="0"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/hp-sync-cloud-to-local.sh [--home|--field] [--skip-repair] [--skip-healthcheck]
+Usage: ./scripts/hp-sync-cloud-to-local.sh [--home|--field] [--repair-qualifiers] [--skip-healthcheck]
 
 Copies the Cloud Supabase database into the HP local Supabase database.
 
@@ -15,6 +15,7 @@ This script is intentionally DB-only:
   - no frontend build
   - no Docker stack refresh
   - no code deployment
+  - no automatic qualifier repair by default
 
 Profiles:
   --home   HP on home LAN: 10.0.0.28 (default)
@@ -30,8 +31,8 @@ while [[ $# -gt 0 ]]; do
     --field)
       PROFILE="field"
       ;;
-    --skip-repair)
-      SKIP_REPAIR="1"
+    --repair-qualifiers)
+      REPAIR_QUALIFIERS="1"
       ;;
     --skip-healthcheck)
       SKIP_HEALTHCHECK="1"
@@ -108,10 +109,14 @@ echo
 echo "==> Copying Cloud Supabase to HP local Supabase"
 (cd "$FRONTEND_DIR" && node scripts/hp-photocopy-db.mjs)
 
-if [[ "$SKIP_REPAIR" != "1" ]]; then
+if [[ "$REPAIR_QUALIFIERS" == "1" ]]; then
   echo
-  echo "==> Repairing qualifier hydration if needed"
+  echo "==> Repairing qualifier hydration by explicit request"
   (cd "$FRONTEND_DIR" && node scripts/repair-broken-qualifiers.mjs --target=local)
+else
+  echo
+  echo "==> Auditing qualifier hydration (no writes)"
+  (cd "$FRONTEND_DIR" && node scripts/repair-broken-qualifiers.mjs --target=local --dry-run)
 fi
 
 if [[ "$SKIP_HEALTHCHECK" != "1" ]]; then
