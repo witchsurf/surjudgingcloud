@@ -3395,6 +3395,10 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       return;
     }
 
+    setRankingPdfPending(true);
+    try {
+      // 1. Fetch data
+      const divisionsData = await fetchAllEventHeats(eventId);
       const allHeats: HeatRow[] = Object.entries(divisionsData)
         .flatMap(([category, rounds]) => 
           (rounds || []).flatMap(round => 
