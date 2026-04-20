@@ -1,55 +1,38 @@
 # AGENTS.md
 
-## Overview
-This document defines the **Codex agents** used in the `wave-sync-senegal` project. Each agent has a single responsibility, clear inputs and outputs, and defined constraints. Agents are modular and can be extended as the project grows.
+Consignes projet pour les agents Codex travaillant dans ce dépôt.
 
----
+## Contexte
 
-## Agents
+Le projet `surjudgingcloud` est une app de jugement surf avec :
 
-### 1. Project Setup Agent
-**Role**: Initialize the repository structure, dependencies, and CI/CD pipeline.  
-**Inputs**: Repository config, chosen frameworks (React Native, Node.js, backend services).  
-**Outputs**: Project boilerplate, CI/CD scripts.  
-**Constraints**: Must follow project coding standards.
+- frontend React/Vite dans `frontend/`
+- backend Supabase dans `backend/supabase/`
+- stack locale HP/Event Box via `infra/docker-compose-local.yml`
+- scripts opérationnels dans `scripts/`
 
----
+## Priorités
 
-### 2. Data Sync Agent
-**Role**: Handle offline-first data collection and synchronization with the backend.  
-**Inputs**: Local storage, API endpoints.  
-**Outputs**: Consistent, synced state across devices and servers.  
-**Constraints**: Must tolerate unstable network conditions common in Senegal.
+- Préserver le mode terrain LAN/HP, qui est critique le jour d’événement.
+- Ne pas casser les flux `./event-box` et `./beach`.
+- Préférer les corrections robustes côté Supabase quand le besoin touche la logique métier.
+- Garder les scripts simples : Cloud -> HP avant event, HP -> Cloud après event.
 
----
+## Sources De Vérité
 
-### 3. Localization Agent
-**Role**: Manage translations and context-aware UI rendering.  
-**Inputs**: Translation JSON/YAML files.  
-**Outputs**: Localized app in French, Wolof, and English.  
-**Constraints**: Must support low-bandwidth mode and graceful fallback.
+- Runbook terrain : `docs/hp-operations-runbook.md`.
+- Déploiement : `DEPLOYMENT.md`.
+- Fonctions Supabase : `backend/supabase/functions`.
+- Migrations : `backend/supabase/migrations`.
 
----
+## Règles De Travail
 
-### 4. Notification Agent
-**Role**: Manage alerts, reminders, and push notifications.  
-**Inputs**: User activity, backend triggers.  
-**Outputs**: SMS, push, or in-app notifications.  
-**Constraints**: Messages must be short and optimized for bandwidth.
+- Ne jamais supprimer ou écraser des données terrain sans confirmation explicite.
+- Les scores sont attachés à la couleur de lycra; un override de nom/participant ne doit pas modifier les scores.
+- Les scripts de réparation de qualifiés sont du secours, pas le chemin normal.
+- Après une modification terrain importante, vérifier au minimum :
 
----
-
-### 5. Analytics & Reporting Agent
-**Role**: Aggregate usage data and generate insights.  
-**Inputs**: Logs, user activity data.  
-**Outputs**: Dashboards, CSV/PDF reports.  
-**Constraints**: Must anonymize sensitive user data.
-
----
-
-## Best Practices
-- Keep agents **modular** — one agent = one job.  
-- Use **JSON schemas** for communication between agents.  
-- Prefer **stateless design** unless persistent state is required.  
-- Log all actions for traceability.  
-- Define each agent in `agents/` as `<agent_name>.yaml`.  
+```bash
+npm --prefix frontend run build
+bash -n scripts/hp-refresh-stack.sh
+```
