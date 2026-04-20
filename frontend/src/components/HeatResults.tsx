@@ -20,6 +20,7 @@ interface HeatResultsProps {
   maxWaves: number;
   scores: Score[];
   visible: boolean;
+  status: string;
 }
 
 type EntryInfo = {
@@ -53,6 +54,7 @@ export default function HeatResults({
   maxWaves,
   scores,
   visible,
+  status,
 }: HeatResultsProps) {
   const [entryMap, setEntryMap] = useState<Map<string, EntryInfo>>(new Map());
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -209,7 +211,7 @@ export default function HeatResults({
     if (!scoresState.length) return [];
 
     const judgeCount = getEffectiveJudgeCount(scoresState, judgeIds.length);
-    const stats = calculateSurferStats(scoresState, surfers, judgeCount, maxWaves, false, effectiveInterferences);
+    const stats = calculateSurferStats(scoresState, surfers, judgeCount, maxWaves, false, effectiveInterferences, status);
     const aggregates = stats.map((stat) => {
       const entryInfo = entryMap.get(stat.surfer) ?? { jersey: stat.surfer, name: stat.surfer };
 

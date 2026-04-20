@@ -119,8 +119,10 @@ export function calculateSurferStats(
   judgeCount: number,
   maxWaves: number = 12,
   allowIncomplete: boolean = false,
-  effectiveInterferences: EffectiveInterference[] = []
+  effectiveInterferences: EffectiveInterference[] = [],
+  heatStatus?: string
 ): SurferStats[] {
+  const isHeatClosed = heatStatus === 'closed' || heatStatus === 'finished';
   const interferenceBySurfer = summarizeInterferenceBySurfer(effectiveInterferences);
   const surferStats = surfers.map(surfer => {
     // Grouper les scores par vague
@@ -164,8 +166,9 @@ export function calculateSurferStats(
       const judgeScoreValues = Object.values(judgeScores);
 
       // Si allowIncomplete est vrai (ex: heat terminé), on accepte n'importe quel score > 0
-      // Sinon, on exige que tous les juges aient noté
-      const isComplete = allowIncomplete
+      // Sinon, on exige que tous les juges aient noté.
+      // NOUVEAU : Si la série est close/terminée, on accepte aussi les vagues partielles (comportement DB).
+      const isComplete = (allowIncomplete || isHeatClosed)
         ? judgeScoreValues.length > 0
         : judgeScoreValues.length === judgeCount;
 

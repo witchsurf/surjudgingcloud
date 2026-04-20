@@ -222,7 +222,15 @@ async function resolveNamesFromMappings(
                 sourceInterferenceCalls,
                 Math.max(judgeCount, 1)
             );
-            const stats = calculateSurferStats(sourceScores, surfers, Math.max(judgeCount, 1), 20, true, sourceEffectiveInterferences);
+            const stats = calculateSurferStats(
+                sourceScores,
+                surfers,
+                Math.max(judgeCount, 1),
+                20,
+                true,
+                sourceEffectiveInterferences,
+                currentHeat.status
+            );
 
             const rankToColor = new Map<number, string>();
             stats
@@ -355,7 +363,15 @@ async function resolveNamesFromMappings(
                         Math.max(new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size, 1)
                     );
                     const judgeCount = new Set(normalizedScores.map((s) => s.judge_id).filter(Boolean)).size;
-                    const stats = calculateSurferStats(normalizedScores, surfers, Math.max(judgeCount, 1), 20, true, heatEffectiveInterferences);
+                    const stats = calculateSurferStats(
+                        normalizedScores,
+                        surfers,
+                        Math.max(judgeCount, 1),
+                        20,
+                        true,
+                        heatEffectiveInterferences,
+                        heat.status
+                    );
 
                     stats
                         .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))

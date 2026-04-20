@@ -370,7 +370,8 @@ const buildResolvedLineupsByHeat = ({
                                     sourceJudgeCount,
                                     sourceMaxWaves,
                                     true,
-                                    sourceEffectiveInterferences
+                                    sourceEffectiveInterferences,
+                                    sourceHeat.heat.status
                                 );
                                 const rankMap = new Map<number, { name: string; country?: string }>();
                                 sourceStats
@@ -443,7 +444,8 @@ const buildResolvedLineupsByHeat = ({
                         judgeCount,
                         maxWaves,
                         true,
-                        effectiveInterferences
+                        effectiveInterferences,
+                        heat.status
                     );
 
                     stats
@@ -842,7 +844,9 @@ export default function DisplayPage() {
                                     surfers,
                                     configuredJudgeCount,
                                     config.waves,
-                                    false
+                                    false,
+                                    [],
+                                    heat.status
                                 );
 
                                 stats
@@ -998,7 +1002,7 @@ export default function DisplayPage() {
 
                     const judgeCount = getEffectiveJudgeCount(normalizedHeatScores);
                     const maxWaves = Math.max(1, ...normalizedHeatScores.map((score) => Number(score.wave_number) || 0));
-                    const stats = calculateSurferStats(normalizedHeatScores, surfers, judgeCount, maxWaves, false, []);
+                    const stats = calculateSurferStats(normalizedHeatScores, surfers, judgeCount, maxWaves, true, []);
                     const parsedHeat = parseActiveHeatId(heatId);
                     const resolvedLineup = resolvedLineupsByHeat.get(heatId) || {};
 

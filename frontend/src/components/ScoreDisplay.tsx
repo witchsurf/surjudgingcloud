@@ -273,7 +273,8 @@ export default function ScoreDisplay({
       judgeCount,
       config.waves,
       false,
-      effectiveInterferences
+      effectiveInterferences,
+      heatStatus
     );
     setSurferStats(stats);
   }, [scores, configSaved, config, heatStatus, effectiveInterferences]);

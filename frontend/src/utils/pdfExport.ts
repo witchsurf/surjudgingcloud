@@ -5,8 +5,11 @@ import type { AppConfig, InterferenceCall, Score } from '../types';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { colorLabelMap } from './colorUtils';
 import { calculateSurferStats } from './scoring';
+import { calculateFinalRankings } from './ranking';
 import { computeEffectiveInterferences } from './interference';
 import { inferImplicitMappingsForHeat } from './heatSlotMappingInference';
+import type { ParticipantRecord } from '../api/modules/participants.api';
+import type { HeatRow } from '../api/modules/heats.api';
 
 interface HeatResultHistoryEntry {
   heatKey: string;
@@ -489,7 +492,7 @@ export function exportHeatScorecardPdf({
   doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, pageW - 20, 72, { align: 'right' });
 
   // ── TABLE ─────────────────────────────────────────────────
-  const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves);
+  const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves, false, [], config.status);
 
   if (!stats.length) {
     doc.setTextColor(...DS.gray700);
@@ -865,7 +868,7 @@ export function exportFullCompetitionPDF({
     const normalizedHeatScores = heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) }));
     const heatInterferences = resolveHeatInterferences(divisionName, roundNumber, heatNumber, heatId);
     const effectiveInterferences = computeEffectiveInterferences(heatInterferences, Math.max(judgeCount, 1));
-    const stats = calculateSurferStats(normalizedHeatScores, heatSurfers, judgeCount, maxWaves, false, effectiveInterferences);
+    const stats = calculateSurferStats(normalizedHeatScores, heatSurfers, judgeCount, maxWaves, false, effectiveInterferences, heat.status);
     const orderedStats = [...stats].sort((a, b) => {
       const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
       if (rankDiff !== 0) return rankDiff;
@@ -1127,7 +1130,7 @@ export function exportFullCompetitionPDF({
             const effectiveInterferences = computeEffectiveInterferences(heatInterferences, judgeCount);
             const stats = calculateSurferStats(
               heatScores.map(score => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
-              heatSurfers, judgeCount, maxWaves, true, effectiveInterferences
+              heatSurfers, judgeCount, maxWaves, false, effectiveInterferences, heat.status
             );
             const maxSurferWaves = Math.max(...stats.map(s => s.waves?.length || 0), 0);
             currentHeatMaxWaves = Math.max(1, Math.min(maxSurferWaves, maxWaves));
@@ -1316,4 +1319,105 @@ export function exportFullCompetitionPDF({
   }
 
   doc.save(`${slugify(eventName)}_competition_complete.pdf`);
+}
+
+export interface FinalRankingExportPayload {
+  eventName: string;
+  organizer?: string;
+  date?: string;
+  heats: HeatRow[];
+  scores: Record<string, Score[]>;
+  interferenceCalls: Record<string, InterferenceCall[]>;
+  participants: ParticipantRecord[];
+  divisions: string[];
+}
+
+export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
+  const { eventName, organizer, date, heats, scores, interferenceCalls, participants, divisions } = payload;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const MARGIN = 40;
+
+  let isFirstPage = true;
+
+  divisions.forEach((division) => {
+    const rankings = calculateFinalRankings(division, heats, scores, interferenceCalls, participants);
+    if (rankings.length === 0) return;
+
+    if (!isFirstPage) {
+      doc.addPage();
+    }
+    isFirstPage = false;
+
+    // Header per division
+    doc.setFillColor(...DS.navy);
+    doc.rect(0, 0, pageW, 100, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.text(eventName.toUpperCase(), MARGIN, 45);
+
+    doc.setFontSize(14);
+    doc.setTextColor(...DS.gold);
+    doc.text(`CLASSEMENT FINAL – ${division.toUpperCase()}`, MARGIN, 70);
+
+    doc.setFontSize(9);
+    doc.setTextColor(200, 200, 200);
+    doc.text([organizer, date].filter(Boolean).join('  •  '), MARGIN, 88);
+
+    // Prepare table data for multi-column (2 columns)
+    const bodyEntries = rankings.map(r => [
+      r.rank,
+      r.name.toUpperCase(),
+      r.country || '',
+      r.points
+    ]);
+
+    // Split for 2 columns to look like the ISA model
+    const half = Math.ceil(bodyEntries.length / 2);
+    const leftCol = bodyEntries.slice(0, half);
+    const rightCol = bodyEntries.slice(half);
+
+    const tableConfig = {
+      head: [['Place', 'Name', 'NOC', 'Point']],
+      theme: 'grid' as const,
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' },
+      columnStyles: {
+        0: { halign: 'center' as const, cellWidth: 35 },
+        1: { fontStyle: 'bold' as const },
+        2: { halign: 'center' as const, cellWidth: 40 },
+        3: { halign: 'right' as const, cellWidth: 40, fontStyle: 'bold' as const }
+      }
+    };
+
+    autoTable(doc, {
+      ...tableConfig,
+      body: leftCol,
+      startY: 120,
+      margin: { left: MARGIN, right: pageW / 2 + 10 },
+    });
+
+    if (rightCol.length > 0) {
+      autoTable(doc, {
+        ...tableConfig,
+        body: rightCol,
+        startY: 120,
+        margin: { left: pageW / 2 + 10, right: MARGIN },
+      });
+    }
+  });
+
+  // Global Footer
+  const pageCount = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Généré par Antigravity Scoring System – Modèle ISA Individual Places`, pageW / 2, pageH - 20, { align: 'center' });
+  }
+
+  doc.save(`${slugify(eventName)}_final_rankings.pdf`);
 }

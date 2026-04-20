@@ -10,7 +10,7 @@ import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
-import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
+import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
 import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
@@ -171,6 +171,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [priorityLinkCopied, setPriorityLinkCopied] = useState(false);
   const [priorityQrCode, setPriorityQrCode] = useState('');
   const [eventPdfPending, setEventPdfPending] = useState(false);
+  const [rankingPdfPending, setRankingPdfPending] = useState(false);
   const [rebuildPending, setRebuildPending] = useState(false);
   const [offlineAdminPin, setOfflineAdminPin] = useState(() => {
     try {
@@ -2623,7 +2624,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
               const maxWaves = Math.max(config.waves || 12, 1);
               const sourceInterferenceCalls = await fetchInterferenceCalls(sourceHeat.id);
               const effectiveInterferences = computeEffectiveInterferences(sourceInterferenceCalls, judgeCount);
-              const stats = calculateSurferStats(sourceScores, surfers, judgeCount, maxWaves, true, effectiveInterferences)
+              const stats = calculateSurferStats(sourceScores, surfers, judgeCount, maxWaves, true, effectiveInterferences, sourceHeat.status)
                 .sort((a, b) => a.rank - b.rank);
 
               stats.forEach((stat) => {
@@ -4505,6 +4506,18 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             >
               <FileText className="w-4 h-4" />
               <span>{eventPdfPending ? 'Export évènement…' : 'Export complet (PDF)'}</span>
+            </button>
+
+            <button
+              onClick={handleExportFinalRankingPdf}
+              disabled={rankingPdfPending}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${rankingPdfPending
+                ? 'bg-emerald-300 cursor-not-allowed'
+                : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+            >
+              <Trophy className="w-4 h-4" />
+              <span>{rankingPdfPending ? 'Génération ranking…' : 'Classement Final (PDF)'}</span>
             </button>
 
             <button

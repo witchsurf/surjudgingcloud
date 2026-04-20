@@ -283,7 +283,8 @@ export function useHeatManager() {
                         config.judges.length,
                         config.waves,
                         false,
-                        effectiveInterferences
+                        effectiveInterferences,
+                        heat.status
                     )
                         .sort((a, b) => a.rank - b.rank);
 
