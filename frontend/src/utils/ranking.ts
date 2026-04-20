@@ -49,7 +49,7 @@ export function calculateFinalRankings(
   if (!participants) participants = [];
 
   const divisionHeats = heats
-    .filter(h => h.division === division)
+    .filter(h => (h.division || '').trim().toUpperCase() === division.trim().toUpperCase())
     .sort((a, b) => b.round - a.round || a.heat_number - b.heat_number);
 
   if (divisionHeats.length === 0) return [];
@@ -81,7 +81,9 @@ export function calculateFinalRankings(
     // On extrait les noms présents dans ce heat
     // (On ne peut pas se baser uniquement sur participants[] car certains sont des placeholders)
     // Mais ici on veut les VRAIS noms résolus.
-    const uniqueSurfersInHeat = Array.from(new Set((heatScores || []).map(s => s?.surfer).filter(Boolean)));
+    const surfersFromScores = (heatScores || []).map(s => s?.surfer).filter(Boolean);
+    const surfersFromSlots = (heat.slots || []).map((s: any) => s?.name || s?.placeholder).filter(Boolean);
+    const uniqueSurfersInHeat = Array.from(new Set([...surfersFromScores, ...surfersFromSlots].map(s => s.toUpperCase())));
     
     // Si heat non fermé et pas de scores, on peut avoir des problèmes de ranking.
     // Pour un classement FINAL, on assume que l'évènement est clos ou qu'on veut le rank actuel.
@@ -111,10 +113,12 @@ export function calculateFinalRankings(
 
       if (isEliminated && !surferTerminus.has(surferKey)) {
         // Obtenir le vrai nom depuis participants si possible
-        const participant = participants.find(p => 
-            p.name?.toUpperCase() === surferKey 
-            || p.category?.toUpperCase() === division.toUpperCase() // fallbacks...
-        );
+        const participant = participants.find(p => {
+            const pName = p.name?.trim().toUpperCase();
+            const pCat = p.category?.trim().toUpperCase();
+            const dName = division.trim().toUpperCase();
+            return pName === surferKey && (pCat === dName || !pCat);
+        });
 
         surferTerminus.set(surferKey, {
           round: heat.round,

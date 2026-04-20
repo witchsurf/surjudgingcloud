@@ -18,6 +18,7 @@ export interface HeatSpec {
   slots: HeatSlotSpec[];
   roundRef?: string;
   heatId?: string;
+  status?: string;
 }
 
 export interface RoundSpec {

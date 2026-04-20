@@ -3395,24 +3395,23 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       return;
     }
 
-    setRankingPdfPending(true);
-    try {
-      // 1. Fetch data
-      const divisionsData = await fetchAllEventHeats(eventId);
-      const allHeats: HeatRow[] = Object.values(divisionsData)
-        .flat()
-        .filter(Boolean)
-        .flatMap(round => (round.heats || []).map(heat => ({
-          id: heat.heatId || '',
-          event_id: eventId,
-          competition: config.competition,
-          division: round.name?.split(' - ')[0] || '',
-          round: round.roundNumber || 0,
-          heat_number: heat.heatNumber || 0,
-          heat_size: heat.slots?.length || 0,
-          status: 'open', // Status not present in bracket spec but inferred as open
-          color_order: (heat.slots || []).map((s: any) => s?.color || '') as string[]
-        })));
+      const allHeats: HeatRow[] = Object.entries(divisionsData)
+        .flatMap(([category, rounds]) => 
+          (rounds || []).flatMap(round => 
+            (round.heats || []).map(heat => ({
+              id: heat.heatId || '',
+              event_id: eventId,
+              competition: config.competition,
+              division: category, // Use the real category name as key
+              round: round.roundNumber || 0,
+              heat_number: heat.heatNumber || 0,
+              heat_size: heat.slots?.length || 0,
+              status: heat.status || 'open', // Real status from DB
+              color_order: (heat.slots || []).map((s: any) => s?.color || '') as string[],
+              slots: heat.slots // Pass full slots for surfer discovery
+            }))
+          )
+        );
 
       const allScores = await fetchPreferredScoresForEvent(eventId);
       const allInterferenceCalls = await fetchAllInterferenceCallsForEvent(eventId);

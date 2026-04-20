@@ -17,6 +17,7 @@ export interface HeatRow {
     heat_size: number;
     status: string;
     color_order: string[];
+    slots?: any[];
 }
 
 export interface HeatEntryRow {
@@ -1144,6 +1145,7 @@ export async function fetchCategoryHeats(eventId: number, category: string): Pro
             slots,
             roundRef: `${round.name}-H${heat.heat_number}`,
             heatId: heat.id,
+            status: heat.status,
         });
     });
 
