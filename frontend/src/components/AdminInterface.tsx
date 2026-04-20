@@ -3399,17 +3399,20 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
     try {
       // 1. Fetch data
       const divisionsData = await fetchAllEventHeats(eventId);
-      const allHeats: HeatRow[] = Object.values(divisionsData).flat().map(h => ({
-        id: h.heatId || '',
-        event_id: eventId,
-        competition: config.competition,
-        division: h.name.split(' - ')[0] || '',
-        round: h.roundNumber,
-        heat_number: h.heatNumber,
-        heat_size: h.slots.length,
-        status: h.status || 'open',
-        color_order: h.slots.map(s => s.color || '') as string[]
-      }));
+      const allHeats: HeatRow[] = Object.values(divisionsData)
+        .flat()
+        .filter(Boolean) // Safety filter
+        .map(h => ({
+          id: h.heatId || '',
+          event_id: eventId,
+          competition: config.competition,
+          division: h.name?.split(' - ')[0] || '',
+          round: h.roundNumber || 0,
+          heat_number: h.heatNumber || 0,
+          heat_size: h.slots?.length || 0,
+          status: h.status || 'open',
+          color_order: (h.slots || []).map(s => s?.color || '') as string[]
+        }));
 
       const allScores = await fetchPreferredScoresForEvent(eventId);
       const allInterferenceCalls = await fetchAllInterferenceCallsForEvent(eventId);

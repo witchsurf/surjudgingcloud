@@ -54,7 +54,8 @@ export function calculateFinalRankings(
 
   if (divisionHeats.length === 0) return [];
 
-  const maxRound = Math.max(...divisionHeats.map(h => h.round));
+  const rounds = divisionHeats.map(h => h.round).filter(r => r != null);
+  const maxRound = rounds.length > 0 ? Math.max(...rounds) : 0;
   
   // 1. Calculer les stats de chaque surfeur par heat
   // On identifie pour chaque participant son "terminus" (le dernier heat où il a fini en position d'élimination ou la finale)
@@ -80,7 +81,7 @@ export function calculateFinalRankings(
     // On extrait les noms présents dans ce heat
     // (On ne peut pas se baser uniquement sur participants[] car certains sont des placeholders)
     // Mais ici on veut les VRAIS noms résolus.
-    const uniqueSurfersInHeat = Array.from(new Set(heatScores.map(s => s.surfer)));
+    const uniqueSurfersInHeat = Array.from(new Set((heatScores || []).map(s => s?.surfer).filter(Boolean)));
     
     // Si heat non fermé et pas de scores, on peut avoir des problèmes de ranking.
     // Pour un classement FINAL, on assume que l'évènement est clos ou qu'on veut le rank actuel.
