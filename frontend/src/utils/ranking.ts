@@ -1,4 +1,5 @@
 import { calculateSurferStats } from './scoring';
+import { computeEffectiveInterferences } from './interference';
 import type { Score, InterferenceCall } from '../types';
 import type { ParticipantRecord } from '../api/modules/participants.api';
 import type { HeatRow } from '../api/modules/heats.api';
@@ -85,6 +86,8 @@ export function calculateFinalRankings(
     const surfersFromSlots = (heat.slots || []).map((s: any) => s?.name || s?.placeholder).filter(Boolean);
     const uniqueSurfersInHeat = Array.from(new Set([...surfersFromScores, ...surfersFromSlots].map(s => s.toUpperCase())));
     
+    const effectiveInterferences = computeEffectiveInterferences(heatInterferences, configuredJudgeCount);
+
     // Si heat non fermé et pas de scores, on peut avoir des problèmes de ranking.
     // Pour un classement FINAL, on assume que l'évènement est clos ou qu'on veut le rank actuel.
     const stats = calculateSurferStats(
@@ -93,7 +96,7 @@ export function calculateFinalRankings(
         configuredJudgeCount, 
         12, // max waves default
         true, // allow incomplete
-        [], // TODO: effective interferences if needed
+        effectiveInterferences,
         heat.status as any
     );
 
@@ -164,7 +167,6 @@ export function calculateFinalRankings(
   // 3. Assigner les rangs et points
   // Attention : En ISA, les gens éliminés au même round avec la même position partagent souvent le même rang.
   // Ex: Les deux 3e de demi-finale sont tous les deux 5e.
-  let currentRank = 1;
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     
