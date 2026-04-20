@@ -43,6 +43,11 @@ export function calculateFinalRankings(
   participants: ParticipantRecord[],
   configuredJudgeCount: number = 3
 ): FinalRankEntry[] {
+  if (!heats || !Array.isArray(heats)) return [];
+  if (!scores) scores = {};
+  if (!interferenceCalls) interferenceCalls = {};
+  if (!participants) participants = [];
+
   const divisionHeats = heats
     .filter(h => h.division === division)
     .sort((a, b) => b.round - a.round || a.heat_number - b.heat_number);
@@ -114,7 +119,7 @@ export function calculateFinalRankings(
           round: heat.round,
           position: stat.rank,
           total: stat.bestTwo,
-          bestWave: stat.waves[0]?.score || 0,
+          bestWave: stat.waves?.[0]?.score || 0,
           name: surferKey, // TODO: resolve real name
           country: participant?.country
         });
@@ -145,7 +150,7 @@ export function calculateFinalRankings(
   // 3. Total de heat (DESC)
   // 4. Meilleure vague (DESC)
   entries.sort((a, b) => {
-    if (a.exitRound !== b.round) return b.exitRound - a.exitRound;
+    if (a.exitRound !== b.exitRound) return b.exitRound - a.exitRound;
     if (a.exitPosition !== b.exitPosition) return a.exitPosition - b.exitPosition;
     if (a.heatTotal !== b.heatTotal) return b.heatTotal - a.heatTotal;
     return b.bestWave - a.bestWave;

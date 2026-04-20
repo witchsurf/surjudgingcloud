@@ -850,7 +850,8 @@ export function exportFullCompetitionPDF({
     divisionName: string, roundNumber: number, heatNumber: number,
     heatId: string | null,
     slots: Array<{ color?: string; name?: string; country?: string; placeholder?: string; bye?: boolean }>,
-    heatScores: Score[]
+    heatScores: Score[],
+    heatStatus?: string
   ) => {
     if (!heatScores.length) return;
     const divisionMap = getDivisionQualifierMap(divisionName);
@@ -868,7 +869,7 @@ export function exportFullCompetitionPDF({
     const normalizedHeatScores = heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) }));
     const heatInterferences = resolveHeatInterferences(divisionName, roundNumber, heatNumber, heatId);
     const effectiveInterferences = computeEffectiveInterferences(heatInterferences, Math.max(judgeCount, 1));
-    const stats = calculateSurferStats(normalizedHeatScores, heatSurfers, judgeCount, maxWaves, false, effectiveInterferences, heat.status);
+    const stats = calculateSurferStats(normalizedHeatScores, heatSurfers, judgeCount, maxWaves, false, effectiveInterferences, heatStatus);
     const orderedStats = [...stats].sort((a, b) => {
       const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
       if (rankDiff !== 0) return rankDiff;
@@ -948,7 +949,7 @@ export function exportFullCompetitionPDF({
           delete slot.bye;
         });
         const heatScores = resolveHeatScores(divisionName, round.roundNumber, heat.heatNumber, heat.heatId ?? null);
-        writeHeatQualifiers(divisionName, round.roundNumber, heat.heatNumber, heat.heatId ?? null, heat.slots, heatScores);
+        writeHeatQualifiers(divisionName, round.roundNumber, heat.heatNumber, heat.heatId ?? null, heat.slots, heatScores, heat.status);
       });
     });
   });
