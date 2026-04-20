@@ -88,7 +88,8 @@ export function calculateFinalRankings(
     // Filter out placeholders (Vainqueur, Perdant, Bye, etc.)
     const isPlaceholder = (name: string) => {
         const n = name.toUpperCase();
-        return n.includes('VAINQUEUR') || n.includes('PERDANT') || n.includes('BYE');
+        return n.includes('VAINQUEUR') || n.includes('PERDANT') || n.includes('BYE') ||
+               ['RED', 'WHITE', 'YELLOW', 'BLUE', 'GREEN', 'BLACK', 'ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'].includes(n);
     };
 
     const uniqueSurfersInHeat = Array.from(new Set(
@@ -155,7 +156,8 @@ export function calculateFinalRankings(
     .filter(t => {
         // Double check for placeholders in the final terminus map
         const n = (t.name || '').toUpperCase();
-        return !n.includes('VAINQUEUR') && !n.includes('PERDANT') && !n.includes('BYE');
+        return !n.includes('VAINQUEUR') && !n.includes('PERDANT') && !n.includes('BYE') &&
+               !['RED', 'WHITE', 'YELLOW', 'BLUE', 'GREEN', 'BLACK', 'ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'].includes(n);
     })
     .map(t => ({
       rank: 0, // calculated later
