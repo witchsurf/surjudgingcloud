@@ -47,10 +47,10 @@ while true; do
   case "$choice" in
     1)
       if [[ "$PROFILE" == "home" ]]; then
-        (cd frontend && node scripts/hp-photocopy-db.mjs)
-        (cd frontend && node scripts/repair-broken-qualifiers.mjs --target=local)
+        ./scripts/hp-sync-cloud-to-local.sh --home
+      else
+        ./scripts/field-ops.sh "--$PROFILE"
       fi
-      ./scripts/field-ops.sh "--$PROFILE"
       read -r -p "Entrée pour continuer..."
       ;;
     2)
@@ -69,10 +69,7 @@ while true; do
       choose_profile
       ;;
     6)
-      (cd frontend && node scripts/hp-photocopy-db.mjs)
-      if [[ "$PROFILE" == "home" ]]; then
-        (cd frontend && node scripts/repair-broken-qualifiers.mjs --target=local)
-      fi
+      ./scripts/hp-sync-cloud-to-local.sh "--$PROFILE"
       read -r -p "Entrée pour continuer..."
       ;;
     7)

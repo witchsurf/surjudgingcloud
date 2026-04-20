@@ -1,380 +1,315 @@
 # HP Operations Runbook
 
-Ce document décrit le workflow complet autour du HP ProDesk, appelé ici `Event Box`.
+Ce mémo décrit les points d’entrée pour exploiter le HP ProDesk, appelé ici `Event Box`.
 
-Objectif :
-- préparer l’événement à la maison quand Internet est disponible
-- partir à la plage avec un HP autonome en LAN
-- éviter les manipulations ambiguës entre réseau maison et réseau D-LINK
+## Idée Directrice
 
-## Réseaux
+Le test grandeur nature a validé que le code local servi par le HP est solide. Pour le prochain événement, le flux normal ne doit donc plus toucher au code ni à la stack Docker sauf besoin explicite.
 
-Il y a 2 contextes réseau différents pour le même HP :
+Le workflow recommandé devient :
 
-- `home`
-  - réseau maison
-  - IP typique : `10.0.0.28`
-  - usage : préparation, maintenance, debug, déploiement
+1. Préparer l’événement dans le cloud.
+2. Copier la base Cloud Supabase vers la base Supabase locale du HP.
+3. Partir à la plage avec le HP autonome.
+4. Après l’événement, pousser les faits terrain locaux vers le cloud.
 
-- `field`
-  - réseau D-LINK sur la plage
-  - IP fixée dans le routeur : `192.168.1.2`
-  - usage : exploitation live sans Internet
+En clair : si le code n’a pas changé, on ne déploie pas le frontend. Si la stack HP répond, on ne refresh pas Docker.
 
-Règle importante :
-- `field` est le profil par défaut pour les opérations terrain
-- `home` doit être choisi explicitement
+## Profils Réseau
 
-## Commandes à retenir
+`home`
 
-Entrées simples au root du repo :
+- Maison / maintenance.
+- IP typique du HP : `10.0.0.28`.
+- C’est le profil recommandé pour préparer la box avant l’événement.
 
-```bash
-./event-box
-./beach
-./home
-```
+`field`
 
-Signification :
-- `./event-box`
-  - ouvre le menu de préparation maison
-  - profil `home`
+- Plage / routeur D-LINK.
+- IP attendue du HP : `192.168.1.2`.
+- C’est le profil recommandé pendant l’exploitation live.
 
-- `./beach`
-  - ouvre le menu d’exploitation plage
-  - profil `field`
+## Commandes À Retenir
 
-- `./home`
-  - équivalent menu `home`
-  - utile si tu veux garder la logique “home” explicite
-
-Commandes directes utiles :
+Préparer la box depuis le cloud, sans toucher au code :
 
 ```bash
-./scripts/field-ops.sh
-./scripts/field-ops.sh --home
-./scripts/hp-healthcheck.sh
-./scripts/hp-deploy-frontend.sh
-./scripts/hp-refresh-stack.sh
+./scripts/hp-sync-cloud-to-local.sh --home
 ```
 
-## Workflow standard
-
-### 1. À la maison : préparer l’Event Box
-
-Flux recommandé :
-
-1. Travailler dans le cloud
-   - créer l’event
-   - ajouter les participants
-   - générer les heats
-   - vérifier les configs
-
-2. Ouvrir le menu maison :
+Menu maison :
 
 ```bash
 ./event-box
 ```
 
-3. Lancer la préparation de la box
-   - healthcheck si besoin
-   - déploiement frontend HP
-   - refresh stack locale si nécessaire
-
-4. Ouvrir le HP en mode local et vérifier `Mes événements`
-   - la base locale doit être remplie
-   - en mode local, l’app tente maintenant une synchro cloud -> local automatiquement
-   - condition : une session cloud valide existe déjà
-
-Résultat attendu :
-- le HP contient déjà tout ce qu’il faut avant de partir
-- sur la plage, on n’a pas besoin de “dépendre du cloud” pour démarrer
-
-### 1 bis. Remonter la production terrain vers le cloud
-
-Quand des scores ont été saisis localement sur la box et qu’on veut réaligner le cloud :
-
-1. ouvrir le menu :
-
-```bash
-./event-box
-```
-
-2. lancer :
-- `Sync Field Box DB to Cloud`
-
-Ce bouton pousse depuis la base locale vers le cloud :
-- `scores`
-- `interference_calls`
-- `heat_realtime_config`
-- `active_heat_pointer`
-
-Puis il déclenche côté cloud :
-- propagation des qualifiés sur les heats fermés
-- rebuild par division pour sécuriser les rounds suivants
-
-Règle métier importante :
-- on ne considère pas `heat_entries` qualifiés comme une vérité brute à copier
-- on pousse les faits source terrain
-- puis on recalcule les qualifiés côté cloud
-
-### 2. Sur la plage : exploitation live
-
-Commande recommandée :
+Menu plage :
 
 ```bash
 ./beach
 ```
 
-Ce mode vise `192.168.1.2`.
-
-Usage attendu :
-- admin, juges, display, kiosques pointent vers le HP
-- le HP devient la source de vérité terrain
-- pas besoin d’Internet pour opérer
-
-URLs typiques sur place :
-
-- app locale :
-```text
-http://192.168.1.2:8080
-```
-
-- display local :
-```text
-http://192.168.1.2:8080/display
-```
-
-- API locale :
-```text
-http://192.168.1.2:8000/rest/v1/events?select=id&limit=1
-```
-
-### 3. Retour maison / maintenance
-
-Commande recommandée :
+Audit rapide :
 
 ```bash
-./home
-```
-
-ou directement :
-
-```bash
-./scripts/field-ops.sh --home
-```
-
-Usage :
-- vérifier que le HP répond bien sur `10.0.0.28`
-- redéployer le frontend
-- auditer la stack
-- faire du debug sans toucher au réseau plage
-
-## Ce que fait chaque outil
-
-### `./scripts/hp-healthcheck.sh`
-
-Audit rapide du HP :
-- ping
-- SSH
-- ports `8080` et `8000`
-- état Docker
-- réponse web locale
-- réponse API locale
-- alignement du bundle local/public
-
-Utilisation :
-
-```bash
-./scripts/hp-healthcheck.sh
 SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
 ```
 
-### `./scripts/hp-deploy-frontend.sh`
+## Workflow Recommandé Prochain Événement
 
-Déploie uniquement le frontend sur le HP :
-- build local
-- rsync de `frontend/dist/`
-- injection dans le conteneur `surfjudging`
-- reload `nginx`
-- vérification du bundle servi
+### 1. Préparer Dans Le Cloud
 
-Utilisation :
+Dans l’app cloud :
+
+- créer l’événement
+- ajouter les participants
+- générer les heats
+- vérifier les divisions, rounds, heat sizes et couleurs
+- vérifier que l’événement est propre côté admin
+
+### 2. Photocopier Cloud Vers HP
+
+Depuis le Mac, connecté à Internet et au réseau où le HP répond :
 
 ```bash
-./scripts/hp-deploy-frontend.sh
-SURF_HP_PROFILE=home ./scripts/hp-deploy-frontend.sh
+./scripts/hp-sync-cloud-to-local.sh --home
 ```
+
+Ce script :
+
+- vérifie que le HP répond sur `10.0.0.28:8000`
+- charge les variables Supabase
+- copie les tables cloud utiles vers la base locale HP
+- nettoie/remplace localement les données de ces événements pour garder la parité des IDs
+- répare les hydratations de qualifiés si nécessaire
+- lance un healthcheck final
+
+Ce script ne fait pas :
+
+- pas de build frontend
+- pas de déploiement frontend
+- pas de refresh Docker
+- pas de migration stack sauf si elle existe déjà dans la base
+
+### 3. Vérifier La Box
+
+Après la sync :
+
+```bash
+SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
+```
+
+Puis ouvrir :
+
+```text
+http://10.0.0.28:8080
+```
+
+Vérifier dans `Mes événements` que l’événement est présent et que les heats sont chargés.
+
+### 4. Exploitation Plage
+
+Sur le réseau D-LINK :
+
+```bash
+./beach
+```
+
+URLs terrain :
+
+```text
+http://192.168.1.2:8080
+http://192.168.1.2:8080/display
+http://192.168.1.2:8000/rest/v1/events?select=id&limit=1
+```
+
+Pendant l’événement, le HP local est la source de vérité.
+
+### 5. Retour Cloud Après Événement
+
+Quand on veut remonter les données terrain :
+
+```bash
+./event-box
+```
+
+Puis choisir :
+
+```text
+Sync Field Box DB to Cloud
+```
+
+Ce flux pousse les faits terrain :
+
+- scores
+- interférences
+- statut/timer/config live des heats
+- active heat pointer
+
+Puis le cloud rejoue les fonctions métier de propagation des qualifiés.
+
+## Définition Des Points D’entrée
+
+### `./scripts/hp-sync-cloud-to-local.sh`
+
+Point d’entrée recommandé pour préparer le prochain événement.
+
+Action :
+
+- Cloud Supabase -> HP Supabase local.
+- Répare les qualifiés cassés si besoin.
+- Healthcheck final.
+
+Options :
+
+```bash
+./scripts/hp-sync-cloud-to-local.sh --home
+./scripts/hp-sync-cloud-to-local.sh --field
+./scripts/hp-sync-cloud-to-local.sh --home --skip-repair
+./scripts/hp-sync-cloud-to-local.sh --home --skip-healthcheck
+```
+
+À utiliser quand :
+
+- l’événement a été préparé dans le cloud
+- le code HP est déjà bon
+- on veut juste mettre à jour la base locale
+
+À ne pas utiliser quand :
+
+- le HP local ne répond plus sur `:8000`
+- le frontend HP doit être mis à jour
+- une migration ou un patch SQL local doit être appliqué
+
+### `frontend/scripts/hp-photocopy-db.mjs`
+
+Moteur bas niveau utilisé par `hp-sync-cloud-to-local.sh`.
+
+Action :
+
+- lit cloud et local Supabase
+- récupère événements, participants, heats, entries, mappings, configs, timers, juges, scores et interférences
+- supprime localement les lignes concernées
+- réinsère les données cloud dans le HP
+
+À lancer directement seulement pour debug.
+
+### `frontend/scripts/repair-broken-qualifiers.mjs`
+
+Répare uniquement la base Supabase.
+
+Action :
+
+- détecte des heats qui ont une structure/mapping cassé
+- reconstruit l’hydratation des qualifiés
+- gère la logique de snaking et meilleur deuxième
+
+À utiliser après une sync si des heats suivants affichent `BYE` ou des slots vides alors que les scores existent.
+
+### `./scripts/hp-healthcheck.sh`
+
+Audit rapide, sans modification majeure.
+
+Action :
+
+- ping HP
+- ports SSH, web `8080`, API `8000`
+- état Docker
+- réponse web locale
+- réponse API locale
+- comparaison bundle display local/public
+
+À utiliser dès qu’on veut savoir si le HP est vivant.
+
+### `./scripts/hp-deploy-frontend.sh`
+
+Déploie le code frontend sur le HP.
+
+Action :
+
+- build local Vite
+- rsync de `frontend/dist`
+- copie dans le conteneur nginx `surfjudging`
+- reload nginx
+- vérifie que le bundle servi correspond au bundle buildé
+
+À utiliser seulement quand le code frontend a changé et doit aller sur le HP.
 
 ### `./scripts/hp-refresh-stack.sh`
 
-Refresh la stack locale HP :
-- synchronise les fichiers `infra/` et SQL nécessaires
+Opération lourde de maintenance.
+
+Action :
+
+- synchronise fichiers `infra/` et SQL
 - relance les services Supabase locaux utiles
 - applique les patchs SQL locaux
 - redémarre `rest` et `kong`
 
-Utilisation :
+À utiliser seulement si :
 
-```bash
-./scripts/hp-refresh-stack.sh
-SURF_HP_PROFILE=home ./scripts/hp-refresh-stack.sh
-```
+- l’API locale ne répond plus
+- une migration/patch SQL local doit être appliqué
+- la stack Docker du HP est suspecte
+
+Ce script n’est pas le workflow normal de préparation d’un événement.
 
 ### `./scripts/field-ops.sh`
 
-Version non interactive “one-click” :
+Ancien “one-click” plus large.
+
+Action :
+
 - préflight réseau
-- optionnellement refresh stack
+- refresh stack si nécessaire
 - déploiement frontend
-- healthcheck final
+- réparation qualifiés
+- healthcheck
 
-Exemples :
-
-```bash
-./scripts/field-ops.sh
-./scripts/field-ops.sh --home
-./scripts/field-ops.sh --field --full-stack
-```
+À utiliser surtout pour une remise en état ou un déploiement complet, pas pour une simple préparation d’événement.
 
 ### `./scripts/field-menu.sh`
 
-Version interactive du workflow :
-- choix du profil
-- one-click ops
-- healthcheck
-- deploy frontend
-- refresh stack
-- photocopy cloud -> local
-- sync local -> cloud
+Menu interactif.
 
-## Sync cloud -> local
+Options importantes :
 
-La logique cible est :
+- `Prepare Event Box` en profil `home` utilise maintenant le flux DB-only `hp-sync-cloud-to-local.sh --home`.
+- `Photocopy Cloud DB to Field Box` utilise aussi le flux DB-only.
+- `Deploy frontend only` reste disponible quand le code change.
+- `Refresh local stack` reste disponible pour maintenance.
 
-1. à la maison, tu prépares l’événement dans le cloud
-2. le HP récupère ces données dans sa base locale
-3. sur la plage, le HP fonctionne en autonomie
+## Règle De Décision Simple
 
-Le comportement actuel a été simplifié :
-- en mode local, `MyEvents` peut lancer automatiquement la synchro cloud -> local
-- cette auto-sync ne tente rien si aucune session cloud valide n’existe
-- elle sert de filet de sécurité et de confort
-
-Règle d’exploitation :
-- la sync cloud sur la plage ne doit pas être le workflow normal
-- le workflow normal est de partir avec une Event Box déjà prête
-
-## Sync local -> cloud
-
-La logique cible est :
-
-1. la box locale produit les données terrain
-2. un bouton explicite pousse ces données vers le cloud
-3. le cloud rejoue ensuite la logique métier de propagation
-
-Ce flux est volontairement asymétrique :
-- `cloud -> local` pour la structure et la préparation
-- `local -> cloud` pour les faits terrain les plus récents
-
-Cela évite une “fusion magique” fragile entre bases.
-
-## Ce qu’il faut retenir techniquement
-
-- Le HP n’est pas traité comme un poste de dev Git.
-- La vérité de déploiement frontend sur le HP est un artefact `dist`.
-- Pour savoir si le HP est “à jour”, on regarde ce qu’il sert, pas `git status`.
-
-Donc :
-- mise à jour HP -> `hp-deploy-frontend.sh`
-- audit HP -> `hp-healthcheck.sh`
-- réparation stack -> `hp-refresh-stack.sh`
-
-## Procédure de récupération
-
-Si quelque chose sent mauvais :
-
-1. lancer :
+Si l’événement est prêt dans le cloud et que le code HP est bon :
 
 ```bash
-./scripts/hp-healthcheck.sh
+./scripts/hp-sync-cloud-to-local.sh --home
 ```
 
-2. si le frontend semble en retard :
-
-## Checklist HP serveur
-
-Le HP est un serveur local. Son écran branché n’est pas un indicateur fiable de santé applicative.
-
-Ce qu’on accepte comme normal sur l’écran du HP :
-- console Ubuntu
-- logs Docker
-- prompt `login:`
-
-Cela ne veut pas dire que le HP est en panne.
-
-### HP serveur OK
-
-Depuis un poste du réseau maison :
+Si le frontend a changé :
 
 ```bash
-ping 10.0.0.28
-curl -I http://10.0.0.28:8080
-curl "http://10.0.0.28:8000/rest/v1/events?select=id&limit=1"
+SURF_HP_PROFILE=home ./scripts/hp-deploy-frontend.sh
 ```
 
-Le HP est considéré `OK` si :
-- le ping répond
-- `:8080` renvoie `200 OK`
-- `:8000` renvoie du JSON
-
-### HP serveur KO
-
-Le HP est considéré `KO` si :
-- pas de ping
-- ou le frontend local ne répond pas sur `:8080`
-- ou l’API locale ne répond pas sur `:8000`
-
-### Règle d’exploitation
-
-- écran console sur le HP : acceptable
-- pas de réseau / pas de web / pas d’API : incident réel
-
-### Test complet recommandé
+Si l’API HP est cassée :
 
 ```bash
-ping 10.0.0.28
-curl -I http://10.0.0.28:8080
-curl "http://10.0.0.28:8000/rest/v1/events?select=id&limit=1"
-curl "http://10.0.0.28:8000/rest/v1/heats?select=id&limit=1"
+SURF_HP_PROFILE=home ./scripts/hp-refresh-stack.sh
 ```
 
-### Si un test échoue
-
-1. vérifier que le HP est allumé
-2. vérifier qu’il est bien connecté au bon réseau
-3. lancer :
+Si on ne sait pas :
 
 ```bash
 SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
 ```
 
-```bash
-./scripts/hp-deploy-frontend.sh
-```
+## Résumé Ultra Court
 
-3. si la stack locale semble cassée :
-
-```bash
-./scripts/hp-refresh-stack.sh
-```
-
-4. relancer un healthcheck
-
-## Résumé ultra court
-
-- maison : `./event-box`
-- plage : `./beach`
-- audit : `./scripts/hp-healthcheck.sh`
-- frontend HP : `./scripts/hp-deploy-frontend.sh`
-- stack HP : `./scripts/hp-refresh-stack.sh`
+- Préparer prochain event : `./scripts/hp-sync-cloud-to-local.sh --home`
+- Menu maison : `./event-box`
+- Menu plage : `./beach`
+- Audit : `SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh`
+- Code frontend HP : `SURF_HP_PROFILE=home ./scripts/hp-deploy-frontend.sh`
+- Stack HP : `SURF_HP_PROFILE=home ./scripts/hp-refresh-stack.sh`
