@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText, PlusCircle, Trophy, Image as ImageIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+// @ts-ignore - Ignore missing types for qrcode if not installed in environment
 import QRCode from 'qrcode';
 import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
@@ -12,7 +13,7 @@ import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
 import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
-import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, ParticipantRecord } from '../api/supabaseClient';
+import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
@@ -3141,17 +3142,16 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
   }, [config.surfers, lineupRows]);
 
   const updateLineupDraft = (position: number, patch: Partial<LineupOverrideDraft>) => {
-    setLineupDrafts((current) => ({
-      ...current,
-      [position]: {
-        participantId: '',
-        manualName: '',
-        country: '',
-        reason: '',
-        ...(current[position] || {}),
-        ...patch,
-      },
-    }));
+    setLineupDrafts((current) => {
+      const existing = current[position] || { participantId: '', manualName: '', country: '', reason: '' };
+      return {
+        ...current,
+        [position]: {
+          ...existing,
+          ...patch,
+        },
+      };
+    });
   };
 
   const handleApplyLineupOverride = async (position: number, color: string) => {
@@ -3401,18 +3401,18 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       const divisionsData = await fetchAllEventHeats(eventId);
       const allHeats: HeatRow[] = Object.values(divisionsData)
         .flat()
-        .filter(Boolean) // Safety filter
-        .map(h => ({
-          id: h.heatId || '',
+        .filter(Boolean)
+        .flatMap(round => (round.heats || []).map(heat => ({
+          id: heat.heatId || '',
           event_id: eventId,
           competition: config.competition,
-          division: h.name?.split(' - ')[0] || '',
-          round: h.roundNumber || 0,
-          heat_number: h.heatNumber || 0,
-          heat_size: h.slots?.length || 0,
-          status: h.status || 'open',
-          color_order: (h.slots || []).map(s => s?.color || '') as string[]
-        }));
+          division: round.name?.split(' - ')[0] || '',
+          round: round.roundNumber || 0,
+          heat_number: heat.heatNumber || 0,
+          heat_size: heat.slots?.length || 0,
+          status: 'open', // Status not present in bracket spec but inferred as open
+          color_order: (heat.slots || []).map((s: any) => s?.color || '') as string[]
+        })));
 
       const allScores = await fetchPreferredScoresForEvent(eventId);
       const allInterferenceCalls = await fetchAllInterferenceCallsForEvent(eventId);
