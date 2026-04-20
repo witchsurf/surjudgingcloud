@@ -11,8 +11,8 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores } from '../api/supabaseClient';
-import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
+import type { Judge, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
@@ -21,6 +21,19 @@ import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
+const LINEUP_OVERRIDE_COLORS = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const;
+
+type LineupOverrideDraft = {
+  participantId: string;
+  manualName: string;
+  country: string;
+  reason: string;
+};
+
+type LineupOverrideStatus = {
+  type: 'success' | 'error' | 'info';
+  message: string;
+};
 
 const generateJudgePersonalCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -188,6 +201,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [eventJudgeAssignments, setEventJudgeAssignments] = useState<HeatJudgeAssignmentRow[]>([]);
   const [assignmentCoverageRows, setAssignmentCoverageRows] = useState<EventJudgeAssignmentCoverageRow[]>([]);
   const [eventJudgeAccuracySummary, setEventJudgeAccuracySummary] = useState<EventJudgeAccuracySummaryRow[]>([]);
+  const [lineupRows, setLineupRows] = useState<HeatEntriesWithParticipantRow[]>([]);
+  const [lineupParticipantOptions, setLineupParticipantOptions] = useState<ParticipantRecord[]>([]);
+  const [lineupDrafts, setLineupDrafts] = useState<Record<number, LineupOverrideDraft>>({});
+  const [lineupOverrideStatus, setLineupOverrideStatus] = useState<LineupOverrideStatus | null>(null);
+  const [lineupOverrideLoading, setLineupOverrideLoading] = useState(false);
+  const [lineupPendingPosition, setLineupPendingPosition] = useState<number | null>(null);
+  const [lineupRefreshToken, setLineupRefreshToken] = useState(0);
   // Stable latch: once a heat is locked/closed, never flicker back to unlocked within session
   const hasBeenLockedRef = React.useRef(false);
   // Track which heat the latch was set for, so we can reset on heat change
@@ -1759,7 +1779,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [activeEventId, config.division, config.round, config.heatId]);
 
   useEffect(() => {
-    if (!loadedFromDb || !heatId || !isSupabaseConfigured()) return;
+    if (!loadedFromDb || !heatId || !isSupabaseConfigured()) {
+      setLineupRows([]);
+      setLineupParticipantOptions([]);
+      return;
+    }
 
     let cancelled = false;
     const requestId = lineupLoadRequestRef.current + 1;
@@ -1772,8 +1796,33 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           fetchHeatMetadata(heatId),
           fetchHeatSlotMappings(heatId).catch(() => []),
         ]);
+        const participants = activeEventId
+          ? await fetchParticipants(activeEventId).catch((error) => {
+              console.warn('Impossible de charger les participants pour l’override lineup:', error);
+              return [] as ParticipantRecord[];
+            })
+          : [];
 
         if (cancelled || lineupLoadRequestRef.current !== requestId) return;
+        setLineupRows(entries);
+        setLineupParticipantOptions(
+          participants.filter((participant) =>
+            String(participant.category || '').trim().toLowerCase() === String(config.division || '').trim().toLowerCase()
+          )
+        );
+        setLineupDrafts((current) => {
+          const next = { ...current };
+          entries.forEach((entry) => {
+            if (next[entry.position]) return;
+            next[entry.position] = {
+              participantId: entry.participant_id ? String(entry.participant_id) : '',
+              manualName: entry.participant?.name || '',
+              country: entry.participant?.country || '',
+              reason: '',
+            };
+          });
+          return next;
+        });
 
         const entryColors = entries
           .map((entry) => String(entry.color ?? '').trim().toUpperCase())
@@ -1841,7 +1890,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [loadedFromDb, heatId, config.division, config.round, config.heatId, onConfigChange]);
+  }, [loadedFromDb, heatId, activeEventId, config.division, config.round, config.heatId, lineupRefreshToken, onConfigChange]);
 
   // Dropdowns visual states
   const isCategoryClosed = useCallback((div: string) => {
@@ -3060,6 +3109,142 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
     });
   };
 
+  const lineupDisplayRows = React.useMemo(() => {
+    const byPosition = new Map<number, HeatEntriesWithParticipantRow>();
+    lineupRows.forEach((row) => byPosition.set(row.position, row));
+
+    const configuredColors = Array.from(new Set([
+      ...config.surfers,
+      ...LINEUP_OVERRIDE_COLORS,
+    ]));
+
+    return configuredColors.map((color, index) => {
+      const position = index + 1;
+      const row = byPosition.get(position);
+      return {
+        color,
+        position,
+        row: row ?? {
+          color,
+          position,
+          participant_id: null,
+          seed: null,
+          participant: null,
+        } satisfies HeatEntriesWithParticipantRow,
+      };
+    }).filter((item) => {
+      const isConfigured = config.surfers.includes(item.color);
+      const hasDbEntry = Boolean(item.row.participant_id || item.row.participant?.name);
+      return isConfigured || hasDbEntry;
+    });
+  }, [config.surfers, lineupRows]);
+
+  const updateLineupDraft = (position: number, patch: Partial<LineupOverrideDraft>) => {
+    setLineupDrafts((current) => ({
+      ...current,
+      [position]: {
+        participantId: '',
+        manualName: '',
+        country: '',
+        reason: '',
+        ...(current[position] || {}),
+        ...patch,
+      },
+    }));
+  };
+
+  const handleApplyLineupOverride = async (position: number, color: string) => {
+    if (!heatId) {
+      setLineupOverrideStatus({ type: 'error', message: 'Aucun heat actif pour appliquer cet override.' });
+      return;
+    }
+
+    const draft = lineupDrafts[position] || { participantId: '', manualName: '', country: '', reason: '' };
+    const participantId = draft.participantId ? Number(draft.participantId) : null;
+    const selectedParticipant = participantId
+      ? lineupParticipantOptions.find((participant) => participant.id === participantId)
+      : null;
+    const manualName = draft.manualName.trim();
+    const resolvedName = selectedParticipant?.name || manualName;
+
+    if (!participantId && !resolvedName) {
+      setLineupOverrideStatus({ type: 'error', message: 'Choisis un participant existant ou saisis un nouveau nom.' });
+      return;
+    }
+
+    const hasScoresForColor = mergedScores.some((score) =>
+      ensureHeatId(score.heat_id) === heatId &&
+      normalizeJerseyLabel(score.surfer) === normalizeJerseyLabel(color)
+    );
+
+    if (hasScoresForColor) {
+      const confirmed = window.confirm(
+        `Confirmer l'override ${color} ?\n\nLes notes déjà posées restent attachées à la couleur ${color}. Seule l'identité officielle du surfeur est changée.`
+      );
+      if (!confirmed) return;
+    }
+
+    setLineupPendingPosition(position);
+    setLineupOverrideLoading(true);
+    setLineupOverrideStatus({ type: 'info', message: 'Application de la nouvelle mouture du heat...' });
+
+    try {
+      const result = await adminOverrideHeatEntry({
+        heatId,
+        position,
+        color,
+        participantId,
+        name: participantId ? null : resolvedName,
+        country: participantId ? null : (draft.country.trim() || null),
+        reason: draft.reason.trim() || 'Override chef juge terrain',
+        createdBy: 'admin_advanced_lineup_override',
+      });
+
+      const normalizedColor = normalizeJerseyLabel(result.color || color);
+      const nextSurfers = config.surfers.includes(normalizedColor)
+        ? config.surfers
+        : [...config.surfers, normalizedColor];
+      const nextConfig: AppConfig = {
+        ...config,
+        surfers: nextSurfers,
+        surferNames: {
+          ...(config.surferNames || {}),
+          [normalizedColor]: result.name,
+        },
+        surferCountries: {
+          ...(config.surferCountries || {}),
+          [normalizedColor]: result.country || '',
+        },
+      };
+
+      onConfigChange(nextConfig);
+      setLineupDrafts((current) => ({
+        ...current,
+        [position]: {
+          participantId: String(result.participant_id),
+          manualName: result.name,
+          country: result.country || '',
+          reason: '',
+        },
+      }));
+      setLineupRefreshToken((value) => value + 1);
+      setLineupOverrideStatus({
+        type: 'success',
+        message: `${normalizedColor}: ${result.name} est maintenant le surfeur officiel du heat. Les scores existants n'ont pas été modifiés.`,
+      });
+      onReloadData();
+    } catch (error) {
+      console.error('Impossible d’appliquer l’override lineup:', error);
+      setLineupOverrideStatus({
+        type: 'error',
+        message: 'Override impossible. Vérifie que les migrations Supabase sont appliquées sur le HP/cloud.',
+      });
+    } finally {
+      setLineupPendingPosition(null);
+      setLineupOverrideLoading(false);
+    }
+  };
+
 
 
   const exportData = () => {
@@ -4152,6 +4337,132 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                         disabled={!isAssigned}
                         className="w-full px-3 py-1.5 bg-primary-50/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium disabled:opacity-50"
                       />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="pt-8 border-t-4 border-primary-50">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
+              <div>
+                <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-cta-500" />
+                  Lineup officiel du heat
+                </h3>
+                <p className="text-xs text-primary-700 mt-1">
+                  Override chef juge: remplace ou ajoute le surfeur officiel d'une couleur sans toucher aux scores déjà saisis.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLineupRefreshToken((value) => value + 1)}
+                disabled={lineupOverrideLoading}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-primary-200 text-xs font-semibold text-primary-800 hover:bg-primary-50 disabled:opacity-50"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Recharger lineup
+              </button>
+            </div>
+
+            {lineupOverrideStatus && (
+              <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+                lineupOverrideStatus.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : lineupOverrideStatus.type === 'error'
+                    ? 'border-rose-200 bg-rose-50 text-rose-800'
+                    : 'border-sky-200 bg-sky-50 text-sky-800'
+              }`}>
+                {lineupOverrideStatus.message}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {lineupDisplayRows.map(({ color, position, row }) => {
+                const draft = lineupDrafts[position] || {
+                  participantId: row.participant_id ? String(row.participant_id) : '',
+                  manualName: row.participant?.name || '',
+                  country: row.participant?.country || '',
+                  reason: '',
+                };
+                const currentName = row.participant?.name || config.surferNames?.[color] || 'Slot vide';
+                const currentCountry = row.participant?.country || config.surferCountries?.[color] || '';
+                const pending = lineupPendingPosition === position;
+
+                return (
+                  <div key={`${position}-${color}`} className="rounded-xl border-2 border-primary-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-primary-500">Position {position}</p>
+                        <h4 className="text-lg font-bebas tracking-wide text-primary-950">{color}</h4>
+                        <p className="text-sm font-semibold text-slate-900">{currentName}</p>
+                        {currentCountry && <p className="text-xs text-slate-500">{currentCountry}</p>}
+                      </div>
+                      <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                        Source officielle
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      <select
+                        value={draft.participantId}
+                        onChange={(event) => {
+                          const nextParticipantId = event.target.value;
+                          const participant = lineupParticipantOptions.find((item) => String(item.id) === nextParticipantId);
+                          updateLineupDraft(position, {
+                            participantId: nextParticipantId,
+                            manualName: participant?.name || '',
+                            country: participant?.country || '',
+                          });
+                        }}
+                        className="w-full px-3 py-2 bg-white border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm"
+                      >
+                        <option value="">Choisir dans les inscrits...</option>
+                        {lineupParticipantOptions.map((participant) => (
+                          <option key={participant.id} value={participant.id}>
+                            #{participant.seed} · {participant.name}{participant.country ? ` · ${participant.country}` : ''}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={draft.manualName}
+                          onChange={(event) => updateLineupDraft(position, { participantId: '', manualName: event.target.value })}
+                          placeholder="Ou nouveau nom officiel"
+                          className="w-full px-3 py-2 bg-primary-50 border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold"
+                        />
+                        <input
+                          type="text"
+                          value={draft.country}
+                          onChange={(event) => updateLineupDraft(position, { country: event.target.value })}
+                          placeholder="Pays / Club"
+                          className="w-full px-3 py-2 bg-primary-50 border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm"
+                        />
+                      </div>
+
+                      <input
+                        type="text"
+                        value={draft.reason}
+                        onChange={(event) => updateLineupDraft(position, { reason: event.target.value })}
+                        placeholder="Motif optionnel: inversion R2H3, ajout meilleur 2e, erreur terrain..."
+                        className="w-full px-3 py-2 bg-white border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-xs"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleApplyLineupOverride(position, color)}
+                        disabled={lineupOverrideLoading}
+                        className={`w-full rounded-lg px-4 py-2 text-sm font-bold text-white transition-colors ${
+                          pending
+                            ? 'bg-amber-400 cursor-wait'
+                            : 'bg-primary-900 hover:bg-primary-800 disabled:bg-primary-300'
+                        }`}
+                      >
+                        {pending ? 'Application...' : 'Appliquer comme nouvelle mouture'}
+                      </button>
                     </div>
                   </div>
                 );

@@ -141,12 +141,29 @@ Sync Field Box DB to Cloud
 
 Ce flux pousse les faits terrain :
 
+- participants créés/corrigés sur le terrain
+- lineup officiel des heats (`heat_entries`)
+- overrides chef juge du lineup
 - scores
 - interférences
 - statut/timer/config live des heats
 - active heat pointer
 
 Puis le cloud rejoue les fonctions métier de propagation des qualifiés.
+
+### 6. Override Lineup Chef Juge
+
+Dans Admin > Paramètres avancés > Lineup officiel du heat, le chef juge peut remplacer ou ajouter le surfeur officiel d'une couleur.
+
+Cette action :
+
+- met à jour `participants` si le nom n'existe pas encore
+- met à jour `heat_entries` pour la position/couleur du heat
+- met à jour la config live du heat pour que juges/display reprennent la nouvelle mouture
+- journalise l'action dans `heat_entry_overrides`
+- ne modifie pas les scores, qui restent attachés à la couleur de lycra
+
+À utiliser pour les corrections terrain type inversion de noms, ajout manuel d'un meilleur deuxième, ou contournement propre d'un bug métier pendant le live.
 
 ## Définition Des Points D’entrée
 
@@ -188,7 +205,7 @@ Moteur bas niveau utilisé par `hp-sync-cloud-to-local.sh`.
 Action :
 
 - lit cloud et local Supabase
-- récupère événements, participants, heats, entries, mappings, configs, timers, juges, scores et interférences
+- récupère événements, participants, heats, entries, overrides lineup, mappings, configs, timers, juges, scores et interférences
 - supprime localement les lignes concernées
 - réinsère les données cloud dans le HP
 

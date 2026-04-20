@@ -187,6 +187,16 @@ async function main() {
     }
 
     console.log('☁️ Preparing local data payloads...');
+    const participants = await fetchPagedRows(local, 'participants', (query) =>
+      query
+        .select('id, event_id, category, seed, name, country, license, created_at')
+        .in('event_id', eventIds)
+    );
+    const heatEntries = await fetchPagedRows(local, 'heat_entries', (query) =>
+      query
+        .select('heat_id, participant_id, position, seed, color, created_at')
+        .in('heat_id', heatIds)
+    );
     const scores = await fetchPagedRows(local, 'scores', (query) =>
       query
         .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, score, timestamp, created_at')
@@ -208,8 +218,18 @@ async function main() {
         .select('event_id, event_name, active_heat_id, updated_at')
         .in('event_id', eventIds)
     );
+    const heatEntryOverrides = await fetchPagedRows(local, 'heat_entry_overrides', (query) =>
+      query
+        .select('id, event_id, heat_id, position, color, previous_participant_id, previous_participant_name, new_participant_id, new_participant_name, new_country, reason, created_by, created_at')
+        .in('heat_id', heatIds)
+    ).catch((error) => {
+      console.warn('⚠️ heat_entry_overrides not available yet, skipping:', error.message);
+      return [];
+    });
 
     console.log('🚀 Pushing local field data to Cloud...');
+    const participantCount = await upsertRows(cloud, 'participants', participants, 'id');
+    const heatEntryCount = await upsertRows(cloud, 'heat_entries', heatEntries, 'heat_id,position');
     const scoreCount = await upsertRows(cloud, 'scores', scores, 'id');
     const interferenceCount = await upsertRows(
       cloud,
@@ -218,6 +238,7 @@ async function main() {
       'heat_id,judge_id,surfer,wave_number'
     );
     const realtimeCount = await upsertRows(cloud, 'heat_realtime_config', realtimeConfigs, 'heat_id');
+    const lineupOverrideCount = await upsertRows(cloud, 'heat_entry_overrides', heatEntryOverrides, 'id');
     const pointerCount = await syncActiveHeatPointers(activeHeatPointers);
 
     const heatsById = new Map((heats || []).map((heat) => [heat.id, heat]));
@@ -253,7 +274,7 @@ async function main() {
 
     const affectedDivisions = Array.from(
       new Set(
-        [...scores, ...interferenceCalls]
+        [...scores, ...interferenceCalls, ...heatEntryOverrides]
           .map((row) => {
             const heat = heatsById.get(row.heat_id);
             if (!heat) return null;
@@ -296,9 +317,12 @@ async function main() {
       console.log('✅ SYNC COMPLETED SUCCESSFULLY');
     }
     console.log('======================================================');
+    console.log(`Participants synced: ${participantCount}`);
+    console.log(`Heat entries synced: ${heatEntryCount}`);
     console.log(`Scores synced: ${scoreCount}`);
     console.log(`Interference calls synced: ${interferenceCount}`);
     console.log(`Realtime rows synced: ${realtimeCount}`);
+    console.log(`Lineup overrides synced: ${lineupOverrideCount}`);
     console.log(`Active heat pointers synced: ${pointerCount}`);
     console.log(`Closed heats replayed: ${closedHeatIds.length}`);
     console.log(`Propagation slots updated: ${propagatedSlots}`);

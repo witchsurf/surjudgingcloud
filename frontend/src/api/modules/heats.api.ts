@@ -67,6 +67,27 @@ export interface HeatEntriesWithParticipantRow {
     } | null;
 }
 
+export interface HeatEntryOverrideInput {
+    heatId: string;
+    position: number;
+    color?: string | null;
+    participantId?: number | null;
+    name?: string | null;
+    country?: string | null;
+    reason?: string | null;
+    createdBy?: string | null;
+}
+
+export interface HeatEntryOverrideResult {
+    heat_id: string;
+    position: number;
+    color: string | null;
+    participant_id: number;
+    name: string;
+    country: string | null;
+    config_patch?: unknown;
+}
+
 const normalizeJoinedParticipant = (participant: any) => {
     if (Array.isArray(participant)) {
         return participant[0] ?? null;
@@ -500,6 +521,25 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
     }
 
     return typedRows;
+}
+
+export async function adminOverrideHeatEntry(input: HeatEntryOverrideInput): Promise<HeatEntryOverrideResult> {
+    ensureSupabase();
+    const normalizedHeatId = ensureHeatId(input.heatId);
+
+    const { data, error } = await supabase!.rpc('admin_override_heat_entry', {
+        p_heat_id: normalizedHeatId,
+        p_position: input.position,
+        p_color: input.color ?? null,
+        p_participant_id: input.participantId ?? null,
+        p_name: input.name ?? null,
+        p_country: input.country ?? null,
+        p_reason: input.reason ?? null,
+        p_created_by: input.createdBy ?? 'chief_judge',
+    });
+
+    if (error) throw error;
+    return data as HeatEntryOverrideResult;
 }
 
 type CategoryHeatUpdateState = {

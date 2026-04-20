@@ -55,9 +55,10 @@ export {
     fetchHeatMetadata,
     fetchHeatJudgeAssignments,
     fetchEventJudgeAssignments,
-    replaceHeatEntries
+    replaceHeatEntries,
+    adminOverrideHeatEntry
 } from './modules/heats.api';
-export type { ActiveHeatPointer, HeatRealtimeConfigWriteInput, HeatRow, HeatEntryRow, HeatSlotMappingRow, HeatJudgeAssignmentRow, CreateHeatsOptions } from './modules/heats.api';
+export type { ActiveHeatPointer, HeatRealtimeConfigWriteInput, HeatRow, HeatEntryRow, HeatSlotMappingRow, HeatJudgeAssignmentRow, HeatEntriesWithParticipantRow, HeatEntryOverrideInput, HeatEntryOverrideResult, CreateHeatsOptions } from './modules/heats.api';
 
 export {
     normalizeScoreJudgeId,

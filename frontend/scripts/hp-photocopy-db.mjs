@@ -294,6 +294,12 @@ async function main() {
       const rtConfigs = heatIds.length
         ? await fetchPagedRows(cloud, 'heat_realtime_config', (query) => query.select('*').in('heat_id', heatIds))
         : [];
+      const heatEntryOverrides = heatIds.length
+        ? await fetchPagedRows(cloud, 'heat_entry_overrides', (query) => query.select('*').in('heat_id', heatIds)).catch((error) => {
+            console.warn('⚠️ heat_entry_overrides not available yet, skipping:', error.message);
+            return [];
+          })
+        : [];
       const heatJudgeAssignments = heatIds.length
         ? await fetchPagedRows(cloud, 'heat_judge_assignments', (query) => query.select('*').in('heat_id', heatIds))
         : [];
@@ -332,6 +338,7 @@ async function main() {
         await local.from('score_overrides').delete().in('heat_id', heatIds);
         await local.from('interference_calls').delete().in('heat_id', heatIds);
         await local.from('heat_judge_assignments').delete().in('heat_id', heatIds);
+        await local.from('heat_entry_overrides').delete().in('heat_id', heatIds);
         await local.from('heat_entries').delete().in('heat_id', heatIds);
         await local.from('heat_slot_mappings').delete().in('heat_id', heatIds);
         await local.from('heat_configs').delete().in('heat_id', heatIds);
@@ -350,6 +357,7 @@ async function main() {
       await syncTable('participants', participants);
       await syncTable('heats', heats);
       await syncTable('heat_entries', entries);
+      await syncTable('heat_entry_overrides', heatEntryOverrides);
       await syncTable('heat_slot_mappings', mappings);
       await syncTable('heat_configs', configs, 'heat_id'); // heat_configs might use heat_id as PK or unique
       await syncTable('heat_timers', timers);
