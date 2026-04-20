@@ -27,16 +27,16 @@ ALTER TABLE public.judges ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS judges_public_read ON public.judges;
 CREATE POLICY judges_public_read ON public.judges FOR SELECT TO anon, authenticated USING (true);
 
-DROP POLICY IF EXISTS judges_authenticated_insert ON public.judges;
-CREATE POLICY judges_authenticated_insert ON public.judges FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS judges_anon_authenticated_insert ON public.judges;
+CREATE POLICY judges_anon_authenticated_insert ON public.judges FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-DROP POLICY IF EXISTS judges_authenticated_update ON public.judges;
-CREATE POLICY judges_authenticated_update ON public.judges FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS judges_anon_authenticated_update ON public.judges;
+CREATE POLICY judges_anon_authenticated_update ON public.judges FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS judges_authenticated_delete ON public.judges;
 CREATE POLICY judges_authenticated_delete ON public.judges FOR DELETE TO authenticated USING (true);
 
-GRANT SELECT ON public.judges TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.judges TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.judges TO authenticated;
 GRANT ALL ON public.judges TO service_role;
 
@@ -68,16 +68,17 @@ ALTER TABLE public.heat_judge_assignments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS public_read ON public.heat_judge_assignments;
 CREATE POLICY public_read ON public.heat_judge_assignments FOR SELECT TO anon, authenticated USING (true);
 
-DROP POLICY IF EXISTS authenticated_insert ON public.heat_judge_assignments;
-CREATE POLICY authenticated_insert ON public.heat_judge_assignments FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS anon_authenticated_insert ON public.heat_judge_assignments;
+CREATE POLICY anon_authenticated_insert ON public.heat_judge_assignments FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-DROP POLICY IF EXISTS authenticated_update ON public.heat_judge_assignments;
-CREATE POLICY authenticated_update ON public.heat_judge_assignments FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS anon_authenticated_update ON public.heat_judge_assignments;
+CREATE POLICY anon_authenticated_update ON public.heat_judge_assignments FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS authenticated_delete ON public.heat_judge_assignments;
-CREATE POLICY authenticated_delete ON public.heat_judge_assignments FOR DELETE TO authenticated USING (true);
+DROP POLICY IF EXISTS anon_authenticated_delete ON public.heat_judge_assignments;
+CREATE POLICY anon_authenticated_delete ON public.heat_judge_assignments FOR DELETE TO anon, authenticated USING (true);
 
 GRANT SELECT ON public.heat_judge_assignments TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.heat_judge_assignments TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.heat_judge_assignments TO authenticated;
 GRANT ALL ON public.heat_judge_assignments TO service_role;
 
@@ -265,10 +266,50 @@ CREATE TRIGGER trg_active_heat_pointer_sync_identity
   EXECUTE FUNCTION public.fn_sync_active_heat_pointer_identity();
 
 -- =====================================================
--- 6. NOTIFY PostgREST to reload schema cache
+-- 6. LOOSEN RLS FOR SYNC (scores, overrides, interferences)
+-- =====================================================
+ALTER TABLE public.scores ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS scores_sync_policy ON public.scores;
+CREATE POLICY scores_sync_policy ON public.scores FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+GRANT ALL ON public.scores TO anon, authenticated;
+
+DO $$ BEGIN
+    ALTER TABLE public.score_overrides ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS overrides_sync_policy ON public.score_overrides;
+    CREATE POLICY overrides_sync_policy ON public.score_overrides FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    GRANT ALL ON public.score_overrides TO anon, authenticated;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE public.interference_calls ENABLE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS interferences_sync_policy ON public.interference_calls;
+    CREATE POLICY interferences_sync_policy ON public.interference_calls FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+    GRANT ALL ON public.interference_calls TO anon, authenticated;
+EXCEPTION WHEN undefined_table THEN NULL;
+END $$;
+
+-- =====================================================
+-- 7. DISABLE SYNC-BLOCKING TRIGGERS LOCALLY
+-- =====================================================
+-- We disable the 'fn_block_scoring_when_not_running' local blocking 
+-- to allow scores for finished/closed heats to be synchronized from Cloud.
+CREATE OR REPLACE FUNCTION public.fn_block_scoring_when_not_running() 
+RETURNS trigger 
+LANGUAGE plpgsql 
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Loosened for sync purposes
+  RETURN NEW;
+END;
+$$;
+
+-- =====================================================
+-- 8. NOTIFY PostgREST to reload schema cache
 -- =====================================================
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
 
-SELECT '✅ Local DB Patch Complete — judges, assignments, scores columns, views all ready!' AS result;
+SELECT '✅ Local DB Patch Complete — judges, assignments, scores columns, sync RLS ready!' AS result;
