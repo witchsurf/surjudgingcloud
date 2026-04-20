@@ -126,13 +126,23 @@ export function calculateSurferStats(
     // Grouper les scores par vague
     const waveScores: Record<number, Record<string, number>> = {};
 
-    scores
+    // Sort by timestamp descending first so that `.forEach` assignment
+    // naturally keeps only the LATEST score per judge per wave (last-write-wins
+    // becomes first-write-wins when we check for key existence).
+    const surferOnlyScores = scores
       .filter(score => {
         const scoreSurfer = (score.surfer || '').trim().toUpperCase();
         const targetSurfer = (surfer || '').trim().toUpperCase();
         return scoreSurfer === targetSurfer;
       })
-      .forEach(score => {
+      .sort((a, b) => {
+        const tsA = a.timestamp || a.created_at || '';
+        const tsB = b.timestamp || b.created_at || '';
+        // Descending: newest first
+        return tsB > tsA ? 1 : tsB < tsA ? -1 : 0;
+      });
+
+    surferOnlyScores.forEach(score => {
         if (score.wave_number < 1 || score.wave_number > maxWaves) {
           return;
         }
@@ -141,7 +151,10 @@ export function calculateSurferStats(
         }
         // Utiliser une clé normalisée pour le juge pour éviter les doublons/mishaps
         const judgeKey = getScoreJudgeStation(score);
-        waveScores[score.wave_number][judgeKey] = score.score;
+        // Only set if not already present (newest score was sorted first)
+        if (waveScores[score.wave_number][judgeKey] === undefined) {
+          waveScores[score.wave_number][judgeKey] = score.score;
+        }
       });
 
     // Calculer les moyennes pour chaque vague

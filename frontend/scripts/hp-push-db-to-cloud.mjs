@@ -27,13 +27,75 @@ function loadEnv() {
 
 loadEnv();
 
+function parseArgs(argv) {
+  const options = {
+    eventIds: [],
+    allEvents: false,
+    dryRun: false,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--event-id' || arg === '--event') {
+      const value = argv[index + 1];
+      index += 1;
+      if (!value) throw new Error(`${arg} requires a value`);
+      options.eventIds.push(...value.split(',').map((item) => Number(item.trim())).filter(Number.isFinite));
+    } else if (arg.startsWith('--event-id=')) {
+      const value = arg.slice('--event-id='.length);
+      options.eventIds.push(...value.split(',').map((item) => Number(item.trim())).filter(Number.isFinite));
+    } else if (arg === '--all-events') {
+      options.allEvents = true;
+    } else if (arg === '--dry-run') {
+      options.dryRun = true;
+    } else if (arg === '-h' || arg === '--help') {
+      console.log(`Usage: node scripts/hp-push-db-to-cloud.mjs --event-id 17 [--dry-run]\n       node scripts/hp-push-db-to-cloud.mjs --all-events [--dry-run]`);
+      process.exit(0);
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+  }
+
+  const envEventId = process.env.SURF_SYNC_EVENT_ID || process.env.SURF_EVENT_ID;
+  if (!options.eventIds.length && envEventId) {
+    options.eventIds.push(...envEventId.split(',').map((item) => Number(item.trim())).filter(Number.isFinite));
+  }
+
+  options.eventIds = Array.from(new Set(options.eventIds));
+  return options;
+}
+
+const options = parseArgs(process.argv.slice(2));
 const CLOUD_URL = process.env.VITE_SUPABASE_URL_CLOUD;
-const CLOUD_KEY = process.env.VITE_SUPABASE_ANON_KEY_CLOUD;
+const CLOUD_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY_CLOUD ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_SERVICE_ROLE_KEY_CLOUD ||
+  process.env.VITE_SUPABASE_ANON_KEY_CLOUD;
 const LOCAL_URL = process.env.VITE_SUPABASE_URL_LAN;
 const LOCAL_KEY = process.env.VITE_SUPABASE_ANON_KEY_LAN;
+const usingCloudServiceRole = Boolean(
+  process.env.SUPABASE_SERVICE_ROLE_KEY_CLOUD ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_SERVICE_ROLE_KEY_CLOUD
+);
 
 if (!CLOUD_URL || !CLOUD_KEY || !LOCAL_URL || !LOCAL_KEY) {
   console.error('❌ Error: Supabase credentials missing in environment.');
+  process.exit(1);
+}
+
+if (!options.allEvents && options.eventIds.length === 0) {
+  console.error('❌ Refusing broad field sync without an event scope.');
+  console.error('   Use: node scripts/hp-push-db-to-cloud.mjs --event-id 17');
+  console.error('   Or explicit full sync: node scripts/hp-push-db-to-cloud.mjs --all-events');
+  process.exit(1);
+}
+
+if (!options.dryRun && !usingCloudServiceRole) {
+  console.error('❌ Cloud service-role key is required for Field Box -> Cloud sync.');
+  console.error('   This sync writes field facts across event ownership/RLS boundaries.');
+  console.error('   Set SUPABASE_SERVICE_ROLE_KEY_CLOUD in frontend/.env.local or shell.');
   process.exit(1);
 }
 
@@ -51,21 +113,37 @@ function chunkArray(items, size) {
   return chunks;
 }
 
-async function fetchPagedRows(client, tableName, queryBuilder, pageSize = 1000) {
+async function fetchPagedRows(client, tableName, queryBuilder, pageSize = 500) {
   const rows = [];
   let from = 0;
+  const MAX_RETRIES = 3;
 
   while (true) {
     const to = from + pageSize - 1;
-    const { data, error } = await queryBuilder(client.from(tableName)).range(from, to);
-    if (error) throw error;
-    const batch = data || [];
-    rows.push(...batch);
-    if (batch.length < pageSize) break;
-    from += pageSize;
-  }
+    let lastError = null;
 
-  return rows;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const { data, error } = await queryBuilder(client.from(tableName)).range(from, to);
+        if (error) throw error;
+        const batch = data || [];
+        rows.push(...batch);
+        if (batch.length < pageSize) return rows;
+        from += pageSize;
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err;
+        if (attempt < MAX_RETRIES) {
+          const delay = attempt * 1000;
+          process.stdout.write(`\n    ⚠️ ${tableName} fetch retry ${attempt}/${MAX_RETRIES} (waiting ${delay}ms)... `);
+          await new Promise((r) => setTimeout(r, delay));
+        }
+      }
+    }
+
+    if (lastError) throw lastError;
+  }
 }
 
 async function checkReachability(label, url) {
@@ -105,6 +183,70 @@ async function upsertRows(client, tableName, rows, onConflict = 'id', batchSize 
 
   console.log('✅ Done');
   return synced;
+}
+
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === 'object') {
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = stableValue(value[key]);
+        return acc;
+      }, {});
+  }
+  return value ?? null;
+}
+
+function comparableRow(row) {
+  const ignored = new Set(['created_at', 'updated_at']);
+  return Object.keys(row || {})
+    .filter((key) => !ignored.has(key))
+    .sort()
+    .reduce((acc, key) => {
+      acc[key] = stableValue(row[key]);
+      return acc;
+    }, {});
+}
+
+function rowSignature(row) {
+  return JSON.stringify(comparableRow(row));
+}
+
+function rowSignatureForKeys(row, keys) {
+  return JSON.stringify(keys.sort().reduce((acc, key) => {
+    acc[key] = stableValue(row?.[key]);
+    return acc;
+  }, {}));
+}
+
+async function filterChangedRows(client, tableName, rows, keyFields) {
+  if (!rows.length) return [];
+  const existingByKey = new Map();
+
+  if (keyFields.length === 1) {
+    const keyField = keyFields[0];
+    const keys = Array.from(new Set(rows.map((row) => row[keyField]).filter((value) => value !== null && value !== undefined)));
+    for (const batch of chunkArray(keys, 500)) {
+      const existing = await fetchPagedRows(client, tableName, (query) => query.select('*').in(keyField, batch));
+      existing.forEach((row) => existingByKey.set(String(row[keyField]), row));
+    }
+  } else {
+    // Composite keys are usually scoped by heat_id/event_id in this script; fetch using the broadest available field.
+    const scopeField = keyFields.includes('heat_id') ? 'heat_id' : keyFields[0];
+    const scopeValues = Array.from(new Set(rows.map((row) => row[scopeField]).filter((value) => value !== null && value !== undefined)));
+    for (const batch of chunkArray(scopeValues, 500)) {
+      const existing = await fetchPagedRows(client, tableName, (query) => query.select('*').in(scopeField, batch));
+      existing.forEach((row) => existingByKey.set(keyFields.map((field) => String(row[field] ?? '')).join('::'), row));
+    }
+  }
+
+  return rows.filter((row) => {
+    const key = keyFields.map((field) => String(row[field] ?? '')).join('::');
+    const existing = existingByKey.get(key);
+    const compareKeys = Object.keys(row || {});
+    return !existing || rowSignatureForKeys(existing, compareKeys) !== rowSignatureForKeys(row, compareKeys);
+  });
 }
 
 async function syncActiveHeatPointers(rows) {
@@ -153,6 +295,9 @@ async function main() {
   console.log('📤 HP Database Sync (Local -> Cloud)');
   console.log(`🏠 Local: ${LOCAL_URL}`);
   console.log(`☁️ Cloud: ${CLOUD_URL}`);
+  console.log(`🎯 Scope: ${options.allEvents ? 'ALL EVENTS (explicit)' : `event ${options.eventIds.join(', ')}`}`);
+  console.log(`🔐 Cloud role: ${usingCloudServiceRole ? 'service_role' : 'anon read-only'}`);
+  if (options.dryRun) console.log('🧪 Dry-run: no writes will be performed');
   console.log('======================================================');
 
   const localOk = await checkReachability('local server', LOCAL_URL);
@@ -165,14 +310,21 @@ async function main() {
     console.log('🔍 Identifying local events to sync...');
     const { data: events, error: eventsError } = await local.from('events').select('id, name');
     if (eventsError) throw eventsError;
-    const eventIds = (events || []).map((event) => event.id);
+    const availableEventIds = (events || []).map((event) => event.id);
+    const eventIds = options.allEvents
+      ? availableEventIds
+      : options.eventIds.filter((eventId) => availableEventIds.includes(eventId));
 
     if (!eventIds.length) {
-      console.log('ℹ️ No local events found. Nothing to sync.');
+      console.log('ℹ️ No matching local events found. Nothing to sync.');
       process.exit(0);
     }
 
-    console.log(`   Found ${eventIds.length} events to inspect: ${eventIds.join(', ')}`);
+    const skippedEventIds = options.eventIds.filter((eventId) => !availableEventIds.includes(eventId));
+    if (skippedEventIds.length) {
+      console.log(`   ⚠️ Requested event(s) not present locally: ${skippedEventIds.join(', ')}`);
+    }
+    console.log(`   Sync scope: ${eventIds.join(', ')}`);
 
     const { data: heats, error: heatsError } = await local
       .from('heats')
@@ -227,19 +379,85 @@ async function main() {
       return [];
     });
 
-    console.log('🚀 Pushing local field data to Cloud...');
-    const participantCount = await upsertRows(cloud, 'participants', participants, 'id');
-    const heatEntryCount = await upsertRows(cloud, 'heat_entries', heatEntries, 'heat_id,position');
-    const scoreCount = await upsertRows(cloud, 'scores', scores, 'id');
-    const interferenceCount = await upsertRows(
-      cloud,
-      'interference_calls',
-      interferenceCalls,
-      'heat_id,judge_id,surfer,wave_number'
-    );
-    const realtimeCount = await upsertRows(cloud, 'heat_realtime_config', realtimeConfigs, 'heat_id');
-    const lineupOverrideCount = await upsertRows(cloud, 'heat_entry_overrides', heatEntryOverrides, 'id');
-    const pointerCount = await syncActiveHeatPointers(activeHeatPointers);
+    console.log('🧮 Calculating Cloud diff...');
+    async function safeDiff(tableName, rows, keys) {
+      process.stdout.write(`  - Diffing ${tableName} (${rows.length} local rows)... `);
+      try {
+        const changed = await filterChangedRows(cloud, tableName, rows, keys);
+        console.log(`${changed.length} changed`);
+        return changed;
+      } catch (err) {
+        console.log(`❌ Failed: ${err.message}`);
+        console.warn(`    ⚠️ Falling back to full sync for ${tableName}`);
+        return rows;
+      }
+    }
+    const changedParticipants = await safeDiff('participants', participants, ['id']);
+    const changedHeatEntries = await safeDiff('heat_entries', heatEntries, ['heat_id', 'position']);
+    const changedScores = await safeDiff('scores', scores, ['id']);
+    const changedInterferenceCalls = await safeDiff('interference_calls', interferenceCalls, ['heat_id', 'judge_id', 'surfer', 'wave_number']);
+    const changedRealtimeConfigs = await safeDiff('heat_realtime_config', realtimeConfigs, ['heat_id']);
+    const changedHeatEntryOverrides = await safeDiff('heat_entry_overrides', heatEntryOverrides, ['id'])
+      .catch(() => []);
+    const changedActiveHeatPointers = await safeDiff('active_heat_pointer', activeHeatPointers, ['event_id'])
+      .catch(async () => safeDiff('active_heat_pointer', activeHeatPointers, ['event_name']));
+
+
+    console.log(`  - participants: ${changedParticipants.length}/${participants.length} changed`);
+    console.log(`  - heat_entries: ${changedHeatEntries.length}/${heatEntries.length} changed`);
+    console.log(`  - scores: ${changedScores.length}/${scores.length} changed`);
+    console.log(`  - interference_calls: ${changedInterferenceCalls.length}/${interferenceCalls.length} changed`);
+    console.log(`  - heat_realtime_config: ${changedRealtimeConfigs.length}/${realtimeConfigs.length} changed`);
+    console.log(`  - heat_entry_overrides: ${changedHeatEntryOverrides.length}/${heatEntryOverrides.length} changed`);
+    console.log(`  - active_heat_pointer: ${changedActiveHeatPointers.length}/${activeHeatPointers.length} changed`);
+
+    let participantCount = 0;
+    let heatEntryCount = 0;
+    let scoreCount = 0;
+    let interferenceCount = 0;
+    let realtimeCount = 0;
+    let lineupOverrideCount = 0;
+    let pointerCount = 0;
+
+    console.log('🚀 Pushing local field diff to Cloud...');
+    if (!options.dryRun) {
+      participantCount = await upsertRows(cloud, 'participants', changedParticipants, 'id');
+      heatEntryCount = await upsertRows(cloud, 'heat_entries', changedHeatEntries, 'heat_id,position');
+
+      // Temporarily force ALL heats with scores to 'running' on Cloud 
+      // so the fn_block_scoring_when_not_running trigger allows the upsert.
+      const scoreHeatIds = Array.from(new Set(changedScores.map((score) => score.heat_id)));
+      if (scoreHeatIds.length) {
+        console.log(`  ℹ️ Temporarily setting ${scoreHeatIds.length} heat(s) to 'running' for score sync...`);
+        const tempRunningConfigs = scoreHeatIds.map((heatId) => ({
+          heat_id: heatId,
+          status: 'running',
+        }));
+        await upsertRows(cloud, 'heat_realtime_config', tempRunningConfigs, 'heat_id');
+      }
+
+      scoreCount = await upsertRows(cloud, 'scores', changedScores, 'id');
+      interferenceCount = await upsertRows(
+        cloud,
+        'interference_calls',
+        changedInterferenceCalls,
+        'heat_id,judge_id,surfer,wave_number'
+      );
+
+      // Now restore the REAL statuses from the field box
+      const finalRealtimeByHeat = new Map();
+      changedRealtimeConfigs.forEach((row) => finalRealtimeByHeat.set(row.heat_id, row));
+      // Also include any heats we temporarily opened but that aren't in the changed set
+      realtimeConfigs
+        .filter((row) => scoreHeatIds.includes(row.heat_id))
+        .forEach((row) => finalRealtimeByHeat.set(row.heat_id, row));
+      console.log(`  ℹ️ Restoring real statuses for ${finalRealtimeByHeat.size} heat(s)...`);
+      realtimeCount = await upsertRows(cloud, 'heat_realtime_config', Array.from(finalRealtimeByHeat.values()), 'heat_id');
+      lineupOverrideCount = await upsertRows(cloud, 'heat_entry_overrides', changedHeatEntryOverrides, 'id');
+      pointerCount = await syncActiveHeatPointers(changedActiveHeatPointers);
+    } else {
+      console.log('  - Dry-run enabled: writes skipped');
+    }
 
     const heatsById = new Map((heats || []).map((heat) => [heat.id, heat]));
     const closedHeatIds = Array.from(
@@ -251,30 +469,16 @@ async function main() {
     );
 
     let propagatedSlots = 0;
-    if (closedHeatIds.length) {
-      console.log('🧠 Replaying qualifier propagation on Cloud...');
-      for (const heatId of closedHeatIds) {
-        try {
-          const updated = Number(
-            await callRpc(cloud, 'fn_propagate_qualifiers_for_source_heat', {
-              p_source_heat_id: heatId,
-            }) ?? 0
-          );
-          propagatedSlots += updated;
-          console.log(`  - ${heatId}: ${updated} slot(s) updated`);
-        } catch (error) {
-          console.log(`  - ${heatId}: ❌ Failed`);
-          console.error(`    Propagation error for ${heatId}:`, error.message);
-          globalError = true;
-        }
-      }
-    } else {
-      console.log('🧠 No locally closed heats found for propagation replay.');
-    }
+    // IMPORTANT: Do NOT re-run qualifier propagation after field sync.
+    // The field data (heat_entries) is the source of truth — the bracket 
+    // assignments were decided by the head judge on the beach.
+    // Re-running propagation would overwrite correct field entries with
+    // algo-computed ones that may use different slot mapping patterns.
+    console.log('🧠 Qualifier propagation: SKIPPED (field data is source of truth)');
 
     const affectedDivisions = Array.from(
       new Set(
-        [...scores, ...interferenceCalls, ...heatEntryOverrides]
+        [...changedScores, ...changedInterferenceCalls, ...changedHeatEntryOverrides]
           .map((row) => {
             const heat = heatsById.get(row.heat_id);
             if (!heat) return null;
@@ -285,30 +489,8 @@ async function main() {
     );
 
     let rebuiltSlots = 0;
-    if (affectedDivisions.length) {
-      console.log('♻️ Rebuilding affected divisions on Cloud...');
-      for (const key of affectedDivisions) {
-        const [eventIdRaw, division] = key.split('::');
-        const eventId = Number(eventIdRaw);
-        if (!eventId || !division) continue;
-        try {
-          const updated = Number(
-            await callRpc(cloud, 'rebuild_division_qualifiers_from_scores', {
-              p_event_id: eventId,
-              p_division: division,
-            }) ?? 0
-          );
-          rebuiltSlots += updated;
-          console.log(`  - event ${eventId} / ${division}: ${updated} slot(s) rebuilt`);
-        } catch (error) {
-          console.log(`  - event ${eventId} / ${division}: ❌ Failed`);
-          console.error(`    Rebuild error for event ${eventId} / ${division}:`, error.message);
-          globalError = true;
-        }
-      }
-    } else {
-      console.log('♻️ No affected divisions detected from local field data.');
-    }
+    // IMPORTANT: Do NOT rebuild divisions after field sync — same reason as above.
+    console.log('♻️ Division rebuild: SKIPPED (field data is source of truth)');
 
     console.log('======================================================');
     if (globalError) {

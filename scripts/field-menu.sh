@@ -73,7 +73,13 @@ while true; do
       read -r -p "Entrée pour continuer..."
       ;;
     7)
-      (cd frontend && node scripts/hp-push-db-to-cloud.mjs)
+      echo
+      read -r -p "Event ID à synchroniser vers le cloud (ex: 17, obligatoire): " sync_event_id
+      if [[ -z "${sync_event_id// }" ]]; then
+        echo "Sync annulée: aucun event_id fourni."
+      else
+        (cd frontend && node scripts/hp-push-db-to-cloud.mjs --event-id "$sync_event_id")
+      fi
       read -r -p "Entrée pour continuer..."
       ;;
     8)

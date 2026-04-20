@@ -139,6 +139,8 @@ Puis choisir :
 Sync Field Box DB to Cloud
 ```
 
+Le menu demande ensuite l’`event_id` à remonter, par exemple `17`. Le sync est volontairement borné à cet événement; il ne doit pas balayer toute la base HP sauf commande explicite `--all-events`.
+
 Ce flux pousse les faits terrain :
 
 - participants créés/corrigés sur le terrain
@@ -150,6 +152,22 @@ Ce flux pousse les faits terrain :
 - active heat pointer
 
 Puis le cloud rejoue les fonctions métier de propagation des qualifiés.
+
+Commande directe :
+
+```bash
+cd frontend
+node scripts/hp-push-db-to-cloud.mjs --event-id 17
+```
+
+Audit sans écriture :
+
+```bash
+cd frontend
+node scripts/hp-push-db-to-cloud.mjs --event-id 17 --dry-run
+```
+
+Important : le retour terrain utilise une clé service-role cloud (`SUPABASE_SERVICE_ROLE_KEY_CLOUD`) car l’événement peut appartenir à un autre compte organisateur. Sans cette clé, le cloud bloque correctement les écritures RLS.
 
 ### 6. Override Lineup Chef Juge
 

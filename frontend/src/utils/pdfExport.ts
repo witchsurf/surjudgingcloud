@@ -1127,7 +1127,7 @@ export function exportFullCompetitionPDF({
             const effectiveInterferences = computeEffectiveInterferences(heatInterferences, judgeCount);
             const stats = calculateSurferStats(
               heatScores.map(score => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
-              heatSurfers, judgeCount, maxWaves, false, effectiveInterferences
+              heatSurfers, judgeCount, maxWaves, true, effectiveInterferences
             );
             const maxSurferWaves = Math.max(...stats.map(s => s.waves?.length || 0), 0);
             currentHeatMaxWaves = Math.max(1, Math.min(maxSurferWaves, maxWaves));
