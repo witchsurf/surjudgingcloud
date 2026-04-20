@@ -84,7 +84,18 @@ export function calculateFinalRankings(
     // Mais ici on veut les VRAIS noms résolus.
     const surfersFromScores = (heatScores || []).map(s => s?.surfer).filter(Boolean);
     const surfersFromSlots = (heat.slots || []).map((s: any) => s?.name || s?.placeholder).filter(Boolean);
-    const uniqueSurfersInHeat = Array.from(new Set([...surfersFromScores, ...surfersFromSlots].map(s => s.toUpperCase())));
+    
+    // Filter out placeholders (Vainqueur, Perdant, Bye, etc.)
+    const isPlaceholder = (name: string) => {
+        const n = name.toUpperCase();
+        return n.includes('VAINQUEUR') || n.includes('PERDANT') || n.includes('BYE');
+    };
+
+    const uniqueSurfersInHeat = Array.from(new Set(
+        [...surfersFromScores, ...surfersFromSlots]
+            .filter(n => !isPlaceholder(n))
+            .map(s => s.toUpperCase())
+    ));
     
     const effectiveInterferences = computeEffectiveInterferences(heatInterferences, configuredJudgeCount);
 
