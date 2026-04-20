@@ -3382,6 +3382,76 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
     }
   };
 
+  const handleExportFinalRankingPdf = async () => {
+    const eventIdRaw = localStorage.getItem('activeEventId') || localStorage.getItem('eventId');
+    const eventIdFromUrl = Number(new URLSearchParams(window.location.search).get('eventId'));
+    const eventId =
+      activeEventId
+      ?? (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null)
+      ?? (eventIdRaw ? Number(eventIdRaw) : NaN);
+
+    if (!eventId || Number.isNaN(eventId)) {
+      alert('Aucun événement actif trouvé.');
+      return;
+    }
+
+    setRankingPdfPending(true);
+    try {
+      // 1. Fetch data
+      const divisionsData = await fetchAllEventHeats(eventId);
+      const allHeats: HeatRow[] = Object.values(divisionsData).flat().map(h => ({
+        id: h.heatId || '',
+        event_id: eventId,
+        competition: config.competition,
+        division: h.name.split(' - ')[0] || '',
+        round: h.roundNumber,
+        heat_number: h.heatNumber,
+        heat_size: h.slots.length,
+        status: h.status || 'open',
+        color_order: h.slots.map(s => s.color || '') as string[]
+      }));
+
+      const allScores = await fetchPreferredScoresForEvent(eventId);
+      const allInterferenceCalls = await fetchAllInterferenceCallsForEvent(eventId);
+      const participants = await fetchParticipants(eventId);
+
+      // 2. Resolve metadata
+      let organizer: string | undefined;
+      let eventDate: string | undefined;
+      let resolvedEventName = config.competition || 'Compétition';
+
+      if (supabase) {
+        const { data: dbEventData } = await supabase.from('events').select('*').eq('id', eventId).single();
+        if (dbEventData) {
+          resolvedEventName = dbEventData.name || resolvedEventName;
+          organizer = dbEventData.organizer;
+          eventDate = dbEventData.start_date ? new Date(dbEventData.start_date).toLocaleDateString('fr-FR', {
+            year: 'numeric', month: 'long', day: 'numeric'
+          }) : undefined;
+        }
+      }
+
+      // 3. Export
+      exportFinalRankingToPDF({
+        eventName: resolvedEventName,
+        organizer,
+        date: eventDate,
+        heats: allHeats,
+        scores: allScores,
+        interferenceCalls: allInterferenceCalls,
+        participants,
+        divisions: Object.keys(divisionsData)
+      });
+
+      console.log('✅ Classement final généré');
+    } catch (error) {
+      console.error('Erreur export ranking:', error);
+      alert('Erreur lors de la génération du classement.');
+    } finally {
+      setRankingPdfPending(false);
+    }
+  };
+
   const handleExportPdf = () => {
     try {
       exportHeatScorecardPdf({ config, scores });
