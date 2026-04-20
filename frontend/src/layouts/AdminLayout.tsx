@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Settings, Waves, AlertTriangle, Lock, User as UserIcon } from 'lucide-react';
+import { Settings, Waves, AlertTriangle, Lock } from 'lucide-react';
 import SyncStatus from '../components/SyncStatus';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSync } from '../contexts/SyncContext';

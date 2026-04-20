@@ -280,7 +280,7 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
     if (ev && (ev.eventDbId || ev.event_db_id || ev.event_id)) {
       eventDbId = ev.eventDbId || ev.event_db_id || ev.event_id;
     }
-  } catch (err) {
+  } catch {
     // ignore
   }
 
@@ -300,7 +300,9 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
               const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
               return sorted.length ? sorted[0][0] : 'OPEN';
             }
-          } catch (err) { }
+          } catch {
+            // ignore malformed local participant cache
+          }
           return 'OPEN';
         })(),
         round: heat.round,
@@ -329,7 +331,7 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
         try {
           const ev = JSON.parse(localStorage.getItem('eventData') || 'null');
           if (ev && ev.name) return ev.name;
-        } catch (err) {
+        } catch {
           // ignore
         }
         return competitionId;
@@ -345,7 +347,7 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
             const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
             return sorted.length ? sorted[0][0] : 'OPEN';
           }
-        } catch (err) {
+        } catch {
           // ignore
         }
         return 'OPEN';

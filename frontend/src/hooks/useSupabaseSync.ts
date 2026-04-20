@@ -7,11 +7,6 @@ import { heatRepository, timerRepository, scoreRepository } from '../repositorie
 import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
 import { recordScoreOverrideSecure } from '../api/supabaseClient';
 
-function extractHeatNumber(heatId: string): number | null {
-  const match = /_h(\d+)$/i.exec(heatId.trim());
-  return match ? Number(match[1]) : null;
-}
-
 const normalizeScores = (scores: Score[], idGenerator?: () => string): Score[] =>
   scores.map((score) => ({
     ...score,

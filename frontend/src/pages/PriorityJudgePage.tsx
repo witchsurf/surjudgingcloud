@@ -37,9 +37,6 @@ export default function PriorityJudgePage() {
     const searchParams = new URLSearchParams(window.location.search);
     const eventIdFromUrl = searchParams.get('eventId');
     const isPriorityJudgeSession = currentJudge?.id === 'priority-judge';
-    const rawPosition = searchParams.get('position');
-    const positionFromUrl = rawPosition ? rawPosition.trim() : null;
-
     const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
         const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
         const nextRound = updates.round ?? prev.round;

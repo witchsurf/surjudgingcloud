@@ -50,7 +50,7 @@ export const useAuthStore = create<AuthStore>()(
                         id: judgeIdentityId || judgeId,
                         username: judgeName,
                     });
-                } catch (error) {
+                } catch {
                     console.debug('Sentry user context not available');
                 }
             },
@@ -61,7 +61,7 @@ export const useAuthStore = create<AuthStore>()(
                 // Clear Sentry user context
                 try {
                     Sentry.setUser(null);
-                } catch (error) {
+                } catch {
                     console.debug('Sentry user context not available');
                 }
             },

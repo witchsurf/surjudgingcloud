@@ -62,7 +62,7 @@ export function getDevUser(): User | null {
         aud: 'authenticated',
         created_at: offlineUser.createdAt,
       } as User;
-    } catch (e) {
+    } catch {
       console.warn('Failed to parse offline user for dev mode fallback');
     }
   }

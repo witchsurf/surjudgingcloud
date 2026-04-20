@@ -2,9 +2,20 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
+interface StoredEventData {
+  name?: string;
+  organizer?: string;
+  startDate?: string;
+  endDate?: string;
+  price?: number;
+  currency?: string;
+  eventId?: string;
+  eventDbId?: number;
+}
+
 export default function EventStatus() {
   const navigate = useNavigate();
-  const [eventData, setEventData] = useState<any | null>(null);
+  const [eventData, setEventData] = useState<StoredEventData | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -12,7 +23,7 @@ export default function EventStatus() {
     try {
       const ev = JSON.parse(localStorage.getItem('eventData') || 'null');
       setEventData(ev || null);
-    } catch (err) {
+    } catch {
       setEventData(null);
     }
   }, []);
@@ -47,8 +58,8 @@ export default function EventStatus() {
         setEventData(updated);
         setMessage('Enregistré en base');
       }
-    } catch (err: any) {
-      setMessage(err?.message || 'Erreur lors de la sauvegarde');
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : 'Erreur lors de la sauvegarde');
     } finally {
       setSaving(false);
     }

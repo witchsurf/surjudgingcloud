@@ -18,7 +18,6 @@ import {
   updateLastSync,
   hasOfflinePin,
   verifyOfflinePin,
-  isOfflineAdmin,
 } from '../lib/offlineAuth';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Lock, ShieldAlert, Waves } from 'lucide-react';

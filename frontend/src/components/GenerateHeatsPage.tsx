@@ -534,7 +534,7 @@ const GenerateHeatsPage = () => {
     }
 
     // --- PDF INITIALIZATION ---
-    // @ts-ignore
+    // @ts-expect-error jsPDF constructor typing varies between bundled builds.
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm' });
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;

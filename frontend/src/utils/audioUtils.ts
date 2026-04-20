@@ -1,8 +1,4 @@
 // Utilitaires pour les sons du timer
-type BeepAudioElement = HTMLAudioElement & {
-  playBeep?: () => void;
-};
-
 type ExtendedWindow = Window & typeof globalThis & {
   webkitAudioContext?: typeof AudioContext;
 };

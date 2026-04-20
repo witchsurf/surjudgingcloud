@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Wifi, WifiOff, Cloud, CloudOff, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 
 interface SyncStatusProps {

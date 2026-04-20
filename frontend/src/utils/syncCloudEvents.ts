@@ -362,7 +362,8 @@ export async function syncEventsFromCloud(userEmail: string, accessToken?: strin
       if (canWriteToLocalDB && supabase) {
         // 4a) Events first (parent table)
         const eventsPayload = (events || []).map((eventRow: Record<string, unknown>) => {
-          const { event_last_config, ...eventData } = eventRow;
+          const eventData = { ...eventRow };
+          delete eventData.event_last_config;
           return pickDefined(
             {
               ...eventData,

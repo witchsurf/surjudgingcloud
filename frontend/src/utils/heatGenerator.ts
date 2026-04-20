@@ -233,7 +233,7 @@ const buildSixPerson = (participants: ParticipantInput[], heatSize: number): Pla
   let cursor = 0;
   for (let h = 1; h <= 2; h++) {
     const slots: SlotDescriptor[] = [];
-    colors.forEach(colorIndex => {
+    colors.forEach(() => {
       const participant = participants[cursor++];
       if (participant) {
         slots.push({
@@ -478,7 +478,7 @@ const buildRepechage = (
   });
 
   let currentRound = 2;
-  let repQualifiers: SlotDescriptor[] = [];
+  const repQualifiers: SlotDescriptor[] = [];
 
   if (cfg.enabled && repechageEntries.length > 0) {
     const repHeats = chunkSlots(repechageEntries, heatSize).map((slots, idx) => ({

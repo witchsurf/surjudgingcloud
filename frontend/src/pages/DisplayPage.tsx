@@ -4,7 +4,6 @@ import ScoreDisplay from '../components/ScoreDisplay';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import {
-    fetchEventConfigSnapshot,
     fetchAllEventHeats,
     fetchAllInterferenceCallsForEvent,
     fetchPreferredScoresForEvent,
@@ -120,24 +119,6 @@ const isLikelyPlaceholder = (name?: string) => {
         normalized.startsWith('RP') ||
         normalized.startsWith('POSITION') ||
         normalized === 'BYE';
-};
-
-const mergeSurferNames = (
-    existing: Record<string, string> | undefined,
-    incoming: Record<string, string> | undefined
-) => {
-    const mergedNames = { ...(existing || {}) };
-    Object.entries(incoming || {}).forEach(([color, incomingName]) => {
-        const currentName = mergedNames[color];
-        const currentIsReal = Boolean(currentName) && !isLikelyPlaceholder(currentName);
-        const incomingIsPlaceholder = isLikelyPlaceholder(incomingName);
-
-        if (currentIsReal && incomingIsPlaceholder) {
-            return;
-        }
-        mergedNames[color] = incomingName;
-    });
-    return mergedNames;
 };
 
 const mergeLiveHeatNames = (

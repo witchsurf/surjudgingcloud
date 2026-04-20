@@ -33,6 +33,7 @@ export function sanitizeString(input: unknown): string {
   return input
     .trim()
     // Remove control characters but preserve unicode letters/numbers
+    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1F\x7F]/g, '')
     // Remove HTML tags
     .replace(/<[^>]*>/g, '')
@@ -126,7 +127,7 @@ export function validateHeatId(heatId: unknown): { valid: boolean; value: string
   }
 
   // Basic format validation
-  const heatIdPattern = /^[\w\-]+_[\w\-]+_R\d+_H\d+$/i;
+  const heatIdPattern = /^[\w-]+_[\w-]+_R\d+_H\d+$/i;
   if (!heatIdPattern.test(sanitized)) {
     return {
       valid: false,
@@ -149,7 +150,7 @@ export function validateJudgeId(judgeId: unknown): { valid: boolean; value: stri
   }
 
   // Judge ID should be alphanumeric with optional dashes/underscores
-  const judgeIdPattern = /^[a-zA-Z0-9_\-]+$/;
+  const judgeIdPattern = /^[a-zA-Z0-9_-]+$/;
   if (!judgeIdPattern.test(sanitized)) {
     return {
       valid: false,

@@ -48,7 +48,7 @@ export const OfflineSettingsModal: React.FC<OfflineSettingsModalProps> = ({ isOp
       setTimeout(() => {
         onClose();
       }, 1500);
-    } catch (err) {
+    } catch {
       setError('Une erreur est survenue lors de l\'enregistrement.');
     }
   };

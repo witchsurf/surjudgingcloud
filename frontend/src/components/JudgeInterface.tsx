@@ -843,6 +843,15 @@ function JudgeInterface({
     return () => window.clearTimeout(timerId);
   }, [interactionWarning]);
 
+  const timerActive = isTimerActive();
+  const effectiveByTarget = useMemo(() => {
+    const map = new Map<string, EffectiveInterference>();
+    effectiveInterferences.forEach((item) => {
+      map.set(`${normalizeSurferKey(item.surfer)}::${item.waveNumber}`, item);
+    });
+    return map;
+  }, [effectiveInterferences, normalizeSurferKey]);
+
   if (!configSaved) {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -856,15 +865,6 @@ function JudgeInterface({
       </div>
     );
   }
-
-  const timerActive = isTimerActive();
-  const effectiveByTarget = useMemo(() => {
-    const map = new Map<string, EffectiveInterference>();
-    effectiveInterferences.forEach((item) => {
-      map.set(`${normalizeSurferKey(item.surfer)}::${item.waveNumber}`, item);
-    });
-    return map;
-  }, [effectiveInterferences, normalizeSurferKey]);
 
   const priorityShellClass = priorityOnly
     ? 'min-h-screen max-w-5xl mx-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4 flex flex-col overflow-hidden'
@@ -925,7 +925,7 @@ function JudgeInterface({
                           type: 'success'
                         });
                         setTimeout(() => setSyncFeedback(null), 3000);
-                      } catch (error) {
+                      } catch {
                         setSyncFeedback({
                           message: 'Erreur',
                           type: 'error'
