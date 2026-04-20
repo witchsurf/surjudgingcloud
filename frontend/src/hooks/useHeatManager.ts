@@ -403,7 +403,7 @@ export function useHeatManager() {
             if (currentIndex >= 0) {
                 nextCandidate = sequence
                     .slice(currentIndex + 1)
-                    .find((item: any) => !['closed', 'finished'].includes((item.status || '').toString().trim().toLowerCase())) ?? null;
+                    .find((item: any) => (item.status || '').toString().trim().toLowerCase() !== 'closed') ?? null;
                 if (nextCandidate) {
                     nextRound = nextCandidate.round;
                     nextHeatNumber = nextCandidate.heat_number;
@@ -425,7 +425,7 @@ export function useHeatManager() {
                 const remainingEventHeats = (eventHeats ?? []).filter((heat: any) => {
                     const heatId = ensureHeatId(heat.id);
                     const status = (heat.status || '').toString().trim().toLowerCase();
-                    return heatId !== currentDbHeatId && !['closed', 'finished'].includes(status);
+                    return heatId !== currentDbHeatId && status !== 'closed';
                 });
                 eventHasRemainingHeats = remainingEventHeats.length > 0;
             } catch (error) {
@@ -449,7 +449,7 @@ export function useHeatManager() {
                 }
 
                 nextCandidate = (fallbackHeats ?? []).find((item: any) =>
-                    !['closed', 'finished'].includes((item.status || '').toString().trim().toLowerCase())
+                    (item.status || '').toString().trim().toLowerCase() !== 'closed'
                 ) ?? null;
 
                 if (nextCandidate) {

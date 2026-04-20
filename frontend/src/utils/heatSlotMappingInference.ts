@@ -9,15 +9,27 @@ export interface InferredHeatSlotMapping {
   heat_id: string;
   position: number;
   placeholder: string;
-  source_round: number;
-  source_heat: number;
-  source_position: number;
+  source_round: number | null;
+  source_heat: number | null;
+  source_position: number | null;
 }
 
 type SlotReference = {
   sourceRound: number;
-  heatNumber: number;
-  position: number;
+  heatNumber: number | null;
+  position: number | null;
+  bestSecondRound?: number;
+};
+
+type Assignment = {
+  heatId: string;
+  capacity: number;
+  refs: SlotReference[];
+};
+
+type SnakeCursor = {
+  index: number;
+  direction: 1 | -1;
 };
 
 const maxAdvancersForHeatSize = (heatSize: number) => {
@@ -27,7 +39,9 @@ const maxAdvancersForHeatSize = (heatSize: number) => {
 };
 
 const makePlaceholder = (ref: SlotReference) =>
-  `R${ref.sourceRound}-H${ref.heatNumber}-P${ref.position}`;
+  ref.bestSecondRound
+    ? `Meilleur 2e R${ref.bestSecondRound}`
+    : `R${ref.sourceRound}-H${ref.heatNumber}-P${ref.position}`;
 
 const moveSnakeCursor = (
   index: number,
@@ -49,10 +63,10 @@ const distributeReferencesSnakeVariable = (
   refs: SlotReference[],
   targetHeats: HeatSequenceLike[]
 ) => {
-  const assignments = targetHeats.map((heat) => ({
+  const assignments: Assignment[] = targetHeats.map((heat) => ({
     heatId: heat.id,
     capacity: Math.max(0, Number(heat.heat_size) || 0),
-    refs: [] as SlotReference[],
+    refs: [],
   }));
 
   if (!assignments.length || !refs.length) return assignments;
@@ -61,25 +75,81 @@ const distributeReferencesSnakeVariable = (
   let direction: 1 | -1 = 1;
 
   refs.forEach((ref) => {
-    let guard = 0;
-    while (assignments[index]?.refs.length >= assignments[index]?.capacity && guard < assignments.length * 2) {
-      const moved = moveSnakeCursor(index, direction, assignments.length);
-      index = moved.index;
-      direction = moved.direction;
-      guard += 1;
+    let fallback: SnakeCursor | null = null;
+    let chosen: SnakeCursor | null = null;
+    let candidateIndex = index;
+    let candidateDirection = direction;
+
+    for (let guard = 0; guard < assignments.length * 2; guard += 1) {
+      const assignment = assignments[candidateIndex];
+      const hasCapacity = assignment && assignment.refs.length < assignment.capacity;
+
+      if (hasCapacity) {
+        fallback ??= { index: candidateIndex, direction: candidateDirection };
+        const hasSourceHeatCollision = assignment.refs.some(
+          (existing) =>
+            existing.heatNumber != null &&
+            ref.heatNumber != null &&
+            existing.sourceRound === ref.sourceRound &&
+            existing.heatNumber === ref.heatNumber
+        );
+
+        if (!hasSourceHeatCollision) {
+          chosen = { index: candidateIndex, direction: candidateDirection };
+          break;
+        }
+      }
+
+      const moved = moveSnakeCursor(candidateIndex, candidateDirection, assignments.length);
+      candidateIndex = moved.index;
+      candidateDirection = moved.direction;
     }
 
-    if (!assignments[index] || assignments[index].capacity <= 0) {
+    chosen ??= fallback;
+    if (!chosen) {
       return;
     }
 
-    assignments[index].refs.push(ref);
-    const moved = moveSnakeCursor(index, direction, assignments.length);
+    assignments[chosen.index].refs.push(ref);
+    const moved = moveSnakeCursor(chosen.index, chosen.direction, assignments.length);
     index = moved.index;
     direction = moved.direction;
   });
 
   return assignments;
+};
+
+const buildLayeredQualifierRefs = (
+  previousRoundHeats: HeatSequenceLike[],
+  requestedAdvancersPerHeat: number,
+  totalCurrentRoundSlots: number
+) => {
+  const refs: SlotReference[] = [];
+
+  for (let position = 1; position <= requestedAdvancersPerHeat; position += 1) {
+    previousRoundHeats.forEach((heat) => {
+      const heatSize = Math.max(0, Number(heat.heat_size) || 0);
+      const advancers = Math.min(maxAdvancersForHeatSize(heatSize), requestedAdvancersPerHeat);
+      if (position > advancers) return;
+
+      refs.push({
+        sourceRound: Number(heat.round),
+        heatNumber: Number(heat.heat_number),
+        position,
+      });
+    });
+  }
+
+  if (refs.length < totalCurrentRoundSlots && previousRoundHeats.length > 1) {
+    refs.push({
+      sourceRound: Number(previousRoundHeats[0].round),
+      heatNumber: null,
+      position: null,
+      bestSecondRound: Number(previousRoundHeats[0].round),
+    });
+  }
+
+  return refs;
 };
 
 export function inferImplicitMappingsForHeat(
@@ -113,19 +183,7 @@ export function inferImplicitMappingsForHeat(
   if (totalCurrentRoundSlots <= 0) return [];
 
   const requestedAdvancersPerHeat = Math.max(1, Math.ceil(totalCurrentRoundSlots / previousRoundHeats.length));
-  const refs: SlotReference[] = [];
-
-  previousRoundHeats.forEach((heat) => {
-    const heatSize = Math.max(0, Number(heat.heat_size) || 0);
-    const advancers = Math.min(maxAdvancersForHeatSize(heatSize), requestedAdvancersPerHeat);
-    for (let position = 1; position <= advancers; position += 1) {
-      refs.push({
-        sourceRound: Number(heat.round),
-        heatNumber: Number(heat.heat_number),
-        position,
-      });
-    }
-  });
+  const refs = buildLayeredQualifierRefs(previousRoundHeats, requestedAdvancersPerHeat, totalCurrentRoundSlots);
 
   if (!refs.length) return [];
 
@@ -137,7 +195,7 @@ export function inferImplicitMappingsForHeat(
     heat_id: targetHeatId,
     position: index + 1,
     placeholder: makePlaceholder(ref),
-    source_round: ref.sourceRound,
+    source_round: ref.bestSecondRound ? null : ref.sourceRound,
     source_heat: ref.heatNumber,
     source_position: ref.position,
   }));

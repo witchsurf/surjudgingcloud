@@ -379,7 +379,7 @@ export default function AdminPage() {
             const nextHeat = currentIndex >= 0
                 ? heatSequence
                     .slice(currentIndex + 1)
-                    .find((heat) => !['closed', 'finished'].includes((heat.status || '').toString().trim().toLowerCase()))
+                    .find((heat) => (heat.status || '').toString().trim().toLowerCase() !== 'closed')
                 : null;
 
             if (!nextHeat) {

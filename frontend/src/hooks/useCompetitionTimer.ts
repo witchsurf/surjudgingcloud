@@ -11,9 +11,9 @@ const STORAGE_KEYS = {
 } as const;
 
 export function useCompetitionTimer() {
-    const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
+    const { timer, setTimer, setHeatStatus } = useJudgingStore();
     const { config } = useConfigStore();
-    const { publishTimerStart, publishTimerPause, publishTimerReset, markHeatFinished } = useRealtimeSync();
+    const { publishTimerStart, publishTimerPause, publishTimerReset } = useRealtimeSync();
     const currentHeatId = getHeatIdentifiers(
         config.competition,
         config.division,
@@ -42,22 +42,21 @@ export function useCompetitionTimer() {
             interval = window.setInterval(() => {
                 const now = new Date();
                 const elapsedMs = now.getTime() - new Date(timer.startTime!).getTime();
-                const elapsedMinutes = elapsedMs / 1000 / 60;
                 const durationMs = timer.duration * 60 * 1000;
 
                 // Use ms comparison with a 500ms grace buffer to avoid floating-point miss
                 if (elapsedMs >= durationMs - 500) {
-                    // Timer finished
-                    const finishedTimer: HeatTimer = {
-                        ...timer,
+                    // Timer expiry is not a heat closure: judges may still score late-ridden waves.
+                    const expiredTimer: HeatTimer = {
                         isRunning: false,
-                        startTime: null
+                        startTime: null,
+                        duration: 0
                     };
-                    setTimer(finishedTimer);
-                    persistTimer(finishedTimer);
-                    setHeatStatus('finished');
-                    void markHeatFinished(currentHeatId).catch((error) => {
-                        console.error('Failed to publish heat finished state:', error);
+                    setTimer(expiredTimer);
+                    persistTimer(expiredTimer);
+                    setHeatStatus('paused');
+                    void publishTimerPause(currentHeatId, 0).catch((error) => {
+                        console.error('Failed to publish timer expiry state:', error);
                     });
                 }
             }, 500);  // Poll at 500ms for more precise end detection
@@ -66,7 +65,7 @@ export function useCompetitionTimer() {
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [timer.isRunning, timer.startTime, timer.duration, setTimer, persistTimer, setHeatStatus, markHeatFinished, currentHeatId]);
+    }, [timer.isRunning, timer.startTime, timer.duration, setTimer, persistTimer, setHeatStatus, publishTimerPause, currentHeatId]);
 
     const startTimer = async () => {
         if (timer.isRunning) return;

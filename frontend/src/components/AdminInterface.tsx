@@ -458,7 +458,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const allScores = [...(scores || []), ...(dbHeatScores || [])];
 
     allScores.forEach((score) => {
-      const key = `${ensureHeatId(score.heat_id)}::${(score.judge_id || '').trim().toUpperCase()}::${normalizeJerseyLabel(score.surfer)}::${Number(score.wave_number)}`;
+      const key = `${ensureHeatId(score.heat_id)}::${getScoreJudgeStation(score)}::${normalizeJerseyLabel(score.surfer)}::${Number(score.wave_number)}`;
       const existing = byLogicalKey.get(key);
       if (!existing) {
         byLogicalKey.set(key, score);
@@ -593,7 +593,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           || score.judge_station === selectedJudge
           || score.judge_id === selectedJudge;
       })
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      .sort((a, b) => new Date(b.created_at || b.timestamp || 0).getTime() - new Date(a.created_at || a.timestamp || 0).getTime())[0];
   }, [mergedScores, heatId, selectedJudge, selectedSurfer, selectedWave, config.judgeIdentities]);
 
   const heatScoreHistory = React.useMemo(() => {
@@ -1156,7 +1156,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       Object.entries(config.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
     );
     const resolvedJudgeIdMove = safeIdentitiesMove[selectedJudge.trim().toUpperCase()] || selectedJudge;
-    const targetAlreadyUsed = mergedScores.some(
+    const destinationExistingScore = mergedScores.find(
       (score) =>
         ensureHeatId(score.heat_id) === heatId &&
         (score.judge_id === resolvedJudgeIdMove || score.judge_station === selectedJudge || score.judge_id === selectedJudge) &&
@@ -1164,13 +1164,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         score.wave_number === Number(moveTargetWave) &&
         score.id !== currentScore.id
     );
-    if (targetAlreadyUsed) {
-      setOverrideStatus({
-        type: 'error',
-        message: 'Destination déjà notée pour ce juge. Supprimez/corrigez d’abord cette note.'
-      });
-      return;
-    }
 
     setOverridePending(true);
     try {
@@ -1180,6 +1173,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       const moveComment = [
         `Déplacement de ${normalizeJerseyLabel(selectedSurfer)} V${selectedWave} vers ${destinationSurfer} V${destinationWave}.`,
+        destinationExistingScore
+          ? `Destination remplacée: ancienne note ${destinationExistingScore.score.toFixed(2)}.`
+          : '',
         overrideComment.trim(),
       ].filter(Boolean).join(' ');
 
@@ -1218,7 +1214,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       setOverrideStatus({
         type: 'success',
-        message: `Note déplacée vers ${destinationSurfer} · Vague ${destinationWave}.`
+        message: destinationExistingScore
+          ? `Note déplacée vers ${destinationSurfer} · Vague ${destinationWave}; l’ancienne note de destination reste dans l’historique.`
+          : `Note déplacée vers ${destinationSurfer} · Vague ${destinationWave}.`
       });
       resetCorrectionForm();
       await refreshCorrectionPanelData();
@@ -1231,7 +1229,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           action: 'move',
           fromSurfer: normalizeJerseyLabel(selectedSurfer),
           toSurfer: destinationSurfer,
-          wave: destinationWave
+          wave: destinationWave,
+          replacedScoreId: destinationExistingScore?.id || null
         }
       }));
     } catch (error) {

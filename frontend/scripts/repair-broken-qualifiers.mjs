@@ -175,18 +175,72 @@ function distributeRefsSnakeVariable(refs, targetHeats) {
   let index = 0;
   let direction = 1;
   for (const ref of refs) {
-    let guard = 0;
-    while (assignments[index].refs.length >= assignments[index].capacity && guard < assignments.length * 2) {
-      [index, direction] = moveSnakeCursor(index, direction, assignments.length);
-      guard += 1;
+    let fallback = null;
+    let chosen = null;
+    let candidateIndex = index;
+    let candidateDirection = direction;
+
+    for (let guard = 0; guard < assignments.length * 2; guard += 1) {
+      const assignment = assignments[candidateIndex];
+      const hasCapacity = assignment.refs.length < assignment.capacity;
+
+      if (hasCapacity) {
+        fallback ??= { index: candidateIndex, direction: candidateDirection };
+        const hasCollision = assignment.refs.some(
+          (existing) =>
+            existing.source_heat != null &&
+            ref.source_heat != null &&
+            existing.source_round === ref.source_round &&
+            existing.source_heat === ref.source_heat
+        );
+
+        if (!hasCollision) {
+          chosen = { index: candidateIndex, direction: candidateDirection };
+          break;
+        }
+      }
+
+      [candidateIndex, candidateDirection] = moveSnakeCursor(
+        candidateIndex,
+        candidateDirection,
+        assignments.length
+      );
     }
 
-    if (assignments[index].capacity <= 0) continue;
-    assignments[index].refs.push(ref);
-    [index, direction] = moveSnakeCursor(index, direction, assignments.length);
+    chosen ??= fallback;
+    if (!chosen) continue;
+
+    assignments[chosen.index].refs.push(ref);
+    [index, direction] = moveSnakeCursor(chosen.index, chosen.direction, assignments.length);
   }
 
   return assignments;
+}
+
+function buildLayeredRefs(previousRoundHeats, requestedAdvancersPerHeat, totalCurrentSlots) {
+  const refs = [];
+  for (let position = 1; position <= requestedAdvancersPerHeat; position += 1) {
+    for (const heat of previousRoundHeats) {
+      const heatSize = Math.max(0, Number(heat.heat_size || 0));
+      const advancers = Math.min(maxAdvancersForHeatSize(heatSize), requestedAdvancersPerHeat);
+      if (position > advancers) continue;
+
+      refs.push({
+        source_round: Number(heat.round),
+        source_heat: Number(heat.heat_number),
+        source_position: position,
+      });
+    }
+  }
+  if (refs.length < totalCurrentSlots && previousRoundHeats.length > 1) {
+    refs.push({
+      source_round: Number(previousRoundHeats[0].round),
+      source_heat: null,
+      source_position: null,
+      best_second_round: Number(previousRoundHeats[0].round),
+    });
+  }
+  return refs;
 }
 
 function inferMappings(sequence, targetHeatId) {
@@ -203,19 +257,7 @@ function inferMappings(sequence, targetHeatId) {
   if (totalCurrentSlots <= 0) return [];
 
   const requestedAdvancersPerHeat = Math.max(1, Math.ceil(totalCurrentSlots / previousRoundHeats.length));
-  const refs = [];
-
-  for (const heat of previousRoundHeats) {
-    const heatSize = Math.max(0, Number(heat.heat_size || 0));
-    const advancers = Math.min(maxAdvancersForHeatSize(heatSize), requestedAdvancersPerHeat);
-    for (let position = 1; position <= advancers; position += 1) {
-      refs.push({
-        source_round: Number(heat.round),
-        source_heat: Number(heat.heat_number),
-        source_position: position,
-      });
-    }
-  }
+  const refs = buildLayeredRefs(previousRoundHeats, requestedAdvancersPerHeat, totalCurrentSlots);
 
   const assignments = distributeRefsSnakeVariable(refs, currentRoundHeats);
   const targetAssignment = assignments.find((assignment) => assignment.heat_id === targetHeatId);
@@ -224,10 +266,10 @@ function inferMappings(sequence, targetHeatId) {
   return targetAssignment.refs.map((ref, index) => ({
     heat_id: targetHeatId,
     position: index + 1,
-    placeholder: makePlaceholder(ref),
-    source_round: ref.source_round,
-    source_heat: ref.source_heat,
-    source_position: ref.source_position,
+    placeholder: ref.best_second_round ? `Meilleur 2e R${ref.best_second_round}` : makePlaceholder(ref),
+    source_round: ref.best_second_round ? null : ref.source_round,
+    source_heat: ref.best_second_round ? null : ref.source_heat,
+    source_position: ref.best_second_round ? null : ref.source_position,
   }));
 }
 
@@ -330,7 +372,7 @@ async function fetchAll(client, table, select, filterBuilder) {
   return rows;
 }
 
-async function fetchBrokenHeats(client, eventFilter) {
+async function fetchBrokenHeats(client, eventFilter, divisionFilter, rewriteMappings) {
   let heatQuery = client
     .from('heats')
     .select('id,event_id,division,round,heat_number,heat_size,color_order')
@@ -341,11 +383,14 @@ async function fetchBrokenHeats(client, eventFilter) {
     .order('heat_number');
 
   if (eventFilter) {
-    if (/^\\d+$/.test(String(eventFilter))) {
+    if (/^\d+$/.test(String(eventFilter))) {
       heatQuery = heatQuery.eq('event_id', Number(eventFilter));
     } else {
       heatQuery = heatQuery.eq('division', eventFilter);
     }
+  }
+  if (divisionFilter) {
+    heatQuery = heatQuery.ilike('division', divisionFilter);
   }
 
   const { data: heats, error } = await heatQuery;
@@ -361,7 +406,7 @@ async function fetchBrokenHeats(client, eventFilter) {
     if (entriesError) throw entriesError;
     if (!(entries || []).length) continue;
     const assigned = (entries || []).filter((entry) => entry.participant_id !== null);
-    if (assigned.length > 0) continue;
+    if (!rewriteMappings && assigned.length > 0) continue;
 
     const { data: sourceScores, error: scoreError } = await client
       .from('scores')
@@ -380,7 +425,7 @@ async function fetchBrokenHeats(client, eventFilter) {
   return broken;
 }
 
-async function repairTargetHeat(client, targetHeat) {
+async function repairTargetHeat(client, targetHeat, options = {}) {
   const { data: sequence, error: seqError } = await client
     .from('heats')
     .select('id,round,heat_number,heat_size,color_order')
@@ -398,7 +443,7 @@ async function repairTargetHeat(client, targetHeat) {
   if (mappingError) throw mappingError;
 
   let usedInferredMappings = false;
-  if (!(mappings || []).length) {
+  if (options.rewriteMappings || !(mappings || []).length) {
     const inferred = inferMappings(sequence || [], targetHeat.id);
     if (inferred.length) {
       usedInferredMappings = true;
@@ -418,6 +463,32 @@ async function repairTargetHeat(client, targetHeat) {
 
   const updates = [];
   for (const mapping of mappings) {
+    const bestSecondRound = String(mapping.placeholder || '').trim().toUpperCase().match(/MEILLEUR\s*2E\s*R(\d+)/)?.[1];
+    if (bestSecondRound) {
+      const candidates = [];
+      for (const heat of sequence || []) {
+        if (Number(heat.round) !== Number(bestSecondRound)) continue;
+        const [{ data: entries, error: entryError }, { data: scores, error: scoreError }, { data: calls, error: callError }] = await Promise.all([
+          client.from('heat_entries').select('participant_id,seed,color').eq('heat_id', heat.id).order('position'),
+          client.from('scores').select('surfer,wave_number,score,judge_id,judge_station,created_at,timestamp').eq('heat_id', heat.id).gt('score', 0).order('created_at'),
+          client.from('interference_calls').select('judge_id,surfer,wave_number,call_type,is_head_judge_override,created_at,updated_at').eq('heat_id', heat.id),
+        ]);
+        if (entryError || scoreError || callError) throw entryError || scoreError || callError;
+        const second = rankSurfers(entries || [], scores || [], calls || []).get(2);
+        if (second) candidates.push({ ...second, sourceHeat: Number(heat.heat_number) });
+      }
+
+      const bestSecond = candidates.sort((a, b) => b.bestTwo - a.bestTwo || a.sourceHeat - b.sourceHeat || (a.seed ?? 9999) - (b.seed ?? 9999))[0];
+      updates.push({
+        heat_id: targetHeat.id,
+        position: Number(mapping.position),
+        participant_id: bestSecond?.participant_id ?? null,
+        seed: bestSecond?.seed ?? Number(mapping.position),
+        color: targetHeat.color_order?.[Number(mapping.position) - 1] || null,
+      });
+      continue;
+    }
+
     const sourceHeat = (sequence || []).find(
       (heat) =>
         Number(heat.round) === Number(mapping.source_round)
@@ -478,25 +549,27 @@ function clientForTarget(target) {
 async function main() {
   const targetArg = process.argv.find((arg) => arg.startsWith('--target='))?.split('=')[1] || 'both';
   const eventArg = process.argv.find((arg) => arg.startsWith('--event='))?.split('=')[1] || null;
+  const divisionArg = process.argv.find((arg) => arg.startsWith('--division='))?.split('=')[1] || null;
   const dryRun = process.argv.includes('--dry-run');
+  const rewriteMappings = process.argv.includes('--rewrite-mappings');
   const targets = targetArg === 'both' ? ['cloud', 'local'] : [targetArg];
 
   for (const target of targets) {
     const client = clientForTarget(target);
-    const broken = await fetchBrokenHeats(client, eventArg);
-    console.log(`\\n[${target}] broken heats: ${broken.length}`);
+    const broken = await fetchBrokenHeats(client, eventArg, divisionArg, rewriteMappings);
+    console.log(`\\n[${target}] target heats: ${broken.length}${rewriteMappings ? ' (mapping rewrite mode)' : ''}`);
 
     let repairedCount = 0;
     for (const heat of broken) {
       console.log(`  - ${heat.id} (${heat.division} R${heat.round}H${heat.heat_number})`);
       if (dryRun) continue;
-      const result = await repairTargetHeat(client, heat);
+      const result = await repairTargetHeat(client, heat, { rewriteMappings });
       console.log(`    repaired=${result.repaired} slots=${result.updatedSlots || 0} mappings=${result.mappingCount || 0}${result.reason ? ` reason=${result.reason}` : ''}`);
       if (result.repaired) repairedCount += 1;
     }
 
     if (!dryRun) {
-      const remaining = await fetchBrokenHeats(client, eventArg);
+      const remaining = await fetchBrokenHeats(client, eventArg, divisionArg, false);
       console.log(`[${target}] repaired heats=${repairedCount}, remaining=${remaining.length}`);
     }
   }

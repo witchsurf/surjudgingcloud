@@ -91,4 +91,27 @@ describe('generatePreviewHeats man-on-man activation', () => {
     expect(resolvedBracket[3].heats).toHaveLength(1);
     expect(resolvedBracket[3].heats[0].surfers).toHaveLength(2);
   });
+
+  it('keeps round-1 heat mates apart when activating man-on-man in round 2', () => {
+    const participants = buildParticipants(12, 'OPEN');
+    const bracket = generatePreviewHeats(participants, 'elimination', 4, {
+      manOnManFromRound: 2,
+    });
+
+    const roundTwo = bracket.find((round) => round.round === 2);
+    expect(roundTwo?.heats).toHaveLength(3);
+
+    const sourceHeatsByRoundTwoHeat = roundTwo?.heats.map((heat) =>
+      heat.surfers.map((surfer) => {
+        const match = surfer.name.match(/R1-H(\d+)/);
+        return match?.[1];
+      })
+    );
+
+    expect(sourceHeatsByRoundTwoHeat).toEqual([
+      ['1', '2'],
+      ['2', '3'],
+      ['3', '1'],
+    ]);
+  });
 });

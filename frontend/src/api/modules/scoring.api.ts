@@ -1,4 +1,4 @@
-import { supabase } from '../../lib/supabase';
+import { isLocalSupabaseMode, supabase } from '../../lib/supabase';
 import { ensureSupabase } from './core.api';
 import { ensureHeatId } from '../../utils/heat';
 import type { InterferenceCall, InterferenceType, Score } from '../../types';
@@ -78,6 +78,32 @@ const isRpcUnavailableError = (error: unknown, functionName: string) => {
         || text.includes('42883')
     );
 };
+
+const isAuthenticatedAdminRequiredError = (error: unknown) => {
+    if (!error || typeof error !== 'object') return false;
+    const candidate = error as {
+        code?: string;
+        message?: string;
+        details?: string;
+        status?: number;
+        statusCode?: number;
+        hint?: string;
+    };
+    const text = [
+        candidate.code,
+        candidate.message,
+        candidate.details,
+        candidate.hint,
+        String(candidate.status ?? ''),
+        String(candidate.statusCode ?? ''),
+        JSON.stringify(candidate),
+    ].join(' ').toLowerCase();
+    return text.includes('authenticated admin session required');
+};
+
+const shouldUseScoreRpcFallback = (error: unknown, functionName: string) =>
+    isRpcUnavailableError(error, functionName)
+    || (isLocalSupabaseMode() && isAuthenticatedAdminRequiredError(error));
 
 const mapSecureScoreRpcError = (error: unknown): Error => {
     if (error instanceof Error) {
@@ -626,7 +652,7 @@ export async function recordScoreOverrideSecure(input: SecureScoreOverrideInput)
         p_created_at: input.created_at ?? new Date().toISOString(),
     });
 
-    if (error && !isRpcUnavailableError(error, 'record_score_override_secure')) {
+    if (error && !shouldUseScoreRpcFallback(error, 'record_score_override_secure')) {
         throw mapSecureScoreRpcError(error);
     }
 
@@ -675,7 +701,7 @@ export async function applyScoreCorrectionSecure(input: SecureScoreCorrectionInp
         p_log_created_at: input.override_log?.created_at ?? null,
     });
 
-    if (error && !isRpcUnavailableError(error, 'apply_score_correction_secure')) {
+    if (error && !shouldUseScoreRpcFallback(error, 'apply_score_correction_secure')) {
         throw mapSecureScoreRpcError(error);
     }
 
