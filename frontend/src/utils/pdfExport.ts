@@ -1335,80 +1335,126 @@ export interface FinalRankingExportPayload {
 
 export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
   const { eventName, organizer, date, heats, scores, interferenceCalls, participants, divisions } = payload;
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt' });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const MARGIN = 32;
 
-  let isFirstPage = true;
+  // Single cover header (one page) with all divisions stacked.
+  doc.setFillColor(...DS.navy);
+  doc.rect(0, 0, pageW, 84, 'F');
 
-  divisions.forEach((division) => {
-    const rankings = calculateFinalRankings(division, heats, scores, interferenceCalls, participants);
-    if (rankings.length === 0) return;
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text(eventName.toUpperCase(), MARGIN, 38);
 
-    if (!isFirstPage) {
-      doc.addPage();
+  doc.setFontSize(12);
+  doc.setTextColor(...DS.gold);
+  doc.text('CLASSEMENTS FINAUX', MARGIN, 60);
+
+  doc.setFontSize(9);
+  doc.setTextColor(200, 200, 200);
+  doc.text([organizer, date].filter(Boolean).join('  •  '), MARGIN, 74);
+
+  const footerH = 26;
+  const startY = 96;
+  const availableH = Math.max(140, pageH - startY - footerH);
+
+  const sections = divisions
+    .map((division) => {
+      const rankings = calculateFinalRankings(division, heats, scores, interferenceCalls, participants);
+      if (!rankings.length) return null;
+      const body = rankings.map((r) => [
+        r.rank,
+        r.name.toUpperCase(),
+        r.country || '',
+        r.points,
+      ]);
+      return { division, body };
+    })
+    .filter((s): s is { division: string; body: Array<(string | number)[]> } => Boolean(s));
+
+  const approxRowHeight = (fontSize: number, cellPadding: number) => fontSize + cellPadding * 2 + 4;
+  const approxSectionHeaderH = (fontSize: number) => fontSize + 8;
+  const totalRows = sections.reduce((sum, s) => sum + s.body.length, 0);
+
+  let fontSize = 8;
+  let cellPadding = 3;
+  let useTwoColumns = false;
+
+  const estimateOneColumnH = (fs: number, pad: number) =>
+    sections.reduce((sum, s) => sum + approxSectionHeaderH(fs) + s.body.length * approxRowHeight(fs, pad), 0);
+  const estimateTwoColumnH = (fs: number, pad: number) =>
+    Math.ceil(sections.length / 2) * approxSectionHeaderH(fs) + Math.ceil(totalRows / 2) * approxRowHeight(fs, pad);
+
+  // Try to fit in one column first.
+  for (const fs of [9, 8, 7, 6, 5]) {
+    const pad = Math.max(2, Math.min(3, fs - 4));
+    if (estimateOneColumnH(fs, pad) <= availableH) {
+      fontSize = fs;
+      cellPadding = pad;
+      useTwoColumns = false;
+      break;
     }
-    isFirstPage = false;
+    if (estimateTwoColumnH(fs, pad) <= availableH) {
+      fontSize = fs;
+      cellPadding = pad;
+      useTwoColumns = true;
+      break;
+    }
+  }
 
-    // Header per division
-    doc.setFillColor(...DS.navy);
-    doc.rect(0, 0, pageW, 100, 'F');
+  const baseColStyles = (colW: number) => ({
+    0: { halign: 'center' as const, cellWidth: 28 },
+    1: { fontStyle: 'bold' as const, cellWidth: Math.max(120, colW - (28 + 34 + 44)) },
+    2: { halign: 'center' as const, cellWidth: 34 },
+    3: { halign: 'right' as const, cellWidth: 44, fontStyle: 'bold' as const },
+  });
 
-    doc.setTextColor(255, 255, 255);
+  const renderSection = (x: number, y: number, colW: number, divisionName: string, body: Array<(string | number)[]>) => {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(22);
-    doc.text(eventName.toUpperCase(), MARGIN, 45);
-
-    doc.setFontSize(14);
-    doc.setTextColor(...DS.gold);
-    doc.text(`CLASSEMENT FINAL – ${division.toUpperCase()}`, MARGIN, 70);
-
-    doc.setFontSize(9);
-    doc.setTextColor(200, 200, 200);
-    doc.text([organizer, date].filter(Boolean).join('  •  '), MARGIN, 88);
-
-    // Single-column table (one page) without Total column.
-    const bodyEntries = rankings.map(r => [
-      r.rank,
-      r.name.toUpperCase(),
-      r.country || '',
-      r.points
-    ]);
-
-    const startY = 116;
-    const footerH = 30;
-    const availableH = Math.max(120, pageH - startY - footerH);
-    const approxRowHeight = (fontSize: number, cellPadding: number) => fontSize + cellPadding * 2 + 4;
-
-    let fontSize = 10;
-    let cellPadding = 4;
-    while (fontSize > 6 && bodyEntries.length * approxRowHeight(fontSize, cellPadding) > availableH) {
-      fontSize -= 1;
-      cellPadding = Math.max(2, cellPadding - 1);
-    }
-
-    const tableConfig = {
-      head: [['Place', 'Name', 'NOC', 'Points']],
-      theme: 'grid' as const,
-      styles: { fontSize, cellPadding },
-      headStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' },
-      columnStyles: {
-        0: { halign: 'center' as const, cellWidth: 42 },
-        1: { fontStyle: 'bold' as const, cellWidth: pageW - (MARGIN * 2 + 42 + 54 + 64) },
-        2: { halign: 'center' as const, cellWidth: 54 },
-        3: { halign: 'right' as const, cellWidth: 64, fontStyle: 'bold' as const },
-      }
-    };
+    doc.setFontSize(Math.min(11, fontSize + 2));
+    doc.setTextColor(...DS.gray900);
+    doc.text(divisionName.toUpperCase(), x, y);
 
     autoTable(doc, {
-      ...tableConfig,
-      body: bodyEntries,
-      startY,
-      margin: { left: MARGIN, right: MARGIN },
+      head: [['#', 'NOM', 'NOC', 'PTS']],
+      body,
+      startY: y + 6,
+      margin: { left: x, right: pageW - (x + colW) },
+      theme: 'grid',
+      styles: { fontSize, cellPadding, overflow: 'linebreak' },
+      headStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' },
+      columnStyles: baseColStyles(colW),
+      tableLineWidth: 0.3,
+      tableLineColor: DS.gray200,
       pageBreak: 'avoid',
     });
-  });
+
+    const finalY = (doc as any).lastAutoTable?.finalY ?? (y + 20);
+    return finalY + 10;
+  };
+
+  if (!useTwoColumns) {
+    let cursorY = startY;
+    sections.forEach((section) => {
+      cursorY = renderSection(MARGIN, cursorY, pageW - MARGIN * 2, section.division, section.body);
+    });
+  } else {
+    const gap = 18;
+    const colW = (pageW - MARGIN * 2 - gap) / 2;
+    let leftY = startY;
+    let rightY = startY;
+    sections.forEach((section) => {
+      const targetLeft = leftY <= rightY;
+      if (targetLeft) {
+        leftY = renderSection(MARGIN, leftY, colW, section.division, section.body);
+      } else {
+        rightY = renderSection(MARGIN + colW + gap, rightY, colW, section.division, section.body);
+      }
+    });
+  }
 
   // Global Footer
   const pageCount = (doc as any).internal.getNumberOfPages();

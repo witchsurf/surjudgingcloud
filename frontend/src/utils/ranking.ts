@@ -19,22 +19,35 @@ export interface FinalRankEntry {
 
 /**
  * Barème "Français" (Option 3 approuvée)
- * Valorise les écarts en finale.
+ * Version "sans ex-aequo": points différents à chaque place.
  */
 export function getPointsForRank(rank: number): number {
   if (rank === 1) return 1000;
   if (rank === 2) return 700;
   if (rank === 3) return 540;
   if (rank === 4) return 440;
-  if (rank <= 6) return 360;  // Equal 5th
-  if (rank <= 8) return 320;  // Equal 7th
-  if (rank <= 12) return 280; // Equal 9th
-  if (rank <= 16) return 240; // Equal 13th
-  if (rank <= 24) return 200; // Equal 17th
-  if (rank <= 32) return 160; // Equal 25th
-  if (rank <= 48) return 120; // Equal 33rd
-  if (rank <= 64) return 80;  // Equal 49th
-  return Math.max(0, 80 - (Math.floor((rank - 65) / 16) * 20));
+
+  const brackets: Array<{ from: number; to: number; start: number; nextStart: number }> = [
+    { from: 5, to: 6, start: 360, nextStart: 320 },
+    { from: 7, to: 8, start: 320, nextStart: 280 },
+    { from: 9, to: 12, start: 280, nextStart: 240 },
+    { from: 13, to: 16, start: 240, nextStart: 200 },
+    { from: 17, to: 24, start: 200, nextStart: 160 },
+    { from: 25, to: 32, start: 160, nextStart: 120 },
+    { from: 33, to: 48, start: 120, nextStart: 80 },
+    { from: 49, to: 64, start: 80, nextStart: 60 },
+  ];
+
+  const bracket = brackets.find((b) => rank >= b.from && rank <= b.to);
+  if (bracket) {
+    const span = bracket.to - bracket.from + 1;
+    const step = (bracket.start - bracket.nextStart) / span;
+    const raw = bracket.start - (rank - bracket.from) * step;
+    return Math.max(0, Math.floor(raw + 1e-6));
+  }
+
+  // Beyond 64: continue decreasing in blocks.
+  return Math.max(0, 60 - (Math.floor((rank - 65) / 16) * 10));
 }
 
 export function calculateFinalRankings(
