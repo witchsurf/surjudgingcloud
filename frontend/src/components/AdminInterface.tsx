@@ -173,6 +173,17 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [priorityQrCode, setPriorityQrCode] = useState('');
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [rankingPdfPending, setRankingPdfPending] = useState(false);
+  const [eventPdfMeta, setEventPdfMeta] = useState<{ organizer: string; startDate: string }>(() => {
+    try {
+      const data = JSON.parse(localStorage.getItem('eventData') || '{}');
+      return {
+        organizer: String(data.organizerDisplayName || data.organizer_display_name || data.organizer || ''),
+        startDate: String(data.startDateOverride || data.start_date_override || data.start_date || ''),
+      };
+    } catch {
+      return { organizer: '', startDate: '' };
+    }
+  });
   const [rebuildPending, setRebuildPending] = useState(false);
   const [offlineAdminPin, setOfflineAdminPin] = useState(() => {
     try {
@@ -216,6 +227,47 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const lockedForHeatRef = React.useRef<string>('');
   const configRef = React.useRef(config);
   const lineupLoadRequestRef = React.useRef(0);
+
+  useEffect(() => {
+    const syncFromLocalStorage = () => {
+      try {
+        const data = JSON.parse(localStorage.getItem('eventData') || '{}');
+        setEventPdfMeta({
+          organizer: String(data.organizerDisplayName || data.organizer_display_name || data.organizer || ''),
+          startDate: String(data.startDateOverride || data.start_date_override || data.start_date || ''),
+        });
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('storage', syncFromLocalStorage);
+    return () => window.removeEventListener('storage', syncFromLocalStorage);
+  }, []);
+
+  const persistEventPdfMeta = useCallback((patch: Partial<{ organizer: string; startDate: string }>) => {
+    setEventPdfMeta((current) => {
+      const next = { ...current, ...patch };
+      try {
+        const data = JSON.parse(localStorage.getItem('eventData') || '{}');
+        data.organizerDisplayName = next.organizer;
+        data.startDateOverride = next.startDate;
+        localStorage.setItem('eventData', JSON.stringify(data));
+        window.dispatchEvent(new Event('storage'));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  const formatEventDateFr = useCallback((value?: string | null) => {
+    const raw = String(value || '').trim();
+    if (!raw) return undefined;
+    // Accept ISO date or timestamp; fall back to raw string if parsing fails.
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+  }, []);
 
   useEffect(() => {
     configRef.current = config;
@@ -3320,15 +3372,19 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
           if (typeof eventData.name === 'string' && eventData.name.trim()) {
             resolvedEventName = eventData.name.trim();
           }
-          organizer = eventData.organizer ?? undefined;
-          eventDate = eventData.start_date
-            ? new Date(eventData.start_date).toLocaleDateString('fr-FR', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })
-            : undefined;
+          const organizerCandidate =
+            eventData.organizerDisplayName ||
+            eventData.organizer_display_name ||
+            eventData?.config?.eventDetails?.organizer ||
+            eventData.organizer;
+          organizer = organizerCandidate ? String(organizerCandidate).trim().toUpperCase() : undefined;
+
+          const dateCandidate =
+            eventData.startDateOverride ||
+            eventData.start_date_override ||
+            eventData?.config?.eventDetails?.date ||
+            eventData.start_date;
+          eventDate = formatEventDateFr(dateCandidate);
 
           const logoCandidate = (
             eventData.organizerLogoDataUrl ||
@@ -3430,10 +3486,22 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         const { data: dbEventData } = await supabase.from('events').select('*').eq('id', eventId).single();
         if (dbEventData) {
           resolvedEventName = dbEventData.name || resolvedEventName;
-          organizer = dbEventData.organizer;
-          eventDate = dbEventData.start_date ? new Date(dbEventData.start_date).toLocaleDateString('fr-FR', {
-            year: 'numeric', month: 'long', day: 'numeric'
-          }) : undefined;
+          const localEventData = JSON.parse(localStorage.getItem('eventData') || '{}');
+          const eventData = { ...localEventData, ...dbEventData };
+
+          const organizerCandidate =
+            eventData.organizerDisplayName ||
+            eventData.organizer_display_name ||
+            eventData?.config?.eventDetails?.organizer ||
+            eventData.organizer;
+          organizer = organizerCandidate ? String(organizerCandidate).trim().toUpperCase() : undefined;
+
+          const dateCandidate =
+            eventData.startDateOverride ||
+            eventData.start_date_override ||
+            eventData?.config?.eventDetails?.date ||
+            eventData.start_date;
+          eventDate = formatEventDateFr(dateCandidate);
         }
       }
 
@@ -3528,6 +3596,27 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                     );
                   })}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Organisateur (PDF)</label>
+                <input
+                  type="text"
+                  value={eventPdfMeta.organizer}
+                  onChange={(e) => persistEventPdfMeta({ organizer: e.target.value })}
+                  placeholder="Ex: LIGUE PRO"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Date (PDF)</label>
+                <input
+                  type="date"
+                  value={(eventPdfMeta.startDate || '').slice(0, 10)}
+                  onChange={(e) => persistEventPdfMeta({ startDate: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
 
               <div className="md:col-span-2 pt-2 border-t border-gray-100">
