@@ -1137,13 +1137,34 @@ export function exportFullCompetitionPDF({
             const maxSurferWaves = Math.max(...stats.map(s => s.waves?.length || 0), 0);
             currentHeatMaxWaves = Math.max(1, Math.min(maxSurferWaves, maxWaves));
             showInterferenceCol = stats.some((s) => Boolean(s.isDisqualified) || (s.interferenceCount ?? 0) > 0 || Boolean(s.interferenceType));
+
+            const interferenceMetaBySurfer = new Map<string, { count: number; type: string | null; waves: number[]; isDisqualified: boolean }>();
+            effectiveInterferences.forEach((item) => {
+              const key = (item.surfer || '').trim().toUpperCase();
+              if (!key) return;
+              const current = interferenceMetaBySurfer.get(key) ?? { count: 0, type: null, waves: [], isDisqualified: false };
+              const nextCount = current.count + 1;
+              const nextType = current.type ?? item.type;
+              const nextWaves = current.waves.includes(item.waveNumber) ? current.waves : [...current.waves, item.waveNumber];
+              interferenceMetaBySurfer.set(key, {
+                count: nextCount,
+                type: nextType,
+                waves: nextWaves,
+                isDisqualified: nextCount >= 2,
+              });
+            });
+
             const buildInterferenceLabel = (s: any) => {
-              if (s?.isDisqualified) return 'DSQ';
-              const count = Number(s?.interferenceCount) || 0;
-              const type = (s?.interferenceType || '').toString().trim();
+              const key = (s?.surfer || '').toString().trim().toUpperCase();
+              const meta = interferenceMetaBySurfer.get(key);
+              const waves = [...(meta?.waves || [])].filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+              const waveSuffix = waves.length > 0 ? ` V${waves.join(',V')}` : '';
+
+              if (meta?.isDisqualified || s?.isDisqualified) return `DSQ${waveSuffix}`;
+              const count = Number(meta?.count ?? s?.interferenceCount) || 0;
+              const type = String(meta?.type ?? s?.interferenceType ?? '').trim();
               if (!type && count <= 0) return '';
-              if (count > 1) return `${type || 'INT'} x${count}`;
-              return type || 'INT';
+              return `${type || 'INT'}${waveSuffix}`;
             };
             surferStats = stats.map(s => ({
               surfer: s.surfer,
