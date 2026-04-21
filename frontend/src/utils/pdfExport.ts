@@ -1122,6 +1122,7 @@ export function exportFullCompetitionPDF({
 
           let surferStats: Array<{ surfer: string; bestTwo: number; rank: number; waves: number[] }> = [];
           let currentHeatMaxWaves = 0;
+          let showInterferenceCol = false;
 
           if (hasResults) {
             const heatSurfers = heat.slots.filter(s => s.color !== undefined)
@@ -1135,11 +1136,21 @@ export function exportFullCompetitionPDF({
             );
             const maxSurferWaves = Math.max(...stats.map(s => s.waves?.length || 0), 0);
             currentHeatMaxWaves = Math.max(1, Math.min(maxSurferWaves, maxWaves));
+            showInterferenceCol = stats.some((s) => Boolean(s.isDisqualified) || (s.interferenceCount ?? 0) > 0 || Boolean(s.interferenceType));
+            const buildInterferenceLabel = (s: any) => {
+              if (s?.isDisqualified) return 'DSQ';
+              const count = Number(s?.interferenceCount) || 0;
+              const type = (s?.interferenceType || '').toString().trim();
+              if (!type && count <= 0) return '';
+              if (count > 1) return `${type || 'INT'} x${count}`;
+              return type || 'INT';
+            };
             surferStats = stats.map(s => ({
               surfer: s.surfer,
               bestTwo: s.bestTwo,
               rank: s.rank,
-              waves: (s.waves || []).map(w => w.score)
+              waves: (s.waves || []).map(w => w.score),
+              interference: buildInterferenceLabel(s),
             }));
           }
 
@@ -1147,10 +1158,16 @@ export function exportFullCompetitionPDF({
             let scoreStr = '';
             let numericVal = 0;
             let surferWaves: number[] = [];
+            let interference = '';
             if (hasResults && slot.color) {
               const colorName = normalizeLycraForPdf(colorLabelMap[slot.color as keyof typeof colorLabelMap] || slot.color);
               const stat = surferStats.find(s => s.surfer === colorName);
-              if (stat) { numericVal = stat.bestTwo; scoreStr = stat.bestTwo.toFixed(2); surferWaves = stat.waves; }
+              if (stat) {
+                numericVal = stat.bestTwo;
+                scoreStr = stat.bestTwo.toFixed(2);
+                surferWaves = stat.waves;
+                interference = (stat as any).interference || '';
+              }
             }
             return {
               pos: sIdx + 1,
@@ -1159,6 +1176,7 @@ export function exportFullCompetitionPDF({
               numericVal,
               name: slot.name ?? slot.placeholder ?? '',
               country: slot.country ?? '',
+              interference,
               waves: surferWaves
             };
           });
@@ -1175,6 +1193,7 @@ export function exportFullCompetitionPDF({
           cursorY += 7;
 
           const headRow = ['#', 'LYCRA', 'TOTAL', 'SURFEUR', 'PAYS'];
+          if (hasResults && showInterferenceCol) headRow.push('INT');
           if (hasResults) for (let i = 1; i <= currentHeatMaxWaves; i++) headRow.push(`V${i}`);
 
           const usableWidth = pageW - MARGIN * 2;
@@ -1184,13 +1203,15 @@ export function exportFullCompetitionPDF({
             total: 28,
             surfer: 110,
             country: 52,
+            interference: 30,
           };
           const reservedWidth =
             baseWidths.rank +
             baseWidths.lycra +
             baseWidths.total +
             baseWidths.surfer +
-            baseWidths.country;
+            baseWidths.country +
+            (hasResults && showInterferenceCol ? baseWidths.interference : 0);
           const waveColW = hasResults
             ? clamp((usableWidth - reservedWidth) / Math.max(currentHeatMaxWaves, 1), 14, 28)
             : 0;
@@ -1200,6 +1221,7 @@ export function exportFullCompetitionPDF({
               baseWidths.lycra +
               baseWidths.total +
               baseWidths.country +
+              (hasResults && showInterferenceCol ? baseWidths.interference : 0) +
               currentHeatMaxWaves * waveColW
             ),
             88,
@@ -1211,6 +1233,7 @@ export function exportFullCompetitionPDF({
               baseWidths.lycra +
               baseWidths.total +
               surferColW +
+              (hasResults && showInterferenceCol ? baseWidths.interference : 0) +
               currentHeatMaxWaves * waveColW
             ),
             40,
@@ -1225,8 +1248,12 @@ export function exportFullCompetitionPDF({
             3: { cellWidth: surferColW, halign: 'left' as const, fontStyle: 'bold', fontSize: 8 },
             4: { cellWidth: countryColW, halign: 'left' as const, fontSize: tableFontSize, overflow: 'hidden' },
           };
+          const waveStartIdx = hasResults && showInterferenceCol ? 6 : 5;
+          if (hasResults && showInterferenceCol) {
+            colW[5] = { cellWidth: baseWidths.interference, halign: 'center' as const, fontStyle: 'bold', fontSize: tableFontSize, overflow: 'hidden' };
+          }
           for (let i = 0; i < currentHeatMaxWaves; i++) {
-            colW[5 + i] = { cellWidth: waveColW, halign: 'center' as const, fontSize: tableFontSize, overflow: 'hidden' };
+            colW[waveStartIdx + i] = { cellWidth: waveColW, halign: 'center' as const, fontSize: tableFontSize, overflow: 'hidden' };
           }
 
           autoTable(doc, {
@@ -1234,6 +1261,7 @@ export function exportFullCompetitionPDF({
             head: [headRow],
             body: bodyData.map((d, i) => {
               const row: (string | number)[] = [i + 1, d.lycra, d.score, d.name, d.country];
+              if (hasResults && showInterferenceCol) row.push(d.interference || '—');
               if (hasResults) for (let w = 0; w < currentHeatMaxWaves; w++) {
                 row.push(d.waves && d.waves[w] !== undefined && d.waves[w] > 0 ? d.waves[w].toFixed(2) : '—');
               }
@@ -1269,8 +1297,17 @@ export function exportFullCompetitionPDF({
               if (data.column.index === 4) {
                 data.cell.styles.overflow = 'hidden';
               }
+              // INT cell — no word-wrap
+              if (hasResults && showInterferenceCol && data.column.index === 5) {
+                data.cell.styles.overflow = 'hidden';
+                if (data.section === 'body') {
+                  const raw = String(data.cell.raw ?? '').toUpperCase();
+                  if (raw.includes('DSQ')) data.cell.styles.textColor = DS.redDark;
+                  else if (raw.includes('INT')) data.cell.styles.textColor = DS.gold;
+                }
+              }
               // Wave score cells — no word-wrap
-              if (data.column.index >= 5) {
+              if (data.column.index >= waveStartIdx) {
                 data.cell.styles.overflow = 'hidden';
               }
               if (data.section === 'body' && data.column.index === 1) {
