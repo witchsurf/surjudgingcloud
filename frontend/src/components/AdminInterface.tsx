@@ -3480,6 +3480,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       // 2. Resolve metadata
       let organizer: string | undefined;
       let eventDate: string | undefined;
+      let organizerLogoDataUrl: string | undefined;
       let resolvedEventName = config.competition || 'Compétition';
 
       if (supabase) {
@@ -3502,6 +3503,35 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             eventData?.config?.eventDetails?.date ||
             eventData.start_date;
           eventDate = formatEventDateFr(dateCandidate);
+
+          const logoCandidate = (
+            eventData.organizerLogoDataUrl ||
+            eventData.logo_url ||
+            eventData.logo ||
+            eventData.organizer_logo_url ||
+            eventData.image_url ||
+            eventData.brand_logo_url ||
+            eventData?.config?.organizerLogoDataUrl
+          ) as string | undefined;
+
+          if (logoCandidate && logoCandidate.startsWith('data:image/')) {
+            organizerLogoDataUrl = logoCandidate;
+          } else if (logoCandidate && /^https?:\/\//i.test(logoCandidate)) {
+            try {
+              const response = await fetch(logoCandidate);
+              if (response.ok) {
+                const blob = await response.blob();
+                organizerLogoDataUrl = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onloadend = () => resolve(String(reader.result || ''));
+                  reader.onerror = () => reject(new Error('Impossible de lire le logo.'));
+                  reader.readAsDataURL(blob);
+                });
+              }
+            } catch (error) {
+              console.warn('Logo organisateur non chargé pour le PDF:', error);
+            }
+          }
         }
       }
 
@@ -3512,6 +3542,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       exportFinalRankingToPDF({
         eventName: resolvedEventName,
         organizer,
+        organizerLogoDataUrl,
         date: eventDate,
         heats: allHeats,
         scores: allScores,

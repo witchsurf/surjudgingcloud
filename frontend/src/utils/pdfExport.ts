@@ -1325,6 +1325,7 @@ export function exportFullCompetitionPDF({
 export interface FinalRankingExportPayload {
   eventName: string;
   organizer?: string;
+  organizerLogoDataUrl?: string;
   date?: string;
   heats: HeatRow[];
   scores: Record<string, Score[]>;
@@ -1334,7 +1335,7 @@ export interface FinalRankingExportPayload {
 }
 
 export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
-  const { eventName, organizer, date, heats, scores, interferenceCalls, participants, divisions } = payload;
+  const { eventName, organizer, organizerLogoDataUrl, date, heats, scores, interferenceCalls, participants, divisions } = payload;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -1342,23 +1343,32 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
 
   // Single cover header (one page) with all divisions stacked.
   doc.setFillColor(...DS.navy);
-  doc.rect(0, 0, pageW, 84, 'F');
+  doc.rect(0, 0, pageW, 92, 'F');
+
+  if (organizerLogoDataUrl && organizerLogoDataUrl.startsWith('data:image/')) {
+    try {
+      const fmt = organizerLogoDataUrl.toLowerCase().includes('png') ? 'PNG' : 'JPEG';
+      doc.addImage(organizerLogoDataUrl, fmt, pageW - MARGIN - 52, 20, 52, 52);
+    } catch (e) {
+      console.warn('Logo error (final rankings):', e);
+    }
+  }
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
-  doc.text(eventName.toUpperCase(), MARGIN, 38);
+  doc.text(eventName.toUpperCase(), MARGIN, 40);
 
   doc.setFontSize(12);
   doc.setTextColor(...DS.gold);
-  doc.text('CLASSEMENTS FINAUX', MARGIN, 60);
+  doc.text('CLASSEMENTS FINAUX', MARGIN, 64);
 
   doc.setFontSize(9);
   doc.setTextColor(200, 200, 200);
-  doc.text([organizer, date].filter(Boolean).join('  •  '), MARGIN, 74);
+  doc.text([organizer, date].filter(Boolean).join('  •  '), MARGIN, 80);
 
   const footerH = 26;
-  const startY = 96;
+  const startY = 108;
   const availableH = Math.max(140, pageH - startY - footerH);
 
   const sections = divisions
@@ -1405,11 +1415,27 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
     }
   }
 
+  // If there is room, scale up for a more airy layout.
+  const currentEstimate = useTwoColumns ? estimateTwoColumnH(fontSize, cellPadding) : estimateOneColumnH(fontSize, cellPadding);
+  if (currentEstimate > 0 && currentEstimate < availableH * 0.78) {
+    for (const fs of [10, 11]) {
+      const pad = fs >= 10 ? 4 : 3;
+      const estimate = useTwoColumns ? estimateTwoColumnH(fs, pad) : estimateOneColumnH(fs, pad);
+      if (estimate <= availableH * 0.98) {
+        fontSize = fs;
+        cellPadding = pad;
+      }
+    }
+  }
+
+  const finalEstimate = useTwoColumns ? estimateTwoColumnH(fontSize, cellPadding) : estimateOneColumnH(fontSize, cellPadding);
+  const extraGap = Math.max(0, Math.min(18, ((availableH - finalEstimate) / Math.max(1, sections.length)) * 0.6));
+
   const baseColStyles = (colW: number) => ({
     0: { halign: 'center' as const, cellWidth: 28 },
-    1: { fontStyle: 'bold' as const, cellWidth: Math.max(120, colW - (28 + 34 + 44)) },
+    1: { fontStyle: 'bold' as const, cellWidth: Math.max(150, colW - (28 + 34 + 48)) },
     2: { halign: 'center' as const, cellWidth: 34 },
-    3: { halign: 'right' as const, cellWidth: 44, fontStyle: 'bold' as const },
+    3: { halign: 'right' as const, cellWidth: 48, fontStyle: 'bold' as const },
   });
 
   const renderSection = (x: number, y: number, colW: number, divisionName: string, body: Array<(string | number)[]>) => {
@@ -1433,7 +1459,7 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
     });
 
     const finalY = (doc as any).lastAutoTable?.finalY ?? (y + 20);
-    return finalY + 10;
+    return finalY + 10 + extraGap;
   };
 
   if (!useTwoColumns) {
