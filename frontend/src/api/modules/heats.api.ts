@@ -1083,7 +1083,7 @@ export async function fetchCategoryHeats(eventId: number, category: string): Pro
     ensureSupabase();
     const { data, error } = await supabase!
         .from('heats')
-        .select(`id, round, heat_number, heat_size, color_order, heat_entries ( position, seed, color, participant:participants ( id, name, country, license ) ), heat_slot_mappings ( position, placeholder, source_round, source_heat, source_position )`)
+        .select(`id, round, heat_number, heat_size, color_order, status, heat_entries ( position, seed, color, participant:participants ( id, name, country, license ) ), heat_slot_mappings ( position, placeholder, source_round, source_heat, source_position )`)
         .eq('event_id', eventId)
         .eq('division', category)
         .order('round', { ascending: true })
