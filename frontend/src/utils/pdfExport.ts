@@ -1335,10 +1335,10 @@ export interface FinalRankingExportPayload {
 
 export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
   const { eventName, organizer, date, heats, scores, interferenceCalls, participants, divisions } = payload;
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  const MARGIN = 40;
+  const MARGIN = 32;
 
   let isFirstPage = true;
 
@@ -1368,49 +1368,46 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
     doc.setTextColor(200, 200, 200);
     doc.text([organizer, date].filter(Boolean).join('  •  '), MARGIN, 88);
 
-    // Prepare table data for multi-column (2 columns)
+    // Single-column table (one page) without Total column.
     const bodyEntries = rankings.map(r => [
       r.rank,
       r.name.toUpperCase(),
       r.country || '',
-      (Number(r.heatTotal) || 0).toFixed(2),
       r.points
     ]);
 
-    // Split for 2 columns to look like the ISA model
-    const half = Math.ceil(bodyEntries.length / 2);
-    const leftCol = bodyEntries.slice(0, half);
-    const rightCol = bodyEntries.slice(half);
+    const startY = 116;
+    const footerH = 30;
+    const availableH = Math.max(120, pageH - startY - footerH);
+    const approxRowHeight = (fontSize: number, cellPadding: number) => fontSize + cellPadding * 2 + 4;
+
+    let fontSize = 10;
+    let cellPadding = 4;
+    while (fontSize > 6 && bodyEntries.length * approxRowHeight(fontSize, cellPadding) > availableH) {
+      fontSize -= 1;
+      cellPadding = Math.max(2, cellPadding - 1);
+    }
 
     const tableConfig = {
-      head: [['Place', 'Name', 'NOC', 'Total', 'Points']],
+      head: [['Place', 'Name', 'NOC', 'Points']],
       theme: 'grid' as const,
-      styles: { fontSize: 8, cellPadding: 3 },
+      styles: { fontSize, cellPadding },
       headStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' },
       columnStyles: {
-        0: { halign: 'center' as const, cellWidth: 35 },
-        1: { fontStyle: 'bold' as const },
-        2: { halign: 'center' as const, cellWidth: 40 },
-        3: { halign: 'right' as const, cellWidth: 44, fontStyle: 'bold' as const },
-        4: { halign: 'right' as const, cellWidth: 44, fontStyle: 'bold' as const }
+        0: { halign: 'center' as const, cellWidth: 42 },
+        1: { fontStyle: 'bold' as const, cellWidth: pageW - (MARGIN * 2 + 42 + 54 + 64) },
+        2: { halign: 'center' as const, cellWidth: 54 },
+        3: { halign: 'right' as const, cellWidth: 64, fontStyle: 'bold' as const },
       }
     };
 
     autoTable(doc, {
       ...tableConfig,
-      body: leftCol,
-      startY: 120,
-      margin: { left: MARGIN, right: pageW / 2 + 10 },
+      body: bodyEntries,
+      startY,
+      margin: { left: MARGIN, right: MARGIN },
+      pageBreak: 'avoid',
     });
-
-    if (rightCol.length > 0) {
-      autoTable(doc, {
-        ...tableConfig,
-        body: rightCol,
-        startY: 120,
-        margin: { left: pageW / 2 + 10, right: MARGIN },
-      });
-    }
   });
 
   // Global Footer

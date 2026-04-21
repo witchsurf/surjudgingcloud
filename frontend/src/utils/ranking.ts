@@ -80,6 +80,30 @@ export function calculateFinalRankings(
     );
   };
 
+  const normalizePlaceholderKey = (value: string) =>
+    (value || '')
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[()[\]]/g, ' ')
+      .replace(/[_-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const isPlaceholderLike = (value?: string | null) => {
+    if (!value) return false;
+    const normalized = normalizePlaceholderKey(value);
+    return normalized.includes('QUALIFI') ||
+      normalized.includes('FINALISTE') ||
+      normalized.includes('REPECH') ||
+      normalized.includes('VAINQUEUR') ||
+      normalized.includes('WINNER') ||
+      normalized.includes('MEILLEUR 2') ||
+      /^R\s*\d+/.test(normalized) ||
+      /^RP\s*\d+/.test(normalized) ||
+      normalized === 'BYE';
+  };
+
   const normalizeDivisionKey = (value: string) =>
     (value || '').trim().toUpperCase().replace(/[_\s]+/g, ' ').replace(/\s+/g, ' ');
 
@@ -99,6 +123,113 @@ export function calculateFinalRankings(
     acc.set(key, existing);
     return acc;
   }, new Map());
+
+  const heatByRoundHeatNumber = new Map<string, HeatRow>();
+  divisionHeats.forEach((heat) => {
+    heatByRoundHeatNumber.set(`${Number(heat.round || 0)}::${Number(heat.heat_number || 0)}`, heat);
+  });
+
+  const SEED_ORDER = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'];
+  const getSeedPriority = (color: string) => {
+    const idx = SEED_ORDER.indexOf((color || '').toUpperCase());
+    return idx === -1 ? 99 : idx;
+  };
+
+  const parsePlaceholderReference = (value: string): { round: number; heatNumber: number; position: number } | null => {
+    const normalized = normalizePlaceholderKey(value);
+
+    // Matches "VAINQUEUR R1-H2 (P1)" / "QUALIFIE R1 H2 P2" / "WINNER R1-H1 P1"
+    const m1 = normalized.match(/R\s*(\d+)\s*H\s*(\d+)\s*P\s*(\d+)/);
+    if (m1) return { round: Number(m1[1]), heatNumber: Number(m1[2]), position: Number(m1[3]) };
+
+    // Matches legacy compact "R1 H2" without P -> can't resolve deterministically
+    return null;
+  };
+
+  const resolvedPlaceholderCache = new Map<string, { name: string; country?: string | null; participantId?: number | null } | null>();
+
+  const resolvePlaceholderToSurfer = (placeholderText: string) => {
+    const cacheKey = normalizePlaceholderKey(placeholderText);
+    if (resolvedPlaceholderCache.has(cacheKey)) return resolvedPlaceholderCache.get(cacheKey) ?? null;
+
+    const ref = parsePlaceholderReference(placeholderText);
+    if (!ref) {
+      resolvedPlaceholderCache.set(cacheKey, null);
+      return null;
+    }
+
+    const sourceHeat = heatByRoundHeatNumber.get(`${ref.round}::${ref.heatNumber}`);
+    if (!sourceHeat) {
+      resolvedPlaceholderCache.set(cacheKey, null);
+      return null;
+    }
+
+    const sourceScores = scores[sourceHeat.id] || [];
+    if (!sourceScores.length) {
+      resolvedPlaceholderCache.set(cacheKey, null);
+      return null;
+    }
+
+    const slotByColor = new Map<string, { name?: string; country?: string | null; participantId?: number | null }>();
+    const slots = Array.isArray(sourceHeat.slots) ? sourceHeat.slots : [];
+    slots.forEach((slot: any) => {
+      if (!slot || slot.bye) return;
+      const normalizedColor = normalizeHeatColorKey(String(slot.color || ''));
+      if (!normalizedColor) return;
+      slotByColor.set(normalizedColor, {
+        name: slot.name || slot.placeholder || undefined,
+        country: slot.country ?? null,
+        participantId: slot.participantId ?? slot.participant_id ?? null,
+      });
+    });
+
+    const colorsFromScores = sourceScores
+      .map((s) => normalizeHeatColorKey(String(s?.surfer || '')))
+      .filter(Boolean);
+    const colorsFromSlots = Array.from(slotByColor.keys());
+    const uniqueColorsInHeat = Array.from(new Set([...colorsFromSlots, ...colorsFromScores]));
+    if (uniqueColorsInHeat.length === 0) {
+      resolvedPlaceholderCache.set(cacheKey, null);
+      return null;
+    }
+
+    const heatInterferences = interferenceCalls[sourceHeat.id] || [];
+    const effectiveInterferences = computeEffectiveInterferences(heatInterferences, configuredJudgeCount);
+    const maxWaves = Math.max(1, ...sourceScores.map((s) => Number((s as any)?.wave_number) || Number((s as any)?.wave) || 0));
+    const stats = calculateSurferStats(
+      sourceScores.map((score) => ({ ...score, surfer: normalizeHeatColorKey(String(score.surfer || '')) })),
+      uniqueColorsInHeat,
+      configuredJudgeCount,
+      maxWaves,
+      true,
+      effectiveInterferences,
+      sourceHeat.status as any
+    );
+
+    const orderedStats = [...stats].sort((a, b) => {
+      const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
+      if (rankDiff !== 0) return rankDiff;
+      return getSeedPriority(a.surfer) - getSeedPriority(b.surfer);
+    });
+
+    const picked = orderedStats[ref.position - 1];
+    if (!picked) {
+      resolvedPlaceholderCache.set(cacheKey, null);
+      return null;
+    }
+
+    const pickedColor = normalizeHeatColorKey(picked.surfer);
+    const slotInfo = slotByColor.get(pickedColor);
+    const resolvedName = (slotInfo?.name || '').trim();
+    if (!resolvedName || isPlaceholderLike(resolvedName)) {
+      resolvedPlaceholderCache.set(cacheKey, null);
+      return null;
+    }
+
+    const resolved = { name: resolvedName, country: slotInfo?.country ?? null, participantId: slotInfo?.participantId ?? null };
+    resolvedPlaceholderCache.set(cacheKey, resolved);
+    return resolved;
+  };
 
   const nonByeSlotCountByRound = new Map<number, number>();
   heatsByRound.forEach((roundHeats, roundNumber) => {
@@ -174,10 +305,15 @@ export function calculateFinalRankings(
     sortedStats.forEach((stat) => {
       const heatColor = normalizeHeatColorKey(stat.surfer);
       const slotInfo = slotByColor.get(heatColor);
-      const slotName = slotInfo?.name || heatColor;
-      const participant = resolveParticipantById(slotInfo?.participantId) ?? resolveParticipantByName(slotName);
-      const resolvedName = (participant?.name || slotName || heatColor).trim();
+      const rawSlotName = slotInfo?.name || heatColor;
+      const placeholderResolved = isPlaceholderLike(rawSlotName) ? resolvePlaceholderToSurfer(rawSlotName) : null;
+      const displayNameCandidate = placeholderResolved?.name || rawSlotName;
+      const participant =
+        resolveParticipantById(placeholderResolved?.participantId ?? slotInfo?.participantId) ??
+        resolveParticipantByName(displayNameCandidate);
+      const resolvedName = (participant?.name || displayNameCandidate || heatColor).trim();
       if (!resolvedName) return;
+      if (isPlaceholderLike(resolvedName)) return;
 
       const surferKey = participant?.id != null
         ? `id:${Number(participant.id)}`
@@ -201,7 +337,7 @@ export function calculateFinalRankings(
           total: stat.bestTwo,
           bestWave: Math.max(0, ...(stat.waves || []).map((w) => Number(w?.score) || 0)),
           name: resolvedName,
-          country: slotInfo?.country ?? participant?.country ?? null
+          country: placeholderResolved?.country ?? slotInfo?.country ?? participant?.country ?? null
         });
       }
 
