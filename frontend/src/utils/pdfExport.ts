@@ -1322,9 +1322,8 @@ export function exportFullCompetitionPDF({
               if (hasResults && showInterferenceCol && data.column.index === 5) {
                 data.cell.styles.overflow = 'hidden';
                 if (data.section === 'body') {
-                  const raw = String(data.cell.raw ?? '').toUpperCase();
-                  if (raw.includes('DSQ')) data.cell.styles.textColor = DS.redDark;
-                  else if (raw.includes('INT')) data.cell.styles.textColor = DS.gold;
+                  // We'll custom-draw the INT + wave reference so only `V#` becomes orange.
+                  data.cell.text = [];
                 }
               }
               // Wave score cells — no word-wrap
@@ -1349,6 +1348,48 @@ export function exportFullCompetitionPDF({
                 }
               }
             }
+            ,
+            didDrawCell: (data) => {
+              if (!(hasResults && showInterferenceCol)) return;
+              if (data.section !== 'body' || data.column.index !== 5) return;
+
+              const raw = String(data.cell.raw ?? '').trim();
+              if (!raw || raw === '—') {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(tableFontSize);
+                doc.setTextColor(...DS.gray400);
+                doc.text('—', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: 'center', baseline: 'middle' });
+                return;
+              }
+
+              const upper = raw.toUpperCase();
+              const match = upper.match(/^(DSQ|INT1|INT2|INT)(?:\s+(V[0-9]+(?:,V[0-9]+)*))?$/);
+              const label = match?.[1] ?? upper.split(/\s+/)[0] ?? upper;
+              const waveRef = match?.[2] ?? (upper.includes(' V') ? upper.split(/\s+/).find((t) => t.startsWith('V')) : undefined);
+
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(tableFontSize);
+
+              const labelColor = label.includes('DSQ') ? DS.redDark : DS.gray900;
+              const waveColor = DS.gold;
+
+              const labelText = label;
+              const waveText = waveRef ? ` ${waveRef}` : '';
+
+              // Center the combined label + waveRef, but color only the waveRef.
+              const labelW = doc.getTextWidth(labelText);
+              const waveW = waveText ? doc.getTextWidth(waveText) : 0;
+              const startX = data.cell.x + (data.cell.width - (labelW + waveW)) / 2;
+              const y = data.cell.y + data.cell.height / 2;
+
+              doc.setTextColor(...labelColor);
+              doc.text(labelText, startX, y, { align: 'left', baseline: 'middle' });
+
+              if (waveText) {
+                doc.setTextColor(...waveColor);
+                doc.text(waveText, startX + labelW, y, { align: 'left', baseline: 'middle' });
+              }
+            },
           });
 
           cursorY = (doc as any).lastAutoTable.finalY + 10;
