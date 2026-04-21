@@ -1488,7 +1488,7 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
-    doc.text(`Généré par Antigravity Scoring System – Modèle ISA Individual Places`, pageW / 2, pageH - 20, { align: 'center' });
+    doc.text(`Généré par SURF JUDGING APP`, pageW / 2, pageH - 20, { align: 'center' });
   }
 
   doc.save(`${slugify(eventName)}_final_rankings.pdf`);
