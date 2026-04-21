@@ -372,7 +372,6 @@ export function calculateFinalRankings(
   entries.forEach((entry) => {
     if (entry.exitRound === maxRound) {
       entry.rank = entry.exitPosition;
-      entry.points = getPointsForRank(entry.rank);
       return;
     }
 
@@ -386,17 +385,45 @@ export function calculateFinalRankings(
     const firstEliminationPos = entry.qualifiers + 1;
     const eliminationOffset = Math.max(0, entry.exitPosition - firstEliminationPos);
     entry.rank = survivors + 1 + eliminationOffset * heatCount;
-    entry.points = getPointsForRank(entry.rank);
   });
 
-  // Tri final: place asc, puis perf desc pour stabiliser l'ordre dans un ex-aequo.
-  entries.sort((a, b) => {
-    if (a.rank !== b.rank) return a.rank - b.rank;
+  // Break ties using scores: within a same "base rank" group (e.g. equal 5th),
+  // order by performance and assign unique ranks (5,6 instead of 5,5).
+  const perfSort = (a: FinalRankEntry, b: FinalRankEntry) => {
     if (a.exitRound !== b.exitRound) return b.exitRound - a.exitRound;
     if (a.exitPosition !== b.exitPosition) return a.exitPosition - b.exitPosition;
     if (a.heatTotal !== b.heatTotal) return b.heatTotal - a.heatTotal;
     if (a.bestWave !== b.bestWave) return b.bestWave - a.bestWave;
     return a.name.localeCompare(b.name);
+  };
+
+  const byBaseRank = new Map<number, FinalRankEntry[]>();
+  entries.forEach((entry) => {
+    const baseRank = Number(entry.rank) || 0;
+    const group = byBaseRank.get(baseRank) ?? [];
+    group.push(entry);
+    byBaseRank.set(baseRank, group);
+  });
+
+  Array.from(byBaseRank.entries())
+    .sort(([a], [b]) => a - b)
+    .forEach(([baseRank, group]) => {
+      if (group.length <= 1) return;
+      group.sort(perfSort);
+      group.forEach((entry, index) => {
+        entry.rank = baseRank + index;
+      });
+    });
+
+  // Points follow the final rank.
+  entries.forEach((entry) => {
+    entry.points = getPointsForRank(entry.rank);
+  });
+
+  // Tri final: place asc, puis perf desc pour stabiliser.
+  entries.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    return perfSort(a, b);
   });
 
   return entries;
