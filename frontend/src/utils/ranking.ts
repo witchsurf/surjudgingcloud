@@ -11,6 +11,7 @@ export interface FinalRankEntry {
   points: number;
   exitRound: number;
   exitPosition: number;
+  qualifiers: number;
   heatTotal: number;
   bestWave: number;
   division: string;
@@ -49,20 +50,73 @@ export function calculateFinalRankings(
   if (!interferenceCalls) interferenceCalls = {};
   if (!participants) participants = [];
 
+  const normalizeHeatColorKey = (value: string) => {
+    const key = (value || '').trim().toUpperCase();
+    if (!key) return '';
+    if (key === 'RED') return 'ROUGE';
+    if (key === 'WHITE') return 'BLANC';
+    if (key === 'YELLOW') return 'JAUNE';
+    if (key === 'BLUE') return 'BLEU';
+    if (key === 'GREEN') return 'VERT';
+    if (key === 'BLACK') return 'NOIR';
+    return key;
+  };
+
+  const resolveParticipantById = (participantId?: number | null) => {
+    if (!participantId) return null;
+    return participants.find((p) => Number(p.id) === Number(participantId)) ?? null;
+  };
+
+  const resolveParticipantByName = (name: string) => {
+    const normalizedName = (name || '').trim().toUpperCase();
+    if (!normalizedName) return null;
+    const divisionKey = (division || '').trim().toUpperCase();
+    return (
+      participants.find((p) => {
+        const pName = (p.name || '').trim().toUpperCase();
+        const pDivision = (p.category || '').trim().toUpperCase();
+        return pName === normalizedName && (pDivision === divisionKey || !pDivision);
+      }) ?? null
+    );
+  };
+
+  const normalizeDivisionKey = (value: string) =>
+    (value || '').trim().toUpperCase().replace(/[_\s]+/g, ' ').replace(/\s+/g, ' ');
+
   const divisionHeats = heats
-    .filter(h => (h.division || '').trim().toUpperCase() === division.trim().toUpperCase())
+    .filter((h) => normalizeDivisionKey(h.division || '') === normalizeDivisionKey(division || ''))
     .sort((a, b) => b.round - a.round || a.heat_number - b.heat_number);
 
   if (divisionHeats.length === 0) return [];
 
   const rounds = divisionHeats.map(h => h.round).filter(r => r != null);
   const maxRound = rounds.length > 0 ? Math.max(...rounds) : 0;
+
+  const heatsByRound = divisionHeats.reduce<Map<number, HeatRow[]>>((acc, heat) => {
+    const key = Number(heat.round || 0);
+    const existing = acc.get(key) ?? [];
+    existing.push(heat);
+    acc.set(key, existing);
+    return acc;
+  }, new Map());
+
+  const nonByeSlotCountByRound = new Map<number, number>();
+  heatsByRound.forEach((roundHeats, roundNumber) => {
+    const total = roundHeats.reduce((sum, heat) => {
+      const slots = Array.isArray(heat.slots) ? heat.slots : [];
+      if (slots.length === 0) return sum + Math.max(0, Number(heat.heat_size) || 0);
+      const count = slots.filter((s: any) => !s?.bye).length;
+      return sum + count;
+    }, 0);
+    nonByeSlotCountByRound.set(roundNumber, total);
+  });
   
   // 1. Calculer les stats de chaque surfeur par heat
   // On identifie pour chaque participant son "terminus" (le dernier heat où il a fini en position d'élimination ou la finale)
   const surferTerminus = new Map<string, {
     round: number;
     position: number;
+    qualifiers: number;
     total: number;
     bestWave: number;
     name: string;
@@ -78,35 +132,38 @@ export function calculateFinalRankings(
   for (const heat of sortedHeats) {
     const heatScores = scores[heat.id] || [];
     const heatInterferences = interferenceCalls[heat.id] || [];
+    if (!heatScores.length) continue;
     
-    // On extrait les noms présents dans ce heat
-    // (On ne peut pas se baser uniquement sur participants[] car certains sont des placeholders)
-    // Mais ici on veut les VRAIS noms résolus.
-    const surfersFromScores = (heatScores || []).map(s => s?.surfer).filter(Boolean);
-    const surfersFromSlots = (heat.slots || []).map((s: any) => s?.name || s?.placeholder).filter(Boolean);
-    
-    // Filter out placeholders (Vainqueur, Perdant, Bye, etc.)
-    const isPlaceholder = (name: string) => {
-        const n = name.toUpperCase();
-        return n.includes('VAINQUEUR') || n.includes('PERDANT') || n.includes('BYE') ||
-               ['RED', 'WHITE', 'YELLOW', 'BLUE', 'GREEN', 'BLACK', 'ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'].includes(n);
-    };
+    const slotByColor = new Map<string, { name?: string; country?: string | null; participantId?: number | null }>();
+    const slots = Array.isArray(heat.slots) ? heat.slots : [];
+    slots.forEach((slot: any) => {
+      if (!slot || slot.bye) return;
+      const normalizedColor = normalizeHeatColorKey(String(slot.color || ''));
+      if (!normalizedColor) return;
+      slotByColor.set(normalizedColor, {
+        name: slot.name || slot.placeholder || undefined,
+        country: slot.country ?? null,
+        participantId: slot.participantId ?? slot.participant_id ?? null,
+      });
+    });
 
-    const uniqueSurfersInHeat = Array.from(new Set(
-        [...surfersFromScores, ...surfersFromSlots]
-            .filter(n => !isPlaceholder(n))
-            .map(s => s.toUpperCase())
-    ));
+    const colorsFromScores = (heatScores || [])
+      .map((s) => normalizeHeatColorKey(String(s?.surfer || '')))
+      .filter(Boolean);
+    const colorsFromSlots = Array.from(slotByColor.keys());
+    const uniqueColorsInHeat = Array.from(new Set([...colorsFromSlots, ...colorsFromScores]));
+    if (uniqueColorsInHeat.length === 0) continue;
     
     const effectiveInterferences = computeEffectiveInterferences(heatInterferences, configuredJudgeCount);
 
     // Si heat non fermé et pas de scores, on peut avoir des problèmes de ranking.
     // Pour un classement FINAL, on assume que l'évènement est clos ou qu'on veut le rank actuel.
+    const maxWaves = Math.max(1, ...heatScores.map((s) => Number((s as any)?.wave_number) || Number((s as any)?.wave) || 0));
     const stats = calculateSurferStats(
-        heatScores, 
-        uniqueSurfersInHeat, 
+        (heatScores || []).map((score) => ({ ...score, surfer: normalizeHeatColorKey(String(score.surfer || '')) })), 
+        uniqueColorsInHeat, 
         configuredJudgeCount, 
-        12, // max waves default
+        maxWaves,
         true, // allow incomplete
         effectiveInterferences,
         heat.status as any
@@ -115,37 +172,40 @@ export function calculateFinalRankings(
     const sortedStats = stats.sort((a, b) => (a.rank || 99) - (b.rank || 99));
 
     sortedStats.forEach((stat) => {
-      const surferKey = stat.surfer.toUpperCase();
-      
-      // Si le surfeur a déjà été marqué comme "avancé" dans un round supérieur, 
-      // on ignore ses rounds précédents pour le classement final.
+      const heatColor = normalizeHeatColorKey(stat.surfer);
+      const slotInfo = slotByColor.get(heatColor);
+      const slotName = slotInfo?.name || heatColor;
+      const participant = resolveParticipantById(slotInfo?.participantId) ?? resolveParticipantByName(slotName);
+      const resolvedName = (participant?.name || slotName || heatColor).trim();
+      if (!resolvedName) return;
+
+      const surferKey = participant?.id != null
+        ? `id:${Number(participant.id)}`
+        : `name:${resolvedName.toUpperCase()}`;
+
+      // Si le surfeur a déjà été marqué comme "avancé" dans un round supérieur, on ignore ses rounds précédents.
       if (advancedSurfers.has(surferKey)) return;
 
       // Un surfeur est "éliminé" s'il est 3e ou 4e d'un round < Finale, 
       // ou s'il est dans la Finale (Round max).
       const isFinal = heat.round === maxRound;
-      const isEliminated = isFinal || stat.rank > 2;
+      const heatSize = Math.max(0, Number(heat.heat_size) || uniqueColorsInHeat.length);
+      const qualifiers = heatSize <= 2 ? 1 : 2;
+      const isEliminated = isFinal || stat.rank > qualifiers;
 
       if (isEliminated && !surferTerminus.has(surferKey)) {
-        // Obtenir le vrai nom depuis participants si possible
-        const participant = participants.find(p => {
-            const pName = p.name?.trim().toUpperCase();
-            const pCat = p.category?.trim().toUpperCase();
-            const dName = division.trim().toUpperCase();
-            return pName === surferKey && (pCat === dName || !pCat);
-        });
-
         surferTerminus.set(surferKey, {
           round: heat.round,
           position: stat.rank,
+          qualifiers,
           total: stat.bestTwo,
-          bestWave: stat.waves?.[0]?.score || 0,
-          name: surferKey, // TODO: resolve real name
-          country: participant?.country
+          bestWave: Math.max(0, ...(stat.waves || []).map((w) => Number(w?.score) || 0)),
+          name: resolvedName,
+          country: slotInfo?.country ?? participant?.country ?? null
         });
       }
 
-      if (stat.rank <= 2 && !isFinal) {
+      if (stat.rank <= qualifiers && !isFinal) {
         advancedSurfers.add(surferKey);
       }
     });
@@ -153,12 +213,6 @@ export function calculateFinalRankings(
 
   // 2. Transformer en liste et trier globalement
   const entries: FinalRankEntry[] = Array.from(surferTerminus.values())
-    .filter(t => {
-        // Double check for placeholders in the final terminus map
-        const n = (t.name || '').toUpperCase();
-        return !n.includes('VAINQUEUR') && !n.includes('PERDANT') && !n.includes('BYE') &&
-               !['RED', 'WHITE', 'YELLOW', 'BLUE', 'GREEN', 'BLACK', 'ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'].includes(n);
-    })
     .map(t => ({
       rank: 0, // calculated later
       name: t.name,
@@ -166,47 +220,48 @@ export function calculateFinalRankings(
       points: 0,
       exitRound: t.round,
       exitPosition: t.position,
+      qualifiers: t.qualifiers,
       heatTotal: t.total,
       bestWave: t.bestWave,
       division
     }));
 
-  // Tri ISA :
-  // 1. Round d'élimination (DESC)
-  // 2. Position dans le heat (ASC)
-  // 3. Total de heat (DESC)
-  // 4. Meilleure vague (DESC)
+  // 3. Assigner les rangs et points
+  // Places ISA (Individual Places):
+  // - Finale (dernier round): place = position (1..N)
+  // - Autres rounds: base = (survivants au round suivant) + 1, puis offset par position éliminatoire.
+  const heatCountByRound = new Map<number, number>();
+  heatsByRound.forEach((roundHeats, roundNumber) => heatCountByRound.set(roundNumber, roundHeats.length));
+
+  entries.forEach((entry) => {
+    if (entry.exitRound === maxRound) {
+      entry.rank = entry.exitPosition;
+      entry.points = getPointsForRank(entry.rank);
+      return;
+    }
+
+    const nextRoundSurvivors = nonByeSlotCountByRound.get(entry.exitRound + 1);
+    const fallbackSurvivors = (() => {
+      const heatCount = heatCountByRound.get(entry.exitRound) ?? 0;
+      return heatCount > 0 ? heatCount * entry.qualifiers : 0;
+    })();
+    const survivors = Math.max(0, Number(nextRoundSurvivors ?? fallbackSurvivors) || 0);
+    const heatCount = Math.max(1, Number(heatCountByRound.get(entry.exitRound) ?? 1));
+    const firstEliminationPos = entry.qualifiers + 1;
+    const eliminationOffset = Math.max(0, entry.exitPosition - firstEliminationPos);
+    entry.rank = survivors + 1 + eliminationOffset * heatCount;
+    entry.points = getPointsForRank(entry.rank);
+  });
+
+  // Tri final: place asc, puis perf desc pour stabiliser l'ordre dans un ex-aequo.
   entries.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank;
     if (a.exitRound !== b.exitRound) return b.exitRound - a.exitRound;
     if (a.exitPosition !== b.exitPosition) return a.exitPosition - b.exitPosition;
     if (a.heatTotal !== b.heatTotal) return b.heatTotal - a.heatTotal;
-    return b.bestWave - a.bestWave;
+    if (a.bestWave !== b.bestWave) return b.bestWave - a.bestWave;
+    return a.name.localeCompare(b.name);
   });
-
-  // 3. Assigner les rangs et points
-  // Attention : En ISA, les gens éliminés au même round avec la même position partagent souvent le même rang.
-  // Ex: Les deux 3e de demi-finale sont tous les deux 5e.
-  for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i];
-    
-    // Déterminer le rang "groupe"
-    // (Dans une finale à 4, c'est 1, 2, 3, 4. Dans des demis, c'est 5, 5, 7, 7)
-    if (entry.exitRound === maxRound) {
-        entry.rank = entry.exitPosition;
-    } else {
-        // Calcul du rang ISA pour les tours précédents
-        // Rang = 1 + (Nombre de surfeurs qualifiés pour rounds suivants) + (Offset selon position)
-        // Mais plus simplement : si même round et même position, même rang.
-        const prev = entries[i-1];
-        if (prev && prev.exitRound === entry.exitRound && prev.exitPosition === entry.exitPosition) {
-            entry.rank = prev.rank;
-        } else {
-            entry.rank = i + 1;
-        }
-    }
-    
-    entry.points = getPointsForRank(entry.rank);
-  }
 
   return entries;
 }

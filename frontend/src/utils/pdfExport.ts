@@ -1373,6 +1373,7 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
       r.rank,
       r.name.toUpperCase(),
       r.country || '',
+      (Number(r.heatTotal) || 0).toFixed(2),
       r.points
     ]);
 
@@ -1382,7 +1383,7 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
     const rightCol = bodyEntries.slice(half);
 
     const tableConfig = {
-      head: [['Place', 'Name', 'NOC', 'Point']],
+      head: [['Place', 'Name', 'NOC', 'Total', 'Points']],
       theme: 'grid' as const,
       styles: { fontSize: 8, cellPadding: 3 },
       headStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' },
@@ -1390,7 +1391,8 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
         0: { halign: 'center' as const, cellWidth: 35 },
         1: { fontStyle: 'bold' as const },
         2: { halign: 'center' as const, cellWidth: 40 },
-        3: { halign: 'right' as const, cellWidth: 40, fontStyle: 'bold' as const }
+        3: { halign: 'right' as const, cellWidth: 44, fontStyle: 'bold' as const },
+        4: { halign: 'right' as const, cellWidth: 44, fontStyle: 'bold' as const }
       }
     };
 
