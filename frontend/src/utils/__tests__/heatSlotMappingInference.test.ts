@@ -68,7 +68,9 @@ describe('inferImplicitMappingsForHeat', () => {
     ]);
 
     const sourceHeatsByTarget = allRoundTwoMappings.reduce<Record<string, number[]>>((acc, mapping) => {
-      acc[mapping.heat_id] = [...(acc[mapping.heat_id] ?? []), mapping.source_heat];
+      if (mapping.source_heat != null) {
+        acc[mapping.heat_id] = [...(acc[mapping.heat_id] ?? []), mapping.source_heat];
+      }
       return acc;
     }, {});
 

@@ -276,8 +276,8 @@ export const normalizeScoreSurfer = (surfer?: string) => {
 
 export const scoreTimestampMs = (score: Score) => new Date(score.created_at || score.timestamp || 0).getTime();
 
-export const normalizeScoreJudgeStation = (judgeStation?: string, judgeId?: string) => {
-    return normalizeScoreJudgeId(judgeStation || judgeId);
+export const normalizeScoreJudgeStation = (judgeStation?: string | null, judgeId?: string | null) => {
+    return normalizeScoreJudgeId(judgeStation || judgeId || undefined);
 };
 
 export const toParsedScore = (row: RawScoreRow): Score => ({
@@ -289,7 +289,7 @@ export const toParsedScore = (row: RawScoreRow): Score => ({
     round: row.round,
     judge_id: normalizeScoreJudgeId(row.judge_id),
     judge_name: normalizeScoreJudgeName(row.judge_name) || normalizeScoreJudgeId(row.judge_id),
-    judge_station: normalizeScoreJudgeStation(row.judge_station, row.judge_id),
+    judge_station: normalizeScoreJudgeStation(row.judge_station ?? undefined, row.judge_id ?? undefined),
     judge_identity_id: (row.judge_identity_id || '').trim() || undefined,
     surfer: normalizeScoreSurfer(row.surfer),
     wave_number: row.wave_number,

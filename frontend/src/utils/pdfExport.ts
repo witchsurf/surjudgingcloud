@@ -405,12 +405,14 @@ export function exportHeatScorecardPdf({
   scores,
   surferNames,
   surferCountries,
+  heatStatus,
   eventData,
 }: {
   config: AppConfig;
   scores: Score[];
   surferNames?: Record<string, string>;
   surferCountries?: Record<string, string>;
+  heatStatus?: string;
   eventData?: any;
 }) {
   if (!config?.competition) {
@@ -492,7 +494,7 @@ export function exportHeatScorecardPdf({
   doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, pageW - 20, 72, { align: 'right' });
 
   // ── TABLE ─────────────────────────────────────────────────
-  const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves, false, [], config.status);
+  const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves, false, [], heatStatus);
 
   if (!stats.length) {
     doc.setTextColor(...DS.gray700);

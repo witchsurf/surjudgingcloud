@@ -653,24 +653,6 @@ export function subscribeToHeatUpdates(eventId: number, category: string, callba
                 scheduleCategoryHeatUpdate(state);
             }
         )
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'heat_entries' },
-            (payload) => {
-                const row = (payload.new || payload.old) as { heat_id?: string } | null;
-                if (!row?.heat_id || !state.knownHeatIds.has(row.heat_id)) return;
-                scheduleCategoryHeatUpdate(state);
-            }
-        )
-        .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'heat_slot_mappings' },
-            (payload) => {
-                const row = (payload.new || payload.old) as { heat_id?: string } | null;
-                if (!row?.heat_id || !state.knownHeatIds.has(row.heat_id)) return;
-                scheduleCategoryHeatUpdate(state);
-            }
-        )
         .subscribe();
 
     categoryHeatUpdateRegistry.set(key, state);

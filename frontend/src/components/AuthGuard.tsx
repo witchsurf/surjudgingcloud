@@ -64,10 +64,12 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
             return;
         }
 
+        const client = supabase;
+
         // Check authentication
         const checkAuth = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                const { data: { session } } = await client.auth.getSession();
 
                 if (requireAuth && !session) {
                     if (hasEmergencyOfflineAdmin()) {
@@ -110,7 +112,7 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
         checkAuth();
 
         // Subscribe to auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
             setIsAuthenticated(!!session);
 
             if (requireAuth && !session) {

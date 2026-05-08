@@ -432,11 +432,12 @@ export function calculateJudgeAccuracy(
       const overridePenalty = Math.min(20, row.overrideRate * 0.5);
       const withinBonus = Math.min(10, row.withinHalfPointRate * 0.1);
       const qualityScore = Math.max(0, Math.min(100, roundScore(100 - deviationPenalty - biasPenalty - overridePenalty + withinBonus)));
-      const qualityBand =
+      const qualityBand = (
         qualityScore >= 85 ? 'excellent' :
         qualityScore >= 70 ? 'good' :
         qualityScore >= 55 ? 'watch' :
-        'needs_review';
+        'needs_review'
+      ) as JudgeAccuracyStats['qualityBand'];
 
       return {
         ...row,

@@ -7,12 +7,9 @@ export interface GeneratePreviewOptions {
   promoteBestSecond?: boolean;
 }
 
-export interface ManOnManRoundOption {
-  round: number;
-  requiresBestSecond: boolean;
-  wildcardSourceRound?: number;
-  warning?: string;
-}
+export type ManOnManRoundOption =
+  | { round: number; requiresBestSecond: false }
+  | { round: number; requiresBestSecond: true; wildcardSourceRound: number; warning: string };
 
 // Palette de couleurs fixe pour garantir l'ordre standard quoi qu'il arrive
 const FIXED_COLOR_PALETTE = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'];
@@ -565,7 +562,7 @@ export const getManOnManRoundOptions = (
   ];
 
   return candidateRounds
-    .map((round) => {
+    .map((round): ManOnManRoundOption | null => {
       const generated = generatePreviewHeats(participants, format, seriesSize, {
         manOnManFromRound: round
       });
@@ -601,5 +598,5 @@ export const getManOnManRoundOptions = (
         warning: `Le man-on-man au Round ${round} laisserait un heat à 1 surfeur au Round ${firstSoloRound}. Ajoutez le meilleur 2e du Round ${wildcardSourceRound} pour équilibrer le tableau.`
       };
     })
-    .filter((option): option is ManOnManRoundOption => Boolean(option));
+    .filter((option): option is ManOnManRoundOption => option !== null);
 };

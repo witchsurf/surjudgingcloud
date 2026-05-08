@@ -117,16 +117,16 @@ const buildManOnMan = (participants: ParticipantInput[]): PlannedHeat[] => {
   for (let i = 0; i < total; i += 2) {
     const pair = [participants[i], participants[i + 1]].filter(Boolean);
     if (pair.length === 0) continue;
-    heatsRound1.push({
-      round: 1,
-      heatNumber: heatNumber++,
-      slots: pair.map((participant, index) => ({
-        participant,
-        sourceRound: null,
-        sourceHeat: null,
-        sourcePosition: index + 1
-      }))
-    });
+      heatsRound1.push({
+        round: 1,
+        heatNumber: heatNumber++,
+        slots: pair.map((participant, index) => ({
+          participant,
+          sourceRound: undefined,
+          sourceHeat: undefined,
+          sourcePosition: index + 1
+        }))
+      });
   }
 
   if (heatsRound1.length === 0) return rounds;
@@ -220,8 +220,8 @@ const buildSixPerson = (participants: ParticipantInput[], heatSize: number): Pla
         heatNumber: 1,
         slots: participants.map((participant, index) => ({
           participant,
-          sourceRound: null,
-          sourceHeat: null,
+          sourceRound: undefined,
+          sourceHeat: undefined,
           sourcePosition: index + 1
         }))
       }
@@ -238,8 +238,8 @@ const buildSixPerson = (participants: ParticipantInput[], heatSize: number): Pla
       if (participant) {
         slots.push({
           participant,
-          sourceRound: null,
-          sourceHeat: null,
+          sourceRound: undefined,
+          sourceHeat: undefined,
           sourcePosition: slots.length + 1
         });
       }
@@ -287,16 +287,16 @@ const buildSixPerson = (participants: ParticipantInput[], heatSize: number): Pla
 const buildEightPerson = (participants: ParticipantInput[]): PlannedHeat[] => {
   const firstRound: PlannedHeat[] = [];
   for (let i = 0; i < 2; i++) {
-    const surfers = Array(4)
-      .fill(null)
-      .map((_, idx) => participants[i * 4 + idx])
-      .filter(Boolean)
-      .map((participant, idx) => ({
-        participant,
-        sourceRound: null,
-        sourceHeat: null,
-        sourcePosition: idx + 1
-      }));
+      const surfers = Array(4)
+        .fill(null)
+        .map((_, idx) => participants[i * 4 + idx])
+        .filter(Boolean)
+        .map((participant, idx) => ({
+          participant,
+          sourceRound: undefined,
+          sourceHeat: undefined,
+          sourcePosition: idx + 1
+        }));
     firstRound.push({ round: 1, heatNumber: i + 1, slots: surfers });
   }
 
@@ -343,9 +343,9 @@ const buildGenericElimination = (
   const firstRoundHeats = chunkSlots(
     participants.map(participant => ({
       participant,
-      sourceRound: null,
-      sourceHeat: null,
-      sourcePosition: null
+      sourceRound: undefined,
+      sourceHeat: undefined,
+      sourcePosition: undefined
     })),
     heatSize
   ).map((slots, idx) => ({
@@ -353,8 +353,8 @@ const buildGenericElimination = (
     heatNumber: idx + 1,
     slots: slots.map((slot, slotIdx) => ({
       participant: slot.participant,
-      sourceRound: null,
-      sourceHeat: null,
+      sourceRound: undefined,
+      sourceHeat: undefined,
       sourcePosition: slotIdx + 1
     }))
   }));
@@ -432,9 +432,9 @@ const buildRepechage = (
   const mainHeats = chunkSlots(
     sortedParticipants.map(participant => ({
       participant,
-      sourceRound: null,
-      sourceHeat: null,
-      sourcePosition: null
+      sourceRound: undefined,
+      sourceHeat: undefined,
+      sourcePosition: undefined
     })),
     heatSize
   ).map((slots, idx) => ({
@@ -442,8 +442,8 @@ const buildRepechage = (
     heatNumber: idx + 1,
     slots: slots.map((slot, slotIdx) => ({
       participant: slot.participant,
-      sourceRound: null,
-      sourceHeat: null,
+      sourceRound: undefined,
+      sourceHeat: undefined,
       sourcePosition: slotIdx + 1
     }))
   }));

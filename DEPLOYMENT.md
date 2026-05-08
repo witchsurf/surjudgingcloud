@@ -23,6 +23,23 @@ chmod +x deploy.sh
 - build le frontend
 - rebuild/restart la stack Docker de production
 
+### Realtime vs Polling (affichage public)
+
+Si le cloud héberge beaucoup de pages `/display` (public / écran partagé), le websocket Realtime sur `scores` peut devenir coûteux côté Postgres (`realtime.list_changes(...)`).
+
+Option hybride recommandée pour `/display` (polling scores, realtime timer/config) :
+
+```bash
+VITE_DISPLAY_SCORE_MODE=polling
+VITE_DISPLAY_SCORE_POLL_MS=5000
+```
+
+Coupe-circuit global (debug/urgence) :
+
+```bash
+VITE_HEAT_SIGNAL_MODE=polling
+```
+
 ## HP Event Box
 
 Le HP ne doit pas être redéployé pour chaque événement si le code est déjà bon.

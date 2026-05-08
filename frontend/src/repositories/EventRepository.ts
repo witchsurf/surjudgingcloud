@@ -309,26 +309,40 @@ export class EventRepository extends BaseRepository {
 
     // ========== Private Helper Methods ==========
 
-    private parseJudges(judgesData: any): Array<{ id: string; name: string; identityId?: string }> {
+    private parseJudges(judgesData: unknown): Array<{ id: string; name: string; identityId?: string }> {
         if (!Array.isArray(judgesData)) return [];
 
-        return (judgesData as Array<{ id?: string; name?: string; identity_id?: string; identityId?: string }>)
-            .map((judge) => {
+        const isNonNull = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
+
+        return (judgesData as unknown[])
+            .map((judge): { id: string; name: string; identityId?: string } | null => {
                 if (typeof judge === 'string') {
-                    return { id: judge, name: judge };
+                    const id = judge.trim();
+                    if (!id) return null;
+                    return { id, name: id };
                 }
-                if (judge && typeof judge === 'object' && typeof judge.id === 'string') {
-                    return {
-                        id: judge.id,
-                        name: judge.name ?? judge.id,
-                        identityId: typeof judge.identity_id === 'string'
-                            ? judge.identity_id
-                            : (typeof judge.identityId === 'string' ? judge.identityId : undefined),
+
+                if (judge && typeof judge === 'object') {
+                    const candidate = judge as {
+                        id?: unknown;
+                        name?: unknown;
+                        identity_id?: unknown;
+                        identityId?: unknown;
                     };
+                    const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+                    if (!id) return null;
+                    const name = typeof candidate.name === 'string' ? candidate.name.trim() : '';
+                    const identityIdRaw = typeof candidate.identity_id === 'string'
+                        ? candidate.identity_id.trim()
+                        : (typeof candidate.identityId === 'string' ? candidate.identityId.trim() : '');
+
+                    if (identityIdRaw) return { id, name: name || id, identityId: identityIdRaw };
+                    return { id, name: name || id };
                 }
+
                 return null;
             })
-            .filter((value): value is { id: string; name: string; identityId?: string } => Boolean(value));
+            .filter(isNonNull);
     }
 
     private async fetchHeatStructure(

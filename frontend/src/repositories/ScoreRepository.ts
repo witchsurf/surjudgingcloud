@@ -582,12 +582,12 @@ export class ScoreRepository extends BaseRepository {
                 try {
                     await this.upsertScoreSecure({
                         ...score,
-                        event_id: heatEventId ?? score.event_id ?? globalEventId ?? null,
+                        event_id: heatEventId ?? score.event_id ?? globalEventId ?? undefined,
                         competition: score.competition || 'Competition',
                         division: score.division || 'OPEN',
                         round: score.round || 1,
                         judge_station: score.judge_station || score.judge_id,
-                        judge_identity_id: score.judge_identity_id || null,
+                        judge_identity_id: score.judge_identity_id || undefined,
                         timestamp: score.timestamp || new Date().toISOString(),
                         created_at: score.created_at || new Date().toISOString(),
                     });

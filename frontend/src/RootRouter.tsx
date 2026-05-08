@@ -8,7 +8,7 @@ import LegacyApp from './App.tsx';
 
 export default function RootRouter() {
   return (
-    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <Router>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/events/new" element={<EventForm />} />

@@ -18,6 +18,7 @@ function App() {
     surfers: ['ROUGE', 'BLANC'],
     waves: 15,
     judgeNames: {},
+    surferCountries: {},
     tournamentType: 'elimination',
     totalSurfers: 0,
     surfersPerHeat: 2,

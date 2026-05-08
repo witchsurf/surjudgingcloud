@@ -88,6 +88,7 @@ interface AdminInterfaceProps {
   onConfigChange: (config: AppConfig) => void;
   onConfigSaved: (saved: boolean) => void;
   configSaved: boolean;
+  loadError?: string | null;
   timer: HeatTimerType;
   onTimerChange: (timer: HeatTimerType) => void;
   onReloadData: () => void;

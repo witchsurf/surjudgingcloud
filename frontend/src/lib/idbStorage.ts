@@ -166,7 +166,9 @@ export async function getUnsyncedScoresIDB(): Promise<Score[]> {
     const db = await getDB();
     if (db) {
         try {
-            return (await db.getAllFromIndex(SCORES_STORE, 'by-synced', false)) as Score[];
+            // IndexedDB keys cannot be boolean in TS typings; fetch all then filter.
+            const all = (await db.getAll(SCORES_STORE)) as Score[];
+            return all.filter((score) => score.synced === false);
         } catch (error) {
             console.warn('⚠️ IDB unsynced query failed:', error);
         }
@@ -181,7 +183,7 @@ export async function markScoresSyncedIDB(ids: string[]): Promise<void> {
     // localStorage
     const ls = lsRead();
     const idSet = new Set(ids);
-    const updated = ls.map(s => idSet.has(s.id) ? { ...s, synced: true } : s);
+    const updated = ls.map(s => idSet.has(s.id || '') ? { ...s, synced: true } : s);
     lsWrite(updated);
 
     // IndexedDB

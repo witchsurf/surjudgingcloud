@@ -183,24 +183,35 @@ export async function fetchEventConfigSnapshot(eventId: number): Promise<EventCo
     if (error) throw error;
     if (!data) return null;
 
-    const judgesPayload = Array.isArray(data.judges)
-        ? (data.judges as Array<{ id?: string; name?: string; identity_id?: string; identityId?: string }>)
-            .map((judge) => {
+    const isNonNull = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
+    const judgesRaw: unknown[] = Array.isArray((data as any).judges) ? ((data as any).judges as unknown[]) : [];
+
+    const judgesPayload: Array<{ id: string; name?: string; identityId?: string }> = judgesRaw.length
+        ? judgesRaw
+            .map((judge): { id: string; name?: string; identityId?: string } | null => {
                 if (typeof judge === 'string') {
-                    return { id: judge, name: judge };
+                    const id = judge.trim();
+                    if (!id) return null;
+                    return { id, name: id };
                 }
-                if (judge && typeof judge === 'object' && typeof judge.id === 'string') {
-                    return {
-                        id: judge.id,
-                        name: judge.name ?? judge.id,
-                        identityId: typeof judge.identity_id === 'string'
-                            ? judge.identity_id
-                            : (typeof judge.identityId === 'string' ? judge.identityId : undefined)
+                if (judge && typeof judge === 'object') {
+                    const candidate = judge as {
+                        id?: unknown;
+                        name?: unknown;
+                        identity_id?: unknown;
+                        identityId?: unknown;
                     };
+                    const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+                    if (!id) return null;
+                    const name = typeof candidate.name === 'string' ? candidate.name.trim() : undefined;
+                    const identityId = typeof candidate.identity_id === 'string'
+                        ? candidate.identity_id.trim()
+                        : (typeof candidate.identityId === 'string' ? candidate.identityId.trim() : undefined);
+                    return { id, name: name || id, identityId: identityId || undefined };
                 }
                 return null;
             })
-            .filter((value): value is { id: string; name: string; identityId?: string } => Boolean(value))
+            .filter(isNonNull)
         : [];
 
     let surfers: string[] | undefined = Array.isArray((data as any).surfers)

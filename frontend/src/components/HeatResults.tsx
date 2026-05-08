@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EffectiveInterference, Score } from '../types';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
-import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
-import { fetchHeatEntriesWithParticipants, fetchInterferenceCalls } from '../api/supabaseClient';
+import { fetchInterferenceCalls } from '../api/supabaseClient';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { HEAT_RESULTS_CACHE_KEY } from '../utils/constants';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { subscribeToHeatInterference, subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
+import { useHeatParticipantDetails } from '../hooks/useHeatParticipantDetails';
+import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 
 interface HeatResultsProps {
   heatId: string | null;
@@ -22,12 +23,6 @@ interface HeatResultsProps {
   visible: boolean;
   status: string;
 }
-
-type EntryInfo = {
-  jersey: string;
-  name: string;
-  country?: string | null;
-};
 
 type HeatResultHistoryEntry = {
   heatKey: string;
@@ -56,89 +51,24 @@ export default function HeatResults({
   visible,
   status,
 }: HeatResultsProps) {
-  const [entryMap, setEntryMap] = useState<Map<string, EntryInfo>>(new Map());
-  const [loadingEntries, setLoadingEntries] = useState(false);
-  const [entriesError, setEntriesError] = useState<string | null>(null);
   const [scoresState, setScoresState] = useState<Score[]>(scores);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
+  const { entryMap, loading: loadingEntries, error: entriesError } = useHeatParticipantDetails({
+    heatId: visible ? heatId : null,
+    surfers,
+    enabled: visible,
+  });
 
   useEffect(() => {
     setScoresState(scores);
   }, [scores]);
 
   useEffect(() => {
-    if (!visible || !heatId) return;
-    if (!isSupabaseConfigured()) {
-      const fallback = new Map<string, EntryInfo>();
-      surfers.forEach((label) => {
-        fallback.set(label, { jersey: label, name: label });
-      });
-      setEntryMap(fallback);
-      return;
-    }
-
-    let cancelled = false;
-    const loadEntries = async () => {
-      setLoadingEntries(true);
-      setEntriesError(null);
-
-      try {
-        const entries = await fetchHeatEntriesWithParticipants(heatId);
-
-        const nextMap = new Map<string, EntryInfo>();
-
-        entries.forEach((row) => {
-          const rawColor = row.color as HeatColor | null;
-          const jerseyLabel = rawColor ? colorLabelMap[rawColor] ?? rawColor : '';
-          const key = jerseyLabel || row.participant?.name || '';
-          if (!key) return;
-
-          nextMap.set(key, {
-            jersey: jerseyLabel || key,
-            name: row.participant?.name ?? key,
-            country: row.participant?.country ?? null,
-          });
-        });
-
-        // Fallback for any surfer label missing
-        surfers.forEach((label) => {
-          if (!nextMap.has(label)) {
-            nextMap.set(label, { jersey: label, name: label });
-          }
-        });
-
-        if (!cancelled) {
-          setEntryMap(nextMap);
-        }
-      } catch (err) {
-        console.error('❌ Chargement des heat_entries impossible:', err);
-        const message = err instanceof Error ? err.message : 'Impossible de charger les participants du heat.';
-        if (!cancelled) {
-          setEntriesError(message);
-          const fallback = new Map<string, EntryInfo>();
-          surfers.forEach((label) => {
-            fallback.set(label, { jersey: label, name: label });
-          });
-          setEntryMap(fallback);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingEntries(false);
-        }
-      }
-    };
-
-    void loadEntries();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [visible, heatId, surfers]);
-
-  useEffect(() => {
     if (!visible || !heatId || !isSupabaseConfigured()) return;
 
     let cancelled = false;
+    let inFlight = false;
+    let pending = false;
 
     const loadScores = async () => {
       try {
@@ -164,10 +94,26 @@ export default function HeatResults({
       }
     };
 
-    void loadScores();
+    const requestLoad = () => {
+      if (cancelled) return;
+      if (inFlight) {
+        pending = true;
+        return;
+      }
+      inFlight = true;
+      void loadScores().finally(() => {
+        inFlight = false;
+        if (!cancelled && pending) {
+          pending = false;
+          requestLoad();
+        }
+      });
+    };
+
+    requestLoad();
 
     const unsubscribe = subscribeToHeatScores(heatId, () => {
-      void loadScores();
+      requestLoad();
     });
 
     return () => {
@@ -182,6 +128,8 @@ export default function HeatResults({
       return;
     }
     let cancelled = false;
+    let inFlight = false;
+    let pending = false;
 
     const refreshInterferences = async () => {
       try {
@@ -196,16 +144,32 @@ export default function HeatResults({
       }
     };
 
-    void refreshInterferences();
+    const requestRefresh = () => {
+      if (cancelled) return;
+      if (inFlight) {
+        pending = true;
+        return;
+      }
+      inFlight = true;
+      void refreshInterferences().finally(() => {
+        inFlight = false;
+        if (!cancelled && pending) {
+          pending = false;
+          requestRefresh();
+        }
+      });
+    };
+
+    requestRefresh();
     const unsubscribe = subscribeToHeatInterference(heatId, () => {
-      void refreshInterferences();
+      requestRefresh();
     });
 
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [visible, heatId, judgeIds.length, scoresState]);
+  }, [visible, heatId, judgeIds.length]);
 
   const rows = useMemo(() => {
     if (!scoresState.length) return [];
@@ -213,7 +177,9 @@ export default function HeatResults({
     const judgeCount = getEffectiveJudgeCount(scoresState, judgeIds.length);
     const stats = calculateSurferStats(scoresState, surfers, judgeCount, maxWaves, false, effectiveInterferences, status);
     const aggregates = stats.map((stat) => {
-      const entryInfo = entryMap.get(stat.surfer) ?? { jersey: stat.surfer, name: stat.surfer };
+      const rawKey = (stat.surfer || '').trim().toUpperCase();
+      const statKey = colorLabelMap[rawKey as HeatColor] ?? rawKey;
+      const entryInfo = entryMap.get(statKey) ?? { jersey: statKey || stat.surfer, name: statKey || stat.surfer };
 
       return {
         key: stat.surfer,
@@ -236,7 +202,12 @@ export default function HeatResults({
         ...item,
         rank: index + 1,
       }));
-  }, [scoresState, surfers, judgeIds.length, maxWaves, entryMap, effectiveInterferences]);
+  }, [scoresState, surfers, judgeIds.length, maxWaves, entryMap, effectiveInterferences, status]);
+
+  const waveNumbers = useMemo(() => {
+    const maxWaveCount = Math.max(...rows.map((row) => row.waves.length), 0);
+    return Array.from({ length: maxWaveCount }, (_, i) => i + 1);
+  }, [rows]);
 
   useEffect(() => {
     if (!visible || !heatId || !rows.length) return;
@@ -296,7 +267,7 @@ export default function HeatResults({
                 <th className="px-4 py-4 text-left font-bebas text-lg text-primary-900">SURFEUR</th>
                 <th className="px-4 py-4 text-center font-bebas text-lg text-primary-900">BIB</th>
                 <th className="px-4 py-4 text-center font-bebas text-lg bg-cta-50 text-cta-600">TOTAL</th>
-                {Array.from({ length: Math.max(...rows.map((row) => row.waves.length), 0) }, (_, i) => i + 1).map((waveNumber) => (
+                {waveNumbers.map((waveNumber) => (
                   <th key={`wave-${waveNumber}`} className="px-3 py-4 text-center font-bebas text-lg text-primary-300">
                     V{waveNumber}
                   </th>
@@ -340,7 +311,7 @@ export default function HeatResults({
                       {row.total.toFixed(2)}
                     </span>
                   </td>
-                  {Array.from({ length: Math.max(...rows.map((r) => r.waves.length), 0) }, (_, i) => i + 1).map((waveNumber) => {
+                  {waveNumbers.map((waveNumber) => {
                     const wave = row.waves.find((w) => w.wave === waveNumber);
                     return (
                       <td key={`${row.key}-wave-${waveNumber}`} className="px-3 py-4 text-center">
@@ -384,7 +355,7 @@ export default function HeatResults({
               ))}
               {!rows.length && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center">
+                  <td colSpan={3 + waveNumbers.length} className="px-4 py-12 text-center">
                     <div className="text-primary-200 font-bebas text-2xl tracking-widest opacity-40">AUCUN SCORE ENREGISTRÉ</div>
                   </td>
                 </tr>

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { createHeatsWithEntries, fetchEventIdByName, fetchParticipants } from '../api/supabaseClient';
+import type { ParticipantRecord } from '../api/supabaseClient';
 import {
   generatePreviewHeats,
   getManOnManRoundOptions,
@@ -21,15 +22,6 @@ interface Heat {
     name: string;
     country: string;
   }[];
-}
-
-interface ParticipantRecord {
-  seed?: number;
-  name: string;
-  country?: string;
-  license?: string;
-  category?: string;
-  [key: string]: unknown;
 }
 
 interface CategoryPreview {
@@ -534,7 +526,6 @@ const GenerateHeatsPage = () => {
     }
 
     // --- PDF INITIALIZATION ---
-    // @ts-expect-error jsPDF constructor typing varies between bundled builds.
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm' });
     const pageWidth = doc.internal.pageSize.width;
     const pageHeight = doc.internal.pageSize.height;

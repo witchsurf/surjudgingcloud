@@ -125,6 +125,35 @@ http://192.168.1.2:8000/rest/v1/events?select=id&limit=1
 
 Pendant l’événement, le HP local est la source de vérité.
 
+### Mode hybride Realtime (anti-ralentissements)
+
+Quand beaucoup d’écrans/clients ouvrent des websockets Realtime sur `scores`, Postgres peut passer beaucoup de temps dans `realtime.list_changes(...)` (symptôme: latence, CPU, “ralentissements Supabase”).
+
+Stratégie recommandée :
+
+- **Timer/config/active heat**: rester en Realtime (faible volume, critique pour l’UX).
+- **Scores sur `/display`**: passer en **polling** (hybride) si charge/latence.
+- **Listes de heats / lineups**: éviter les subscriptions Realtime non filtrées; préférer un stream `heats` (filtré `event_id`) et des triggers DB qui “touch” `heats.updated_at` quand `heat_entries` / `heat_slot_mappings` changent.
+
+Variables (build frontend) :
+
+```bash
+# Désactive le realtime des scores côté Display (hybride)
+VITE_DISPLAY_SCORE_MODE=polling
+
+# Intervalle de polling Display en ms (cloud: 5000 recommandé)
+VITE_DISPLAY_SCORE_POLL_MS=5000
+```
+
+Coupe-circuit (debug/urgence) :
+
+```bash
+# Force le polling pour tous les signaux heat (scores/interférences/participants)
+VITE_HEAT_SIGNAL_MODE=polling
+```
+
+Pendant l’événement (LAN/HP), garder le mode normal sauf si on observe une saturation.
+
 ### 5. Retour Cloud Après Événement
 
 Quand on veut remonter les données terrain :

@@ -184,7 +184,7 @@ export default function ParticipantsStructure() {
         waves: wavesCount,
         judgeNames: existingConfig.judgeNames ?? {},
         surferCountries: existingConfig.surferCountries ?? {},
-        tournamentType,
+        tournamentType: format,
         totalSurfers,
         surfersPerHeat,
         totalHeats,
@@ -206,7 +206,7 @@ export default function ParticipantsStructure() {
         console.warn('Impossible de sauvegarder la configuration pour le Chef Juge', error);
       }
     },
-    [participants]
+    [participants, format]
   );
 
   const refreshPreviewFromDb = useCallback(async () => {
@@ -294,7 +294,8 @@ export default function ParticipantsStructure() {
   }, [selectedEventId]);
 
   useEffect(() => {
-    if (!selectedEventId || !supabase) {
+    const client = supabase;
+    if (!selectedEventId || !client) {
       setOrganizerLogoPreviewUrl(null);
       return;
     }
@@ -302,7 +303,7 @@ export default function ParticipantsStructure() {
     let cancelled = false;
     const loadEventLogo = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await client
           .from('events')
           .select('config')
           .eq('id', selectedEventId)
@@ -398,7 +399,8 @@ export default function ParticipantsStructure() {
     if (!selectedEventId) {
       throw new Error('S\u00e9lectionnez un \u00e9v\u00e9nement avant d\u2019ajouter un logo.');
     }
-    if (!supabase) {
+    const client = supabase;
+    if (!client) {
       throw new Error('Supabase indisponible.');
     }
 
@@ -412,7 +414,7 @@ export default function ParticipantsStructure() {
 
     const dataUrl = await toDataUrl(file);
 
-    const { data: eventRow, error: readError } = await supabase
+    const { data: eventRow, error: readError } = await client
       .from('events')
       .select('config')
       .eq('id', selectedEventId)
@@ -426,7 +428,7 @@ export default function ParticipantsStructure() {
       organizerLogoUpdatedAt: new Date().toISOString(),
     };
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await client
       .from('events')
       .update({ config: nextConfig, updated_at: new Date().toISOString() })
       .eq('id', selectedEventId);

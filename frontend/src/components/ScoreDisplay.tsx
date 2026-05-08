@@ -10,6 +10,7 @@ import { getHeatIdentifiers } from '../utils/heat';
 import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
 import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
+import { useHeatParticipantDetails } from '../hooks/useHeatParticipantDetails';
 
 import type {
   AppConfig,
@@ -178,6 +179,19 @@ export default function ScoreDisplay({
     config.round,
     config.heatId
   );
+  const shouldLoadParticipantDetails = Boolean(
+    configSaved
+      && heatId
+      && (
+        Object.keys(config.surferNames ?? {}).length === 0
+        || Object.keys(config.surferCountries ?? {}).length === 0
+      )
+  );
+  const { entryMap: participantMap } = useHeatParticipantDetails({
+    heatId: shouldLoadParticipantDetails ? heatId : null,
+    surfers: config.surfers || [],
+    enabled: shouldLoadParticipantDetails,
+  });
 
   // Load eventData for PDF export
   useEffect(() => {
@@ -299,8 +313,19 @@ export default function ScoreDisplay({
   const winBy = getWinByDiff(surferStats);
   const fallbackRows = (config.surfers || []).map((surfer) => ({
     surfer,
-    displayName: surferNames?.[surfer] ?? surfer,
-    country: surferCountries?.[surfer],
+    displayName: (() => {
+      const key = normalizePriorityKey(surfer);
+      const participant = participantMap.get(key);
+      if (participant && participant.name && participant.name !== participant.jersey) {
+        return participant.name;
+      }
+      return surferNames?.[surfer] ?? surfer;
+    })(),
+    country: (() => {
+      const key = normalizePriorityKey(surfer);
+      const participant = participantMap.get(key);
+      return participant?.country ?? surferCountries?.[surfer];
+    })(),
     priorityKey: normalizePriorityKey(surfer),
   }));
   const compactLayout = maxWaves >= 12;
@@ -353,11 +378,11 @@ export default function ScoreDisplay({
               {lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => { void exportHeatScorecardPdf({ config, scores, eventData }); }}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cta-500 hover:bg-cta-600 text-white rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-sm"
-          >
+	          <button
+	            type="button"
+	            onClick={() => { void exportHeatScorecardPdf({ config, scores, heatStatus, eventData }); }}
+	            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cta-500 hover:bg-cta-600 text-white rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-sm"
+	          >
             <FileText className="w-3.5 h-3.5" />
             PDF Scorecard
           </button>
@@ -531,8 +556,12 @@ export default function ScoreDisplay({
                 const bestWave = bestWaveScores[0] ?? null;
                 const secondBestWave = bestWaveScores[1] ?? null;
                 const wavesCount = completedWaves.length;
-                const displayName = surferNames?.[stat.surfer] ?? stat.surfer;
-                const country = surferCountries?.[stat.surfer];
+                const participantKey = normalizePriorityKey(stat.surfer);
+                const participant = participantMap.get(participantKey);
+                const displayName = (participant?.name && participant.name !== participant.jersey)
+                  ? participant.name
+                  : (surferNames?.[stat.surfer] ?? stat.surfer);
+                const country = participant?.country ?? surferCountries?.[stat.surfer];
                 const neededInfo = neededScores[stat.surfer];
                 const hasPendingScores = stat.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0);
                 const priorityKey = normalizePriorityKey(stat.surfer);
@@ -650,8 +679,12 @@ export default function ScoreDisplay({
                   .slice()
                   .sort(sortStats)
                   .map((stat) => {
-                    const displayName = surferNames?.[stat.surfer] ?? stat.surfer;
-                    const country = surferCountries?.[stat.surfer];
+                    const participantKey = normalizePriorityKey(stat.surfer);
+                    const participant = participantMap.get(participantKey);
+                    const displayName = (participant?.name && participant.name !== participant.jersey)
+                      ? participant.name
+                      : (surferNames?.[stat.surfer] ?? stat.surfer);
+                    const country = participant?.country ?? surferCountries?.[stat.surfer];
 
                     return (
                       <tr key={stat.surfer} className="hover:bg-primary-50/20 transition-colors">

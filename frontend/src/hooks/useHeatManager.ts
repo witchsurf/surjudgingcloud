@@ -284,7 +284,7 @@ export function useHeatManager() {
                         config.waves,
                         false,
                         effectiveInterferences,
-                        heat.status
+                        currentSequenceHeat?.status ?? 'closed'
                     )
                         .sort((a, b) => a.rank - b.rank);
 

@@ -15,6 +15,10 @@ const PaymentPage = () => {
 
   const handlePayment = async () => {
     if (!selectedMethod) return;
+    if (!supabase) {
+      alert('Supabase n’est pas configuré. Paiement indisponible en mode hors‑ligne.');
+      return;
+    }
 
     if (selectedMethod === 'stripe') {
       try {

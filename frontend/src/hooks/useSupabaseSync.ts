@@ -222,7 +222,7 @@ export function useSupabaseSync() {
       // but TimerRepository will handle the actual timer state later.
       if (canReachSupabase() && isSupabaseConfigured()) {
         try {
-          await upsertHeatRealtimeConfig(newHeat.id, {
+          await upsertHeatRealtimeConfig(normalizedHeatId, {
             updatedBy: 'system',
           });
         } catch (error) {

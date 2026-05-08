@@ -29,18 +29,19 @@ const EVENT_CONFIG_POLL_INTERVAL_MS = 3000;
 const ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS = 3000;
 const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
 
+type RegistryKey = string | number;
 const eventConfigRegistry = new Map<number, RegistryState<EventConfigRealtimeRow>>();
-const activeHeatPointerRegistry = new Map<string, RegistryState<ActiveHeatPointerRealtimeRow>>();
+const activeHeatPointerRegistry = new Map<RegistryKey, RegistryState<ActiveHeatPointerRealtimeRow>>();
 let listenerSequence = 0;
 
-const startPolling = (state: RegistryState<unknown>, refresh: () => void, intervalMs: number) => {
+const startPolling = <T>(state: RegistryState<T>, refresh: () => void, intervalMs: number) => {
   if (state.pollingInterval) return;
   state.pollingInterval = setInterval(() => {
     void refresh();
   }, intervalMs);
 };
 
-const stopPolling = (state: RegistryState<unknown>) => {
+const stopPolling = <T>(state: RegistryState<T>) => {
   if (!state.pollingInterval) return;
   clearInterval(state.pollingInterval);
   state.pollingInterval = null;
@@ -76,9 +77,9 @@ export const normalizeEventRealtimeKey = (value?: string) =>
 const canUseRealtimeEqualityFilter = (value?: string) =>
   Boolean(value) && /^[A-Za-z0-9 _-]+$/.test(value || '');
 
-const addListener = <T>(
-  registry: Map<string | number, RegistryState<T>>,
-  key: string | number,
+const addListener = <K extends RegistryKey, T>(
+  registry: Map<K, RegistryState<T>>,
+  key: K,
   state: RegistryState<T>,
   listener: Listener<T>
 ) => {
@@ -137,7 +138,7 @@ export const subscribeToEventConfig = (
 ) => {
   const existing = eventConfigRegistry.get(eventId);
   if (existing) {
-    return addListener(eventConfigRegistry as Map<string | number, RegistryState<EventConfigRealtimeRow>>, eventId, existing, listener);
+    return addListener(eventConfigRegistry, eventId, existing, listener);
   }
 
   const state: RegistryState<EventConfigRealtimeRow> = {
@@ -202,7 +203,7 @@ export const subscribeToEventConfig = (
       });
   }
 
-  return addListener(eventConfigRegistry as Map<string | number, RegistryState<EventConfigRealtimeRow>>, eventId, state, listener);
+  return addListener(eventConfigRegistry, eventId, state, listener);
 };
 
 export const subscribeToActiveHeatPointer = (
@@ -220,7 +221,7 @@ export const subscribeToActiveHeatPointer = (
       : undefined);
   const existing = activeHeatPointerRegistry.get(key);
   if (existing) {
-    return addListener(activeHeatPointerRegistry as Map<string | number, RegistryState<ActiveHeatPointerRealtimeRow>>, key, existing, listener);
+    return addListener(activeHeatPointerRegistry, key, existing, listener);
   }
 
   const state: RegistryState<ActiveHeatPointerRealtimeRow> = {
@@ -230,7 +231,7 @@ export const subscribeToActiveHeatPointer = (
     lastPayload: null,
   };
 
-  const matchesEvent = (row: ActiveHeatPointerRealtimeRow | null) => {
+  const matchesEvent = (row: ActiveHeatPointerRealtimeRow | null): row is ActiveHeatPointerRealtimeRow => {
     if (!row?.active_heat_id) return false;
     if (!key || key === 'global') return true;
     if (eventIdKey) return Number(row.event_id) === eventIdKey;
@@ -286,5 +287,5 @@ export const subscribeToActiveHeatPointer = (
       });
   }
 
-  return addListener(activeHeatPointerRegistry as Map<string | number, RegistryState<ActiveHeatPointerRealtimeRow>>, key, state, listener);
+  return addListener(activeHeatPointerRegistry, key, state, listener);
 };
