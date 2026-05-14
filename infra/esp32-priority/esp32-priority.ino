@@ -31,20 +31,20 @@
  */
 
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <WebServer.h>
 
 WebServer server(80); // Serveur sur le port 80
+WiFiMulti wifiMulti;  // Gestionnaire multi-réseaux WiFi
 
 // ============================================================================
 //  CONFIGURATION RÉSEAU (À ADAPTER À TON RÉSEAU LAN)
 // ============================================================================
-
-// WiFi du réseau de compétition
-const char* WIFI_SSID     = "ext-LARAISE FAM 2.4ghz";       // <-- À CHANGER (PAS d'espace à la fin !)
-const char* WIFI_PASSWORD  = "mekouLar";     // <-- À CHANGER
+// NOTE: Les WiFi pré-configurés (DLINK, Maison, Hotspot) sont définis
+// dans la fonction setup(). Aucun SSID unique requis ici.
 
 // URL de l'API Supabase Cloud (pour les tests)
 // En production terrain, remettre l'IP locale du HP : http://192.168.1.69:8000
@@ -165,6 +165,9 @@ unsigned long hornDurationMs = 0;            // Durée du horn en cours
 // Suivi de l'état précédent du heat (pour détecter les transitions)
 String previousHeatStatus = "";
 
+// Prototypes de fonctions (requis pour éviter les erreurs de scope C++ avec arguments par défaut)
+void connectWiFi(bool blocking = false);
+
 // ============================================================================
 //  SETUP
 // ============================================================================
@@ -211,12 +214,65 @@ void setup() {
             ledcWrite(pins[c], 0);
         }
     }
+
+    // TEST BLEU DÉDIÉ : garde TOUS les canaux B allumés 3 secondes
+    // Si la COB ne s'allume pas en bleu -> problème hardware (shunt)
+    // Si la COB s'allume en bleu -> OK, les micro-LEDs MOSFET sont juste shuntées
+    Serial.println("\n  >>> TEST BLEU 3s - REGARDE LA COB <<<");
+    for (int m = 0; m < NUM_MODULES; m++) {
+        ledcWrite(modules[m].pinB, 255);
+        Serial.printf("  P%d B (GPIO %d) = BLEU ON\n", m+1, modules[m].pinB);
+    }
+    delay(3000);
+    // Éteindre
+    for (int m = 0; m < NUM_MODULES; m++) {
+        ledcWrite(modules[m].pinB, 0);
+    }
+    Serial.println("  >>> FIN TEST BLEU <<<");
+
+    // TEST BLEU avec digitalWrite (bypass LEDC) pour comparaison
+    Serial.println("\n  >>> TEST BLEU GPIO DIRECT 3s <<<");
+    for (int m = 0; m < NUM_MODULES; m++) {
+        ledcDetach(modules[m].pinB);  // Libérer LEDC
+        pinMode(modules[m].pinB, OUTPUT);
+        digitalWrite(modules[m].pinB, HIGH);
+        Serial.printf("  P%d B (GPIO %d) = digitalWrite HIGH\n", m+1, modules[m].pinB);
+    }
+    delay(3000);
+    for (int m = 0; m < NUM_MODULES; m++) {
+        digitalWrite(modules[m].pinB, LOW);
+    }
+    Serial.println("  >>> FIN TEST GPIO DIRECT <<<");
+
+    // Réattacher LEDC sur les canaux B
+    int bChannels[] = {2, 6, 10, 14};  // Canaux LEDC des B
+    for (int m = 0; m < NUM_MODULES; m++) {
+        ledcAttachChannel(modules[m].pinB, PWM_FREQ, PWM_RESOLUTION, bChannels[m]);
+    }
+
     Serial.println("  === FIN TEST ===\n");
 
     Serial.println();
 
-    // Connexion WiFi
-    connectWiFi();
+    // Configurer la liste des réseaux WiFi pré-configurés
+    // wifiMulti se connectera automatiquement au meilleur réseau disponible.
+    
+    // 1. Mode Plage (DLINK) — Note: Mettre le mot de passe s'il y en a un
+    wifiMulti.addAP("DLINK", ""); 
+    
+    // 2. Réseau Maison (ext-LARAISE Fam)
+    wifiMulti.addAP("ext-LARAISE FAM 2.4ghz", "mekouLar");
+    
+    // 3. Réseau Maison (Variante sans "FAM")
+    wifiMulti.addAP("ext-LARAISE 2.4ghz", "mekouLar");
+    
+    // 4. Hotspot Téléphone (AndroidAP)
+    wifiMulti.addAP("AndroidAP", "12345678");
+
+    Serial.println("📡 Initialisation WiFiMulti...");
+
+    // Connexion WiFi (mode bloquant au démarrage)
+    connectWiFi(true);
 
     // Configuration du serveur Web de diagnostic
     setupWebServer();
@@ -317,35 +373,47 @@ void loop() {
 //  CONNEXION WIFI
 // ============================================================================
 
-void connectWiFi() {
-    if (WiFi.status() == WL_CONNECTED) return;
+void connectWiFi(bool blocking) {
+    if (WiFi.status() == WL_CONNECTED) {
+        wifiConnected = true;
+        return;
+    }
 
-    // Déconnecter proprement avant de relancer (évite "sta is connecting")
-    WiFi.disconnect(true);
-    delay(200);
     WiFi.mode(WIFI_STA);
-
-    Serial.printf("📡 Connexion au WiFi \"%s\"...\n", WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    WiFi.setSleep(false);  // Désactiver le mode économie d'énergie pour la latence
-
-    int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-        delay(500);
-        Serial.print(".");
-        attempts++;
+    WiFi.setSleep(false);
+    
+    if (blocking) {
+        Serial.println("📡 Recherche des réseaux pré-configurés (DLINK, Maison, AndroidAP)...");
+        int attempts = 0;
+        // Mode bloquant : attend le réseau au démarrage
+        while (wifiMulti.run() != WL_CONNECTED && attempts < 15) {
+            delay(1000);
+            Serial.print(".");
+            attempts++;
+        }
+    } else {
+        // Mode non-bloquant pour la loop principal : tente une fois
+        static unsigned long lastReconnectAttempt = 0;
+        if (millis() - lastReconnectAttempt > 5000) { // Tenter toutes les 5s max
+            lastReconnectAttempt = millis();
+            Serial.println("📡 [WiFiMulti] Tentative de reconnexion en arrière-plan...");
+            wifiMulti.run();
+        }
     }
 
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.println();
-        Serial.printf("✅ Connecté ! IP: %s, DNS: %s\n",
-            WiFi.localIP().toString().c_str(),
-            WiFi.dnsIP().toString().c_str());
-        wifiConnected = true;
+        if (!wifiConnected) {
+            Serial.println();
+            Serial.print("✅ Connecté avec succès ! SSID : ");
+            Serial.println(WiFi.SSID());
+            Serial.printf("   IP locale : %s\n", WiFi.localIP().toString().c_str());
+            wifiConnected = true;
+        }
     } else {
-        Serial.println();
-        Serial.println("❌ Échec de connexion WiFi. Nouvelle tentative dans 5s...");
-        delay(5000);
+        if (blocking) {
+            Serial.println("\n❌ Aucun réseau disponible pour l'instant. Démarrage en mode veille.");
+        }
+        wifiConnected = false;
     }
 }
 
@@ -641,7 +709,7 @@ void setupWebServer() {
         
         // WiFi & Alim
         html += "<div class='card'>";
-        html += "<div><span class='status online'></span> WiFi: " + String(WIFI_SSID) + " (" + String(WiFi.RSSI()) + " dBm)</div>";
+        html += "<div><span class='status online'></span> WiFi: " + WiFi.SSID() + " (" + String(WiFi.RSSI()) + " dBm)</div>";
         html += "<div>IP: " + WiFi.localIP().toString() + "</div>";
         html += "</div>";
 
