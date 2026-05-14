@@ -107,23 +107,36 @@ http://10.0.0.28:8080
 
 Vérifier dans `Mes événements` que l’événement est présent et que les heats sont chargés.
 
-### 4. Exploitation Plage
+### 4. Exploitation Plage (Réseau D-LINK)
 
-Sur le réseau D-LINK :
+Sur la plage, le routeur D-LINK crée un réseau local sans internet. La box HP devient le serveur central (IP `192.168.1.2`).
 
+#### A. Démarrer la stack logicielle
+Allumer la box HP, puis dans le terminal :
 ```bash
 ./beach
 ```
 
-URLs terrain :
-
+URLs terrain (à distribuer aux juges et écrans) :
 ```text
-http://192.168.1.2:8080
-http://192.168.1.2:8080/display
-http://192.168.1.2:8000/rest/v1/events?select=id&limit=1
+Tablettes Juges : http://192.168.1.2:8080
+Écran Public    : http://192.168.1.2:8080/display
 ```
 
-Pendant l’événement, le HP local est la source de vérité.
+Pendant l’événement, le HP local est l'unique source de vérité.
+
+#### B. Installation Hardware (Panneaux Priorité & Horn)
+Le module ESP32 a été rendu **100% autonome et Plug & Play**. 
+
+**1. Connexion WiFi Automatique :**
+Dès qu'il est allumé, l'ESP32 va chercher le réseau `DLINK`.
+- S'il le trouve, il bascule **automatiquement** en mode local et va interroger la base Supabase de la box HP (`http://192.168.1.2:8000`) avec la clé locale.
+- *Aucune reconfiguration de code n'est nécessaire entre la maison et la plage !*
+
+**2. Checklist Électrique 24V :**
+- **Câbles de Puissance :** Utiliser UNIQUEMENT du gros câble électrique (1.5mm² ou 2.5mm²) pour tout le circuit 24V (Batterie -> Relais -> Compresseur). *Les petits fils Arduino sont strictement interdits pour le klaxon sous peine de chute de tension (compresseur qui ronronne).*
+- **Relais du Klaxon :** Le relais bleu Songle de l'ESP32 est un relais de "commande". S'il manque de puissance pour lancer le compresseur sec, il est recommandé d'utiliser un **Relais Automobile 24V 40A** (piloté par le petit relais bleu).
+- **LEDs :** Les fils bleus et blancs vont sur les canaux IN3/IN4 des MOSFET. S'assurer que les shunts des puces L817 ne créent pas de court-circuit avec la masse.
 
 ### Mode hybride Realtime (anti-ralentissements)
 

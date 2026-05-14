@@ -46,12 +46,28 @@ WiFiMulti wifiMulti;  // Gestionnaire multi-réseaux WiFi
 // NOTE: Les WiFi pré-configurés (DLINK, Maison, Hotspot) sont définis
 // dans la fonction setup(). Aucun SSID unique requis ici.
 
-// URL de l'API Supabase Cloud (pour les tests)
-// En production terrain, remettre l'IP locale du HP : http://192.168.1.69:8000
-const char* SUPABASE_URL  = "https://xwaymumbkmwxqifihuvn.supabase.co";
+// ============================================================================
+//  URL & CLÉS SUPABASE (DYNAMIQUE SELON LE RÉSEAU)
+// ============================================================================
 
-// Clé anonyme Supabase Cloud
-const char* SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3YXltdW1ia213eHFpZmlodXZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNzY4NzAsImV4cCI6MjA3Nzg1Mjg3MH0.oeFEvXtKxVr006_Y6Sx2-vWYIfmsRKQ-nP9M-awBMU4";
+// 1. CLOUD (Par défaut, via maison ou 4G)
+const char* SUPABASE_URL_CLOUD  = "https://xwaymumbkmwxqifihuvn.supabase.co";
+const char* SUPABASE_KEY_CLOUD  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3YXltdW1ia213eHFpZmlodXZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNzY4NzAsImV4cCI6MjA3Nzg1Mjg3MH0.oeFEvXtKxVr006_Y6Sx2-vWYIfmsRKQ-nP9M-awBMU4";
+
+// 2. PLAGE / LAN (via HP Box sur routeur DLINK)
+const char* SUPABASE_URL_LOCAL  = "http://192.168.1.2:8000";
+const char* SUPABASE_KEY_LOCAL  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODY3NjA0MDV9.R7dF61lzIX8Zj2AQxZVQ2cltHnjQX0t-I1QckuSNLyA";
+
+// Résolution dynamique selon le réseau connecté
+String getSupabaseUrl() {
+    if (WiFi.SSID() == "DLINK") return SUPABASE_URL_LOCAL;
+    return SUPABASE_URL_CLOUD;
+}
+
+String getSupabaseKey() {
+    if (WiFi.SSID() == "DLINK") return SUPABASE_KEY_LOCAL;
+    return SUPABASE_KEY_CLOUD;
+}
 
 // Intervalle de polling en millisecondes
 // HTTPS Cloud = 5s pour préserver la RAM, HTTP LAN = rapide (1s)
@@ -125,6 +141,10 @@ const RGBW LYCRA_BLEU    = {   0,   0, 255,   0 };  // Lycra bleu
 const RGBW LYCRA_VERT    = {   0, 255,   0,   0 };  // Lycra vert
 const RGBW COLOR_EQUAL   = {   0,   0,   0, 120 };  // Priorité égale (blanc doux)
 const RGBW COLOR_OFF     = {   0,   0,   0,   0 };  // Éteint
+
+// Prototypes des fonctions utilisant la structure RGBW
+RGBW lycraToColor(String lycra);
+void setModuleColor(int moduleIndex, RGBW color);
 
 // ============================================================================
 //  VARIABLES GLOBALES
@@ -437,17 +457,19 @@ void pollPriorityState() {
         Serial.println("🔐 TLS initialisé");
     }
 
-    String url = String(SUPABASE_URL) + "/rest/v1/rpc/get_active_priority";
+    String activeUrl = getSupabaseUrl();
+    String activeKey = getSupabaseKey();
+    String url = activeUrl + "/rest/v1/rpc/get_active_priority";
 
-    if (String(SUPABASE_URL).startsWith("https")) {
+    if (activeUrl.startsWith("https")) {
         http.begin(secureClient, url);
     } else {
-        http.begin(url);
+        http.begin(url); // Mode HTTP simple pour la plage
     }
 
     http.setTimeout(10000);
-    http.addHeader("apikey", SUPABASE_ANON_KEY);
-    http.addHeader("Authorization", String("Bearer ") + SUPABASE_ANON_KEY);
+    http.addHeader("apikey", activeKey);
+    http.addHeader("Authorization", String("Bearer ") + activeKey);
     http.addHeader("Accept", "application/json");
 
     int httpCode = http.GET();
@@ -751,7 +773,7 @@ void setupWebServer() {
 
         // Debug API
         html += "<div class='card'><h2>API Debug</h2>";
-        html += "<div>URL: " + String(SUPABASE_URL) + "</div>";
+        html += "<div>URL: " + getSupabaseUrl() + "</div>";
         html += "<div>HTTP: " + String(lastHttpCode) + "</div>";
         if (lastHttpError.length() > 0) {
             html += "<div style='color:#f44336'>Erreur: " + lastHttpError + "</div>";
