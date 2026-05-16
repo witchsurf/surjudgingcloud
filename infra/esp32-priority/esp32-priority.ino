@@ -1,32 +1,25 @@
 /**
  * ============================================================================
- *  SURF JUDGING CLOUD — ESP32 PRIORITY LED CONTROLLER
+ *  SURF JUDGING CLOUD — ESP32 PRIORITY LED CONTROLLER v2.0
  * ============================================================================
  *
  *  Firmware pour ESP32-WROOM-DA
  *  Port série: /dev/cu.usbserial-1420
  *
- *  Ce firmware pilote 4 modules COB RGBW 24V via des cartes MOSFET ANMBEST
- *  pour afficher les priorités des surfeurs en temps réel.
- *  Il contrôle aussi un horn 24V via un module relais pour les signaux de
- *  début et fin de série.
+ *  v2.0 — Fonctionnalités:
+ *    - Polling ultra-rapide 500ms en LAN (5s Cloud)
+ *    - OTA (mise à jour sans fil via http://priority.local/update)
+ *    - mDNS (http://priority.local)
+ *    - Clignotement fin de série (30s lent, 10s rapide)
+ *    - Fondu animé lors des changements de priorité
+ *    - Config WiFi modifiable depuis le dashboard web
  *
  *  Architecture:
- *    Core 0: Polling HTTPS Supabase (toutes les 5s)
+ *    Core 0: Polling API Supabase
  *    Core 1: Serveur web + LEDs + Horn (loop principale)
  *
- *  Modules COB (priorité):
- *    Module 0 (P1) : GPIO 18=R, 19=G, 21=B, 22=W
- *    Module 1 (P2) : GPIO 23=R, 25=G, 26=B, 27=W
- *    Module 2 (P3) : GPIO 32=R, 33=G, 16=B, 17=W
- *    Module 3 (P4) : GPIO 4=R,  5=G,  13=B, 14=W
- *
- *  Horn 24V:
- *    GPIO 2 → Module relais → Horn 24V
- *    Début de série: 3s | Fin de série: 5s
- *
  *  IMPORTANT: Les LEDs bleues de la carte MOSFET doivent être shuntées
- *             pour que le signal 3.3V de l’ESP32 soit suffisant.
+ *             pour que le signal 3.3V de l'ESP32 soit suffisant.
  * ============================================================================
  */
 
@@ -36,9 +29,13 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <WebServer.h>
+#include <ESPmDNS.h>
+#include <Update.h>
+#include <Preferences.h>
 
 WebServer server(80); // Serveur sur le port 80
 WiFiMulti wifiMulti;  // Gestionnaire multi-réseaux WiFi
+Preferences prefs;    // Stockage persistant en flash
 
 // ============================================================================
 //  CONFIGURATION RÉSEAU (À ADAPTER À TON RÉSEAU LAN)
@@ -69,9 +66,12 @@ String getSupabaseKey() {
     return SUPABASE_KEY_CLOUD;
 }
 
-// Intervalle de polling en millisecondes
-// HTTPS Cloud = 5s pour préserver la RAM, HTTP LAN = rapide (1s)
-const unsigned long POLL_INTERVAL_MS = 5000;
+// Intervalle de polling dynamique
+// LAN (DLINK) = 500ms pour réactivité max, Cloud (HTTPS) = 5s pour la RAM
+unsigned long getPollInterval() {
+    if (WiFi.SSID() == "DLINK") return 500;
+    return 5000;
+}
 
 // ============================================================================
 //  HORN 24V (via module relais)
@@ -171,6 +171,7 @@ struct ModuleState {
     int priorityRank;   // 0 = equal, 1 = P, 2, 3, 4, -1 = off
     String lycraColor;  // Couleur du lycra du surfeur à cette position
     RGBW color;         // Couleur LED correspondante
+    RGBW currentColor;  // Couleur actuellement affichée (pour le fondu)
 };
 
 ModuleState moduleStates[4] = {};
@@ -181,6 +182,9 @@ volatile unsigned long hornRequestedMs = 0;  // Durée demandée
 bool hornActive = false;                     // Horn en cours (Core 1 seulement)
 unsigned long hornStartTime = 0;             // Début du horn
 unsigned long hornDurationMs = 0;            // Durée du horn en cours
+
+// Timer du heat (reçu du polling) pour le clignotement fin de série
+volatile long heatRemainingSeconds = -1;  // -1 = pas de timer actif
 
 // Suivi de l'état précédent du heat (pour détecter les transitions)
 String previousHeatStatus = "";
@@ -198,7 +202,7 @@ void setup() {
     delay(1000);
 
     Serial.println("================================================");
-    Serial.println("  SURF JUDGING — PRIORITY + HORN CONTROLLER v1.1");
+    Serial.println("  SURF JUDGING — PRIORITY + HORN CONTROLLER v2.0");
     Serial.println("================================================");
     Serial.println();
 
@@ -307,6 +311,13 @@ void setup() {
 
     Serial.println();
     Serial.println("🏄 Système prêt.");
+
+    // mDNS : accessible via http://priority.local
+    if (MDNS.begin("priority")) {
+        MDNS.addService("http", "tcp", 80);
+        Serial.println("📡 mDNS: http://priority.local");
+    }
+
     Serial.println();
 
     // Lancer le polling HTTPS sur le Core 0 (2ème processeur)
@@ -327,12 +338,12 @@ void setup() {
 // ============================================================================
 
 void pollingTask(void *parameter) {
-    Serial.println("📡 Polling HTTPS démarré sur Core 0");
+    Serial.println("📡 Polling démarré sur Core 0");
     for (;;) {
         if (WiFi.status() == WL_CONNECTED) {
             pollPriorityState();
         }
-        vTaskDelay(pdMS_TO_TICKS(POLL_INTERVAL_MS));
+        vTaskDelay(pdMS_TO_TICKS(getPollInterval()));
     }
 }
 
@@ -350,6 +361,7 @@ void loop() {
             wifiConnected = false;
             for (int m = 0; m < NUM_MODULES; m++) {
                 setModuleColor(m, COLOR_EQUAL);
+                moduleStates[m].currentColor = COLOR_EQUAL;
             }
         }
         connectWiFi();
@@ -361,11 +373,51 @@ void loop() {
         Serial.printf("✅ WiFi connecté ! IP: %s\n", WiFi.localIP().toString().c_str());
     }
 
-    // Mise à jour des LEDs SI le Core 0 a mis à jour les états
+    // ── FONDU ANIMÉ des LEDs (crossfade 200ms) ──
     if (statesUpdated) {
         statesUpdated = false;
+        // Fondu progressif sur 10 étapes (200ms total)
+        const int FADE_STEPS = 10;
+        const int FADE_DELAY = 20; // ms par étape
+        
+        RGBW startColors[4];
+        RGBW endColors[4];
         for (int m = 0; m < NUM_MODULES; m++) {
-            setModuleColor(m, moduleStates[m].color);
+            startColors[m] = moduleStates[m].currentColor;
+            endColors[m] = moduleStates[m].color;
+        }
+        
+        for (int step = 1; step <= FADE_STEPS; step++) {
+            float t = (float)step / FADE_STEPS;
+            for (int m = 0; m < NUM_MODULES; m++) {
+                RGBW c;
+                c.r = startColors[m].r + (endColors[m].r - startColors[m].r) * t;
+                c.g = startColors[m].g + (endColors[m].g - startColors[m].g) * t;
+                c.b = startColors[m].b + (endColors[m].b - startColors[m].b) * t;
+                c.w = startColors[m].w + (endColors[m].w - startColors[m].w) * t;
+                setModuleColor(m, c);
+            }
+            delay(FADE_DELAY);
+        }
+        
+        // Enregistrer la couleur finale
+        for (int m = 0; m < NUM_MODULES; m++) {
+            moduleStates[m].currentColor = moduleStates[m].color;
+        }
+    }
+
+    // ── CLIGNOTEMENT FIN DE SÉRIE ──
+    // Dernières 30s : clignotement lent (500ms). Dernières 10s : rapide (150ms).
+    if (heatRemainingSeconds >= 0 && heatRemainingSeconds <= 30 && lastHeatStatus == "running") {
+        int blinkInterval = (heatRemainingSeconds <= 10) ? 150 : 500;
+        bool ledOn = ((now / blinkInterval) % 2 == 0);
+        
+        for (int m = 0; m < NUM_MODULES; m++) {
+            if (ledOn) {
+                setModuleColor(m, moduleStates[m].color);
+            } else {
+                setModuleColor(m, COLOR_OFF);
+            }
         }
     }
 
@@ -538,6 +590,13 @@ void pollPriorityState() {
     String heatStatus = row["status"].as<String>();
 
     lastHeatStatus = heatStatus;
+
+    // Extraire le temps restant du timer (pour le clignotement fin de série)
+    if (row.containsKey("timer_remaining_seconds") && !row["timer_remaining_seconds"].isNull()) {
+        heatRemainingSeconds = row["timer_remaining_seconds"].as<long>();
+    } else {
+        heatRemainingSeconds = -1; // Pas de timer disponible
+    }
 
     // === DÉTECTION DES TRANSITIONS POUR LE HORN ===
     if (previousHeatStatus != "" && previousHeatStatus != heatStatus) {
@@ -718,34 +777,45 @@ void startupAnimation() {
 // ============================================================================
 
 void setupWebServer() {
+    // ── PAGE PRINCIPALE ──
     server.on("/", []() {
         String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
-        html += "<title>Priority Control Debug</title>";
-        html += "<style>body{font-family:sans-serif;background:#1a1a1a;color:white;padding:20px} .card{background:#333;padding:15px;border-radius:10px;margin-bottom:10px}";
+        html += "<title>Priority Control v2.0</title>";
+        html += "<style>body{font-family:sans-serif;background:#1a1a1a;color:white;padding:20px;max-width:600px;margin:0 auto}";
+        html += ".card{background:#333;padding:15px;border-radius:10px;margin-bottom:10px}";
         html += ".status{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px}";
-        html += ".online{background:#4CAF50} .offline{background:#f44336} .priority{font-size:24px;font-weight:bold}";
+        html += ".online{background:#4CAF50}.offline{background:#f44336}";
         html += ".module{display:inline-block;width:60px;height:60px;border:2px solid #555;border-radius:8px;margin:5px;text-align:center;line-height:60px;font-weight:bold}";
+        html += ".btn{display:inline-block;padding:8px 16px;background:#2196F3;color:white;border-radius:6px;text-decoration:none;margin:4px;font-size:14px}";
+        html += ".timer-warn{color:#ff9800;font-weight:bold;animation:blink 1s infinite}";
+        html += "@keyframes blink{50%{opacity:0.3}}";
         html += "</style><script>setTimeout(function(){location.reload();},2000);</script></head><body>";
         
-        html += "<h1>Priority LED Debug</h1>";
+        html += "<h1>🏄 Priority v2.0</h1>";
         
-        // WiFi & Alim
+        // WiFi
         html += "<div class='card'>";
-        html += "<div><span class='status online'></span> WiFi: " + WiFi.SSID() + " (" + String(WiFi.RSSI()) + " dBm)</div>";
-        html += "<div>IP: " + WiFi.localIP().toString() + "</div>";
+        html += "<div><span class='status online'></span> " + WiFi.SSID() + " (" + String(WiFi.RSSI()) + " dBm)</div>";
+        html += "<div>IP: " + WiFi.localIP().toString() + " | <a href='http://priority.local' style='color:#4fc3f7'>priority.local</a></div>";
+        html += "<div>Polling: " + String(getPollInterval()) + "ms | Mode: " + (WiFi.SSID() == "DLINK" ? "🏖️ LAN" : "☁️ Cloud") + "</div>";
         html += "</div>";
 
-        // Heat Status
+        // Heat + Timer
         html += "<div class='card'>";
-        html += "<h2>Heat Actif</h2>";
         if (currentHeatId == "") {
             html += "<p style='color:#888'>Aucun heat en cours (Mode Veille)</p>";
         } else {
-            html += "<p class='priority'>ID: " + currentHeatId + "</p>";
+            html += "<p style='font-size:24px;font-weight:bold'>Heat: " + currentHeatId + " [" + lastHeatStatus + "]</p>";
+            if (heatRemainingSeconds >= 0) {
+                int mins = heatRemainingSeconds / 60;
+                int secs = heatRemainingSeconds % 60;
+                String timerClass = (heatRemainingSeconds <= 30) ? "timer-warn" : "";
+                html += "<p class='" + timerClass + "'>⏱ " + String(mins) + ":" + (secs < 10 ? "0" : "") + String(secs) + "</p>";
+            }
         }
         html += "</div>";
 
-        // Modules Status — Position de priorité
+        // Modules
         html += "<div class='card'><h2>Positions</h2>";
         String posLabels[] = {"P", "2", "3", "4"};
         for (int m = 0; m < NUM_MODULES; m++) {
@@ -754,50 +824,159 @@ void setupWebServer() {
                 colorStyle = "background:#eee;color:#333;";
             }
             if (moduleStates[m].priorityRank <= 0) colorStyle += "opacity:0.4;";
-
-            html += "<div class='module' style='" + colorStyle + "'>";
-            if (moduleStates[m].priorityRank > 0) {
-                html += posLabels[m];
-            } else {
-                html += "=";
-            }
-            html += "</div>";
+            html += "<div class='module' style='" + colorStyle + "'>" + (moduleStates[m].priorityRank > 0 ? posLabels[m] : String("=")) + "</div>";
         }
-        // Afficher les lycras assignés
         html += "<p style='font-size:12px;color:#aaa'>";
         for (int m = 0; m < NUM_MODULES; m++) {
             html += posLabels[m] + ":" + (moduleStates[m].lycraColor.length() > 0 ? moduleStates[m].lycraColor : "-") + " ";
         }
-        html += "</p>";
+        html += "</p></div>";
+
+        // Debug
+        html += "<div class='card'><h2>Debug</h2>";
+        html += "<div>API: " + getSupabaseUrl() + "</div>";
+        html += "<div>HTTP: " + String(lastHttpCode) + " | Polls: " + String(pollCount) + "</div>";
+        html += "<div>RAM: " + String(ESP.getFreeHeap()) + " bytes | Errors: " + String(consecutiveErrors) + "</div>";
+        if (lastHttpError.length() > 0) html += "<div style='color:#f44336'>" + lastHttpError + "</div>";
         html += "</div>";
 
-        // Debug API
-        html += "<div class='card'><h2>API Debug</h2>";
-        html += "<div>URL: " + getSupabaseUrl() + "</div>";
-        html += "<div>HTTP: " + String(lastHttpCode) + "</div>";
-        if (lastHttpError.length() > 0) {
-            html += "<div style='color:#f44336'>Erreur: " + lastHttpError + "</div>";
-        }
-        html += "<div>Résultats: " + String(lastResultCount) + "</div>";
-        html += "<div>Status heat: " + (lastHeatStatus.length() > 0 ? lastHeatStatus : String("(vide)")) + "</div>";
-        if (lastJsonError.length() > 0) {
-            html += "<div style='color:#f44336'>JSON Err: " + lastJsonError + "</div>";
-        }
-        html += "<div>RAM libre: " + String(ESP.getFreeHeap()) + " bytes</div>";
-        html += "<div>Erreurs: " + String(consecutiveErrors) + "</div>";
-        html += "<div>DNS: " + WiFi.dnsIP().toString() + "</div>";
-        html += "<div>Polls: " + String(pollCount) + "</div>";
-        html += "</div>";
-
-        // Horn status
+        // Horn
         html += "<div class='card'><h2>Horn</h2>";
-        html += "<div>GPIO: " + String(HORN_PIN) + "</div>";
-        html += "<div>État: " + String(hornActive ? "🔊 ACTIF" : "🔇 Off") + "</div>";
+        html += "<div>GPIO " + String(HORN_PIN) + " — " + String(hornActive ? "🔊 ACTIF" : "🔇 Off") + "</div>";
+        html += "</div>";
+
+        // Navigation
+        html += "<div style='margin-top:15px'>";
+        html += "<a class='btn' href='/update'>📦 OTA Update</a>";
+        html += "<a class='btn' href='/wifi'>📶 WiFi Config</a>";
         html += "</div>";
 
         html += "</body></html>";
         server.send(200, "text/html", html);
     });
+
+    // ── OTA : PAGE DE MISE À JOUR FIRMWARE ──
+    server.on("/update", HTTP_GET, []() {
+        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
+        html += "<title>OTA Update</title>";
+        html += "<style>body{font-family:sans-serif;background:#1a1a1a;color:white;padding:20px;max-width:500px;margin:0 auto}";
+        html += ".card{background:#333;padding:20px;border-radius:10px}";
+        html += "input[type=file]{margin:10px 0}";
+        html += "input[type=submit]{background:#4CAF50;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:16px;cursor:pointer}";
+        html += "</style></head><body>";
+        html += "<h1>📦 OTA Firmware Update</h1>";
+        html += "<div class='card'>";
+        html += "<p>Version actuelle: v2.0</p>";
+        html += "<p>RAM libre: " + String(ESP.getFreeHeap()) + " bytes</p>";
+        html += "<form method='POST' action='/update' enctype='multipart/form-data'>";
+        html += "<input type='file' name='firmware' accept='.bin'><br>";
+        html += "<input type='submit' value='Flasher le firmware'>";
+        html += "</form></div>";
+        html += "<p><a href='/' style='color:#4fc3f7'>← Retour</a></p>";
+        html += "</body></html>";
+        server.send(200, "text/html", html);
+    });
+
+    server.on("/update", HTTP_POST, []() {
+        server.sendHeader("Connection", "close");
+        server.send(200, "text/plain", Update.hasError() ? "FAIL" : "OK — Redemarrage...");
+        delay(500);
+        ESP.restart();
+    }, []() {
+        HTTPUpload& upload = server.upload();
+        if (upload.status == UPLOAD_FILE_START) {
+            Serial.printf("OTA: %s\n", upload.filename.c_str());
+            if (!Update.begin(UPDATE_SIZE_UNKNOWN)) Update.printError(Serial);
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) Update.printError(Serial);
+        } else if (upload.status == UPLOAD_FILE_END) {
+            if (Update.end(true)) {
+                Serial.printf("OTA OK: %u bytes\n", upload.totalSize);
+            } else {
+                Update.printError(Serial);
+            }
+        }
+    });
+
+    // ── CONFIG WIFI ──
+    server.on("/wifi", HTTP_GET, []() {
+        String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
+        html += "<title>WiFi Config</title>";
+        html += "<style>body{font-family:sans-serif;background:#1a1a1a;color:white;padding:20px;max-width:500px;margin:0 auto}";
+        html += ".card{background:#333;padding:15px;border-radius:10px;margin-bottom:10px}";
+        html += "input{background:#444;border:1px solid #666;color:white;padding:8px;border-radius:6px;width:100%;margin:4px 0;box-sizing:border-box}";
+        html += "button{background:#2196F3;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;margin-top:8px}";
+        html += "</style></head><body>";
+        html += "<h1>📶 WiFi Config</h1>";
+        html += "<div class='card'><p>Connecté: <strong>" + WiFi.SSID() + "</strong> (" + String(WiFi.RSSI()) + " dBm)</p></div>";
+        
+        // Formulaire pour ajouter un réseau
+        html += "<div class='card'><h2>Ajouter un réseau</h2>";
+        html += "<form method='POST' action='/wifi'>";
+        html += "<input type='text' name='ssid' placeholder='Nom du réseau (SSID)' required>";
+        html += "<input type='password' name='pass' placeholder='Mot de passe (vide si ouvert)'>";
+        html += "<button type='submit'>Ajouter et reconnecter</button>";
+        html += "</form></div>";
+
+        // Réseaux actuels depuis Preferences
+        html += "<div class='card'><h2>Réseaux enregistrés</h2>";
+        prefs.begin("wifi", true); // Lecture seule
+        for (int i = 0; i < 8; i++) {
+            String key = "ssid" + String(i);
+            String ssid = prefs.getString(key.c_str(), "");
+            if (ssid.length() > 0) {
+                html += "<div>📶 " + ssid + "</div>";
+            }
+        }
+        prefs.end();
+        html += "<p style='font-size:12px;color:#888'>+ DLINK, ext-LARAISE, AndroidAP (codés en dur)</p></div>";
+
+        html += "<p><a href='/' style='color:#4fc3f7'>← Retour</a></p>";
+        html += "</body></html>";
+        server.send(200, "text/html", html);
+    });
+
+    server.on("/wifi", HTTP_POST, []() {
+        String ssid = server.arg("ssid");
+        String pass = server.arg("pass");
+        
+        if (ssid.length() > 0) {
+            // Sauvegarder dans Preferences
+            prefs.begin("wifi", false);
+            // Trouver le prochain slot libre
+            for (int i = 0; i < 8; i++) {
+                String key = "ssid" + String(i);
+                String existing = prefs.getString(key.c_str(), "");
+                if (existing.length() == 0 || existing == ssid) {
+                    prefs.putString(key.c_str(), ssid);
+                    prefs.putString(("pass" + String(i)).c_str(), pass);
+                    break;
+                }
+            }
+            prefs.end();
+            
+            // Ajouter au WiFiMulti immédiatement
+            wifiMulti.addAP(ssid.c_str(), pass.c_str());
+            Serial.printf("📶 Réseau ajouté: %s\n", ssid.c_str());
+        }
+        
+        server.sendHeader("Location", "/wifi");
+        server.send(303);
+    });
+
     server.begin();
+    
+    // Charger les réseaux WiFi sauvegardés en flash
+    prefs.begin("wifi", true);
+    for (int i = 0; i < 8; i++) {
+        String ssid = prefs.getString(("ssid" + String(i)).c_str(), "");
+        String pass = prefs.getString(("pass" + String(i)).c_str(), "");
+        if (ssid.length() > 0) {
+            wifiMulti.addAP(ssid.c_str(), pass.c_str());
+            Serial.printf("  📶 WiFi flash: %s\n", ssid.c_str());
+        }
+    }
+    prefs.end();
+    
     Serial.println("🌐 Serveur web démarré sur http://" + WiFi.localIP().toString());
 }
