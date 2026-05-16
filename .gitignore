@@ -33,6 +33,7 @@ frontend/.deploy-deps.sha256
 n8n_key*
 *.zip
 infra/letsencrypt/acme.json
+infra/.env.cloudflared
 
 # Additional build ignores
 build/

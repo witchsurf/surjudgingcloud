@@ -38,8 +38,9 @@ while true; do
   echo "4. $ACTION_FOUR"
   echo "5. Change network profile"
   echo "6. Photocopy Cloud DB to Field Box (Preparation)"
-  echo "7. Sync Field Box DB to Cloud"
-  echo "8. Repair public display tunnel"
+  echo "7. Sync Field Box DB to Cloud (one-shot)"
+  echo "8. 📡 Live Score Sync via 4G (start)"
+  echo "9. ⏹  Live Score Sync via 4G (stop)"
   echo "0. Quit"
   echo
   read -r -p "Choix: " choice
@@ -83,10 +84,40 @@ while true; do
       read -r -p "Entrée pour continuer..."
       ;;
     8)
-      ./scripts/hp-restart-cloudflare-tunnel.sh
+      echo
+      read -r -p "Event ID pour le live sync (ex: 17): " live_event_id
+      if [[ -z "${live_event_id// }" ]]; then
+        echo "Live sync annulé: aucun event_id fourni."
+      else
+        ./scripts/hp-live-sync.sh --event-id "$live_event_id" &
+        LIVE_SYNC_PID=$!
+        echo "📡 Live sync démarré en arrière-plan (PID: $LIVE_SYNC_PID)"
+        echo "   Event: $live_event_id | Intervalle: 30s"
+        echo "   Utilisez l'option 9 pour arrêter."
+      fi
+      read -r -p "Entrée pour continuer..."
+      ;;
+    9)
+      if [[ -n "${LIVE_SYNC_PID:-}" ]]; then
+        kill "$LIVE_SYNC_PID" 2>/dev/null && echo "⏹ Live sync arrêté (PID: $LIVE_SYNC_PID)" || echo "⚠️ Processus déjà terminé"
+        unset LIVE_SYNC_PID
+      else
+        # Tenter de trouver un processus live-sync en cours
+        FOUND_PID=$(pgrep -f "hp-live-sync.sh" 2>/dev/null || true)
+        if [[ -n "$FOUND_PID" ]]; then
+          kill "$FOUND_PID" 2>/dev/null && echo "⏹ Live sync arrêté (PID: $FOUND_PID)" || echo "⚠️ Processus déjà terminé"
+        else
+          echo "ℹ️ Aucun live sync en cours."
+        fi
+      fi
       read -r -p "Entrée pour continuer..."
       ;;
     0)
+      # Arrêter le live sync s'il tourne avant de quitter
+      if [[ -n "${LIVE_SYNC_PID:-}" ]]; then
+        kill "$LIVE_SYNC_PID" 2>/dev/null || true
+        echo "⏹ Live sync arrêté avant fermeture."
+      fi
       exit 0
       ;;
     *)

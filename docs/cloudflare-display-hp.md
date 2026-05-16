@@ -1,94 +1,113 @@
-# Cloudflare Tunnel for `display.surfjudging.cloud`
+# Display Public — Live Sync via 4G
 
-This setup exposes the local HP mini PC display through Cloudflare Tunnel without opening inbound router ports.
+Ce document décrit comment le display public (`surfjudging.cloud/display`) est alimenté en temps réel pendant un événement sur la plage, sans dépendre d'un tunnel Cloudflare.
 
-## Target topology
-
-- HP mini PC runs Docker and serves the frontend locally on port `8080`
-- `cloudflared` runs on the same Docker host
-- Cloudflare publishes `display.surfjudging.cloud`
-- Judges/admin tablets remain on LAN
-
-## Files added
-
-- `infra/docker-compose-cloudflare.yml`
-- `infra/.env.cloudflared.example`
-
-## 1. Create the tunnel in Cloudflare
-
-In Cloudflare Zero Trust:
-
-1. Go to `Networks` -> `Tunnels`
-2. Create a `Named Tunnel`
-3. Choose Docker
-4. Copy the generated tunnel token
-
-## 2. Publish the display hostname
-
-In the tunnel public hostnames section, add:
-
-- Hostname: `display.surfjudging.cloud`
-- Service type: `HTTP`
-- URL: `http://surfjudging:80`
-
-Why `surfjudging:80`:
-
-- The `cloudflared` container joins the same Docker network namespace as the compose app
-- The static frontend is already served by the `surfjudging` nginx container on port `80`
-
-## 3. Prepare env file on the HP
-
-```bash
-cd /opt/judging/infra
-cp .env.cloudflared.example .env.cloudflared
-```
-
-Set:
-
-```bash
-CLOUDFLARE_TUNNEL_TOKEN=your-real-token
-```
-
-## 4. Start the local stack plus tunnel
-
-From `infra/`:
-
-```bash
-docker compose \
-  --env-file .env.production \
-  --env-file .env.cloudflared \
-  -f docker-compose.yml \
-  -f docker-compose-cloudflare.yml \
-  up -d --build
-```
-
-If you want the HP to stay LAN-only except for the display, do not expose admin or judge hostnames in Cloudflare.
-
-## 5. DNS and routing
-
-Cloudflare normally creates the DNS route automatically when you add the public hostname to the tunnel.
-
-The public URL should then be:
+## Architecture
 
 ```text
-https://display.surfjudging.cloud
+┌─────────────────────────────────────────────────────────┐
+│ PLAGE (réseau DLINK)                                    │
+│                                                         │
+│  HP Box (192.168.1.2)         Hotspot 4G                │
+│  ├── Supabase locale (:8000)     │                      │
+│  ├── Frontend LAN (:8080)        │                      │
+│  └── hp-live-sync.sh ───────────►│                      │
+│        (toutes les 30s)          │                      │
+│                                  │                      │
+│  Tablettes juges                 │                      │
+│  http://192.168.1.2:8080         │                      │
+│                                  │                      │
+│  ESP32 Priorité + Horn           │                      │
+│  → API locale via WiFi DLINK     │                      │
+└──────────────────────────────────┼──────────────────────┘
+                                   │
+                              ─────┼───── Internet ──────
+                                   │
+                                   ▼
+                        ┌──────────────────────┐
+                        │ Supabase Cloud       │
+                        │ (xwaymumbk...)       │
+                        │                      │
+                        │ scores, heats,       │
+                        │ participants, etc.   │
+                        └──────────┬───────────┘
+                                   │
+                                   ▼
+                        ┌──────────────────────┐
+                        │ surfjudging.cloud    │
+                        │ /display             │
+                        │                      │
+                        │ 📱 Spectateurs       │
+                        └──────────────────────┘
 ```
 
-## Recommended scope
+## Principe
 
-Expose only:
+1. Le HP reste la **source de vérité** pendant l'événement (réseau DLINK local).
+2. Un hotspot 4G (téléphone en partage de connexion) est branché au réseau.
+3. Le script `hp-live-sync.sh` tourne en arrière-plan et **pousse les scores vers le Cloud** toutes les 30 secondes.
+4. Le display public (`surfjudging.cloud/display`) lit les données depuis le Cloud Supabase et se met à jour automatiquement.
 
-- `display.surfjudging.cloud`
+## Utilisation
 
-Do not expose publicly:
+### Depuis le menu terrain
 
-- local Supabase REST
-- local Postgres
-- judge links
-- admin routes
+```bash
+./beach
+# ou
+./event-box
+```
 
-## Notes
+Puis choisir :
+- **Option 8** : 📡 Live Score Sync via 4G (start)
+- **Option 9** : ⏹  Live Score Sync via 4G (stop)
 
-- `infra/nginx.conf` now accepts `display.surfjudging.cloud`
-- If the public display ever needs a stricter view than the full app, create a dedicated display-only frontend route later and point the tunnel there
-- If you later want protected remote operations, add a second hostname behind Cloudflare Access instead of exposing it openly
+### En ligne de commande directe
+
+```bash
+# Démarrer en arrière-plan
+./scripts/hp-live-sync.sh --event-id 17 &
+
+# Avec un intervalle personnalisé (60 secondes)
+./scripts/hp-live-sync.sh --event-id 17 --interval 60 &
+
+# Arrêter
+kill $(pgrep -f hp-live-sync.sh)
+```
+
+## Fichiers
+
+| Fichier | Rôle |
+|---|---|
+| `scripts/hp-live-sync.sh` | Boucle de sync en arrière-plan |
+| `frontend/scripts/hp-push-db-to-cloud.mjs` | Moteur de sync (diff + upsert) |
+| `frontend/.env.local` | Clés Supabase (Cloud + Local) |
+
+## Logs
+
+Les logs de la sync live sont écrits dans :
+
+```text
+infra/.live-sync.log
+```
+
+## Prérequis
+
+1. Le HP doit pouvoir atteindre internet (via hotspot 4G relié au DLINK ou en USB).
+2. Les variables `SUPABASE_SERVICE_ROLE_KEY_CLOUD` et `VITE_SUPABASE_URL_CLOUD` doivent être définies dans `frontend/.env.local`.
+3. Le script `hp-push-db-to-cloud.mjs` doit pouvoir joindre le HP local ET le Cloud simultanément.
+
+## Robustesse
+
+- **Erreurs réseau :** Si le Cloud est inaccessible (coupure 4G), le script retente au cycle suivant. Après 5 erreurs consécutives, il fait une pause de 2 minutes puis reprend.
+- **Arrêt propre :** Le script intercepte SIGTERM/SIGINT pour se fermer proprement. L'option 0 (Quit) du menu arrête aussi le sync s'il tourne.
+- **Diff intelligent :** Seules les lignes modifiées sont poussées vers le Cloud (pas de full-sync inutile).
+- **Pas d'impact sur le HP :** Le sync est en lecture seule côté local. Aucune donnée terrain n'est modifiée.
+
+## Sans 4G (fallback)
+
+Si aucun hotspot 4G n'est disponible pendant l'événement :
+
+1. L'événement se déroule normalement en LAN pur.
+2. Après l'événement, connecter le HP à internet.
+3. Utiliser l'**option 7** du menu (Sync one-shot) pour pousser toutes les données terrain vers le Cloud en une seule fois.

@@ -138,6 +138,27 @@ Dès qu'il est allumé, l'ESP32 va chercher le réseau `DLINK`.
 - **Relais du Klaxon :** Le relais bleu Songle de l'ESP32 est un relais de "commande". S'il manque de puissance pour lancer le compresseur sec, il est recommandé d'utiliser un **Relais Automobile 24V 40A** (piloté par le petit relais bleu).
 - **LEDs :** Les fils bleus et blancs vont sur les canaux IN3/IN4 des MOSFET. S'assurer que les shunts des puces L817 ne créent pas de court-circuit avec la masse.
 
+#### C. Display Public (Live Sync 4G)
+
+Le display public (`surfjudging.cloud/display`) est alimenté par le **Cloud Supabase**, pas par le HP local. Pour que les spectateurs distants voient les scores en temps réel, il faut un hotspot 4G.
+
+1. Brancher un **hotspot 4G** (téléphone en partage de connexion) sur le réseau.
+2. Dans le menu terrain, choisir **option 8 : 📡 Live Score Sync via 4G**.
+3. Entrer l'`event_id` de la compétition en cours.
+4. Le script synchronise les scores vers le Cloud **toutes les 30 secondes**.
+5. Pour arrêter : **option 9** du menu.
+
+```bash
+# Ou en ligne de commande directe :
+./scripts/hp-live-sync.sh --event-id 17 &
+```
+
+Logs disponibles dans `infra/.live-sync.log`.
+
+Si pas de 4G disponible : les scores seront poussés en une seule fois après l'événement (option 7 du menu).
+
+Voir `docs/cloudflare-display-hp.md` pour la documentation complète de l'architecture live sync.
+
 ### Mode hybride Realtime (anti-ralentissements)
 
 Quand beaucoup d’écrans/clients ouvrent des websockets Realtime sur `scores`, Postgres peut passer beaucoup de temps dans `realtime.list_changes(...)` (symptôme: latence, CPU, “ralentissements Supabase”).
