@@ -1,7 +1,6 @@
 -- ============================================================================
--- Fonction RPC pour l'ESP32 Priority LED Controller
--- Retourne UNIQUEMENT les données de priorité du heat actif
--- Réponse: ~200 bytes au lieu de ~15 KB avec config_data complet
+-- Mise à jour de la fonction RPC pour l'ESP32 Priority LED Controller v2.0
+-- Ajoute le calcul du temps restant pour le clignotement fin de série
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION get_active_priority()
@@ -9,7 +8,8 @@ RETURNS TABLE (
     heat_id TEXT,
     status TEXT,
     priority_state JSONB,
-    surfers JSONB
+    surfers JSONB,
+    timer_remaining_seconds INTEGER
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -19,8 +19,18 @@ AS $$
         hrc.heat_id::TEXT,
         hrc.status::TEXT,
         hrc.config_data->'priorityState' AS priority_state,
-        hrc.config_data->'surfers' AS surfers
+        hrc.config_data->'surfers' AS surfers,
+        -- Calcul du temps restant en secondes
+        CASE
+            WHEN ht.is_running AND ht.start_time IS NOT NULL THEN
+                GREATEST(0,
+                    (ht.duration_minutes * 60)
+                    - EXTRACT(EPOCH FROM (now() - ht.start_time))::INTEGER
+                )
+            ELSE NULL
+        END AS timer_remaining_seconds
     FROM heat_realtime_config hrc
+    LEFT JOIN heat_timers ht ON ht.heat_id = hrc.heat_id
     ORDER BY hrc.updated_at DESC
     LIMIT 1;
 $$;
