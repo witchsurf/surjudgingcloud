@@ -3,6 +3,8 @@
 -- Ajoute le calcul du temps restant pour le clignotement fin de série
 -- ============================================================================
 
+DROP FUNCTION IF EXISTS get_active_priority();
+
 CREATE OR REPLACE FUNCTION get_active_priority()
 RETURNS TABLE (
     heat_id TEXT,
