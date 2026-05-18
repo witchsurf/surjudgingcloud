@@ -184,7 +184,7 @@ export default function ParticipantsStructure() {
         waves: wavesCount,
         judgeNames: existingConfig.judgeNames ?? {},
         surferCountries: existingConfig.surferCountries ?? {},
-        tournamentType: format,
+        tournamentType: format === 'single-elim' ? 'elimination' : 'repechage',
         totalSurfers,
         surfersPerHeat,
         totalHeats,
@@ -516,7 +516,7 @@ export default function ParticipantsStructure() {
           overwrite,
           repechage: preview.repechage,
           defaultJudges: ['J1', 'J2', 'J3'],
-          tournamentType: format,
+          tournamentType: format === 'single-elim' ? 'elimination' : 'repechage',
         }
       );
 
