@@ -145,6 +145,7 @@ export default function JudgePage() {
     // Realtime sync for admin config saves (division/round/heat changes).
     useEffect(() => {
         if (!isSupabaseConfigured() || configLoading) return;
+        if (positionFromUrl) return;
 
         const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
         const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
@@ -224,22 +225,36 @@ export default function JudgePage() {
     // Fallback realtime path: switch tablets when active_heat_pointer changes.
     useEffect(() => {
         if (!isSupabaseConfigured() || configLoading) return;
-        if (eventIdFromUrl) return;
 
         const expectedEvent = normalizeEventRealtimeKey(config.competition);
+        const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
+        const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
         const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
             if (!row?.active_heat_id) return;
 
             const eventName = (row.event_name || '').trim();
             if (expectedEvent && normalizeEventRealtimeKey(eventName) !== expectedEvent) return;
 
+            const parsed = parseActiveHeatId(row.active_heat_id);
+            if (!parsed) return;
+
             if (positionFromUrl) {
+                const currentConfig = latestConfigRef.current;
+                const sameHeat =
+                    Boolean(latestConfigSavedRef.current) &&
+                    (currentConfig.division || '').trim().toUpperCase() === parsed.division.trim().toUpperCase() &&
+                    Number(currentConfig.round) === Number(parsed.round) &&
+                    Number(currentConfig.heatId) === Number(parsed.heatNumber);
+                if (sameHeat) return;
+
+                if (targetEventId) {
+                    void loadConfigFromDb(targetEventId, { force: true, includeCategories: false });
+                    return;
+                }
+
                 void loadKioskConfig();
                 return;
             }
-
-            const parsed = parseActiveHeatId(row.active_heat_id);
-            if (!parsed) return;
 
             setConfig((prev) => {
                 const unchanged =
@@ -266,7 +281,7 @@ export default function JudgePage() {
         return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
         }, { initialRefresh: false });
-    }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl]);
+    }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl, loadConfigFromDb]);
 
     // Purge local scores only when heat changes.
     // Do NOT purge on generic config reload, otherwise unsynced tablet scores can disappear.
