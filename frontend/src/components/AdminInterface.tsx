@@ -208,6 +208,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [showClosedHeats, setShowClosedHeats] = useState(false);
   const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<Array<{ division: string; round: number; heat_number: number; status: string }>>([]);
   const [isTimerOpen, setIsTimerOpen] = useState(true);
+  const [rejudgeOverrideHeatKey, setRejudgeOverrideHeatKey] = useState<string | null>(null);
+  const [rejudgeConfirmText, setRejudgeConfirmText] = useState('');
+  const [rejudgeOverridePending, setRejudgeOverridePending] = useState(false);
+  const [rejudgeOverrideError, setRejudgeOverrideError] = useState<string | null>(null);
   const [floatingTimerTick, setFloatingTimerTick] = useState(Date.now());
   const [availableOfficialJudges, setAvailableOfficialJudges] = useState<Judge[]>([]);
   const [officialJudgeStatus, setOfficialJudgeStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -2050,6 +2054,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     setOverrideStatus(null);
     setHeadJudgeOverride(false);
     setInterferenceType('INT1');
+    setRejudgeConfirmText('');
+    setRejudgeOverrideError(null);
   }, [currentHeatKey]);
 
   useEffect(() => {
@@ -2059,6 +2065,22 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [isCurrentHeatLocked]);
 
   const stableHeatLocked = hasBeenLockedRef.current;
+  const currentHeatScoreCount = React.useMemo(
+    () =>
+      mergedScores.filter(
+        (score) => ensureHeatId(score.heat_id) === heatId && Number(score.score) > 0
+      ).length,
+    [heatId, mergedScores]
+  );
+  const currentHeatHasScores = currentHeatScoreCount > 0;
+  const currentHeatLooksAlreadyJudged = currentHeatHasScores && !timer.isRunning && !timer.startTime;
+  const rejudgeOverrideActive = rejudgeOverrideHeatKey === currentHeatKey;
+  const heatRejudgeProtected = (stableHeatLocked || currentHeatLooksAlreadyJudged) && !rejudgeOverrideActive;
+  const rejudgeProtectionReason = stableHeatLocked
+    ? 'closed'
+    : currentHeatLooksAlreadyJudged
+      ? 'scores'
+      : null;
   const floatingTimeLeft = React.useMemo(
     () => getRemainingTimerSeconds(timer, floatingTimerTick),
     [timer, floatingTimerTick, getRemainingTimerSeconds]
@@ -2308,11 +2330,83 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const handleTimerResume = () => {
     if (timer.isRunning) return;
+    if (heatRejudgeProtected) {
+      setIsTimerOpen(true);
+      setRejudgeOverrideError('Heat protégé: confirmez le mode REJUGER avant de relancer le timer.');
+      return;
+    }
     handleTimerStart();
   };
 
+  const handleRejudgeOverrideEnable = async () => {
+    if (rejudgeConfirmText.trim().toUpperCase() !== 'REJUGER') {
+      setRejudgeOverrideError('Tapez REJUGER pour confirmer la réouverture exceptionnelle.');
+      return;
+    }
+
+    setRejudgeOverridePending(true);
+    setRejudgeOverrideError(null);
+
+    try {
+      if (isSupabaseConfigured() && supabase) {
+        const { error: heatError } = await supabase
+          .from('heats')
+          .update({ status: 'open', closed_at: null })
+          .eq('id', heatId);
+
+        if (heatError) {
+          throw heatError;
+        }
+
+        await upsertHeatRealtimeConfig(heatId, {
+          status: 'waiting',
+          setTimerStartTime: true,
+          timerStartTime: null,
+          setTimerDuration: true,
+          timerDurationMinutes: Math.max(1, plannedTimerDuration || timer.duration || 20),
+          updatedBy: 'head_judge_rejudge_override',
+        });
+      }
+
+      const resetTimer = {
+        ...timer,
+        isRunning: false,
+        startTime: null,
+        duration: Math.max(1, plannedTimerDuration || timer.duration || 20),
+      };
+      onTimerChange(resetTimer);
+      localStorage.setItem('surfJudgingTimer', JSON.stringify(resetTimer));
+      setRejudgeOverrideHeatKey(currentHeatKey);
+      setRejudgeConfirmText('');
+      hasBeenLockedRef.current = false;
+      setAllEventHeatsMeta((rows) =>
+        rows.map((row) =>
+          row.division === config.division &&
+          Number(row.round) === Number(config.round) &&
+          Number(row.heat_number) === Number(config.heatId)
+            ? { ...row, status: 'open' }
+            : row
+        )
+      );
+      setDivisionHeatSequence((rows) =>
+        rows.map((row) =>
+          Number(row.round) === Number(config.round) &&
+          Number(row.heat_number) === Number(config.heatId)
+            ? { ...row, status: 'open' }
+            : row
+        )
+      );
+      setSyncError(null);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setRejudgeOverrideError(`Impossible d'activer le mode REJUGER: ${detail}`);
+    } finally {
+      setRejudgeOverridePending(false);
+    }
+  };
+
   const handleTimerStartImpl = async () => {
-    if (!configSaved || stableHeatLocked || isCurrentHeatLocked) return;
+    if (!configSaved || heatRejudgeProtected || (isCurrentHeatLocked && !rejudgeOverrideActive)) return;
     if (!judgeAssignmentStatus.isReady) {
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
       return;
@@ -2348,6 +2442,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const handleTimerRestartFull = () => {
     if (!configSaved) return;
+    if (heatRejudgeProtected) {
+      setIsTimerOpen(true);
+      setRejudgeOverrideError('Heat protégé: confirmez le mode REJUGER avant de recommencer.');
+      return;
+    }
     if (!judgeAssignmentStatus.isReady) {
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
       return;
@@ -3978,15 +4077,61 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               {syncError}
             </div>
           )}
-          {stableHeatLocked && (
-            <div className="w-full p-4 bg-orange-950/30 border border-orange-850/40 rounded-xl">
-              <div className="flex items-start">
-                <AlertCircle className="w-5 h-5 text-orange-400 mt-0.5 mr-3 flex-shrink-0" />
-                <div>
-                  <h4 className="text-sm font-bold text-orange-300 uppercase tracking-widest">Série Verrouillée / Clôturée</h4>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Ce heat a été définitivement fermé. La saisie de nouvelles notes et le chronomètre sont verrouillés sauf ré-ouverture exceptionnelle en base de données par l'administrateur système.
+          {(heatRejudgeProtected || rejudgeOverrideActive) && (
+            <div className={`w-full p-4 rounded-xl border ${
+              rejudgeOverrideActive
+                ? 'bg-emerald-950/30 border-emerald-800/40'
+                : 'bg-red-950/40 border-red-700/60 shadow-[0_0_30px_rgba(185,28,28,0.18)]'
+            }`}>
+              <div className="flex items-start gap-3">
+                <AlertCircle className={`w-6 h-6 mt-0.5 flex-shrink-0 ${rejudgeOverrideActive ? 'text-emerald-300' : 'text-red-300 animate-pulse'}`} />
+                <div className="min-w-0 flex-1">
+                  <h4 className={`text-sm font-black uppercase tracking-widest ${rejudgeOverrideActive ? 'text-emerald-300' : 'text-red-200'}`}>
+                    {rejudgeOverrideActive ? 'Mode REJUGER activé' : 'Heat déjà jugé - relance bloquée'}
+                  </h4>
+                  <p className={`text-xs mt-1 leading-relaxed ${rejudgeOverrideActive ? 'text-emerald-100/80' : 'text-red-100/90'}`}>
+                    {rejudgeOverrideActive
+                      ? 'Le chef juge a déverrouillé exceptionnellement ce heat. Les scores existants restent conservés; toute nouvelle saisie doit correspondre à une vraie correction terrain.'
+                      : rejudgeProtectionReason === 'closed'
+                        ? `Ce heat est clôturé et contient ${currentHeatScoreCount} note(s). Le timer et la notation restent bloqués pour éviter de rejuger par accident.`
+                        : `Ce heat contient déjà ${currentHeatScoreCount} note(s), mais il n'est plus en cours. Il peut s'agir d'une fermeture incomplète ou d'un retour arrière accidentel.`}
                   </p>
+
+                  {heatRejudgeProtected && (
+                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3 items-end">
+                      <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-red-200 mb-1.5">
+                          Override exceptionnel
+                        </label>
+                        <input
+                          value={rejudgeConfirmText}
+                          onChange={(e) => {
+                            setRejudgeConfirmText(e.target.value);
+                            setRejudgeOverrideError(null);
+                          }}
+                          placeholder="Tapez REJUGER"
+                          className="w-full rounded-lg border border-red-800/60 bg-slate-950 px-3 py-2 text-sm font-black uppercase tracking-widest text-red-100 placeholder:text-red-900/80 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                        <p className="mt-1.5 text-[11px] text-red-100/70">
+                          À utiliser seulement si le heat a été fermé par erreur ou doit réellement être rejugé.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRejudgeOverrideEnable}
+                        disabled={rejudgeOverridePending || rejudgeConfirmText.trim().toUpperCase() !== 'REJUGER'}
+                        className="rounded-lg border border-red-500/40 bg-red-600 px-4 py-2.5 text-sm font-black uppercase tracking-wider text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {rejudgeOverridePending ? 'Déverrouillage...' : 'Déverrouiller'}
+                      </button>
+                    </div>
+                  )}
+
+                  {rejudgeOverrideError && (
+                    <div className="mt-3 rounded-lg border border-red-800/50 bg-red-950/50 px-3 py-2 text-xs font-bold text-red-200">
+                      {rejudgeOverrideError}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -4013,13 +4158,13 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             onReset={handleTimerReset}
             onDurationChange={handleTimerDurationChange}
             configSaved={configSaved}
-            disabled={stableHeatLocked || !judgeAssignmentStatus.isReady}
+            disabled={heatRejudgeProtected || !judgeAssignmentStatus.isReady}
           />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={handleTimerResume}
-              disabled={!configSaved || timer.isRunning || stableHeatLocked || !judgeAssignmentStatus.isReady}
+              disabled={!configSaved || timer.isRunning || heatRejudgeProtected || !judgeAssignmentStatus.isReady}
               className="py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-950/40 disabled:text-emerald-700 disabled:border-emerald-900/20 border border-emerald-500/20 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Reprendre (temps restant)
@@ -4027,7 +4172,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             <button
               type="button"
               onClick={handleTimerRestartFull}
-              disabled={!configSaved || stableHeatLocked || !judgeAssignmentStatus.isReady}
+              disabled={!configSaved || heatRejudgeProtected || !judgeAssignmentStatus.isReady}
               className="py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:bg-amber-950/40 disabled:text-amber-700 disabled:border-amber-900/20 border border-amber-500/20 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Recommencer (durée complète)
