@@ -30,6 +30,11 @@ export default function JudgePage() {
     const [configLoading, setConfigLoading] = useState(true);
     const prevHeatIdRef = useRef<string | null>(null);
     const prevConfigSavedRef = useRef<boolean>(configSaved);
+    const latestConfigRef = useRef(config);
+    const latestConfigSavedRef = useRef(configSaved);
+
+    latestConfigRef.current = config;
+    latestConfigSavedRef.current = configSaved;
 
     const currentHeatId = useMemo(
         () =>
@@ -149,11 +154,12 @@ export default function JudgePage() {
             if (positionFromUrl) {
                 // Kiosk mode: if the heat changed, reload full config from DB.
                 // If same heat, heat_realtime_config polling (below) is sufficient.
+                const currentConfig = latestConfigRef.current;
                 const sameHeat =
-                    Boolean(configSaved) &&
-                    (row.division || '').trim().toUpperCase() === (config.division || '').trim().toUpperCase() &&
-                    Number(row.round ?? config.round) === Number(config.round) &&
-                    Number(row.heat_number ?? config.heatId) === Number(config.heatId);
+                    Boolean(latestConfigSavedRef.current) &&
+                    (row.division || '').trim().toUpperCase() === (currentConfig.division || '').trim().toUpperCase() &&
+                    Number(row.round ?? currentConfig.round) === Number(currentConfig.round) &&
+                    Number(row.heat_number ?? currentConfig.heatId) === Number(currentConfig.heatId);
                 if (!sameHeat) {
                     void loadConfigFromDb(targetEventId, { force: true, includeCategories: false });
                 }
