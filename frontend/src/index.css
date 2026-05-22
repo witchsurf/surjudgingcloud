@@ -245,7 +245,8 @@ body {
 
 @media (max-width: 430px) {
   .judge-shell {
-    --judge-wave-cell: clamp(36px, 12vw, 44px);
+    --judge-wave-cell: clamp(34px, 11vw, 42px);
+    --judge-row-gap: 4px;
     padding:
       max(5px, var(--judge-safe-top))
       max(6px, var(--judge-safe-right))
@@ -257,8 +258,38 @@ body {
     max-width: 24vw;
   }
 
+  .judge-header-grid {
+    gap: 0.35rem;
+  }
+
+  .judge-timer-wrap {
+    max-width: 112px;
+  }
+
+  .judge-surfer-card {
+    padding: 5px;
+  }
+
+  .judge-wave-grid {
+    gap: 3px;
+  }
+
+  .judge-wave-cell {
+    min-height: 32px;
+  }
+
+  .judge-keypad-panel.is-idle {
+    display: none;
+  }
+
+  .judge-keypad-panel.is-active {
+    position: sticky;
+    bottom: max(5px, var(--judge-safe-bottom));
+    z-index: 30;
+  }
+
   .judge-key {
-    min-height: 34px;
+    min-height: 38px;
   }
 }
 

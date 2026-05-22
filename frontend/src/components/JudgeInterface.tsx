@@ -1506,7 +1506,7 @@ function JudgeInterface({
           </div>
 
           {/* SCORE INPUT + KEYPAD — always visible at bottom */}
-          <div className="flex-shrink-0 mt-1.5">
+          <div className={`judge-keypad-panel flex-shrink-0 mt-1.5 ${activeInput ? 'is-active' : 'is-idle'}`}>
             {renderScoreInput()}
             <div className="mt-1">
               {renderKeypad()}
