@@ -329,26 +329,26 @@ export default function ScoreDisplay({
     priorityKey: normalizePriorityKey(surfer),
   }));
   const compactLayout = maxWaves >= 12;
-  const ultraCompactLayout = maxWaves >= 15;
+  const ultraCompactLayout = maxWaves >= 18;
 
   return (
-    <div className="score-display w-full max-w-none mx-auto p-2 sm:p-4 lg:p-5 space-y-4 font-sans">
+    <div className="score-display w-full max-w-none mx-auto p-2 sm:p-4 lg:p-5 space-y-4 font-sans bg-hud-black min-h-screen text-slate-100">
       {/* HEADER WITH TIMER */}
-      <div className="bg-primary-900 border-4 border-primary-950 rounded-2xl p-3 sm:p-4 shadow-block relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-3 sticky top-2 z-50">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-cta-500/10 rounded-full -mr-16 -mt-16 blur-3xl" />
+      <div className="bg-slate-950/60 backdrop-blur-md border border-white/10 rounded-2xl p-3 sm:p-4 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-3 sticky top-2 z-50">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full -mr-16 -mt-16 blur-3xl" />
         
         {/* Left: Title & Badges */}
         <div className="relative z-10 flex-1 w-full md:w-auto text-center md:text-left">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bebas tracking-widest text-white leading-none mb-2">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bebas tracking-widest text-slate-100 leading-none mb-2">
             {config.competition}
           </h1>
-          <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-[10px] font-bold uppercase tracking-widest text-primary-200">
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
             <span className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded border border-white/10">
-              <Users className="w-3.5 h-3.5 text-cta-500" />
+              <Users className="w-3.5 h-3.5 text-cyan-400" />
               {config.division}
             </span>
-            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cta-500">Round {config.round}</span>
-            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cta-500">Heat {config.heatId}</span>
+            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cyan-400">Round {config.round}</span>
+            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cyan-400">Heat {config.heatId}</span>
           </div>
         </div>
 
@@ -371,18 +371,18 @@ export default function ScoreDisplay({
         </div>
 
         {/* Right: Actions */}
-        <div className="relative z-10 w-full md:w-auto flex flex-row md:flex-col items-center justify-between md:items-end gap-3 border-t md:border-t-0 border-primary-800/50 pt-3 md:pt-0 mt-2 md:mt-0">
+        <div className="relative z-10 w-full md:w-auto flex flex-row md:flex-col items-center justify-between md:items-end gap-3 border-t md:border-t-0 border-white/5 pt-3 md:pt-0 mt-2 md:mt-0">
           <div className="text-left md:text-right space-y-0.5">
-            <div className="text-[9px] font-bold text-primary-300 uppercase tracking-[0.2em] leading-none">Dernière maj</div>
-            <div className="font-bebas text-xl text-white tracking-widest leading-none">
+            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] leading-none">Dernière maj</div>
+            <div className="font-bebas text-xl text-slate-100 tracking-widest leading-none">
               {lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>
-	          <button
-	            type="button"
-	            onClick={() => { void exportHeatScorecardPdf({ config, scores, heatStatus, eventData }); }}
-	            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cta-500 hover:bg-cta-600 text-white rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-sm"
-	          >
+          <button
+            type="button"
+            onClick={() => { void exportHeatScorecardPdf({ config, scores, heatStatus, eventData }); }}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg border border-cyan-500/50 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-lg"
+          >
             <FileText className="w-3.5 h-3.5" />
             PDF Scorecard
           </button>
@@ -390,9 +390,9 @@ export default function ScoreDisplay({
             <button
               type="button"
               onClick={onToggleEventTopScores}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white hover:bg-primary-50 text-primary-900 rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-sm"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 rounded-lg border border-white/10 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-lg"
             >
-              <Trophy className="w-3.5 h-3.5 text-cta-500" />
+              <Trophy className="w-3.5 h-3.5 text-yellow-400" />
               Top notes event
             </button>
           )}
@@ -400,57 +400,57 @@ export default function ScoreDisplay({
       </div>
 
       {onToggleEventTopScores && eventTopScoresOpen && (
-        <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden">
-          <div className="bg-primary-900 px-4 sm:px-6 py-3 border-b-4 border-primary-950 flex items-center justify-between gap-3">
+        <div className="neon-card rounded-2xl shadow-2xl overflow-hidden border border-white/10">
+          <div className="bg-slate-950/80 px-4 sm:px-6 py-3 border-b border-white/10 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg sm:text-xl font-bebas tracking-widest text-white flex items-center gap-3">
-                <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-cta-500" />
+              <h2 className="text-lg sm:text-xl font-bebas tracking-widest text-slate-100 flex items-center gap-3">
+                <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
                 Meilleures notes de l'event
               </h2>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-primary-200 mt-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">
                 Surfeur, categorie, round et heat
               </p>
             </div>
             <button
               type="button"
               onClick={onToggleEventTopScores}
-              className="px-3 py-1.5 bg-white text-primary-900 rounded-lg border-2 border-primary-950 text-[10px] font-bold uppercase tracking-widest"
+              className="px-3 py-1.5 bg-slate-900 text-slate-100 rounded-lg border border-white/10 text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800"
             >
               Fermer
             </button>
           </div>
 
           {eventTopScoresLoading ? (
-            <div className="p-6 text-sm text-primary-500">Chargement des meilleures notes...</div>
+            <div className="p-6 text-sm text-slate-400">Chargement des meilleures notes...</div>
           ) : eventTopScores.length === 0 ? (
-            <div className="p-6 text-sm text-primary-500">Aucune note disponible pour cet event.</div>
+            <div className="p-6 text-sm text-slate-400">Aucune note disponible pour cet event.</div>
           ) : (
-            <div className="divide-y divide-primary-100">
+            <div className="divide-y divide-white/5">
               {eventTopScores.map((entry, index) => (
                 <div key={entry.scoreId || `${entry.heatId}-${entry.surfer}-${entry.waveNumber}-${index}`} className="px-4 py-3 grid grid-cols-[1fr_auto] gap-3 items-center">
                   <div className="space-y-0.5 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-full bg-cta-500 text-white text-[10px] font-bold uppercase tracking-widest border-2 border-primary-950">
+                      <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-full bg-cyan-600/30 border border-cyan-500/50 text-cyan-300 text-[10px] font-bold uppercase tracking-widest">
                         #{index + 1}
                       </span>
-                      <span className="text-base sm:text-lg font-bebas tracking-wider text-primary-900">{entry.surferName}</span>
+                      <span className="text-base sm:text-lg font-bebas tracking-wider text-slate-100">{entry.surferName}</span>
                       {entry.surferName.trim().toUpperCase() !== entry.surfer.trim().toUpperCase() && (
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">{entry.surfer}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{entry.surfer}</span>
                       )}
                       {entry.country && (
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-primary-300">{entry.country}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{entry.country}</span>
                       )}
                     </div>
-                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                    <div className="text-xs uppercase tracking-wide text-slate-400">
                       {entry.division} · R{entry.round} · H{entry.heatNumber} · Vague {entry.waveNumber}
                     </div>
                     <div className="text-xs text-slate-500">Note panel apres moyenne des juges</div>
                   </div>
                   <div className="text-right pl-2">
-                    <div className="text-2xl sm:text-3xl font-bebas text-primary-900 tracking-tighter leading-none">
+                    <div className="text-2xl sm:text-3xl font-bebas text-slate-100 tracking-tighter leading-none">
                       {entry.score.toFixed(2)}
                     </div>
-                    <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">
                       Top score
                     </div>
                   </div>
@@ -462,58 +462,59 @@ export default function ScoreDisplay({
       )}
 
       {heatStatus === 'closed' && (
-        <div className="bg-red-600 border-4 border-primary-950 rounded-2xl px-6 py-4 shadow-block text-center">
-          <div className="text-white font-bebas tracking-[0.25em] text-3xl sm:text-5xl leading-none">
+        <div className="bg-red-950/60 border border-red-500/30 backdrop-blur-md rounded-2xl px-6 py-4 shadow-2xl text-center">
+          <div className="text-red-400 font-bebas tracking-[0.25em] text-3xl sm:text-5xl leading-none">
             HEAT OVER
           </div>
         </div>
       )}
 
       {/* CLASSEMENT */}
-      <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden transition-all">
-        <div className="bg-primary-900 px-4 sm:px-6 py-3 border-b-4 border-primary-950 flex items-center justify-between">
-          <h2 className="text-lg sm:text-xl font-bebas tracking-widest text-white flex items-center gap-3">
-            <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-cta-500" />
+      <div className="neon-card rounded-2xl shadow-2xl overflow-hidden border border-white/5 transition-all">
+        <div className="bg-slate-950/60 px-4 sm:px-6 py-3 border-b border-white/5 flex items-center justify-between">
+          <h2 className="text-lg sm:text-xl font-bebas tracking-widest text-slate-100 flex items-center gap-3">
+            <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
             Classement PRO Live
           </h2>
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-success-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-            <span className="text-[10px] font-bold text-white uppercase tracking-widest">Temps réel</span>
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse shadow-[0_0_8px_rgba(74,222,128,0.6)]" />
+            <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Temps réel</span>
           </div>
         </div>
 
         {!hasScores && !hasStats && fallbackRows.length > 0 && (
-          <div className="divide-y-2 divide-primary-50">
+          <div className="divide-y divide-white/5">
             {fallbackRows.map((row) => {
               const style = lycraStyle(row.surfer);
+              const colorKey = normalizePriorityKey(row.surfer).toUpperCase();
               const priorityBadge = priorityLabels[row.priorityKey] || (priorityState.mode === 'equal' ? '=' : '');
               const isInFlight = (priorityState.mode === 'ordered' || priorityState.mode === 'opening') && priorityState.inFlight.includes(row.priorityKey);
 
               return (
-                <div key={row.surfer} className="p-3">
+                <div key={row.surfer} className="p-3 border-b border-white/5 last:border-b-0">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                     <div className="flex items-center gap-4 sm:gap-6">
                       <div className="flex items-center gap-4">
                         <div className="relative">
-                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-md ${style.badge} ring-offset-2 ring-offset-primary-950 flex items-center justify-center`}>
+                          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full ${style.badge} neon-glow-${colorKey} flex items-center justify-center`}>
                             {isPriorityActive && !isInFlight && priorityBadge && (
                               <span className={`${getPriorityBadgeTextClass(row.surfer)} font-bebas text-base sm:text-lg leading-none drop-shadow`}>{priorityBadge}</span>
                             )}
                           </div>
-                          <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
-                            <div className="w-2.5 h-2.5 bg-cta-500 rounded-full" />
+                          <div className="absolute -bottom-1 -right-1 bg-slate-950 border border-white/10 rounded-full p-0.5">
+                            <div className="w-2.5 h-2.5 bg-yellow-400 rounded-full" />
                           </div>
                         </div>
 
                         <div className="space-y-0.5">
-                          <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
+                          <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-slate-100 leading-none flex items-center gap-2">
                             {row.displayName}
                           </h3>
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                             {row.country && (
-                              <span className="text-[10px] font-bold text-primary-400 uppercase tracking-widest">{row.country}</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{row.country}</span>
                             )}
-                            <span className="text-[10px] font-bold text-primary-300 uppercase tracking-widest">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                               {row.surfer}
                             </span>
                           </div>
@@ -522,10 +523,10 @@ export default function ScoreDisplay({
                     </div>
 
                     <div className="min-w-[80px] text-right ml-16 sm:ml-0">
-                      <div className="text-3xl sm:text-5xl font-bebas text-primary-200 tracking-tighter leading-none">
+                      <div className="text-3xl sm:text-5xl font-bebas text-slate-600 tracking-tighter leading-none">
                         --
                       </div>
-                      <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">En attente</div>
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">En attente</div>
                     </div>
                   </div>
                 </div>
@@ -535,18 +536,19 @@ export default function ScoreDisplay({
         )}
 
         {hasScores && !hasStats && (
-          <div className="p-12 text-center italic text-primary-400">
+          <div className="p-12 text-center italic text-slate-400">
             Calcul des statistiques en cours...
           </div>
         )}
 
         {hasStats && (
-          <div className="divide-y-2 divide-primary-50">
+          <div className="divide-y divide-white/5">
             {surferStats
               .slice()
               .sort(sortStats)
               .map((stat) => {
                 const style = lycraStyle(stat.surfer);
+                const colorKey = normalizePriorityKey(stat.surfer).toUpperCase();
                 const completedWaves = stat.waves.filter(
                   (w) => w.isComplete && w.score > 0
                 );
@@ -569,40 +571,40 @@ export default function ScoreDisplay({
                 const isInFlight = (priorityState.mode === 'ordered' || priorityState.mode === 'opening') && priorityState.inFlight.includes(priorityKey);
 
                 return (
-                  <div key={stat.surfer} className="p-3 hover:bg-primary-50/30 transition-colors">
+                  <div key={stat.surfer} className="p-3 hover:bg-slate-900/30 transition-colors">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
                       {/* Bloc gauche: rang + avatar + nom */}
                       <div className="flex items-center gap-4 sm:gap-6">
                         <div className="flex items-center gap-4">
                           <div className="relative">
-                            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full border-4 border-primary-950 shadow-md ${style.badge} ring-offset-2 ring-offset-primary-950 flex items-center justify-center`}>
+                            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full ${style.badge} neon-glow-${colorKey} flex items-center justify-center`}>
                               {isPriorityActive && !isInFlight && priorityBadge && (
                                 <span className={`${getPriorityBadgeTextClass(stat.surfer)} font-bebas text-base sm:text-lg leading-none drop-shadow`}>{priorityBadge}</span>
                               )}
                             </div>
-                            <div className="absolute -bottom-1 -right-1 bg-white border-2 border-primary-950 rounded-full p-0.5">
-                              <div className="w-2.5 h-2.5 bg-cta-500 rounded-full" />
+                            <div className="absolute -bottom-1 -right-1 bg-slate-950 border border-white/10 rounded-full p-0.5">
+                              <div className="w-2.5 h-2.5 bg-cyan-400 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.6)]" />
                             </div>
                           </div>
                           
                           <div className="space-y-0.5">
-                            <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-primary-900 leading-none flex items-center gap-2">
+                            <h3 className="text-lg sm:text-2xl font-bebas tracking-wider text-slate-100 leading-none flex items-center gap-2">
                               {displayName}
                               {hasPendingScores && (
-                                <span className="text-danger-500 animate-pulse text-3xl leading-none pt-1" title="En attente de notes">*</span>
+                                <span className="text-red-500 animate-pulse text-3xl leading-none pt-1" title="En attente de notes">*</span>
                               )}
                             </h3>
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                               {country && (
-                                <span className="text-[10px] font-bold text-primary-400 uppercase tracking-widest">{country}</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{country}</span>
                               )}
-                              <span className="text-[10px] font-bold text-primary-300 uppercase tracking-widest">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                 {wavesCount} VAGUE{wavesCount > 1 ? 'S' : ''}
                               </span>
                               {stat.isDisqualified ? (
-                                <span className="text-[10px] font-bold bg-danger-600 text-white px-2 py-0.5 rounded uppercase tracking-tighter">DSQ</span>
+                                <span className="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded uppercase tracking-tighter">DSQ</span>
                               ) : stat.interferenceCount && stat.interferenceCount > 0 ? (
-                                <span className="text-[10px] font-bold bg-warning-500 text-primary-900 px-2 py-0.5 rounded uppercase tracking-tighter">
+                                <span className="text-[10px] font-bold bg-amber-500 text-slate-950 px-2 py-0.5 rounded uppercase tracking-tighter">
                                   INT <span className="opacity-70 text-[9px] ml-0.5">{stat.interferenceCount}</span>
                                 </span>
                               ) : null}
@@ -615,12 +617,12 @@ export default function ScoreDisplay({
                       <div className="flex items-center gap-4 sm:gap-6 text-right ml-16 sm:ml-0">
                         <div className="space-y-1">
                           {stat.rank === 1 && winBy != null && (
-                            <div className="text-[10px] font-bold text-success-600 bg-success-50 px-2 py-0.5 rounded-full border border-success-100 uppercase tracking-widest inline-block">
+                            <div className="text-[10px] font-bold text-green-400 bg-green-950/40 px-2 py-0.5 rounded-full border border-green-500/30 uppercase tracking-widest inline-block">
                               Lead +{winBy.toFixed(2)}
                             </div>
                           )}
                           {neededInfo && (
-                            <div className="text-[10px] font-bold text-cta-600 bg-cta-50 px-2 py-0.5 rounded-full border border-cta-100 uppercase tracking-widest flex items-center gap-1 justify-end">
+                            <div className="text-[10px] font-bold text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded-full border border-cyan-500/30 uppercase tracking-widest flex items-center gap-1 justify-end">
                               Need <span className="font-bebas text-sm">{neededInfo.needed.toFixed(2)}</span>
                               <span>{neededInfo.label}</span>
                             </div>
@@ -628,16 +630,16 @@ export default function ScoreDisplay({
                         </div>
 
                         <div className="min-w-[116px] sm:min-w-[136px]">
-                          <div className="rounded-xl border-2 border-primary-200 overflow-hidden bg-white shadow-sm">
-                            <div className="grid grid-cols-2 bg-primary-900 text-white">
-                              <div className="px-2 py-1 text-center font-bebas text-lg sm:text-xl leading-none tracking-wide border-r border-primary-700">V1</div>
+                          <div className="rounded-xl border border-white/10 overflow-hidden bg-slate-950/60 shadow-md">
+                            <div className="grid grid-cols-2 bg-slate-900/80 text-slate-300 text-[10px] sm:text-xs">
+                              <div className="px-2 py-1 text-center font-bebas text-lg sm:text-xl leading-none tracking-wide border-r border-white/5">V1</div>
                               <div className="px-2 py-1 text-center font-bebas text-lg sm:text-xl leading-none tracking-wide">V2</div>
                             </div>
-                            <div className="grid grid-cols-2">
-                              <div className="px-2 py-1.5 text-center text-primary-950 font-black text-xl sm:text-2xl leading-none border-r border-primary-100">
+                            <div className="grid grid-cols-2 text-slate-100">
+                              <div className="px-2 py-1.5 text-center font-black text-xl sm:text-2xl leading-none border-r border-white/5">
                                 {bestWave != null ? bestWave.toFixed(2) : '--'}
                               </div>
-                              <div className="px-2 py-1.5 text-center text-primary-950 font-black text-xl sm:text-2xl leading-none">
+                              <div className="px-2 py-1.5 text-center font-black text-xl sm:text-2xl leading-none">
                                 {secondBestWave != null ? secondBestWave.toFixed(2) : '--'}
                               </div>
                             </div>
@@ -645,10 +647,10 @@ export default function ScoreDisplay({
                         </div>
                         
                         <div className="min-w-[80px]">
-                          <div className="text-3xl sm:text-5xl font-bebas text-primary-900 tracking-tighter leading-none">
+                          <div className="text-3xl sm:text-5xl font-bebas text-slate-100 tracking-tighter leading-none">
                             {(stat.bestTwo ?? 0).toFixed(2)}
                           </div>
-                          <div className="text-[9px] font-bold text-primary-300 uppercase tracking-widest mt-1">Total (B2)</div>
+                          <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total (B2)</div>
                         </div>
                       </div>
                     </div>
@@ -661,20 +663,20 @@ export default function ScoreDisplay({
 
       {/* TABLEAU DES VAGUES */}
       {hasStats && (
-        <div className="bg-white border-4 border-primary-950 rounded-2xl shadow-block overflow-hidden">
+        <div className="neon-card rounded-2xl shadow-2xl overflow-hidden border border-white/5">
           <div className="overflow-x-auto">
             <table className={`w-full table-fixed font-bold uppercase tracking-wider ${ultraCompactLayout ? 'text-[10px]' : compactLayout ? 'text-[11px]' : 'text-xs'}`}>
               <thead>
-                <tr className="bg-primary-900 text-white border-b-4 border-primary-950">
+                <tr className="bg-slate-950/80 text-slate-100 border-b border-white/10">
                   <th className={`${ultraCompactLayout ? 'p-2 w-32 text-sm' : compactLayout ? 'p-2.5 w-36 text-base' : 'p-4 text-lg'} text-left font-bebas tracking-widest`}>SURFEUR</th>
                   {Array.from({ length: maxWaves }).map((_, i) => (
                     <th key={i} className={`${ultraCompactLayout ? 'p-1.5 text-[11px]' : compactLayout ? 'p-2 text-sm' : 'p-4 text-lg'} text-center font-bebas tracking-widest opacity-60`}>V{i + 1}</th>
                   ))}
-                  <th className={`${ultraCompactLayout ? 'p-2 w-16 text-sm' : compactLayout ? 'p-2.5 w-20 text-base' : 'p-4 text-lg'} text-center font-bebas tracking-widest bg-cta-600`}>BEST 2</th>
+                  <th className={`${ultraCompactLayout ? 'p-2 w-16 text-sm' : compactLayout ? 'p-2.5 w-20 text-base' : 'p-4 text-lg'} text-center font-bebas tracking-widest bg-cyan-900/60 text-cyan-200 border-l border-white/5`}>BEST 2</th>
                 </tr>
               </thead>
 
-              <tbody className="divide-y-2 divide-primary-50">
+              <tbody className="divide-y divide-white/5">
                 {surferStats
                   .slice()
                   .sort(sortStats)
@@ -687,16 +689,16 @@ export default function ScoreDisplay({
                     const country = participant?.country ?? surferCountries?.[stat.surfer];
 
                     return (
-                      <tr key={stat.surfer} className="hover:bg-primary-50/20 transition-colors">
+                      <tr key={stat.surfer} className="hover:bg-slate-900/20 transition-colors">
                         <td className={ultraCompactLayout ? 'p-2' : compactLayout ? 'p-2.5' : 'p-4'}>
                           <div className="flex flex-col">
-                            <span className={`${compactLayout ? 'text-xs sm:text-sm' : 'text-sm'} font-bebas tracking-wide text-primary-900 flex items-center gap-1`}>
+                            <span className={`${compactLayout ? 'text-xs sm:text-sm' : 'text-sm'} font-bebas tracking-wide text-slate-100 flex items-center gap-1`}>
                               {displayName}
                               {stat.waves.some(w => !w.isComplete && Object.keys(w.judgeScores).length > 0) && (
-                                <span className="text-danger-500 animate-pulse text-lg leading-none pt-0.5" title="En attente de notes">*</span>
+                                <span className="text-red-500 animate-pulse text-lg leading-none pt-0.5" title="En attente de notes">*</span>
                               )}
                             </span>
-                            <span className={`${compactLayout ? 'text-[8px]' : 'text-[9px]'} text-primary-300`}>
+                            <span className={`${compactLayout ? 'text-[8px]' : 'text-[9px]'} text-slate-500`}>
                               {stat.surfer}{country ? ` • ${country}` : ''}
                             </span>
                           </div>
@@ -708,11 +710,11 @@ export default function ScoreDisplay({
                             <td key={i} className={`${ultraCompactLayout ? 'p-1.5' : compactLayout ? 'p-2' : 'p-4'} text-center`}>
                               {wave && wave.score > 0 ? (
                                 <div className="group relative cursor-help inline-block">
-                                  <span className={`${compactLayout ? 'text-sm' : 'text-base'} font-bebas tracking-widest text-primary-900`}>
+                                  <span className={`${compactLayout ? 'text-sm' : 'text-base'} font-bebas tracking-widest text-slate-100`}>
                                     {wave.score.toFixed(2)}
                                   </span>
                                   {/* Tooltip notes juges - Simplified style */}
-                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:flex flex-col items-center bg-primary-900 text-white text-[10px] p-2 rounded-xl z-50 shadow-block min-w-max border-2 border-primary-950">
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:flex flex-col items-center bg-slate-950 text-slate-100 text-[10px] p-2 rounded-xl z-50 shadow-2xl min-w-max border border-white/10">
                                     <div className="flex gap-4">
                                       {Object.entries(wave.judgeScores).map(([jKey, s], idx) => {
                                         if (s === undefined) return null;
@@ -722,7 +724,7 @@ export default function ScoreDisplay({
                                           || `J${idx + 1}`;
                                         return (
                                           <div key={jKey} className="flex flex-col items-center">
-                                            <span className="text-[8px] text-primary-300 uppercase leading-none mb-1">
+                                            <span className="text-[8px] text-slate-400 uppercase leading-none mb-1">
                                               {displayName}
                                             </span>
                                             <span className="font-bebas text-lg leading-none">
@@ -732,18 +734,18 @@ export default function ScoreDisplay({
                                         );
                                       })}
                                     </div>
-                                    <div className="w-2 h-2 bg-primary-900 rotate-45 absolute -bottom-1 border-r-2 border-b-2 border-primary-950 shadow-block" />
+                                    <div className="w-2 h-2 bg-slate-950 rotate-45 absolute -bottom-1 border-r border-b border-white/10 shadow-block" />
                                   </div>
                                 </div>
                               ) : (
-                                <span className="text-primary-100">—</span>
+                                <span className="text-slate-800">—</span>
                               )}
                             </td>
                           );
                         })}
 
-                        <td className={`${ultraCompactLayout ? 'p-2' : compactLayout ? 'p-2.5' : 'p-4'} text-center bg-cta-50`}>
-                          <span className={`${compactLayout ? 'text-lg' : 'text-2xl'} font-bebas tracking-widest text-cta-600`}>
+                        <td className={`${ultraCompactLayout ? 'p-2' : compactLayout ? 'p-2.5' : 'p-4'} text-center bg-cyan-950/20 text-cyan-400 border-l border-white/5`}>
+                          <span className={`${compactLayout ? 'text-lg' : 'text-2xl'} font-bebas tracking-widest`}>
                             {(stat.bestTwo ?? 0).toFixed(2)}
                           </span>
                         </td>
@@ -755,7 +757,6 @@ export default function ScoreDisplay({
           </div>
         </div>
       )}
-
     </div>
   );
 }

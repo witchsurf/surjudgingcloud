@@ -3570,59 +3570,59 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-hud-black text-slate-100 p-4 sm:p-6 font-sans space-y-6">
       {/* Statut de la base de données & Contexte - Collapsible */}
-      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" open>
-        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+      <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40" open>
+        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
-            <Database className="w-6 h-6 text-cta-500" />
-            <h2 className="text-xl font-bebas tracking-wider text-white">1. CONTEXTE ÉVÉNEMENT & BDD</h2>
+            <Database className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">1. CONTEXTE ÉVÉNEMENT & BDD</h2>
           </div>
-          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
-        <div className="p-4 bg-white border-t-4 border-primary-950 flex flex-col space-y-4">
+        <div className="p-6 bg-slate-950/20 flex flex-col space-y-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-3">
-              <Database className={`w-5 h-5 ${isSupabaseConfigured() ? 'text-success-600' : 'text-primary-300'}`} />
-              <span className="text-[10px] font-bold uppercase tracking-widest text-primary-400">
-                Database: <span className={isSupabaseConfigured() ? 'text-success-600' : 'text-primary-600'}>
+              <Database className={`w-5 h-5 ${isSupabaseConfigured() ? 'text-green-400' : 'text-slate-500'}`} />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Database: <span className={isSupabaseConfigured() ? 'text-green-400 font-extrabold' : 'text-slate-400'}>
                   {isSupabaseConfigured() ? 'CONNECTED' : 'LOCAL ONLY'}
                 </span>
               </span>
             </div>
           </div>
 
-          <div className="mt-4 mb-6 p-4 rounded-lg border border-gray-200 bg-gray-50 space-y-4">
+          <div className="mt-2 mb-6 p-4 rounded-xl border border-white/5 bg-slate-900/40 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">Contexte événement</h3>
-              <span className="text-xs text-gray-500">
+              <h3 className="text-sm font-bold tracking-wider text-slate-200 uppercase">Contexte événement</h3>
+              <span className="text-xs font-mono text-slate-400">
                 event_id: {activeEventId ?? 'N/A'} · {loadedFromDb ? 'chargé depuis DB' : 'local only'}
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Événement</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Événement</label>
                 <input
                   type="text"
                   value={config.competition}
                   onChange={(e) => handleConfigChange('competition', e.target.value)}
                   placeholder="Nom de l'événement"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 placeholder-slate-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Division</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Division</label>
                 <select
                   value={config.division}
                   onChange={(e) => handleConfigChange('division', e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
                 >
                   {activeDivisionOptions.map((division) => {
                     const closed = isCategoryClosed(division);
                     return (
-                      <option key={division} value={division} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-gray-300 bg-gray-50" : ""}>
+                      <option key={division} value={division} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-slate-500 bg-slate-950" : "text-slate-100 bg-slate-950"}>
                         {division} {!showClosedHeats && closed ? '(Terminé)' : ''}
                       </option>
                     );
@@ -3631,37 +3631,37 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Organisateur (PDF)</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Organisateur (PDF)</label>
                 <input
                   type="text"
                   value={eventPdfMeta.organizer}
                   onChange={(e) => persistEventPdfMeta({ organizer: e.target.value })}
                   placeholder="Ex: LIGUE PRO"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 placeholder-slate-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Date (PDF)</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Date (PDF)</label>
                 <input
                   type="date"
                   value={(eventPdfMeta.startDate || '').slice(0, 10)}
                   onChange={(e) => persistEventPdfMeta({ startDate: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
                 />
               </div>
 
-              <div className="md:col-span-2 pt-2 border-t border-gray-100">
-                <label className="block text-xs font-medium text-gray-600 mb-2">Logo de l'organisateur</label>
+              <div className="md:col-span-2 pt-2 border-t border-white/5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Logo de l'organisateur</label>
                 <div className="flex items-center space-x-4">
-                  <div className="flex-shrink-0 h-16 w-16 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden">
+                  <div className="flex-shrink-0 h-16 w-16 bg-slate-950 rounded-xl border-2 border-dashed border-slate-800 flex items-center justify-center overflow-hidden">
                     {(() => {
                       const eventData = JSON.parse(localStorage.getItem('eventData') || '{}');
                       const logo = eventData.organizerLogoDataUrl || eventData.image_url || eventData.brand_logo_url;
                       return logo ? (
                         <img src={logo} alt="Logo" className="h-full w-full object-contain" />
                       ) : (
-                        <ImageIcon className="w-6 h-6 text-gray-300" />
+                        <ImageIcon className="w-6 h-6 text-slate-600" />
                       );
                     })()}
                   </div>
@@ -3683,24 +3683,24 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                         };
                         reader.readAsDataURL(file);
                       }}
-                      className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                      className="block w-full text-xs text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer"
                     />
-                    <p className="mt-1 text-[10px] text-gray-400">PNG/JPG recommandé. Apparaîtra sur les exports PDF.</p>
+                    <p className="mt-1 text-[10px] text-slate-500">PNG/JPG recommandé. Apparaîtra sur les exports PDF.</p>
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Round</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Round</label>
                 <select
                   value={config.round}
                   onChange={(e) => handleConfigChange('round', Number(e.target.value))}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
                 >
                   {visibleRoundOptions.map((round) => {
                     const closed = isRoundClosed(round);
                     return (
-                      <option key={round} value={round} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-gray-300 bg-gray-50" : ""}>
+                      <option key={round} value={round} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-slate-500 bg-slate-950" : "text-slate-100 bg-slate-950"}>
                         Round {round} {!showClosedHeats && closed ? '(Terminé)' : ''}
                       </option>
                     );
@@ -3709,16 +3709,16 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Heat</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Heat</label>
                 <select
                   value={config.heatId}
                   onChange={(e) => handleConfigChange('heatId', Number(e.target.value))}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
                 >
                   {visibleHeatOptions.map((heat) => {
                     const closed = isHeatClosed(heat, config.round);
                     return (
-                      <option key={heat} value={heat} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-gray-300 bg-gray-50" : ""}>
+                      <option key={heat} value={heat} disabled={!showClosedHeats && closed} className={!showClosedHeats && closed ? "text-slate-500 bg-slate-950" : "text-slate-100 bg-slate-950"}>
                         Heat {heat} {!showClosedHeats && closed ? '(Terminé)' : ''}
                       </option>
                     );
@@ -3726,68 +3726,112 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 </select>
               </div>
               
-              <div className="md:col-span-2 pt-2 border-t border-gray-100 flex items-center justify-between">
-                <label className="flex items-center space-x-2 text-xs font-medium text-gray-700 cursor-pointer">
+              <div className="md:col-span-2 pt-2 border-t border-white/5 flex items-center justify-between flex-wrap gap-2">
+                <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={showClosedHeats}
                     onChange={(e) => setShowClosedHeats(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    className="w-4 h-4 text-cyan-500 border-slate-800 bg-slate-950 rounded focus:ring-cyan-500"
                   />
                   <span>Afficher les séries terminées (Clôturées)</span>
                 </label>
-                <div className="text-[10px] text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                  Status Actuel : <strong className="uppercase">{currentHeatStatus}</strong>
+                <div className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-white/5 px-2 py-1 rounded">
+                  Status Actuel : <strong className="uppercase text-cyan-400">{currentHeatStatus}</strong>
                 </div>
               </div>
             </div>
 
-            {!loadedFromDb && (
-              <div className="rounded border border-amber-300 bg-amber-50 p-3">
-                <p className="text-xs text-amber-900 mb-2">
-                  Configuration non liée à la base. Recharge depuis Supabase pour récupérer l’événement actif.
-                </p>
-                <div className="flex flex-wrap gap-2">
+            {/* Diagnostic sub-panel */}
+            <details className="mt-4 group border border-white/5 rounded-xl bg-slate-950/60 overflow-hidden shadow-inner">
+              <summary className="bg-slate-900/80 px-4 py-3 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
+                <div className="flex items-center space-x-2 text-cyan-400">
+                  <Settings className="w-4 h-4" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">🔧 Outils de Connexion & Diagnostic BDD</span>
+                </div>
+                <span className="text-xs text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
+              </summary>
+              <div className="p-4 space-y-4 text-xs font-mono text-slate-300">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                  <div className="space-y-1 p-2 bg-slate-900/80 rounded border border-white/5">
+                    <p className="font-bold text-slate-400">📊 STATUT GENERAL :</p>
+                    <p>Série : <span className="text-cyan-400">{config.competition} / {config.division} / R{config.round} H{config.heatId}</span></p>
+                    <p>Surfeurs : <span className="text-cyan-400">{config.surfers.join(', ')}</span></p>
+                    <p>Chargé depuis base : <span className={loadedFromDb ? "text-green-400" : "text-amber-400 font-bold"}>{loadedFromDb ? 'OUI' : 'NON (LOCAL ONLY)'}</span></p>
+                  </div>
+                  <div className="space-y-1 p-2 bg-slate-900/80 rounded border border-white/5">
+                    <p className="font-bold text-slate-400">🌐 STATUS SUPABASE :</p>
+                    <p>Mode Supabase : <span className="text-cyan-400">{getSupabaseMode() || 'auto'}</span></p>
+                    <p>Statut Connexion : <span className="text-cyan-400">{dbStatus}</span></p>
+                    <p>Configuration active : <span className="text-cyan-400">{isSupabaseConfigured() ? 'VALIDE' : 'ABSENTE'}</span></p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-2">
                   <button
+                    type="button"
                     onClick={handleAutoReconnect}
                     disabled={reconnectPending || !onReconnectToDb}
-                    className="px-3 py-1.5 text-xs font-medium bg-amber-200 rounded hover:bg-amber-300 disabled:opacity-50"
+                    className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg disabled:opacity-50 transition-colors text-xs font-sans"
                   >
                     {reconnectPending ? 'Reconnexion...' : 'Reconnecter Supabase'}
                   </button>
                   <button
+                    type="button"
                     onClick={() => navigate('/my-events')}
-                    className="px-3 py-1.5 text-xs font-medium bg-white border border-amber-300 rounded hover:bg-amber-100"
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/5 rounded-lg transition-colors text-xs font-sans"
                   >
-                    Mes événements
+                    Ouvrir Mes événements
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const eventId = await resolveEventIdForCurrentHeat();
+                        if (eventId) {
+                          const seq = await fetchOrderedHeatSequence(eventId, config.division);
+                          console.log('🔥 Heat Sequence:', seq);
+                          alert(`Sequence Length: ${seq.length}\nSee console for details.`);
+                        } else {
+                          alert('Event ID not found');
+                        }
+                      } catch (e) { alert('Error: ' + e); }
+                    }}
+                    className="px-3 py-1.5 bg-purple-900/60 hover:bg-purple-800/60 text-purple-200 border border-purple-800/40 rounded-lg transition-colors text-xs font-sans"
+                  >
+                    Inspecter la Séquence BDD
                   </button>
                 </div>
-                {reconnectMessage && <p className="text-xs mt-2 text-amber-900">{reconnectMessage}</p>}
+                {reconnectMessage && (
+                  <p className="mt-2 text-xs text-amber-400 bg-amber-950/20 p-2 rounded border border-amber-900/30">
+                    {reconnectMessage}
+                  </p>
+                )}
               </div>
-            )}
+            </details>
           </div>
         </div>
       </details>
 
       {/* Configuration Juges et Surfeurs - Collapsible (Fermé par défaut) */}
-      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
-        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+      <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
+        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
-            <Users className="w-6 h-6 text-cta-500" />
-            <h2 className="text-xl font-bebas tracking-wider text-white">2. JUGES ET SURFEURS</h2>
+            <Users className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">2. JUGES ET SURFEURS</h2>
           </div>
-          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
-        <div className="p-4 bg-white border-t-4 border-primary-950 flex flex-col space-y-6">
+        <div className="p-6 bg-slate-950/20 flex flex-col space-y-6">
 
           {/* Nombre de Juges (Mode Kiosk) */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Juges</label>
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Nombre de Juges</label>
             <select
               value={config.judges.length}
               onChange={(e) => {
                 const numJudges = parseInt(e.target.value);
-                const judgeIds = Array.from({ length: numJudges }, (_, i) => `J${i + 1}`);
+                const judgeIds = Array.from({ length: numJudges }, (_, i) => `J{i + 1}`);
                 const judgeNames = judgeIds.reduce((acc, id) => ({ ...acc, [id]: id }), {} as Record<string, string>);
                 const judgeIdentities = judgeIds.reduce((acc, id) => {
                   const existingIdentity = config.judgeIdentities?.[id];
@@ -3803,46 +3847,46 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   judgeIdentities
                 });
               }}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500"
             >
-              <option value="3">3 Juges (J1, J2, J3)</option>
-              <option value="4">4 Juges (J1, J2, J3, J4)</option>
-              <option value="5">5 Juges (J1, J2, J3, J4, J5)</option>
+              <option value="3" className="bg-slate-950">3 Juges (J1, J2, J3)</option>
+              <option value="4" className="bg-slate-950">4 Juges (J1, J2, J3, J4)</option>
+              <option value="5" className="bg-slate-950">5 Juges (J1, J2, J3, J4, J5)</option>
             </select>
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-slate-500">
               Les juges utiliseront le mode kiosque avec leurs positions (J1, J2, etc.)
             </p>
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-xl border border-white/5 bg-slate-900/40 p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
-                <h4 className="text-sm font-semibold text-slate-900">Couverture des affectations officielles</h4>
-                <p className="text-xs text-slate-600">
+                <h4 className="text-sm font-bold tracking-wider text-slate-200 uppercase">Couverture des affectations officielles</h4>
+                <p className="text-xs text-slate-400 mt-0.5">
                   {eventAssignmentSummary.completeHeats}/{eventAssignmentSummary.totalHeats} heats complets
                   {eventAssignmentSummary.incompleteHeats > 0 ? ` · ${eventAssignmentSummary.incompleteHeats} à compléter` : ''}
                 </p>
               </div>
-              <div className={`text-xs font-semibold px-2 py-1 rounded-full ${eventAssignmentSummary.incompleteHeats > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+              <div className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border ${eventAssignmentSummary.incompleteHeats > 0 ? 'bg-amber-950/40 border-amber-800/40 text-amber-300' : 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300'}`}>
                 {eventAssignmentSummary.incompleteHeats > 0 ? 'Vérification requise' : 'Complet'}
               </div>
             </div>
 
             {eventAssignmentCoverage.length === 0 ? (
-              <p className="text-xs text-slate-500">Aucun heat détecté pour cet événement.</p>
+              <p className="text-xs text-slate-500 font-mono">Aucun heat détecté pour cet événement.</p>
             ) : (
               <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
                 {eventAssignmentCoverage.map((heat) => (
-                  <div key={heat.heatId} className="rounded-md border border-slate-200 bg-white px-3 py-2">
+                  <div key={heat.heatId} className="rounded-lg border border-white/5 bg-slate-950/40 px-3 py-2">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-slate-900">
+                      <div className="text-sm font-semibold text-slate-200">
                         {heat.division} · R{heat.round} H{heat.heatNumber}
                       </div>
-                      <div className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${heat.missingStations.length > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                      <div className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${heat.missingStations.length > 0 ? 'bg-amber-950/40 border-amber-800/40 text-amber-300' : 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300'}`}>
                         {heat.missingStations.length > 0 ? `Manque: ${heat.missingStations.join(', ')}` : 'Complet'}
                       </div>
                     </div>
-                    <div className="mt-1 text-[11px] text-slate-600">
+                    <div className="mt-1 text-[11px] text-slate-400 font-mono">
                       {heat.assignments
                         .filter((assignment) => assignment.judgeId)
                         .map((assignment) => `${assignment.station}: ${assignment.judgeName || assignment.judgeId}`)
@@ -3855,10 +3899,10 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
           </div>
 
           {/* Surfeurs (lecture seule depuis Supabase) */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700">Surfeurs du heat</label>
-            <div className="mt-1 mb-4 flex items-start space-x-2 text-sm text-gray-600">
-              <InfoIcon className="w-4 h-4 text-gray-500 mt-0.5" />
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Surfeurs du heat</label>
+            <div className="mt-1 mb-4 flex items-start space-x-2 text-xs text-slate-400 bg-slate-900/40 border border-white/5 rounded-xl p-3">
+              <InfoIcon className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" />
               <p>
                 Cette liste est synchronisée automatiquement à partir des heats planifiés dans la base.
                 Modifiez les participants directement dans l’outil de planification si nécessaire.
@@ -3871,18 +3915,18 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   const surferKey = normalizeJerseyLabel(surfer);
                   const color = SURFER_COLOR_MAP[surferKey as keyof typeof SURFER_COLOR_MAP] ?? '#6b7280';
                   return (
-                    <div key={`${surfer}-${index}`} className="flex items-center space-x-2 p-2 bg-gray-50 rounded">
+                    <div key={`${surfer}-${index}`} className="flex items-center space-x-2 p-2 bg-slate-900/60 rounded-lg border border-white/5">
                       <div
-                        className="w-4 h-4 rounded-full border border-gray-300"
+                        className="w-4 h-4 rounded-full border border-white/10"
                         style={{ backgroundColor: color }}
                       />
-                      <span className="text-sm font-medium text-gray-900">{surfer}</span>
+                      <span className="text-sm font-semibold text-slate-200">{surfer}</span>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+              <div className="p-4 bg-amber-950/20 border border-amber-800/40 rounded-lg text-sm text-amber-300">
                 Aucun surfeur détecté pour ce heat. Vérifiez les entrées dans Supabase puis rechargez la configuration.
               </div>
             )}
@@ -3891,16 +3935,16 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
           <button
             onClick={handleSaveConfig}
             disabled={configSaved || loadState === 'loading' || !judgeAssignmentStatus.isReady}
-            className={`w-full py-4 px-6 rounded-xl font-bebas text-2xl tracking-widest transition-all border-4 shadow-block flex justify-center items-center gap-2 ${configSaved
-              ? 'bg-success-50 text-success-700 border-success-200 cursor-not-allowed opacity-80'
+            className={`w-full py-4 px-6 rounded-xl font-bebas text-2xl tracking-widest transition-all shadow-lg flex justify-center items-center gap-2 border border-white/5 ${configSaved
+              ? 'bg-emerald-950/40 text-emerald-400 cursor-not-allowed opacity-80'
               : !judgeAssignmentStatus.isReady
-                ? 'bg-amber-100 text-amber-800 border-amber-300 cursor-not-allowed opacity-90'
-                : 'bg-cta-500 text-white border-primary-950 hover:-translate-y-1 hover:shadow-[4px_4px_0_0_#172554] active:translate-y-0 active:shadow-none'
+                ? 'bg-amber-950/40 text-amber-400 cursor-not-allowed opacity-90'
+                : 'bg-cyan-600 hover:bg-cyan-500 text-white font-medium hover:-translate-y-0.5 active:translate-y-0 shadow-cyan-900/20'
               }`}
           >
             {configSaved ? (
               <>
-                <CheckCircle className="w-6 h-6" /> CONFIGURATION SAUVEGARDÉE
+                <CheckCircle className="w-6 h-6 text-emerald-400" /> CONFIGURATION SAUVEGARDÉE
               </>
             ) : !judgeAssignmentStatus.isReady ? (
               <>
@@ -3908,44 +3952,39 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </>
             ) : (
               <>
-                SAUVEGARDER ET APPLIQUER
+                SAUVEGARDER LA CONFIGURATION
               </>
             )}
           </button>
-          {!judgeAssignmentStatus.isReady && (
-            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Configuration incomplète: <span className="font-mono">{judgeAssignmentErrorMessage}</span>
-            </div>
-          )}
         </div>
       </details>
 
       {/* Timer */}
       <details 
-        className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" 
+        className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40" 
         open={isTimerOpen} 
         onToggle={(e) => setIsTimerOpen(e.currentTarget.open)}
       >
-        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
-            <Clock className="w-6 h-6 text-cta-500" />
-            <h2 className="text-xl font-bebas tracking-wider text-white">3. CHRONOMÈTRE</h2>
+            <Clock className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">3. CHRONOMÈTRE</h2>
           </div>
-          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
-        <div className="p-6 bg-white border-t-4 border-primary-950 relative">
+        <div className="p-6 bg-slate-950/20 flex flex-col space-y-4">
           {syncError && (
-            <div className="w-full mb-4 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-xs font-bold animate-pulse">
+            <div className="w-full p-2.5 bg-red-950/40 border border-red-800/40 rounded-lg text-red-400 text-xs font-bold font-mono animate-pulse">
               {syncError}
             </div>
           )}
           {stableHeatLocked && (
-            <div className="w-full mb-4 p-3 bg-orange-100 border border-orange-400 rounded-lg shadow-sm">
+            <div className="w-full p-4 bg-orange-950/30 border border-orange-850/40 rounded-xl">
               <div className="flex items-start">
-                <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5 mr-3 flex-shrink-0" />
+                <AlertCircle className="w-5 h-5 text-orange-400 mt-0.5 mr-3 flex-shrink-0" />
                 <div>
-                  <h4 className="text-sm font-bold text-orange-800 uppercase tracking-widest">Série Clôturée</h4>
-                  <p className="text-xs text-orange-700 mt-1">
+                  <h4 className="text-sm font-bold text-orange-300 uppercase tracking-widest">Série Verrouillée / Clôturée</h4>
+                  <p className="text-xs text-slate-400 mt-1">
                     Ce heat a été définitivement fermé. La saisie de nouvelles notes et le chronomètre sont verrouillés sauf ré-ouverture exceptionnelle en base de données par l'administrateur système.
                   </p>
                 </div>
@@ -3953,12 +3992,12 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             </div>
           )}
           {!judgeAssignmentStatus.isReady && (
-            <div className="w-full mb-4 p-3 bg-amber-100 border border-amber-400 rounded-lg shadow-sm">
+            <div className="w-full p-4 bg-amber-950/30 border border-amber-850/40 rounded-xl">
               <div className="flex items-start">
-                <AlertCircle className="w-5 h-5 text-amber-700 mt-0.5 mr-3 flex-shrink-0" />
+                <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5 mr-3 flex-shrink-0" />
                 <div>
-                  <h4 className="text-sm font-bold text-amber-900 uppercase tracking-widest">Démarrage bloqué</h4>
-                  <p className="text-xs text-amber-800 mt-1">
+                  <h4 className="text-sm font-bold text-amber-300 uppercase tracking-widest">Démarrage bloqué</h4>
+                  <p className="text-xs text-slate-400 mt-1">
                     Le heat ne peut pas démarrer tant que ces postes n’ont pas une identité officielle complète: {judgeAssignmentErrorMessage}.
                   </p>
                 </div>
@@ -3976,12 +4015,12 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             configSaved={configSaved}
             disabled={stableHeatLocked || !judgeAssignmentStatus.isReady}
           />
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={handleTimerResume}
               disabled={!configSaved || timer.isRunning || stableHeatLocked || !judgeAssignmentStatus.isReady}
-              className="py-2 px-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-950/40 disabled:text-emerald-700 disabled:border-emerald-900/20 border border-emerald-500/20 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Reprendre (temps restant)
             </button>
@@ -3989,7 +4028,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               type="button"
               onClick={handleTimerRestartFull}
               disabled={!configSaved || stableHeatLocked || !judgeAssignmentStatus.isReady}
-              className="py-2 px-4 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:bg-amber-950/40 disabled:text-amber-700 disabled:border-amber-900/20 border border-amber-500/20 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Recommencer (durée complète)
             </button>
@@ -3999,230 +4038,292 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
 
       {/* Floating Timer Widget */}
       {(!isTimerOpen && timer.isRunning) && (
-        <div className="fixed top-8 right-8 z-[100] bg-white border-4 border-primary-950 rounded-2xl shadow-2xl p-4 flex flex-col items-center pointer-events-auto transform transition-all">
+        <div className="fixed top-8 right-8 z-[100] neon-card bg-slate-950/90 border border-cyan-500/30 rounded-2xl shadow-2xl p-4 flex flex-col items-center pointer-events-auto backdrop-blur-md transform transition-all">
           <div className="flex items-center space-x-2 w-full justify-between mb-2">
-            <Clock className={`w-4 h-4 ${floatingTimeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`} />
-            <h3 className="text-xs font-bebas tracking-widest text-primary-800">CHRONO PRO</h3>
-            <button onClick={() => setIsTimerOpen(true)} className="text-gray-400 hover:text-black">
+            <Clock className={`w-4 h-4 ${floatingTimeLeft <= 300 ? 'text-rose-500 animate-pulse' : 'text-cyan-400'}`} />
+            <h3 className="text-xs font-bebas tracking-widest text-cyan-400">CHRONO PRO</h3>
+            <button onClick={() => setIsTimerOpen(true)} className="text-slate-400 hover:text-white transition-colors">
               ▼
             </button>
           </div>
-          <div className={`font-bebas tracking-wider text-5xl leading-none ${floatingTimeLeft <= 5 ? 'text-red-500 animate-pulse' : floatingTimeLeft <= 60 ? 'text-red-500' : floatingTimeLeft <= 300 ? 'text-cta-500' : 'text-primary-600'}`}>
+          <div className={`font-bebas tracking-wider text-5xl leading-none ${
+            floatingTimeLeft <= 5 
+              ? 'text-red-500 animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]' 
+              : floatingTimeLeft <= 60 
+                ? 'text-red-400 drop-shadow-[0_0_6px_rgba(248,113,113,0.4)]' 
+                : floatingTimeLeft <= 300 
+                  ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.3)]' 
+                  : 'text-cyan-400 drop-shadow-[0_0_6px_rgba(34,211,238,0.3)]'
+          }`}>
             {formatMinSec(floatingTimeLeft)}
           </div>
           <button
             onClick={handleTimerPause}
-            className="mt-3 w-full bg-cta-500 text-white rounded-lg border-2 border-primary-950 shadow-sm transition-all flex justify-center items-center py-1.5 font-bebas tracking-widest hover:-translate-y-0.5"
+            className="mt-3 w-full bg-rose-600 hover:bg-rose-500 text-white rounded-lg border border-rose-500/20 shadow-lg shadow-rose-950/20 transition-all flex justify-center items-center py-1.5 font-bebas tracking-widest hover:-translate-y-0.5"
           >
             PAUSE
           </button>
         </div>
       )}
 
-      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
-        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+      {/* 4. ACCÈS TABLETTES & AFFICHAGES PUBLICS */}
+      <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
+        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
-            <Eye className="w-6 h-6 text-cta-500" />
-            <h2 className="text-xl font-bebas tracking-wider text-white">4. AFFICHAGE PUBLIC</h2>
+            <Eye className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">4. ACCÈS TABLETTES & AFFICHAGES PUBLICS</h2>
           </div>
-          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
-        <div className="p-6 bg-white border-t-4 border-primary-950">
-          <p className="text-sm text-gray-600 mb-4">
-            Ouvrez ou partagez le tableau de scores en temps réel sur un autre écran.
+        <div className="p-6 bg-slate-950/20 flex flex-col space-y-6">
+          <p className="text-xs text-slate-400">
+            Générez et partagez les QR codes ou liens d'accès direct pour l'affichage des scores, le portail partagé des juges, ou la tablette priorité.
           </p>
+
           {publicDisplayUrl ? (
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={handleOpenDisplay}
-                className="w-full py-2 px-4 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
-              >
-                Ouvrir l’affichage public
-              </button>
-              <button
-                type="button"
-                onClick={handleCopyDisplayLink}
-                className="w-full py-2 px-4 rounded-lg border border-blue-200 text-blue-700 font-medium hover:bg-blue-50 transition-colors"
-              >
-                {displayLinkCopied ? 'Lien copié ✅' : 'Copier le lien'}
-              </button>
-              <div className="text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
-                {publicDisplayUrl}
-              </div>
-              {displayQrCode ? (
-                <div className="border border-blue-100 bg-blue-50 rounded-xl p-4 flex flex-col items-center text-center">
-                  <p className="text-sm font-medium text-blue-900">
-                    QR code du display public
-                  </p>
-                  <p className="mt-1 text-xs text-blue-700">
-                    Scannez ce code pour ouvrir directement l’affichage public de cet evenement.
-                  </p>
-                  <img
-                    src={displayQrCode}
-                    alt="QR code du display public"
-                    className="mt-3 w-44 h-44 rounded-lg border border-blue-200 bg-white p-2 shadow-sm"
-                  />
-                </div>
-              ) : null}
-              <div className="border-t border-gray-200 pt-3">
-                <p className="text-sm text-gray-600 mb-2">
-                  Lien tablette dédié pour le juge priorité.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleCopyPriorityLink}
-                  className="w-full py-2 px-4 rounded-lg border border-indigo-200 text-indigo-700 font-medium hover:bg-indigo-50 transition-colors"
-                >
-                  {priorityLinkCopied ? 'Lien priorité copié ✅' : 'Copier le lien juge priorité'}
-                </button>
-                <div className="mt-2 text-xs text-gray-500 break-all bg-gray-50 p-3 rounded border border-gray-200">
-                  {priorityJudgeUrl}
-                </div>
-                {priorityQrCode ? (
-                  <div className="mt-3 border border-indigo-100 bg-indigo-50 rounded-xl p-4 flex flex-col items-center text-center">
-                    <p className="text-sm font-medium text-indigo-900">
-                      QR code du juge priorité
+            <div className="space-y-6">
+              {/* 3 Columns Grid for Sharing Cards */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Column 1: Public Live Display */}
+                <div className="flex flex-col justify-between p-4 bg-slate-900/60 border border-white/5 rounded-2xl shadow-lg gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2 text-cyan-400">
+                      <Eye className="w-5 h-5" />
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">Affichage Public Live</h3>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Diffuse les scores et classements en direct pour le public et les speakers.
                     </p>
-                    <p className="mt-1 text-xs text-indigo-700">
-                      Scannez ce code pour ouvrir directement la tablette du juge priorité.
-                    </p>
-                    <img
-                      src={priorityQrCode}
-                      alt="QR code du juge priorité"
-                      className="mt-3 w-44 h-44 rounded-lg border border-indigo-200 bg-white p-2 shadow-sm"
-                    />
                   </div>
-                ) : null}
+                  
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenDisplay}
+                      className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+                    >
+                      Ouvrir l’affichage
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopyDisplayLink}
+                      className="w-full py-2 bg-slate-950 border border-slate-800 text-slate-300 hover:bg-slate-900 rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+                    >
+                      {displayLinkCopied ? 'Lien copié ✅' : 'Copier le lien'}
+                    </button>
+                    <div className="text-[9px] text-slate-500 font-mono break-all bg-slate-950/80 p-2 rounded-lg border border-slate-900/60 select-all">
+                      {publicDisplayUrl}
+                    </div>
+                  </div>
+
+                  {displayQrCode ? (
+                    <div className="flex flex-col items-center border border-white/5 bg-slate-950/40 rounded-xl p-3 text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">QR Code Display</span>
+                      <img
+                        src={displayQrCode}
+                        alt="QR code display public"
+                        className="w-32 h-32 rounded-lg border border-white/10 bg-white p-1.5 shadow-sm"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Column 2: Shared Judge Portal */}
+                <div className="flex flex-col justify-between p-4 bg-slate-900/60 border border-white/5 rounded-2xl shadow-lg gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2 text-purple-400">
+                      <Users className="w-5 h-5" />
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">Portail Unique Juges</h3>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      QR code ou lien unique partagé. Chaque juge peut ensuite sélectionner son poste (J1 à J5).
+                    </p>
+                  </div>
+
+                  {sharedJudgeAccessUrl ? (
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={handleCopyJudgeAccessLink}
+                        className="w-full py-2 bg-purple-650 hover:bg-purple-550 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+                      >
+                        {judgeAccessLinkCopied ? 'Lien juges copié ✅' : 'Copier le lien portail'}
+                      </button>
+                      <div className="text-[9px] text-slate-500 font-mono break-all bg-slate-950/80 p-2 rounded-lg border border-slate-900/60 select-all">
+                        {sharedJudgeAccessUrl}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 italic">Portail juge indisponible</p>
+                  )}
+
+                  {judgeAccessQrCode ? (
+                    <div className="flex flex-col items-center border border-white/5 bg-slate-950/40 rounded-xl p-3 text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">QR Code Portail</span>
+                      <img
+                        src={judgeAccessQrCode}
+                        alt="QR code d'accès juge"
+                        className="w-32 h-32 rounded-lg border border-white/10 bg-white p-1.5 shadow-sm"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Column 3: Tablette Priorité */}
+                <div className="flex flex-col justify-between p-4 bg-slate-900/60 border border-white/5 rounded-2xl shadow-lg gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2 text-indigo-400">
+                      <Clock className="w-5 h-5" />
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200">Tablette Priorité</h3>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Lien dédié pour le juge en charge des priorités et du chronomètre sur la plage.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyPriorityLink}
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+                    >
+                      {priorityLinkCopied ? 'Lien priorité copié ✅' : 'Copier le lien priorité'}
+                    </button>
+                    <div className="text-[9px] text-slate-500 font-mono break-all bg-slate-950/80 p-2 rounded-lg border border-slate-900/60 select-all">
+                      {priorityJudgeUrl}
+                    </div>
+                  </div>
+
+                  {priorityQrCode ? (
+                    <div className="flex flex-col items-center border border-white/5 bg-slate-950/40 rounded-xl p-3 text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">QR Code Priorité</span>
+                      <img
+                        src={priorityQrCode}
+                        alt="QR code du juge priorité"
+                        className="w-32 h-32 rounded-lg border border-white/10 bg-white p-1.5 shadow-sm"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
               </div>
+
+              {/* Sub-grid: Direct kiosk links */}
+              <div className="pt-6 border-t border-slate-850">
+                <p className="text-xs font-bold text-slate-350 uppercase tracking-wider mb-4">Liens directs pour tablettes individuelles (J1 à J5)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  {["J1", "J2", "J3", "J4", "J5"].map(position => {
+                    const kioskUrl = kioskEventId
+                      ? `${kioskBaseUrl}/judge?position=${position}&eventId=${kioskEventId}`
+                      : `${kioskBaseUrl}/judge?position=${position}`;
+                    return (
+                      <div key={position} className="flex flex-col justify-between p-3 bg-slate-900/40 rounded-xl border border-white/5 gap-2 shadow-md">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-cyan-600/20 border border-cyan-500/30 rounded-full flex items-center justify-center text-cyan-400 font-black text-[10px]">{position}</div>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">POSTE {position.replace("J", "")}</span>
+                        </div>
+                        <input value={kioskUrl} readOnly className="w-full px-2 py-1 text-[8px] font-mono bg-slate-950 border border-slate-850 text-slate-400 rounded select-all" />
+                        <button 
+                          type="button"
+                          onClick={() => { void copyTextSafely(kioskUrl); }} 
+                          className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all"
+                        >
+                          Copier le lien
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
             </div>
           ) : (
-            <p className="text-sm text-red-600">
-              Impossible de générer le lien pour l’instant. Sauvegardez la configuration puis réessayez.
-            </p>
+            <div className="p-4 rounded-xl border border-rose-800/40 bg-rose-950/20 text-rose-400 text-xs font-semibold text-center uppercase tracking-wide">
+              ⚠️ Impossible de générer les accès d'affichage pour le moment. Sauvegardez la configuration ci-dessus pour initialiser.
+            </div>
           )}
         </div>
       </details>
 
       {/* Close Heat */}
       {shouldShowKioskPanel && (
-        <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
-          <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+        <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
+          <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
             <div className="flex items-center space-x-3">
-              <CheckCircle className="w-6 h-6 text-cta-500" />
-              <h2 className="text-xl font-bebas tracking-wider text-white">5. GESTION DU HEAT (CLÔTURE)</h2>
+              <CheckCircle className="w-6 h-6 text-cyan-400" />
+              <h2 className="text-xl font-bebas tracking-wider text-slate-100">5. GESTION DU HEAT (CLÔTURE)</h2>
             </div>
-            <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+            <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
           </summary>
-          <div className="p-6 bg-white border-t-4 border-primary-950">
-            <div className="flex items-center justify-between">
+          <div className="p-6 bg-slate-950/20 flex flex-col space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 bg-slate-900/60 border border-white/5 rounded-2xl shadow-lg">
               <div className="flex items-center space-x-3">
-                <CheckCircle className="w-6 h-6 text-green-600" />
+                <CheckCircle className="w-8 h-8 text-emerald-400 flex-shrink-0" />
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Gestion du Heat</h2>
-                  <p className="text-sm text-gray-600">
+                  <h3 className="text-lg font-bold text-slate-200 uppercase tracking-wide">Gestion du Heat</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
                     Heat actuel: {config.competition} - {config.division} - R{config.round} H{config.heatId}
                   </p>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={handleCloseHeat}
-                className="flex items-center space-x-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-lg transform transition hover:scale-105"
+                className="flex items-center justify-center space-x-2 px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl shadow-lg shadow-rose-950/30 font-semibold transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-sm"
               >
                 <CheckCircle className="w-5 h-5" />
                 <span>Fermer le Heat</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
-
-              {/* DEBUG PANEL */}
-              <div className="mt-4 p-4 bg-gray-100 rounded text-xs font-mono text-gray-600 overflow-auto max-h-40">
-                <p className="font-bold mb-1">🔧 DEBUG INFO:</p>
-                <p>Heat: {config.competition} / {config.division} / R{config.round} H{config.heatId}</p>
-                <p>Surfers: {config.surfers.join(', ')}</p>
-                <p>Loaded from DB: {loadedFromDb ? 'YES' : 'NO'}</p>
-                <p>Supabase mode: {getSupabaseMode() || 'auto'}</p>
-                <p>DB status: {dbStatus}</p>
-                {!loadedFromDb && (
-                  <div className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
-                    <p className="font-semibold">⚠️ Configuration non chargée depuis la base.</p>
-                    <p>Action recommandée: reconnecter à Supabase puis recharger la config.</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        onClick={handleAutoReconnect}
-                        disabled={reconnectPending || !onReconnectToDb}
-                        className="px-2 py-1 bg-amber-200 rounded hover:bg-amber-300 disabled:opacity-50"
-                      >
-                        {reconnectPending ? 'Reconnexion...' : 'Reconnect to Supabase'}
-                      </button>
-                      <button
-                        onClick={() => navigate('/my-events')}
-                        className="px-2 py-1 bg-white border border-amber-300 rounded hover:bg-amber-100"
-                      >
-                        Ouvrir Mes événements
-                      </button>
-                    </div>
-                    {reconnectMessage && <p className="mt-2">{reconnectMessage}</p>}
-                  </div>
-                )}
-                <button
-                  onClick={async () => {
-                    try {
-                      const eventId = await resolveEventIdForCurrentHeat();
-                      if (eventId) {
-                        const seq = await fetchOrderedHeatSequence(eventId, config.division);
-                        console.log('🔥 Heat Sequence:', seq);
-                        alert(`Sequence Length: ${seq.length}\nSee console for details.`);
-                      } else {
-                        alert('Event ID not found');
-                      }
-                    } catch (e) { alert('Error: ' + e); }
-                  }}
-                  className="mt-2 px-2 py-1 bg-gray-300 rounded hover:bg-gray-400"
-                >
-                  Inspect Sequence
-                </button>
-              </div>
             </div>
 
             {/* Statistiques des juges */}
             {Object.keys(judgeWorkCount).length > 0 && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Heats consécutifs par juge:</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="p-4 bg-slate-900/40 border border-white/5 rounded-2xl">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Heats consécutifs par juge:</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {Object.entries(judgeWorkCount).map(([judgeId, count]) => (
-                    <div key={judgeId} className={`flex items-center justify-between p-2 rounded ${count >= 4 ? 'bg-red-100 text-red-800' :
-                      count >= 3 ? 'bg-orange-100 text-orange-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                      <span className="text-sm font-medium">
+                    <div key={judgeId} className={`flex items-center justify-between p-3 rounded-xl border ${
+                      count >= 4 
+                        ? 'bg-rose-950/20 border-rose-800/40 text-rose-300' 
+                        : count >= 3 
+                          ? 'bg-amber-950/20 border-amber-800/40 text-amber-300' 
+                          : 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
+                    }`}>
+                      <span className="text-sm font-semibold">
                         {analyticsJudgeNames.get(judgeId) || config.judgeNames[judgeId] || judgeId}
                       </span>
-                      <span className="text-sm font-bold">{count}</span>
+                      <span className="text-sm font-black font-mono bg-black/40 px-2 py-0.5 rounded-md border border-white/5">{count}</span>
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  🟢 Normal • 🟠 Attention (3+) • 🔴 Fatigue (4+)
+                <p className="text-[10px] text-slate-500 mt-3 font-medium uppercase tracking-wider flex gap-3">
+                  <span>🟢 Normal</span>
+                  <span>🟠 Attention (3+)</span>
+                  <span>🔴 Fatigue (4+)</span>
                 </p>
               </div>
             )}
 
             {judgeAccuracy.length > 0 && (
-              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="p-4 bg-slate-900/40 border border-white/5 rounded-2xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Qualité de jugement</h3>
-                    <p className="text-xs text-slate-500">
+                    <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wide">Qualité de jugement</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
                       Référence: médiane des autres juges par vague, plus corrections du chef juge.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="inline-flex rounded-md border border-slate-300 overflow-hidden">
+                  <div className="flex items-center gap-2 self-end">
+                    <div className="inline-flex rounded-lg border border-slate-800 overflow-hidden bg-slate-950 p-0.5">
                       <button
                         type="button"
                         onClick={() => setAnalyticsScope('heat')}
-                        className={`px-3 py-1 text-xs ${analyticsScope === 'heat' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700'}`}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                          analyticsScope === 'heat' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        }`}
                       >
                         Heat
                       </button>
@@ -4230,7 +4331,9 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                         type="button"
                         onClick={() => setAnalyticsScope('event')}
                         disabled={!activeEventId}
-                        className={`px-3 py-1 text-xs border-l border-slate-300 ${analyticsScope === 'event' ? 'bg-slate-800 text-white' : 'bg-white text-slate-700'} disabled:opacity-50`}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                          analyticsScope === 'event' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+                        } disabled:opacity-30 disabled:cursor-not-allowed`}
                       >
                         Event
                       </button>
@@ -4238,55 +4341,57 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                     <button
                       type="button"
                       onClick={handleExportJudgeAccuracy}
-                      className="px-3 py-1 text-xs bg-white border border-slate-300 rounded-md hover:bg-slate-100"
+                      className="px-3 py-1.5 text-xs font-semibold bg-slate-900 border border-slate-800 text-slate-350 hover:bg-slate-800 rounded-lg transition-all"
                     >
                       Export CSV
                     </button>
                   </div>
                 </div>
                 {analyticsLoading && (
-                  <p className="text-xs text-slate-500 mb-3">Chargement de l’analyse événement...</p>
+                  <p className="text-xs text-cyan-400 animate-pulse mb-3">Chargement de l’analyse événement...</p>
                 )}
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
+                <div className="overflow-x-auto rounded-xl border border-white/5 bg-slate-950/60">
+                  <table className="min-w-full text-xs font-medium">
                     <thead>
-                      <tr className="text-left text-slate-600 border-b border-slate-200">
-                        <th className="py-2 pr-4">Juge</th>
-                        <th className="py-2 pr-4">Score</th>
-                        <th className="py-2 pr-4">Vagues</th>
-                        <th className="py-2 pr-4">Ecart moyen</th>
-                        <th className="py-2 pr-4">Biais</th>
-                        <th className="py-2 pr-4">Dans +/-0.5</th>
-                        <th className="py-2 pr-4">Corrections</th>
-                        <th className="py-2">Delta corr.</th>
+                      <tr className="text-left text-slate-400 border-b border-slate-800 bg-slate-950">
+                        <th className="py-3 px-4">Juge</th>
+                        <th className="py-3 px-4">Score</th>
+                        <th className="py-3 px-4">Vagues</th>
+                        <th className="py-3 px-4">Ecart moyen</th>
+                        <th className="py-3 px-4">Biais</th>
+                        <th className="py-3 px-4">Dans +/-0.5</th>
+                        <th className="py-3 px-4">Corrections</th>
+                        <th className="py-3 px-4">Delta corr.</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-slate-850">
                       {judgeAccuracy.map((row) => (
                         <tr
                           key={row.judgeId}
                           onClick={() => setSelectedJudgeProfileId(row.judgeId)}
-                          className={`border-b border-slate-100 last:border-b-0 cursor-pointer ${selectedJudgeProfileId === row.judgeId ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+                          className={`cursor-pointer transition-all ${
+                            selectedJudgeProfileId === row.judgeId ? 'bg-cyan-950/20 text-cyan-200' : 'hover:bg-slate-900/40 text-slate-300'
+                          }`}
                         >
-                          <td className="py-2 pr-4 font-medium text-slate-900">{analyticsJudgeNames.get(row.judgeId) || row.judgeId}</td>
-                          <td className="py-2 pr-4">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
-                              row.qualityBand === 'excellent' ? 'bg-emerald-100 text-emerald-800' :
-                              row.qualityBand === 'good' ? 'bg-sky-100 text-sky-800' :
-                              row.qualityBand === 'watch' ? 'bg-amber-100 text-amber-800' :
-                              'bg-rose-100 text-rose-800'
+                          <td className="py-2.5 px-4 font-bold text-slate-200">{analyticsJudgeNames.get(row.judgeId) || row.judgeId}</td>
+                          <td className="py-2.5 px-4">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              row.qualityBand === 'excellent' ? 'bg-emerald-950/60 border border-emerald-800/40 text-emerald-300' :
+                              row.qualityBand === 'good' ? 'bg-cyan-950/60 border border-cyan-800/40 text-cyan-300' :
+                              row.qualityBand === 'watch' ? 'bg-amber-950/60 border border-amber-800/40 text-amber-300' :
+                              'bg-rose-950/60 border border-rose-800/40 text-rose-300'
                             }`}>
                               {row.qualityScore.toFixed(0)}
                             </span>
                           </td>
-                          <td className="py-2 pr-4 text-slate-700">{row.scoredWaves}</td>
-                          <td className="py-2 pr-4 text-slate-700">{row.meanAbsDeviation.toFixed(2)}</td>
-                          <td className={`py-2 pr-4 ${row.bias > 0.15 ? 'text-amber-700' : row.bias < -0.15 ? 'text-sky-700' : 'text-slate-700'}`}>
+                          <td className="py-2.5 px-4">{row.scoredWaves}</td>
+                          <td className="py-2.5 px-4">{row.meanAbsDeviation.toFixed(2)}</td>
+                          <td className={`py-2.5 px-4 font-semibold ${row.bias > 0.15 ? 'text-amber-400' : row.bias < -0.15 ? 'text-cyan-400' : 'text-slate-305'}`}>
                             {row.bias > 0 ? '+' : ''}{row.bias.toFixed(2)}
                           </td>
-                          <td className="py-2 pr-4 text-slate-700">{row.withinHalfPointRate.toFixed(0)}%</td>
-                          <td className="py-2 pr-4 text-slate-700">{row.overrideCount} ({row.overrideRate.toFixed(0)}%)</td>
-                          <td className="py-2 text-slate-700">{row.averageOverrideDelta.toFixed(2)}</td>
+                          <td className="py-2.5 px-4">{row.withinHalfPointRate.toFixed(0)}%</td>
+                          <td className="py-2.5 px-4">{row.overrideCount} ({row.overrideRate.toFixed(0)}%)</td>
+                          <td className="py-2.5 px-4">{row.averageOverrideDelta.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -4295,45 +4400,47 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
 
                 {selectedJudgeProfile && (
                   <div className="mt-4 grid grid-cols-1 lg:grid-cols-[280px,1fr] gap-4">
-                    <div className="bg-white border border-slate-200 rounded-lg p-4">
-                      <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">Profil juge</p>
-                      <h4 className="text-lg font-semibold text-slate-900">
-                        {analyticsJudgeNames.get(selectedJudgeProfile.judgeId) || selectedJudgeProfile.judgeId}
-                      </h4>
-                      <div className="mt-3 space-y-2 text-sm text-slate-700">
-                        <div className="flex justify-between"><span>Score qualité</span><strong>{selectedJudgeProfile.qualityScore.toFixed(0)}/100</strong></div>
-                        <div className="flex justify-between"><span>Ecart moyen</span><strong>{selectedJudgeProfile.meanAbsDeviation.toFixed(2)}</strong></div>
-                        <div className="flex justify-between"><span>Biais</span><strong>{selectedJudgeProfile.bias > 0 ? '+' : ''}{selectedJudgeProfile.bias.toFixed(2)}</strong></div>
-                        <div className="flex justify-between"><span>Notes proches</span><strong>{selectedJudgeProfile.withinHalfPointRate.toFixed(0)}%</strong></div>
-                        <div className="flex justify-between"><span>Corrections</span><strong>{selectedJudgeProfile.overrideCount}</strong></div>
+                    <div className="bg-slate-950/60 border border-white/5 rounded-xl p-4 flex flex-col justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-1">Profil juge</p>
+                        <h4 className="text-base font-bold text-slate-200">
+                          {analyticsJudgeNames.get(selectedJudgeProfile.judgeId) || selectedJudgeProfile.judgeId}
+                        </h4>
+                        <div className="mt-4 space-y-2 text-xs text-slate-400">
+                          <div className="flex justify-between border-b border-slate-900 pb-1"><span>Score qualité</span><strong className="text-cyan-400">{selectedJudgeProfile.qualityScore.toFixed(0)}/100</strong></div>
+                          <div className="flex justify-between border-b border-slate-900 pb-1"><span>Ecart moyen</span><strong className="text-slate-300">{selectedJudgeProfile.meanAbsDeviation.toFixed(2)}</strong></div>
+                          <div className="flex justify-between border-b border-slate-900 pb-1"><span>Biais</span><strong className={selectedJudgeProfile.bias > 0 ? 'text-amber-400' : 'text-cyan-400'}>{selectedJudgeProfile.bias > 0 ? '+' : ''}{selectedJudgeProfile.bias.toFixed(2)}</strong></div>
+                          <div className="flex justify-between border-b border-slate-900 pb-1"><span>Notes proches</span><strong className="text-slate-300">{selectedJudgeProfile.withinHalfPointRate.toFixed(0)}%</strong></div>
+                          <div className="flex justify-between"><span>Corrections</span><strong className="text-slate-300">{selectedJudgeProfile.overrideCount}</strong></div>
+                        </div>
                       </div>
-                      <div className="mt-4 pt-4 border-t border-slate-200">
-                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Typologie des corrections</p>
-                        <div className="space-y-2 text-sm text-slate-700">
-                          <div className="flex justify-between"><span>Correction</span><strong>{selectedJudgeOverrideSummary.correction}</strong></div>
-                          <div className="flex justify-between"><span>Omission</span><strong>{selectedJudgeOverrideSummary.omission}</strong></div>
-                          <div className="flex justify-between"><span>Problème</span><strong>{selectedJudgeOverrideSummary.probleme}</strong></div>
+                      <div className="mt-4 pt-4 border-t border-slate-900">
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-2">Typologie des corrections</p>
+                        <div className="space-y-2 text-xs text-slate-400">
+                          <div className="flex justify-between"><span>Correction</span><strong className="text-slate-300">{selectedJudgeOverrideSummary.correction}</strong></div>
+                          <div className="flex justify-between"><span>Omission</span><strong className="text-slate-300">{selectedJudgeOverrideSummary.omission}</strong></div>
+                          <div className="flex justify-between"><span>Problème</span><strong className="text-slate-300">{selectedJudgeOverrideSummary.probleme}</strong></div>
                         </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                      <div className="bg-white border border-slate-200 rounded-lg p-4">
-                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Vagues les plus atypiques</p>
+                      <div className="bg-slate-950/60 border border-white/5 rounded-xl p-4">
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-2">Vagues les plus atypiques</p>
                         {selectedJudgeDeviations.length === 0 ? (
-                          <p className="text-sm text-slate-500">Pas assez de données comparables pour ce juge sur le scope sélectionné.</p>
+                          <p className="text-xs text-slate-500">Pas assez de données comparables pour ce juge sur le scope sélectionné.</p>
                         ) : (
-                          <div className="space-y-2">
+                          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                             {selectedJudgeDeviations.map((item) => (
-                              <div key={`${item.heatId}-${item.surfer}-${item.waveNumber}`} className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm">
+                              <div key={`${item.heatId}-${item.surfer}-${item.waveNumber}`} className="flex items-center justify-between rounded-lg border border-white/5 bg-slate-900/40 px-3 py-2 text-xs">
                                 <div>
-                                  <div className="font-medium text-slate-900">
+                                  <div className="font-bold text-slate-200">
                                     {item.surfer} · Vague {item.waveNumber}
                                   </div>
-                                  <div className="text-xs text-slate-500">{item.heatId}</div>
+                                  <div className="text-[9px] text-slate-500 font-mono mt-0.5">{item.heatId}</div>
                                 </div>
                                 <div className="text-right">
-                                  <div className="text-slate-700">Juge {item.judgeScore.toFixed(2)} vs panel {item.consensusScore.toFixed(2)}</div>
-                                  <div className={`text-xs font-semibold ${item.delta > 0 ? 'text-amber-700' : 'text-sky-700'}`}>
+                                  <div className="text-slate-400 font-mono font-semibold">Juge {item.judgeScore.toFixed(2)} vs panel {item.consensusScore.toFixed(2)}</div>
+                                  <div className={`text-[10px] font-bold ${item.delta > 0 ? 'text-amber-400' : 'text-cyan-400'}`}>
                                     {item.delta > 0 ? '+' : ''}{item.delta.toFixed(2)}
                                   </div>
                                 </div>
@@ -4342,27 +4449,27 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                           </div>
                         )}
                       </div>
-                      <div className="bg-white border border-slate-200 rounded-lg p-4">
-                        <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Dernières corrections du juge</p>
+                      <div className="bg-slate-950/60 border border-white/5 rounded-xl p-4">
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-2">Dernières corrections du juge</p>
                         {selectedJudgeOverridesDetailed.length === 0 ? (
-                          <p className="text-sm text-slate-500">Aucune correction enregistrée pour ce juge sur le scope sélectionné.</p>
+                          <p className="text-xs text-slate-500">Aucune correction enregistrée pour ce juge sur le scope sélectionné.</p>
                         ) : (
-                          <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                             {selectedJudgeOverridesDetailed.slice(0, 8).map((log) => (
-                              <div key={log.id} className="rounded-md border border-slate-200 px-3 py-2 text-sm">
+                              <div key={log.id} className="rounded-lg border border-white/5 bg-slate-900/40 px-3 py-2 text-xs">
                                 <div className="flex items-center justify-between">
-                                  <span className="font-medium text-slate-900">{log.surfer} · Vague {log.wave_number}</span>
-                                  <span className="text-xs text-slate-500">{reasonLabels[log.reason]}</span>
+                                  <span className="font-bold text-slate-250">{log.surfer} · Vague {log.wave_number}</span>
+                                  <span className="text-[9px] font-bold uppercase bg-slate-900 border border-white/5 px-1.5 py-0.5 rounded text-slate-400">{reasonLabels[log.reason]}</span>
                                 </div>
-                                <div className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                                <div className="mt-1 text-[9px] uppercase tracking-wide text-slate-500">
                                   {log.contextLabel}
                                 </div>
-                                <div className="mt-1 text-slate-700">
+                                <div className="mt-1 text-slate-300 font-mono">
                                   {log.previous_score !== null ? `${log.previous_score.toFixed(2)} → ` : ''}
                                   {log.new_score.toFixed(2)}
                                 </div>
                                 {log.comment && (
-                                  <div className="mt-1 text-xs italic text-slate-500">{log.comment}</div>
+                                  <div className="mt-1 text-[10px] italic text-slate-500">{log.comment}</div>
                                 )}
                               </div>
                             ))}
@@ -4377,36 +4484,37 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
           </div>
         </details>
       )}
+
       {/* Paramètres avancés */}
-      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
-        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+      <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
+        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
-            <Settings className="w-6 h-6 text-cta-500" />
-            <h2 className="text-xl font-bebas tracking-wider text-white">6. PARAMÈTRES AVANCÉS</h2>
+            <Settings className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">5. PARAMÈTRES AVANCÉS</h2>
           </div>
-          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
-        <div className="p-6 bg-white border-t-4 border-primary-950 space-y-4">
+        <div className="p-6 bg-slate-950/20 space-y-6 flex flex-col">
           {/* JUDGES SECTION */}
-          <div className="pt-8 border-t-4 border-primary-50">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-cta-500" />
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
+                <Users className="w-5 h-5 text-cyan-400" />
                 Juges / Officiels
               </h3>
             </div>
             {officialJudgeStatus && (
-              <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+              <div className={`rounded-lg border px-4 py-3 text-sm ${
                 officialJudgeStatus.type === 'success'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-rose-200 bg-rose-50 text-rose-800'
+                  ? 'border-emerald-850/40 bg-emerald-950/20 text-emerald-400'
+                  : 'border-rose-850/40 bg-rose-950/20 text-rose-400'
               }`}>
                 {officialJudgeStatus.message}
               </div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {config.judges.map((judgeId, index) => (
-                <div key={judgeId} className="bg-primary-50 border-2 border-primary-950 p-4 rounded-xl shadow-block flex flex-col gap-3">
+                <div key={judgeId} className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl shadow-lg flex flex-col gap-3">
                   {(() => {
                     const assignedIdentityId = resolveAssignedJudgeIdentity(judgeId);
                     const assignedOfficialJudge = availableOfficialJudges.find((judge) => judge.id === assignedIdentityId);
@@ -4415,100 +4523,103 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                     const canCreateOfficial = !isOfficialAssigned && manualJudgeName.length > 0;
                     return (
                       <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-primary-900/60 uppercase tracking-widest">Juge #{index + 1}</span>
-                    <button
-                      onClick={() => handleRemoveJudge(judgeId)}
-                      className="p-1.5 text-danger-600 hover:bg-danger-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="space-y-1">
-                    <select
-                      value={assignedIdentityId}
-                      onChange={(e) => handleJudgeIdentityChange(judgeId, e.target.value)}
-                      className="w-full px-3 py-2 bg-white border-2 border-primary-200 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-medium"
-                    >
-                      <option value="">Sélectionner un juge officiel</option>
-                      {availableOfficialJudges.map((judge) => (
-                        <option key={judge.id} value={judge.id}>
-                          {judge.name}{judge.certification_level ? ` · ${judge.certification_level}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      value={config.judgeNames[judgeId] || ''}
-                      onChange={(e) => handleJudgeNameChange(judgeId, e.target.value)}
-                      placeholder="Nom du Juge"
-                      readOnly={isOfficialAssigned}
-                      className={`w-full px-3 py-2 bg-white border-2 rounded-lg focus:ring-0 text-sm font-bold ${isOfficialAssigned ? 'border-emerald-300 text-emerald-900 bg-emerald-50 cursor-not-allowed' : 'border-primary-200 focus:border-primary-600'}`}
-                    />
-                    <input
-                      type="email"
-                      value={config.judgeEmails?.[judgeId] || ''}
-                      onChange={(e) => handleJudgeEmailChange(judgeId, e.target.value)}
-                      placeholder="Email (optionnel)"
-                      readOnly={isOfficialAssigned}
-                      className={`w-full px-3 py-1.5 border rounded-lg focus:ring-0 text-[10px] font-medium ${isOfficialAssigned ? 'bg-emerald-50 border-emerald-200 text-emerald-900 cursor-not-allowed' : 'bg-white/50 border-primary-100 focus:border-primary-400'}`}
-                    />
-                    <p className="text-[10px] text-primary-700">
-                      {isOfficialAssigned
-                        ? `Officiel lié: ${assignedOfficialJudge?.name || config.judgeNames[judgeId] || judgeId}`
-                        : `Aucune identité officielle liée à ${judgeId}`}
-                    </p>
-                    {!isOfficialAssigned && (
-                      <button
-                        type="button"
-                        onClick={() => handleCreateOfficialJudge(judgeId)}
-                        disabled={!canCreateOfficial || creatingOfficialJudgeFor === judgeId}
-                        className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                          canCreateOfficial && creatingOfficialJudgeFor !== judgeId
-                            ? 'bg-primary-900 text-white hover:bg-primary-800'
-                            : 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                        }`}
-                      >
-                        {creatingOfficialJudgeFor === judgeId ? 'Creation en cours...' : 'Creer et lier comme juge officiel'}
-                      </button>
-                    )}
-                  </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Juge #{index + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveJudge(judgeId)}
+                            className="p-1.5 text-rose-400 hover:bg-rose-950/30 rounded-lg transition-colors border border-transparent hover:border-rose-900/30"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          <select
+                            value={assignedIdentityId}
+                            onChange={(e) => handleJudgeIdentityChange(judgeId, e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-xs"
+                          >
+                            <option value="" className="bg-slate-950">Sélectionner un juge officiel</option>
+                            {availableOfficialJudges.map((judge) => (
+                              <option key={judge.id} value={judge.id} className="bg-slate-950">
+                                {judge.name}{judge.certification_level ? ` · ${judge.certification_level}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={config.judgeNames[judgeId] || ''}
+                            onChange={(e) => handleJudgeNameChange(judgeId, e.target.value)}
+                            placeholder="Nom du Juge"
+                            readOnly={isOfficialAssigned}
+                            className={`w-full px-3 py-2 bg-slate-950 border text-xs font-bold rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 ${isOfficialAssigned ? 'border-emerald-850/40 text-emerald-400 bg-emerald-950/10 cursor-not-allowed' : 'border-slate-800'}`}
+                          />
+                          <input
+                            type="email"
+                            value={config.judgeEmails?.[judgeId] || ''}
+                            onChange={(e) => handleJudgeEmailChange(judgeId, e.target.value)}
+                            placeholder="Email (optionnel)"
+                            readOnly={isOfficialAssigned}
+                            className={`w-full px-3 py-1.5 border text-[10px] font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 ${isOfficialAssigned ? 'bg-emerald-950/10 border-emerald-850/40 text-emerald-400 cursor-not-allowed' : 'bg-slate-950 border-slate-800'}`}
+                          />
+                          <p className="text-[9px] text-slate-450 font-mono">
+                            {isOfficialAssigned
+                              ? `Officiel lié: ${assignedOfficialJudge?.name || config.judgeNames[judgeId] || judgeId}`
+                              : `Aucune identité officielle liée à ${judgeId}`}
+                          </p>
+                          {!isOfficialAssigned && (
+                            <button
+                              type="button"
+                              onClick={() => handleCreateOfficialJudge(judgeId)}
+                              disabled={!canCreateOfficial || creatingOfficialJudgeFor === judgeId}
+                              className={`w-full rounded-lg px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase transition-colors ${
+                                canCreateOfficial && creatingOfficialJudgeFor !== judgeId
+                                  ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                                  : 'bg-slate-900 border border-slate-800 text-slate-505 cursor-not-allowed'
+                              }`}
+                            >
+                              {creatingOfficialJudgeFor === judgeId ? 'Creation en cours...' : 'Creer et lier comme juge officiel'}
+                            </button>
+                          )}
+                        </div>
                       </>
                     );
                   })()}
                 </div>
               ))}
               <button
+                type="button"
                 onClick={handleAddJudge}
-                className="p-6 border-4 border-dashed border-primary-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-primary-400 hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50 transition-all group"
+                className="p-6 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-cyan-500 hover:text-cyan-400 hover:bg-slate-900/40 transition-all group"
               >
                 <PlusCircle className="w-8 h-8 group-hover:scale-110 transition-transform" />
-                <span className="font-bebas tracking-widest">Ajouter un Juge</span>
+                <span className="font-bebas tracking-widest text-lg">Ajouter un Juge</span>
               </button>
             </div>
           </div>
 
           {/* SURFERS SECTION */}
-          <div className="pt-8 border-t-4 border-primary-50">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-cta-500" />
+          <div className="pt-6 border-t border-slate-850">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-cyan-400" />
                 Surfeurs par Couleur de Lycra
               </h3>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {(['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const).map((color) => {
                 const isAssigned = config.surfers.includes(color);
                 return (
-                  <div key={color} className={`bg-white border-2 border-primary-950 rounded-xl overflow-hidden shadow-block transition-all ${!isAssigned && 'opacity-50 grayscale'}`}>
-                    <div className={`px-4 py-2 border-b-2 border-primary-950 flex items-center justify-between ${color === 'ROUGE' ? 'bg-red-500 text-white' :
+                  <div key={color} className={`bg-slate-900/60 border border-white/5 rounded-2xl overflow-hidden shadow-lg transition-all ${!isAssigned && 'opacity-40 grayscale'}`}>
+                    <div className={`px-4 py-2 flex items-center justify-between font-bold text-[10px] uppercase tracking-widest ${
+                      color === 'ROUGE' ? 'bg-red-600 text-white' :
                       color === 'BLANC' ? 'bg-slate-100 text-slate-900' :
-                        color === 'JAUNE' ? 'bg-yellow-400 text-slate-900' :
-                          color === 'BLEU' ? 'bg-blue-600 text-white' :
-                            color === 'VERT' ? 'bg-green-600 text-white' :
-                              'bg-slate-900 text-white'
-                      }`}>
-                      <span className="text-[10px] font-bold uppercase tracking-widest">{color}</span>
+                      color === 'JAUNE' ? 'bg-yellow-400 text-slate-900' :
+                      color === 'BLEU' ? 'bg-blue-600 text-white' :
+                      color === 'VERT' ? 'bg-green-600 text-white' :
+                      'bg-slate-950 text-white border-b border-white/5'
+                    }`}>
+                      <span>{color}</span>
                       <input
                         type="checkbox"
                         checked={isAssigned}
@@ -4518,25 +4629,25 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                             : config.surfers.filter(s => s !== color);
                           handleConfigChange('surfers', next);
                         }}
-                        className="w-4 h-4 rounded border-white text-primary-600 focus:ring-0 cursor-pointer"
+                        className="w-3.5 h-3.5 rounded border-slate-850 text-cyan-600 focus:ring-0 cursor-pointer"
                       />
                     </div>
-                    <div className="p-4 space-y-3">
+                    <div className="p-3 space-y-2">
                       <input
                         type="text"
                         value={config.surferNames?.[color] || ''}
                         onChange={(e) => handleSurferNameChange(color, e.target.value)}
-                        placeholder="Nom du Surfeur"
+                        placeholder="Nom"
                         disabled={!isAssigned}
-                        className="w-full px-3 py-2 bg-primary-50 border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold disabled:bg-gray-50 disabled:border-gray-100"
+                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
                       />
                       <input
                         type="text"
                         value={config.surferCountries?.[color] || ''}
                         onChange={(e) => handleSurferCountryChange(color, e.target.value)}
-                        placeholder="Pays / Club"
+                        placeholder="Pays"
                         disabled={!isAssigned}
-                        className="w-full px-3 py-1.5 bg-primary-50/50 border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-[10px] font-medium disabled:opacity-50"
+                        className="w-full px-2.5 py-1 bg-slate-950 border border-slate-850 text-slate-450 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -4545,14 +4656,14 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             </div>
           </div>
 
-          <div className="pt-8 border-t-4 border-primary-50">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
+          <div className="pt-6 border-t border-slate-850">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
               <div>
-                <h3 className="text-xl font-bebas tracking-wide text-primary-900 flex items-center gap-2">
-                  <ClipboardCheck className="w-5 h-5 text-cta-500" />
+                <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-cyan-400" />
                   Lineup officiel du heat
                 </h3>
-                <p className="text-xs text-primary-700 mt-1">
+                <p className="text-xs text-slate-400 mt-0.5">
                   Override chef juge: remplace ou ajoute le surfeur officiel d'une couleur sans toucher aux scores déjà saisis.
                 </p>
               </div>
@@ -4560,20 +4671,20 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 type="button"
                 onClick={() => setLineupRefreshToken((value) => value + 1)}
                 disabled={lineupOverrideLoading}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-primary-200 text-xs font-semibold text-primary-800 hover:bg-primary-50 disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-bold text-slate-350 hover:bg-slate-850 disabled:opacity-50 transition-all self-end"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-3.5 h-3.5 animate-spin-slow" />
                 Recharger lineup
               </button>
             </div>
 
             {lineupOverrideStatus && (
-              <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+              <div className={`mb-4 rounded-lg border px-4 py-3 text-xs ${
                 lineupOverrideStatus.type === 'success'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  ? 'border-emerald-850/40 bg-emerald-950/20 text-emerald-400'
                   : lineupOverrideStatus.type === 'error'
-                    ? 'border-rose-200 bg-rose-50 text-rose-800'
-                    : 'border-sky-200 bg-sky-50 text-sky-800'
+                    ? 'border-rose-850/40 bg-rose-950/20 text-rose-400'
+                    : 'border-cyan-850/40 bg-cyan-950/20 text-cyan-400'
               }`}>
                 {lineupOverrideStatus.message}
               </div>
@@ -4592,15 +4703,15 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 const pending = lineupPendingPosition === position;
 
                 return (
-                  <div key={`${position}-${color}`} className="rounded-xl border-2 border-primary-200 bg-white p-4 shadow-sm">
+                  <div key={`${position}-${color}`} className="rounded-2xl border border-white/5 bg-slate-900/60 p-4 shadow-lg flex flex-col justify-between">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-primary-500">Position {position}</p>
-                        <h4 className="text-lg font-bebas tracking-wide text-primary-950">{color}</h4>
-                        <p className="text-sm font-semibold text-slate-900">{currentName}</p>
-                        {currentCountry && <p className="text-xs text-slate-500">{currentCountry}</p>}
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Position {position}</p>
+                        <h4 className="text-base font-bebas tracking-wide text-slate-300">{color}</h4>
+                        <p className="text-sm font-bold text-slate-200">{currentName}</p>
+                        {currentCountry && <p className="text-xs text-slate-400 mt-0.5">{currentCountry}</p>}
                       </div>
-                      <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                      <span className="rounded-full bg-amber-950/20 border border-amber-900/30 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-400">
                         Source officielle
                       </span>
                     </div>
@@ -4617,11 +4728,11 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                             country: participant?.country || '',
                           });
                         }}
-                        className="w-full px-3 py-2 bg-white border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-250 rounded-lg text-xs"
                       >
-                        <option value="">Choisir dans les inscrits...</option>
+                        <option value="" className="bg-slate-950">Choisir dans les inscrits...</option>
                         {lineupParticipantOptions.map((participant) => (
-                          <option key={participant.id} value={participant.id}>
+                          <option key={participant.id} value={participant.id} className="bg-slate-950">
                             #{participant.seed} · {participant.name}{participant.country ? ` · ${participant.country}` : ''}
                           </option>
                         ))}
@@ -4632,15 +4743,15 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                           type="text"
                           value={draft.manualName}
                           onChange={(event) => updateLineupDraft(position, { participantId: '', manualName: event.target.value })}
-                          placeholder="Ou nouveau nom officiel"
-                          className="w-full px-3 py-2 bg-primary-50 border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm font-bold"
+                          placeholder="Ou nouveau nom"
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500"
                         />
                         <input
                           type="text"
                           value={draft.country}
                           onChange={(event) => updateLineupDraft(position, { country: event.target.value })}
                           placeholder="Pays / Club"
-                          className="w-full px-3 py-2 bg-primary-50 border-2 border-primary-100 rounded-lg focus:border-primary-600 focus:ring-0 text-sm"
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                         />
                       </div>
 
@@ -4648,21 +4759,21 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                         type="text"
                         value={draft.reason}
                         onChange={(event) => updateLineupDraft(position, { reason: event.target.value })}
-                        placeholder="Motif optionnel: inversion R2H3, ajout meilleur 2e, erreur terrain..."
-                        className="w-full px-3 py-2 bg-white border border-primary-100 rounded-lg focus:border-primary-400 focus:ring-0 text-xs"
+                        placeholder="Motif optionnel..."
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 text-slate-400 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-cyan-500"
                       />
 
                       <button
                         type="button"
                         onClick={() => handleApplyLineupOverride(position, color)}
                         disabled={lineupOverrideLoading}
-                        className={`w-full rounded-lg px-4 py-2 text-sm font-bold text-white transition-colors ${
+                        className={`w-full rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition-colors ${
                           pending
-                            ? 'bg-amber-400 cursor-wait'
-                            : 'bg-primary-900 hover:bg-primary-800 disabled:bg-primary-300'
+                            ? 'bg-amber-600 animate-pulse'
+                            : 'bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-900 disabled:text-slate-505 disabled:border-slate-850'
                         }`}
                       >
-                        {pending ? 'Application...' : 'Appliquer comme nouvelle mouture'}
+                        {pending ? 'Application...' : 'Appliquer modification'}
                       </button>
                     </div>
                   </div>
@@ -4671,235 +4782,185 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="pt-6 border-t border-slate-850 flex flex-wrap gap-3">
             <button
               onClick={onReloadData}
-              className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              className="flex items-center space-x-2 px-4 py-2.5 border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-lg text-xs font-bold transition-all"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-4 h-4 text-cyan-400" />
               <span>Recharger</span>
             </button>
 
             <button
               onClick={handleResetAllData}
-              className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-bold"
+              className="flex items-center space-x-2 px-4 py-2.5 bg-rose-900/60 hover:bg-rose-800/60 border border-rose-800/40 text-rose-305 rounded-lg font-bebas tracking-widest text-base transition-all"
             >
-              <Trash2 className="w-4 h-4" />
-              <span>🚀 RESET NUCLÉAIRE</span>
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>RESET NUCLÉAIRE</span>
             </button>
 
             <button
               onClick={handleExportPdf}
-              className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+              className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-900/40 hover:bg-indigo-800/40 border border-indigo-800/40 text-indigo-300 rounded-lg text-xs font-bold transition-all"
             >
-              <FileText className="w-4 h-4" />
-              <span>Export PDF</span>
+              <FileText className="w-4 h-4 text-indigo-400" />
+              <span>Export PDF Heat</span>
             </button>
 
             <button
               onClick={handleExportEventPdf}
               disabled={eventPdfPending}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${eventPdfPending
-                ? 'bg-purple-300 cursor-not-allowed'
-                : 'bg-purple-600 hover:bg-purple-700'
-                }`}
+              className={`flex items-center space-x-2 px-4 py-2.5 border rounded-lg text-xs font-bold transition-all ${
+                eventPdfPending
+                  ? 'bg-purple-950/20 border-purple-900/20 text-purple-650 cursor-not-allowed opacity-50'
+                  : 'bg-purple-900/40 hover:bg-purple-800/40 border-purple-800/40 text-purple-300'
+              }`}
             >
-              <FileText className="w-4 h-4" />
+              <FileText className="w-4 h-4 text-purple-400" />
               <span>{eventPdfPending ? 'Export évènement…' : 'Export complet (PDF)'}</span>
             </button>
 
             <button
               onClick={handleExportFinalRankingPdf}
               disabled={rankingPdfPending}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${rankingPdfPending
-                ? 'bg-emerald-300 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-700'
-                }`}
+              className={`flex items-center space-x-2 px-4 py-2.5 border rounded-lg text-xs font-bold transition-all ${
+                rankingPdfPending
+                  ? 'bg-emerald-950/20 border-emerald-900/20 text-emerald-650 cursor-not-allowed opacity-50'
+                  : 'bg-emerald-900/40 hover:bg-emerald-800/40 border-emerald-800/40 text-emerald-300'
+              }`}
             >
-              <Trophy className="w-4 h-4" />
+              <Trophy className="w-4 h-4 text-emerald-400" />
               <span>{rankingPdfPending ? 'Génération ranking…' : 'Classement Final (PDF)'}</span>
             </button>
 
             <button
               onClick={handleRebuildDivisionQualifiers}
               disabled={rebuildPending || !configSaved}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md text-white ${rebuildPending || !configSaved
-                ? 'bg-amber-300 cursor-not-allowed'
-                : 'bg-amber-600 hover:bg-amber-700'
-                }`}
+              className={`flex items-center space-x-2 px-4 py-2.5 border rounded-lg text-xs font-bold transition-all ${
+                rebuildPending || !configSaved
+                  ? 'bg-amber-950/20 border-amber-900/20 text-amber-650 cursor-not-allowed opacity-50'
+                  : 'bg-amber-900/40 hover:bg-amber-800/40 border-amber-800/40 text-amber-305'
+              }`}
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-4 h-4 text-amber-400" />
               <span>{rebuildPending ? 'Recalcul en cours…' : 'Recalculer qualifiés (division)'}</span>
             </button>
 
             <button
               onClick={exportData}
-              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+              className="flex items-center space-x-2 px-4 py-2.5 bg-emerald-900/40 hover:bg-emerald-800/40 border border-emerald-800/40 text-emerald-300 rounded-lg text-xs font-bold transition-all"
             >
-              <Download className="w-4 h-4" />
+              <Download className="w-4 h-4 text-emerald-400" />
               <span>Export JSON</span>
             </button>
           </div>
 
-          <div className="pt-4 border-t border-gray-200">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Code Secret (PIN) pour les Juges
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={config.secretKey || ''}
-                onChange={(e) => handleConfigChange('secretKey', e.target.value)}
-                placeholder="Ex: 1234"
-                className="w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <span className="text-xs text-gray-500">
-                Définissez un code simple (ex: 1234) pour permettre aux juges de se connecter sans email.
-              </span>
+          <div className="pt-6 border-t border-slate-850 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                Code Secret (PIN) pour les Juges
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={config.secretKey || ''}
+                  onChange={(e) => handleConfigChange('secretKey', e.target.value)}
+                  placeholder="Ex: 1234"
+                  className="w-full md:w-1/2 px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+                <span className="text-[10px] text-slate-500 font-medium">
+                  Code simple permettant aux juges de se connecter sans email.
+                </span>
+              </div>
             </div>
-          </div>
-          <div className="pt-4 border-t border-gray-200">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Code Admin Hors-ligne (LAN)
-            </label>
-            <div className="flex flex-col md:flex-row md:items-center gap-2">
-              <input
-                type="text"
-                value={offlineAdminPin}
-                onChange={(e) => setOfflineAdminPin(e.target.value)}
-                placeholder="Ex: 7890"
-                className="w-full md:w-1/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="button"
-                onClick={handleSaveOfflineAdminPin}
-                className="px-3 py-2 bg-gray-800 text-white text-sm rounded hover:bg-gray-900"
-              >
-                Enregistrer
-              </button>
-              <span className="text-xs text-gray-500">
+            <div className="space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                Code Admin Hors-ligne (LAN)
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  value={offlineAdminPin}
+                  onChange={(e) => setOfflineAdminPin(e.target.value)}
+                  placeholder="Ex: 7890"
+                  className="w-full md:w-1/2 px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveOfflineAdminPin}
+                  className="px-4 py-2 bg-slate-900 border border-slate-850 hover:bg-slate-800 text-slate-200 text-xs font-bold rounded-lg transition-all"
+                >
+                  Enregistrer
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-550 font-medium mt-1">
                 Permet d’accéder à /admin sans magic link quand Internet est indisponible.
-              </span>
+              </p>
             </div>
           </div>
         </div>
       </details>
 
-      {/* Mode Kiosque - Liens Tablettes */}
-      {configSaved && (
-        <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
-          <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
-            <div className="flex items-center space-x-3">
-              <Users className="w-6 h-6 text-cta-500" />
-              <h2 className="text-xl font-bebas tracking-wider text-white">7. MODE KIOSQUE - TABLETTES</h2>
-            </div>
-            <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
-          </summary>
-          <div className="p-6 bg-white border-t-4 border-primary-950">
-            <div className="mb-5 rounded-xl border border-purple-100 bg-purple-50 p-4">
-              <p className="text-sm font-medium text-purple-900">
-                QR code unique pour les juges
-              </p>
-              <p className="mt-1 text-xs text-purple-700">
-                Chaque juge scanne le meme QR code, puis choisit sa position J1 a J5 sur la page d’acces.
-              </p>
-              {sharedJudgeAccessUrl ? (
-                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
-                  <div className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={handleCopyJudgeAccessLink}
-                      className="w-full py-2 px-4 rounded-lg border border-purple-200 text-purple-700 font-medium hover:bg-purple-100 transition-colors"
-                    >
-                      {judgeAccessLinkCopied ? 'Lien juges copié ✅' : 'Copier le lien juges'}
-                    </button>
-                    <div className="text-xs text-gray-500 break-all bg-white p-3 rounded border border-purple-200">
-                      {sharedJudgeAccessUrl}
-                    </div>
-                  </div>
-                  {judgeAccessQrCode ? (
-                    <div className="flex flex-col items-center text-center">
-                      <img
-                        src={judgeAccessQrCode}
-                        alt="QR code d'accès juge"
-                        className="w-44 h-44 rounded-lg border border-purple-200 bg-white p-2 shadow-sm"
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            <p className="text-sm text-gray-600 mb-4">Liens directs pour tablettes J1 à J5</p>
-            <div className="space-y-2">
-              {["J1", "J2", "J3", "J4", "J5"].map(position => {
-                const kioskUrl = kioskEventId
-                  ? `${kioskBaseUrl}/judge?position=${position}&eventId=${kioskEventId}`
-                  : `${kioskBaseUrl}/judge?position=${position}`;
-                return (
-                  <div key={position} className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                    <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">{position.replace("J", "")}</div>
-                    <input value={kioskUrl} readOnly className="flex-1 px-2 py-1 text-xs font-mono border rounded" />
-                    <button onClick={() => { void copyTextSafely(kioskUrl); }} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded">Copier</button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </details>
-      )}
-
       {/* Override Chef Juge */}
-      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden" open={showOverridePanel}>
+      <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40" open={showOverridePanel}>
         <summary
-          className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none"
+          className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5"
           onClick={(e) => {
             e.preventDefault();
             setShowOverridePanel(!showOverridePanel);
           }}
         >
           <div className="flex items-center space-x-3">
-            <ClipboardCheck className="w-6 h-6 text-cta-500" />
-            <h2 className="text-xl font-bebas tracking-wider text-white">8. CORRECTION DE NOTES</h2>
+            <ClipboardCheck className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">6. CORRECTION DE NOTES</h2>
           </div>
           <div className="flex items-center space-x-4">
-            {!configSaved && <span className="text-xs text-red-300 font-bold uppercase tracking-widest bg-red-900/50 px-2 py-1 rounded">Non sauvegardé</span>}
-            <span className={`text-white transition-transform opacity-70 ${showOverridePanel ? 'rotate-180' : ''}`}>▼</span>
+            {!configSaved && <span className="text-[10px] text-rose-450 border border-rose-900/40 bg-rose-950/20 font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">Non sauvegardé</span>}
+            <span className={`text-slate-400 transition-transform opacity-70 ${showOverridePanel ? 'rotate-180' : ''}`}>▼</span>
           </div>
         </summary>
 
         {showOverridePanel && (
-          <div className="p-6 bg-white border-t-4 border-primary-950">
+          <div className="p-6 bg-slate-950/20 flex flex-col space-y-4">
             <form className="space-y-4" onSubmit={handleOverrideSubmit}>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setCorrectionMode('score')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${correctionMode === 'score' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                    correctionMode === 'score' 
+                      ? 'bg-amber-600 border-amber-500/20 text-white' 
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-205'
+                  }`}
                 >
                   Mode note
                 </button>
                 <button
                   type="button"
                   onClick={() => setCorrectionMode('interference')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${correctionMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                    correctionMode === 'interference' 
+                      ? 'bg-amber-600 border-amber-500/20 text-white' 
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-205'
+                  }`}
                 >
                   Mode interférence
                 </button>
               </div>
 
               {/* Juge selection */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Juge</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Juge</label>
                   <select
                     value={selectedJudge}
                     onChange={(e) => { setSelectedJudge(e.target.value); setOverrideStatus(null); }}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     required
                   >
-                    <option value="">Sélectionner un juge</option>
+                    <option value="" className="bg-slate-950">Sélectionner un juge</option>
                     {config.judges.map((judgeId) => (
-                      <option key={judgeId} value={judgeId}>
+                      <option key={judgeId} value={judgeId} className="bg-slate-950">
                         {config.judgeNames[judgeId] || judgeId}
                       </option>
                     ))}
@@ -4908,23 +4969,23 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
 
                 {/* Surfer selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Surfeur</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Surfeur</label>
                   <select
                     value={selectedSurfer}
                     onChange={(e) => { setSelectedSurfer(e.target.value); setSelectedWave(''); setOverrideStatus(null); }}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     required
                   >
-                    <option value="">Sélectionner un surfeur</option>
+                    <option value="" className="bg-slate-950">Sélectionner un surfeur</option>
                     {config.surfers.map((surfer) => (
-                      <option key={surfer} value={surfer}>{surfer}</option>
+                      <option key={surfer} value={surfer} className="bg-slate-950">{surfer}</option>
                     ))}
                   </select>
                 </div>
 
                 {/* Wave selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Vague</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Vague</label>
                   <select
                     value={selectedWave}
                     onChange={(e) => {
@@ -4932,53 +4993,55 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                       setSelectedWave(value ? Number(value) : '');
                       setOverrideStatus(null);
                     }}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     required
                   >
-                    <option value="">Sélectionner une vague</option>
+                    <option value="" className="bg-slate-950">Sélectionner une vague</option>
                     {surferScoredWaves.map((wave) => (
-                      <option key={wave} value={wave}>Vague {wave}</option>
+                      <option key={wave} value={wave} className="bg-slate-950">Vague {wave}</option>
                     ))}
                   </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Seules les vagues surfées/notées pour ce surfeur sont affichées.
-                  </p>
-                  {selectedSurfer && surferScoredWaves.length === 0 && (
-                    <p className="text-xs text-amber-600 mt-1">
+                  {selectedSurfer && surferScoredWaves.length === 0 ? (
+                    <p className="text-[10px] text-amber-400 mt-1 font-medium animate-pulse">
                       Aucune vague notée trouvée pour ce surfeur sur ce heat.
+                    </p>
+                  ) : (
+                    <p className="text-[9px] text-slate-500 mt-1 font-medium uppercase tracking-wider">
+                      Seules les vagues notées pour ce surfeur sont affichées.
                     </p>
                   )}
                 </div>
 
                 {correctionMode === 'score' ? (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nouvelle note</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Nouvelle note</label>
                     <input
                       type="text"
                       inputMode="decimal"
                       value={scoreInput}
                       onChange={(e) => { setScoreInput(sanitizeScoreInput(e.target.value)); setOverrideStatus(null); }}
                       placeholder="0.0"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono font-bold"
                       required
                     />
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Type d’interférence</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Type d’interférence</label>
                     <select
                       value={interferenceType}
                       onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     >
-                      <option value="INT1">Interférence #1 (B/2)</option>
-                      <option value="INT2">Interférence #2 (B=0)</option>
+                      <option value="INT1" className="bg-slate-950">Interférence #1 (B/2)</option>
+                      <option value="INT2" className="bg-slate-950">Interférence #2 (B=0)</option>
                     </select>
-                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-350 cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={headJudgeOverride}
                         onChange={(e) => setHeadJudgeOverride(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-slate-850 text-cyan-600 bg-slate-950 focus:ring-0 cursor-pointer"
                       />
                       Arbitrage Head Judge
                     </label>
@@ -4987,10 +5050,10 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </div>
 
               {currentScore && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                <div className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-4 py-3 text-xs text-amber-300 flex items-center space-x-2 shadow-lg">
+                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
                   <span>
-                    Note actuelle : <strong>{currentScore.score.toFixed(2)}</strong> donnée par {currentScore.judge_name} pour {currentScore.surfer} (Vague {currentScore.wave_number})
+                    Note actuelle : <strong className="text-amber-200 font-bold">{currentScore.score.toFixed(2)}</strong> donnée par <span className="underline">{currentScore.judge_name}</span> pour <span className="font-bold text-cyan-400">{currentScore.surfer}</span> (Vague {currentScore.wave_number})
                   </span>
                 </div>
               )}
@@ -4998,11 +5061,11 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               {correctionMode === 'score' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Motif</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Motif</label>
                     <select
                       value={overrideReason}
                       onChange={(e) => setOverrideReason(e.target.value as any)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     >
                       {Object.keys(reasonLabels).map((r) => (
                         <option key={r} value={r}>{reasonLabels[r as keyof typeof reasonLabels]}</option>
@@ -5011,42 +5074,43 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Commentaire</label>
                     <input
                       type="text"
                       value={overrideComment}
                       onChange={(e) => setOverrideComment(e.target.value)}
                       placeholder="Optionnel"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      className="w-full bg-slate-950 border border-slate-800 text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     />
                   </div>
                 </div>
               )}
 
               {correctionMode === 'score' && currentScore && (
-                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-3">
-                  <p className="text-sm font-medium text-indigo-900">
+                <div className="rounded-xl border border-indigo-900/40 bg-indigo-950/20 p-4 space-y-3 shadow-lg">
+                  <p className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
                     Déplacer une note (mauvais surfeur / mauvaise vague)
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <select
                       value={moveTargetSurfer}
                       onChange={(e) => setMoveTargetSurfer(e.target.value)}
-                      className="w-full border border-indigo-300 rounded-lg px-3 py-2 bg-white"
+                      className="w-full bg-slate-950 border border-indigo-950 text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     >
-                      <option value="">Surfeur destination</option>
+                      <option value="" className="bg-slate-950">Surfeur destination</option>
                       {config.surfers.map((surfer) => (
-                        <option key={surfer} value={surfer}>{surfer}</option>
+                        <option key={surfer} value={surfer} className="bg-slate-950">{surfer}</option>
                       ))}
                     </select>
                     <select
                       value={moveTargetWave}
                       onChange={(e) => setMoveTargetWave(Number(e.target.value))}
-                      className="w-full border border-indigo-300 rounded-lg px-3 py-2 bg-white"
+                      className="w-full bg-slate-950 border border-indigo-950 text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     >
-                      <option value="">Vague destination</option>
+                      <option value="" className="bg-slate-950">Vague destination</option>
                       {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => (
-                        <option key={wave} value={wave}>Vague {wave}</option>
+                        <option key={wave} value={wave} className="bg-slate-950">Vague {wave}</option>
                       ))}
                     </select>
                   </div>
@@ -5054,7 +5118,11 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                     type="button"
                     onClick={handleMoveScore}
                     disabled={overridePending || !configSaved}
-                    className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'} ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    className={`px-4 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all ${
+                      overridePending 
+                        ? 'bg-indigo-950/20 border-indigo-900/20 text-indigo-750 cursor-wait' 
+                        : 'bg-indigo-900/40 hover:bg-indigo-800/40 border-indigo-800/40 text-indigo-300'
+                    } ${!configSaved ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     Déplacer la note sélectionnée
                   </button>
@@ -5062,10 +5130,11 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               )}
 
               {overrideStatus && (
-                <div className={`rounded-lg px-4 py-3 text-sm ${overrideStatus.type === 'success'
-                  ? 'bg-green-50 text-green-700 border border-green-200'
-                  : 'bg-red-50 text-red-700 border border-red-200'
-                  }`}>
+                <div className={`rounded-xl px-4 py-3 text-xs font-medium border ${
+                  overrideStatus.type === 'success'
+                    ? 'bg-emerald-950/20 text-emerald-400 border-emerald-800/40'
+                    : 'bg-rose-950/20 text-rose-400 border-rose-800/40'
+                }`}>
                   {overrideStatus.message}
                 </div>
               )}
@@ -5074,8 +5143,11 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 <button
                   type="submit"
                   disabled={overridePending || !configSaved}
-                  className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
-                    } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all ${
+                    overridePending 
+                      ? 'bg-amber-950/20 border-amber-900/20 text-amber-750 cursor-wait' 
+                      : 'bg-amber-600 hover:bg-amber-500 border border-amber-500/20 shadow-md shadow-amber-950/30'
+                  } ${!configSaved ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   {overridePending ? 'Application…' : 'Appliquer la correction'}
                 </button>
@@ -5084,8 +5156,11 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   type="button"
                   onClick={handleInterferenceSubmit}
                   disabled={overridePending || !configSaved}
-                  className={`px-4 py-2 rounded-lg font-medium text-white ${overridePending ? 'bg-gray-400' : 'bg-amber-600 hover:bg-amber-700'
-                    } ${!configSaved ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all ${
+                    overridePending 
+                      ? 'bg-amber-950/20 border-amber-900/20 text-amber-750 cursor-wait' 
+                      : 'bg-amber-600 hover:bg-amber-500 border border-amber-500/20 shadow-md shadow-amber-950/30'
+                  } ${!configSaved ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   {overridePending ? 'Application…' : 'Poser l’interférence'}
                 </button>
@@ -5096,33 +5171,33 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       </details>
 
       {/* Historique des corrections */}
-      <details className="group bg-white rounded-xl shadow-block border-4 border-primary-950 overflow-hidden">
-        <summary className="bg-primary-900 p-4 flex justify-between items-center cursor-pointer list-none select-none">
+      <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
+        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
-            <RotateCcw className="w-6 h-6 text-cta-500" />
-            <h2 className="text-xl font-bebas tracking-wider text-white">9. HISTORIQUE DES CORRECTIONS</h2>
+            <RotateCcw className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">8. HISTORIQUE DES CORRECTIONS</h2>
           </div>
-          <span className="text-white group-open:rotate-180 transition-transform opacity-70">▼</span>
+          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
-        <div className="p-6 bg-white border-t-4 border-primary-950">
+        <div className="p-6 bg-slate-950/20 flex flex-col space-y-4">
           {effectiveOverrideLogs.length === 0 ? (
-            <p className="text-sm text-gray-500">Aucune correction enregistrée pour ce heat.</p>
+            <p className="text-xs text-slate-500 font-medium">Aucune correction enregistrée pour ce heat.</p>
           ) : (
             <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
               {effectiveOverrideLogs.map(log => (
-                <div key={log.id} className="border border-gray-200 rounded-lg px-4 py-3 text-sm bg-gray-50">
-                  <div className="flex justify-between">
-                    <span className="font-medium text-gray-900">{config.judgeNames[log.judge_id] || log.judge_name}</span>
-                    <span className="text-xs text-gray-500">{new Date(log.created_at).toLocaleTimeString('fr-FR')}</span>
+                <div key={log.id} className="border border-white/5 rounded-2xl px-4 py-3 text-xs bg-slate-900/40 shadow-lg flex flex-col justify-between gap-1">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-slate-200 text-sm">{config.judgeNames[log.judge_id] || log.judge_name}</span>
+                    <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">{new Date(log.created_at).toLocaleTimeString('fr-FR')}</span>
                   </div>
-                  <div className="mt-1 text-gray-700">
-                    {log.surfer} · Vague {log.wave_number}
+                  <div className="mt-1 text-slate-350">
+                    Surfeur: <span className="font-bold text-cyan-400">{log.surfer}</span> · Vague: <span className="font-bold font-mono text-slate-200">#{log.wave_number}</span>
                   </div>
-                  <div className="mt-1 text-gray-700">
-                    <span className="font-semibold">{reasonLabels[log.reason]}</span> — {log.previous_score !== null ? `ancien ${log.previous_score.toFixed(2)} → ` : ''}{log.new_score.toFixed(2)}
+                  <div className="mt-1 text-slate-300 font-medium">
+                    Motif: <span className="font-bold text-amber-400">{reasonLabels[log.reason]}</span> — {log.previous_score !== null ? `ancien ${log.previous_score.toFixed(2)} → ` : ''}<span className="font-black font-mono text-emerald-400 text-sm">{log.new_score.toFixed(2)}</span>
                   </div>
                   {log.comment && (
-                    <div className="mt-1 text-gray-500 italic">{log.comment}</div>
+                    <div className="mt-2 text-slate-450 italic bg-black/20 p-2 rounded-lg border border-white/5 text-[10px]">{log.comment}</div>
                   )}
                 </div>
               ))}
@@ -5130,7 +5205,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
           )}
         </div>
       </details>
-    </div >
+    </div>
   );
 };
 
