@@ -46,12 +46,14 @@ type HeatUpdateListener = (
 
 interface HeatChannelState {
   channel: RealtimeChannel | null;
+  channelStatus: 'idle' | 'joining' | 'subscribed' | 'closed' | 'error' | 'timed_out';
   listeners: Map<string, HeatUpdateListener>;
   lastTimer: HeatTimer | null;
   lastConfig: AppConfig | null;
   lastStatus: HeatLifecycleStatus | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
   releaseTimer: ReturnType<typeof setTimeout> | null;
+  releaseAttempts: number;
   pollingInterval: ReturnType<typeof setInterval> | null;
   reconnecting: boolean;
   retryCount: number;
@@ -66,7 +68,8 @@ const CLOUD_POLL_INTERVAL_MS = 3000;
 const REALTIME_RETRY_BASE_MS = 3000;
 const REALTIME_RETRY_MAX_MS = 30000;
 const REALTIME_RETRY_POLL_ONLY_THRESHOLD = 4;
-const HEAT_CHANNEL_RELEASE_GRACE_MS = 1500;
+const HEAT_CHANNEL_RELEASE_GRACE_MS = 2500;
+const HEAT_CHANNEL_JOINING_RELEASE_ATTEMPTS = 8;
 
 const hasOfflineAdminSession = () => {
   if (typeof window === 'undefined') return false;
@@ -184,12 +187,14 @@ const createHeatChannel = (normalizedHeatId: string) => {
   const channelName = `heat-${normalizedHeatId}`;
   const state: HeatChannelState = {
     channel: null,
+    channelStatus: 'idle',
     listeners: new Map(),
     lastTimer: null,
     lastConfig: null,
     lastStatus: null,
     retryTimer: null,
     releaseTimer: null,
+    releaseAttempts: 0,
     pollingInterval: null,
     reconnecting: false,
     retryCount: 0,
@@ -219,6 +224,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
       try {
         const previousChannel = state.channel;
         state.channel = null;
+        state.channelStatus = 'closed';
         void supabase.removeChannel(previousChannel).catch(() => {});
       } catch (error) {
         console.warn('⚠️ Failed to recycle realtime channel', normalizedHeatId, error);
@@ -279,10 +285,20 @@ const createHeatChannel = (normalizedHeatId: string) => {
       );
 
     state.channel = channel;
+    state.channelStatus = 'joining';
     updateHeatChannelDebug();
 
     channel.subscribe((status) => {
       if (state.channel !== channel) return;
+      state.channelStatus = status === 'SUBSCRIBED'
+        ? 'subscribed'
+        : status === 'CHANNEL_ERROR'
+          ? 'error'
+          : status === 'TIMED_OUT'
+            ? 'timed_out'
+            : status === 'CLOSED'
+              ? 'closed'
+              : state.channelStatus;
       updateHeatChannelDebug();
 
       if (debugRealtimeEnabled) {
@@ -291,6 +307,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
       if (status === 'SUBSCRIBED') {
         state.reconnecting = false;
         state.retryCount = 0;
+        state.releaseAttempts = 0;
         if (!isLocalSupabaseMode() && state.pollingInterval) {
           clearInterval(state.pollingInterval);
           state.pollingInterval = null;
@@ -317,6 +334,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
         );
         startPolling();
         state.channel = null;
+        state.channelStatus = 'closed';
         supabase!.removeChannel(channel).catch(() => {});
         updateHeatChannelDebug();
         if (state.retryTimer) clearTimeout(state.retryTimer);
@@ -349,6 +367,13 @@ const releaseHeatChannel = (normalizedHeatId: string) => {
         return;
       }
 
+      if (state.channel && state.channelStatus === 'joining' && state.releaseAttempts < HEAT_CHANNEL_JOINING_RELEASE_ATTEMPTS) {
+        state.releaseAttempts += 1;
+        updateHeatChannelDebug();
+        releaseHeatChannel(normalizedHeatId);
+        return;
+      }
+
       try {
         if (state.retryTimer) {
           clearTimeout(state.retryTimer);
@@ -361,6 +386,7 @@ const releaseHeatChannel = (normalizedHeatId: string) => {
         if (state.channel) {
           const channel = state.channel;
           state.channel = null;
+          state.channelStatus = 'closed';
           state.reconnecting = false;
           const removal = supabase?.removeChannel(channel);
           removal?.catch(() => {});
@@ -626,6 +652,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       if (state.releaseTimer) {
         clearTimeout(state.releaseTimer);
         state.releaseTimer = null;
+        state.releaseAttempts = 0;
       }
       state.listeners.set(listenerId, (timer, config, status) => {
         setLastUpdate(new Date());
