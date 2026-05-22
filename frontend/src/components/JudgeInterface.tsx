@@ -95,6 +95,7 @@ function JudgeInterface({
   const [lastSubmitted, setLastSubmitted] = useState<{ surfer: string; wave: number; score: number; ts: number } | null>(null);
   const [scoreFeedback, setScoreFeedback] = useState<{ score: number; ts: number } | null>(null);
   const [judgeTimerTick, setJudgeTimerTick] = useState(Date.now());
+  const [elapsedBadgeLatched, setElapsedBadgeLatched] = useState(false);
   const activeInputRef = useRef<HTMLInputElement | null>(null);
   const lastTapRef = useRef<{ surfer: string; wave: number; time: number } | null>(null);
   const scoreRefreshInFlightRef = useRef(false);
@@ -896,16 +897,30 @@ function JudgeInterface({
   }, [heatStatus, priorityOnly, timer?.startTime]);
 
   const timerActive = isTimerActive();
-  const judgeTimerElapsed = useMemo(() => {
-    if (priorityOnly || heatStatus === 'closed') return false;
-    if (heatStatus === 'finished') return true;
+  const timerHasElapsed = useMemo(() => {
     if (!timer?.startTime) return false;
 
     const startMs = new Date(timer.startTime).getTime();
     if (!Number.isFinite(startMs)) return false;
     const durationMs = Math.max(0, Number(timer.duration || 0)) * 60 * 1000;
     return judgeTimerTick - startMs >= durationMs;
-  }, [heatStatus, judgeTimerTick, priorityOnly, timer?.duration, timer?.startTime]);
+  }, [judgeTimerTick, timer?.duration, timer?.startTime]);
+
+  useEffect(() => {
+    setElapsedBadgeLatched(false);
+  }, [currentHeatId]);
+
+  useEffect(() => {
+    if (priorityOnly || heatStatus === 'closed') {
+      setElapsedBadgeLatched(false);
+      return;
+    }
+    if (heatStatus === 'finished' || timerHasElapsed) {
+      setElapsedBadgeLatched(true);
+    }
+  }, [heatStatus, priorityOnly, timerHasElapsed]);
+
+  const judgeTimerElapsed = !priorityOnly && heatStatus !== 'closed' && elapsedBadgeLatched;
 
   // Custom surfer color borders neon glow classes
   const getSurferColorClass = useCallback((surferName: string): string => {
