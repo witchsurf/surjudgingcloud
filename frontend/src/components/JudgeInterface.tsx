@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
-import { User, Waves, Lock, CreditCard as Edit3, Maximize, Minimize } from 'lucide-react';
+import { User, Waves, Lock, Unlock, CreditCard as Edit3, Maximize, Minimize, Check, Delete, Trash2 } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
@@ -95,6 +95,7 @@ function JudgeInterface({
   const [lastSubmitted, setLastSubmitted] = useState<{ surfer: string; wave: number; score: number; ts: number } | null>(null);
   const [scoreFeedback, setScoreFeedback] = useState<{ score: number; ts: number } | null>(null);
   const activeInputRef = useRef<HTMLInputElement | null>(null);
+  const lastTapRef = useRef<{ surfer: string; wave: number; time: number } | null>(null);
   const scoreRefreshInFlightRef = useRef(false);
   const lastSharedRefreshAtRef = useRef(0);
   const lastJudgeScoreSignatureRef = useRef('');
@@ -584,11 +585,41 @@ function JudgeInterface({
       return;
     }
 
+    const existingScore = getScoreForWave(surfer, wave);
+
+    if (activeInput && activeInput.surfer === surfer && activeInput.wave === wave) {
+      setActiveInput(null);
+      setInputValue('');
+      try { navigator?.vibrate?.(10); } catch {}
+      return;
+    }
+
+    if (existingScore) {
+      // Cellule déjà notée: double-tap requis pour déverrouiller
+      const now = Date.now();
+      const prevTap = lastTapRef.current;
+
+      if (prevTap && prevTap.surfer === surfer && prevTap.wave === wave && (now - prevTap.time) < 350) {
+        lastTapRef.current = null; // reset
+        setActiveInput({ surfer, wave, value: existingScore.score.toString() });
+        setInputValue(existingScore.score.toString());
+        try { navigator?.vibrate?.(30); } catch {}
+      } else {
+        lastTapRef.current = { surfer, wave, time: now };
+        setInteractionWarning({
+          title: 'Cellule Verrouillée 🔒',
+          message: 'Double-cliquez pour modifier ce score.',
+        });
+      }
+      return;
+    }
+
+    // Cellule vide: doit être la prochaine vague disponible
     if (!canScoreWave(surfer, wave)) return;
 
-    const existingScore = getScoreForWave(surfer, wave);
-    setActiveInput({ surfer, wave, value: existingScore?.score.toString() || '' });
-    setInputValue(existingScore?.score.toString() || '');
+    setActiveInput({ surfer, wave, value: '' });
+    setInputValue('');
+    try { navigator?.vibrate?.(10); } catch {}
   };
 
   const handleInterferenceCall = async (surfer: string, wave: number) => {
@@ -844,6 +875,89 @@ function JudgeInterface({
   }, [interactionWarning]);
 
   const timerActive = isTimerActive();
+
+  // Custom surfer color borders neon glow classes
+  const getSurferColorClass = useCallback((surferName: string): string => {
+    const normalized = normalizeSurferKey(surferName).toUpperCase();
+    if (normalized.includes('ROUGE') || normalized === 'RED') return 'neon-glow-ROUGE';
+    if (normalized.includes('BLANC') || normalized === 'WHITE') return 'neon-glow-BLANC';
+    if (normalized.includes('JAUNE') || normalized === 'YELLOW') return 'neon-glow-JAUNE';
+    if (normalized.includes('BLEU') || normalized === 'BLUE') return 'neon-glow-BLEU';
+    if (normalized.includes('VERT') || normalized === 'GREEN') return 'neon-glow-VERT';
+    if (normalized.includes('NOIR') || normalized === 'BLACK') return 'neon-glow-NOIR';
+    return 'border-slate-800';
+  }, [normalizeSurferKey]);
+
+  // Compute real-time statistics for Surfer HUD Card Context
+  const getSurferStats = useCallback((surferName: string) => {
+    const surferKey = normalizeSurferKey(surferName);
+    const surferScores = submittedScores
+      .filter(s => normalizeSurferKey(s.surfer) === surferKey && (s.judge_station || s.judge_id) === judgeStation)
+      .map(s => s.score);
+    
+    const sorted = [...surferScores].sort((a, b) => b - a);
+    const best1 = sorted[0] ?? 0;
+    const best2 = sorted[1] ?? 0;
+    const total = Math.round((best1 + best2) * 100) / 100;
+    
+    return {
+      count: surferScores.length,
+      best1,
+      best2,
+      total
+    };
+  }, [submittedScores, normalizeSurferKey, judgeStation]);
+
+  // Keyboard suppression - virtual keypress programmatical mapping handler
+  const handleVirtualKeyPress = useCallback((key: string) => {
+    if (!activeInput) return;
+    
+    if (key === 'CLR') {
+      setInputValue('');
+    } else if (key === 'DEL') {
+      setInputValue(prev => prev.slice(0, -1));
+    } else if (key === 'ENTR') {
+      handleScoreSubmit();
+    } else {
+      setInputValue(prev => {
+        const nextValue = prev + key;
+        return sanitizeScoreInput(nextValue);
+      });
+    }
+  }, [activeInput, handleScoreSubmit]);
+
+  // Listen to physical keyboard events globally when a cell is active
+  useEffect(() => {
+    if (!activeInput) return;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleScoreSubmit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setActiveInput(null);
+        setInputValue('');
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        setInputValue(prev => prev.slice(0, -1));
+      } else if (e.key === '.' || e.key === ',') {
+        e.preventDefault();
+        setInputValue(prev => sanitizeScoreInput(prev + '.'));
+      } else if (/[0-9]/.test(e.key)) {
+        e.preventDefault();
+        setInputValue(prev => sanitizeScoreInput(prev + e.key));
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [activeInput, handleScoreSubmit]);
+
   const effectiveByTarget = useMemo(() => {
     const map = new Map<string, EffectiveInterference>();
     effectiveInterferences.forEach((item) => {
@@ -854,12 +968,14 @@ function JudgeInterface({
 
   if (!configSaved) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-8 text-center">
-          <Waves className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-blue-800 mb-2">En attente de configuration</h2>
-          <p className="text-blue-700">
-            L'interface de notation sera disponible une fois la compétition configurée.
+      <div className="min-h-screen bg-hud-black text-slate-100 flex items-center justify-center p-6">
+        <div className="neon-card border border-white/10 rounded-xl p-8 max-w-md text-center flex flex-col items-center">
+          <div className="w-16 h-16 bg-indigo-500/10 rounded-full flex items-center justify-center border border-indigo-500/30 mb-4 animate-pulse">
+            <Waves className="w-8 h-8 text-indigo-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-100 mb-2">En attente de configuration</h2>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            L'interface de notation sera disponible une fois la compétition configurée par l'administrateur.
           </p>
         </div>
       </div>
@@ -867,32 +983,162 @@ function JudgeInterface({
   }
 
   const priorityShellClass = priorityOnly
-    ? 'min-h-screen max-w-5xl mx-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4 flex flex-col overflow-hidden'
-    : 'h-screen max-w-full mx-auto px-2 sm:px-4 py-2 flex flex-col overflow-hidden';
+    ? 'min-h-screen max-w-5xl mx-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4 flex flex-col overflow-hidden bg-hud-black text-slate-100'
+    : 'h-screen max-w-full mx-auto px-2 sm:px-4 py-2 flex flex-col overflow-hidden bg-hud-black text-slate-100';
 
   const priorityCardPadding = priorityOnly ? 'p-4 sm:p-5' : 'p-2 sm:p-3';
+
+  const renderKeypad = () => {
+    const keys = [
+      ['7', '8', '9'],
+      ['4', '5', '6'],
+      ['1', '2', '3'],
+      ['CLR', '0', '.'],
+    ];
+
+    return (
+      <div className="flex flex-col gap-2 p-3 bg-slate-950/80 rounded-xl border border-slate-800/80 shadow-inner flex-1 justify-center">
+        {keys.map((row, rowIndex) => (
+          <div key={rowIndex} className="flex gap-2">
+            {row.map((key) => {
+              let btnClass = "flex-1 py-3 text-xl font-bold rounded-lg transition-all duration-100 flex items-center justify-center active:scale-95 touch-manipulation ";
+              if (key === 'CLR') {
+                btnClass += "bg-red-950/40 text-red-400 hover:bg-red-900/40 border border-red-900/30";
+              } else if (key === '.') {
+                btnClass += "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800";
+              } else {
+                btnClass += "bg-slate-900/90 text-slate-100 hover:bg-slate-800 border border-slate-800";
+              }
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    try { navigator?.vibrate?.(15); } catch {}
+                    handleVirtualKeyPress(key);
+                  }}
+                  className={btnClass}
+                >
+                  {key}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+        <div className="flex gap-2 mt-1">
+          <button
+            type="button"
+            onClick={() => {
+              try { navigator?.vibrate?.(15); } catch {}
+              handleVirtualKeyPress('DEL');
+            }}
+            className="flex-1 py-3 bg-amber-950/30 text-amber-400 hover:bg-amber-900/30 border border-amber-900/30 font-bold rounded-lg text-sm flex items-center justify-center gap-1 active:scale-95 touch-manipulation"
+          >
+            <Delete className="w-4 h-4" /> RETOUR
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              try { navigator?.vibrate?.(40); } catch {}
+              handleVirtualKeyPress('ENTR');
+            }}
+            disabled={isSubmittingScore || !inputValue.trim()}
+            className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-lg text-sm flex items-center justify-center gap-1 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 touch-manipulation shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+          >
+            <Check className="w-4 h-4" /> VALIDER
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderRightPanel = () => {
+    return (
+      <div className="neon-card rounded-xl p-4 border border-white/5 flex flex-col h-full gap-4">
+        {/* Dynamic Display Panel */}
+        <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 flex flex-col items-center justify-center text-center shadow-inner relative overflow-hidden min-h-[140px]">
+          {activeInput ? (
+            <>
+              {/* Surfer color strip */}
+              <div className="absolute top-0 left-0 right-0 h-1.5" style={{ backgroundColor: getSurferColor(activeInput.surfer) }} />
+              
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getSurferColor(activeInput.surfer) }} />
+                <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">{activeInput.surfer}</span>
+              </div>
+              <div className="text-xs font-bold text-cyan-400 uppercase tracking-widest mb-2 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-800/20">
+                Vague {activeInput.wave}
+              </div>
+              
+              <div className="flex items-center justify-center mt-1">
+                <div className="text-4xl font-extrabold tracking-wider font-mono text-emerald-400 select-none drop-shadow-[0_0_10px_rgba(52,211,153,0.3)] animate-pulse">
+                  {inputValue || '0.0'}
+                  <span className="text-emerald-500/80 animate-ping">|</span>
+                </div>
+              </div>
+              
+              <p className="text-[10px] text-slate-500 mt-2 italic">
+                Utilisez le clavier virtuel ou votre clavier physique.
+              </p>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center text-slate-500 p-2">
+              <Waves className="w-8 h-8 text-slate-600 mb-2 animate-bounce" />
+              <div className="text-xs font-bold uppercase tracking-widest text-slate-400 animate-prio-pulse">STANDBY</div>
+              <p className="text-[10px] text-slate-500 mt-1 max-w-[200px] leading-relaxed">
+                Touchez une cellule active (cellule avec Edit ✍️) pour saisir une note.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Tactile Touch Keypad */}
+        <div className="flex-grow flex flex-col justify-end">
+          <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase mb-2 ml-1 flex items-center justify-between">
+            <span>Clavier tactile</span>
+            {activeInput && (
+              <button 
+                type="button" 
+                onClick={() => {
+                  setActiveInput(null);
+                  setInputValue('');
+                }}
+                className="text-[10px] text-red-400 hover:text-red-300 font-semibold"
+              >
+                Annuler
+              </button>
+            )}
+          </div>
+          {renderKeypad()}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className={priorityShellClass}>
       {/* HEADER + TIMER */}
       <div className={isFullscreen ? 'sticky top-3 z-40' : ''}>
-        <div className={`bg-gradient-to-r from-violet-700 via-primary-700 to-indigo-700 text-white rounded-xl shadow-lg ${priorityCardPadding}`}>
+        <div className={`neon-card border border-white/5 rounded-xl shadow-2xl ${priorityCardPadding}`}>
           <div className={`flex items-center justify-between ${priorityOnly ? 'gap-3 sm:gap-5' : 'gap-4'}`}>
             <div className={`flex items-center justify-between flex-1 min-w-0 ${priorityOnly ? 'gap-3 sm:gap-6' : 'gap-4'}`}>
               <div className="min-w-0">
-                <h1 className={`${priorityOnly ? 'text-xl sm:text-2xl md:text-3xl' : 'text-lg sm:text-xl'} font-bold flex items-center gap-2 truncate`}>
+                <h1 className={`${priorityOnly ? 'text-xl sm:text-2xl md:text-3xl' : 'text-lg sm:text-xl'} font-extrabold flex items-center gap-2 truncate text-slate-100`}>
                   {resolvedInterfaceTitle}
                   {!isConnected && (
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-red-100 text-red-800">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-950/60 border border-red-800/40 text-red-400 animate-pulse">
                       Hors Ligne
                     </span>
                   )}
                 </h1>
-                <div className={`flex items-center gap-x-3 text-violet-100 opacity-90 flex-wrap ${priorityOnly ? 'text-xs sm:text-sm mt-1.5' : 'text-[10px]'}`}>
-                  <span className={`font-semibold truncate ${priorityOnly ? 'max-w-[160px] sm:max-w-[220px]' : 'max-w-[100px]'}`}>{config.judgeNames[judgeId] || judgeName || judgeId}</span>
+                <div className={`flex items-center gap-x-3 text-slate-400 flex-wrap ${priorityOnly ? 'text-xs sm:text-sm mt-1.5' : 'text-[10px]'}`}>
+                  <span className={`font-bold text-slate-200 truncate ${priorityOnly ? 'max-w-[160px] sm:max-w-[220px]' : 'max-w-[100px]'}`}>{config.judgeNames[judgeId] || judgeName || judgeId}</span>
+                  <span className="text-slate-600">•</span>
                   <span className={`${priorityOnly ? 'max-w-[180px] sm:max-w-[260px]' : 'max-w-[100px]'} truncate`}>{config.competition}</span>
-                  <span className={`font-semibold uppercase truncate ${priorityOnly ? 'max-w-[160px] sm:max-w-[220px]' : 'max-w-[100px]'}`}>{config.division || 'Sans categorie'}</span>
-                  <span className="font-bold">R{config.round} H{config.heatId}</span>
+                  <span className="text-slate-600">•</span>
+                  <span className={`font-bold uppercase truncate ${priorityOnly ? 'max-w-[160px] sm:max-w-[220px]' : 'max-w-[100px]'} text-slate-300`}>{config.division || 'Sans categorie'}</span>
+                  <span className="text-slate-600">•</span>
+                  <span className="font-extrabold text-indigo-400">R{config.round} H{config.heatId}</span>
                 </div>
               </div>
 
@@ -911,6 +1157,7 @@ function JudgeInterface({
                 />
               </div>
             </div>
+            
             <div className="flex items-center gap-2">
               {!priorityOnly && (
                 <div className="relative">
@@ -935,9 +1182,9 @@ function JudgeInterface({
                       }
                     }}
                     disabled={isSyncing || !isConnected}
-                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-all text-xs font-medium border shadow-sm ${isSyncing
-                      ? 'bg-white/10 text-white/50 border-white/5'
-                      : 'bg-white/20 hover:bg-white/30 text-white border-white/10 active:scale-95'
+                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-all text-xs font-bold border shadow-sm ${isSyncing
+                      ? 'bg-slate-800/50 text-slate-500 border-slate-700/30'
+                      : 'bg-indigo-950/40 text-indigo-300 border-indigo-900/30 hover:bg-indigo-900/30 active:scale-95'
                       }`}
                   >
                     <div className={`w-4 h-4 flex items-center justify-center ${isSyncing ? 'animate-spin' : ''}`}>
@@ -948,7 +1195,7 @@ function JudgeInterface({
                     <span>{isSyncing ? '...' : 'Sync'}</span>
                   </button>
                   {pendingSyncCount > 0 && (
-                    <div className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] font-bold min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full border border-white animate-pulse">
+                    <div className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[9px] font-bold min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full border border-slate-950 animate-pulse">
                       {pendingSyncCount}
                     </div>
                   )}
@@ -957,7 +1204,7 @@ function JudgeInterface({
 
               <button
                 onClick={toggleFullscreen}
-                className={`flex items-center space-x-1 bg-white/20 hover:bg-white/30 rounded-lg transition-colors font-medium border border-white/10 ${priorityOnly ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs'}`}
+                className={`flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors font-bold border border-slate-800 ${priorityOnly ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs'}`}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                 <span className="hidden sm:inline">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
@@ -966,7 +1213,7 @@ function JudgeInterface({
           </div>
 
           {!priorityOnly && syncFeedback && (
-            <div className={`px-3 py-1 rounded bg-white/10 text-[10px] font-bold inline-flex items-center absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap z-50 ${syncFeedback.type === 'success' ? 'text-green-300' : 'text-red-300'
+            <div className={`px-3 py-1.5 rounded-lg border bg-slate-950 text-xs font-bold inline-flex items-center absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap z-50 shadow-xl ${syncFeedback.type === 'success' ? 'text-emerald-400 border-emerald-900/50' : 'text-red-400 border-red-900/50'
               }`}>
               {syncFeedback.type === 'success' ? '✅' : '❌'} {syncFeedback.message}
             </div>
@@ -975,23 +1222,23 @@ function JudgeInterface({
       </div>
 
       {heatStatus === 'closed' && (
-        <div className="mt-3 rounded-xl border-4 border-primary-950 bg-red-600 px-6 py-4 text-center shadow-block flex-shrink-0">
-          <div className="font-bebas text-3xl sm:text-4xl tracking-[0.25em] text-white leading-none">
-            HEAT OVER
+        <div className="mt-3 rounded-xl border border-red-900 bg-red-950/30 px-6 py-4 text-center shadow-lg flex-shrink-0">
+          <div className="font-sans font-black text-2xl tracking-[0.25em] text-red-400 leading-none uppercase">
+            HEAT CLOTURE / OVER
           </div>
         </div>
       )}
 
       {(priorityOnly || canEditPriority) && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-shrink-0">
-          <div className={`bg-gray-50 border-b border-gray-200 flex items-center justify-between gap-3 ${priorityOnly ? 'px-4 py-3 sm:px-5' : 'px-3 py-1.5'}`}>
+        <div className="neon-card rounded-xl border border-white/5 overflow-hidden flex-shrink-0 mt-3">
+          <div className={`bg-slate-950 border-b border-slate-900 flex items-center justify-between gap-3 ${priorityOnly ? 'px-4 py-3 sm:px-5' : 'px-3 py-2.5'}`}>
             <div>
-              <h2 className={`${priorityOnly ? 'text-2xl sm:text-3xl' : 'text-lg'} font-bold text-gray-900 leading-tight`}>Priorité</h2>
-              <p className={`${priorityOnly ? 'text-xs sm:text-sm mt-1' : 'text-[10px]'} text-gray-600 leading-tight`}>
+              <h2 className={`${priorityOnly ? 'text-2xl sm:text-3xl' : 'text-base'} font-black text-slate-100 leading-tight`}>Priorité</h2>
+              <p className={`${priorityOnly ? 'text-xs sm:text-sm mt-1' : 'text-[10px]'} text-slate-400 leading-tight`}>
                 {priorityState.mode === 'equal'
-                  ? 'Début de série: tous les surfeurs sont égaux.'
+                  ? 'Début de série : tous les surfeurs sont égaux.'
                   : priorityState.mode === 'opening'
-                    ? 'Phase initiale: chaque premier départ construit la priorité par la fin.'
+                    ? 'Phase initiale : chaque premier départ construit la priorité par la fin.'
                     : 'Touchez un surfeur quand il part ou revient.'}
               </p>
             </div>
@@ -1000,9 +1247,9 @@ function JudgeInterface({
                 <button
                   type="button"
                   onClick={() => handlePriorityResetEqual().catch(() => { })}
-                  className={`rounded-lg bg-indigo-600 font-medium text-white hover:bg-indigo-700 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
+                  className={`rounded-lg bg-indigo-600 font-bold text-white hover:bg-indigo-500 transition-colors ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-1.5 text-xs'}`}
                 >
-                  Egalite
+                  Egalité
                 </button>
                 {isPriorityOrdering ? (
                   <>
@@ -1012,7 +1259,7 @@ function JudgeInterface({
                         setIsPriorityOrdering(false);
                         setPriorityDraft([]);
                       }}
-                      className={`rounded-lg border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
+                      className={`rounded-lg border border-slate-800 bg-slate-900 font-bold text-slate-300 hover:bg-slate-800 transition-colors ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-1.5 text-xs'}`}
                     >
                       Annuler
                     </button>
@@ -1020,7 +1267,7 @@ function JudgeInterface({
                       type="button"
                       onClick={() => handlePriorityOrderSave().catch(() => { })}
                       disabled={orderedDraft.length !== normalizedSurfers.length}
-                      className={`rounded-lg border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
+                      className={`rounded-lg border border-emerald-900 bg-emerald-950/30 font-bold text-emerald-400 hover:bg-emerald-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-20 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-1.5 text-xs'}`}
                     >
                       Valider l&apos;ordre
                     </button>
@@ -1029,54 +1276,54 @@ function JudgeInterface({
                   <button
                     type="button"
                     onClick={handlePriorityOrderStart}
-                    className={`rounded-lg border border-gray-300 font-medium text-gray-700 hover:bg-gray-50 ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-2 text-sm'}`}
+                    className={`rounded-lg border border-slate-800 bg-slate-900 font-bold text-slate-300 hover:bg-slate-800 transition-colors ${priorityOnly ? 'px-4 py-2.5 text-base' : 'px-3 py-1.5 text-xs'}`}
                   >
-                    Definir l&apos;ordre
+                    Définir l&apos;ordre
                   </button>
                 )}
               </div>
             )}
           </div>
 
-          <div className={`${priorityOnly ? 'p-4 sm:p-5 space-y-5' : 'p-2 sm:p-3 space-y-3'}`}>
+          <div className={`${priorityOnly ? 'p-4 sm:p-5 space-y-5' : 'p-3 space-y-3'}`}>
             {isPriorityOrdering ? (
               <>
                 <div>
-                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-sm'} font-semibold text-gray-800 mb-3`}>Touchez les surfeurs dans l&apos;ordre P, 2, 3, 4.</p>
-                  <div className="flex flex-wrap gap-3">
+                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-xs'} font-bold text-slate-300 mb-2.5`}>Touchez les surfeurs dans l&apos;ordre P, 2, 3, 4.</p>
+                  <div className="flex flex-wrap gap-2.5">
                     {availableDraftSurfers.map((surfer) => (
                       <button
                         key={surfer}
                         type="button"
                         onClick={() => handlePriorityDraftAdd(surfer)}
-                        className={`flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-sm hover:border-indigo-400 hover:bg-indigo-50 transition-colors ${priorityOnly ? 'px-4 py-3 text-lg' : 'px-3 py-2'}`}
+                        className={`flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/50 hover:bg-slate-850 px-3.5 py-2.5 text-sm transition-colors`}
                       >
-                        <span className={`${priorityOnly ? 'w-5 h-5' : 'w-4 h-4'} rounded-full border border-gray-300`} style={{ backgroundColor: getSurferColor(surfer) }} />
-                        <span className="font-semibold text-gray-900">{surfer}</span>
+                        <span className="w-3.5 h-3.5 rounded-full border border-slate-900" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className="font-extrabold text-slate-100">{surfer}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div>
-                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-sm'} font-semibold text-gray-800 mb-3`}>Ordre en cours</p>
-                  <div className="flex flex-wrap gap-3">
+                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-xs'} font-bold text-slate-300 mb-2.5`}>Ordre en cours</p>
+                  <div className="flex flex-wrap gap-2.5">
                     {orderedDraft.length > 0 ? orderedDraft.map((surfer, index) => (
                       <button
                         key={surfer}
                         type="button"
                         onClick={() => handlePriorityDraftRemove(surfer)}
-                        className={`flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 shadow-sm ${priorityOnly ? 'px-4 py-3 text-lg' : 'px-3 py-2'}`}
+                        className={`flex items-center gap-2 rounded-xl border border-indigo-900/50 bg-indigo-950/20 shadow-sm px-3.5 py-2 transition-colors`}
                       >
-                        <span className={`inline-flex justify-center rounded-full bg-indigo-600 font-bold text-white ${priorityOnly ? 'min-w-[2.5rem] px-3 py-1.5 text-base' : 'min-w-[2rem] px-2 py-1 text-sm'}`}>
+                        <span className="inline-flex justify-center items-center rounded-md bg-indigo-600 font-black text-white px-2 py-0.5 text-xs">
                           {index === 0 ? 'P' : index + 1}
                         </span>
-                        <span className={`${priorityOnly ? 'w-5 h-5' : 'w-4 h-4'} rounded-full border border-gray-300`} style={{ backgroundColor: getSurferColor(surfer) }} />
-                        <span className="font-semibold text-gray-900">{surfer}</span>
+                        <span className="w-3.5 h-3.5 rounded-full border border-slate-950" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className="font-extrabold text-slate-100">{surfer}</span>
                       </button>
                     )) : (
-                      <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
-                        Aucun ordre defini pour l&apos;instant.
+                      <div className="rounded-xl border border-dashed border-slate-800 px-4 py-3 text-xs text-slate-500">
+                        Aucun ordre défini pour l&apos;instant.
                       </div>
                     )}
                   </div>
@@ -1085,23 +1332,23 @@ function JudgeInterface({
             ) : (
               <>
                 <div>
-                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-sm'} font-semibold text-gray-800 mb-3`}>
-                    {priorityState.mode === 'equal' ? 'Tous egaux' : priorityState.mode === 'opening' ? 'Phase initiale' : 'Line-up'}
+                  <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-xs'} font-bold text-slate-400 mb-2.5 uppercase tracking-widest`}>
+                    {priorityState.mode === 'equal' ? 'Tous égaux' : priorityState.mode === 'opening' ? 'Phase initiale' : 'Line-up'}
                   </p>
-                  <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-wrap gap-2.5">
                     {(priorityState.mode === 'equal' ? normalizedSurfers : priorityState.mode === 'opening' ? normalizedSurfers : orderedPrioritySurfers).map((surfer) => (
                       <button
                         key={surfer}
                         type="button"
                         onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
                         disabled={!canEditPriority}
-                        className={`flex items-center gap-2 rounded-lg border border-gray-300 bg-white shadow-sm disabled:cursor-default ${priorityOnly ? 'px-4 py-3 text-lg' : 'px-3 py-2'}`}
+                        className={`flex items-center gap-2.5 rounded-xl border border-slate-800/80 bg-slate-900/60 shadow-sm disabled:cursor-default px-3 py-2.5`}
                       >
-                        <span className={`inline-flex justify-center rounded-full font-bold ${priorityState.mode === 'equal' ? 'bg-gray-200 text-gray-700' : 'bg-indigo-600 text-white'} ${priorityOnly ? 'min-w-[2.5rem] px-3 py-1.5 text-base' : 'min-w-[2rem] px-2 py-1 text-sm'}`}>
+                        <span className={`inline-flex items-center justify-center rounded-md font-black min-w-[24px] px-1.5 h-6 text-xs ${priorityState.mode === 'equal' ? 'bg-slate-800 text-slate-400 border border-slate-700/30' : 'bg-indigo-600 text-white'}`}>
                           {priorityLabels[surfer] || '='}
                         </span>
-                        <span className={`${priorityOnly ? 'w-5 h-5' : 'w-4 h-4'} rounded-full border border-gray-300`} style={{ backgroundColor: getSurferColor(surfer) }} />
-                        <span className="font-semibold text-gray-900">{surfer}</span>
+                        <span className="w-3.5 h-3.5 rounded-full border border-slate-950" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className="font-extrabold text-slate-100">{surfer}</span>
                       </button>
                     ))}
                   </div>
@@ -1109,24 +1356,24 @@ function JudgeInterface({
 
                 {priorityState.mode === 'ordered' && (
                   <div>
-                    <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-sm'} font-semibold text-gray-800 mb-3`}>En vague / hors line-up</p>
-                    <div className="flex flex-wrap gap-3">
+                    <p className={`${priorityOnly ? 'text-base sm:text-lg' : 'text-xs'} font-bold text-slate-400 mb-2.5 uppercase tracking-widest`}>En vague / hors line-up</p>
+                    <div className="flex flex-wrap gap-2.5">
                       {inFlightSurfers.length > 0 ? inFlightSurfers.map((surfer) => (
                         <button
                           key={surfer}
                           type="button"
                           onClick={() => handlePrioritySurferTap(surfer).catch(() => { })}
                           disabled={!canEditPriority}
-                          className={`flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 shadow-sm disabled:cursor-default ${priorityOnly ? 'px-4 py-3 text-lg' : 'px-3 py-2'}`}
+                          className={`flex items-center gap-2.5 rounded-xl border border-amber-900/30 bg-amber-950/20 shadow-sm disabled:cursor-default px-3 py-2.5`}
                         >
-                          <span className={`inline-flex justify-center rounded-full bg-amber-500 font-bold text-white ${priorityOnly ? 'min-w-[2.5rem] px-3 py-1.5 text-base' : 'min-w-[2rem] px-2 py-1 text-sm'}`}>
+                          <span className="inline-flex items-center justify-center rounded-md bg-amber-500 font-black text-slate-950 px-2 h-6 text-xs uppercase tracking-wider">
                             Surf
                           </span>
-                          <span className={`${priorityOnly ? 'w-5 h-5' : 'w-4 h-4'} rounded-full border border-gray-300`} style={{ backgroundColor: getSurferColor(surfer) }} />
-                          <span className="font-semibold text-gray-900">{surfer}</span>
+                          <span className="w-3.5 h-3.5 rounded-full border border-slate-950" style={{ backgroundColor: getSurferColor(surfer) }} />
+                          <span className="font-extrabold text-slate-100">{surfer}</span>
                         </button>
                       )) : (
-                        <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500">
+                        <div className="rounded-xl border border-dashed border-slate-800 px-4 py-3 text-xs text-slate-500">
                           Aucun surfeur hors line-up.
                         </div>
                       )}
@@ -1139,205 +1386,222 @@ function JudgeInterface({
         </div>
       )}
 
-      {/* CONTRÔLES CHEF JUGE */}
+      {/* CHIEF JUDGE CONTROLS */}
       {isChiefJudge && !priorityOnly && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-4">
-          <h3 className="text-lg font-semibold text-indigo-900 mb-4">Contrôles Chef Juge</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="neon-card border border-white/5 rounded-xl p-4 mt-3 flex-shrink-0 bg-indigo-950/10">
+          <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-3">Contrôles Chef Juge</h3>
+          <div className="flex flex-wrap gap-2.5">
             <button
               onClick={onHeatClose}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-500 transition-colors text-xs"
             >
               Clôturer la série
             </button>
-            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+            <button className="px-4 py-2 bg-slate-900 border border-slate-800 text-slate-300 font-bold rounded-lg hover:bg-slate-800 transition-colors text-xs">
               Exporter les scores
             </button>
-            <button className="px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 transition-colors">
+            <button className="px-4 py-2 bg-slate-900 border border-slate-800 text-slate-300 font-bold rounded-lg hover:bg-slate-800 transition-colors text-xs">
               Scores prioritaires
             </button>
           </div>
-          <div className="mt-4 text-sm text-indigo-700">
-            <p>👉 En tant que chef juge, vous pouvez contrôler le timer et gérer le déroulement de la série</p>
-          </div>
         </div>
       )}
 
-      {/* STATUT SAISIE */}
+      {/* LOCK / TIMING FEEDBACK */}
       {!priorityOnly && interactionWarning && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
-          <Lock className="w-6 h-6 text-red-600" />
+        <div className="bg-red-950/40 border border-red-900/50 rounded-xl p-3 flex items-center space-x-3 mt-3 flex-shrink-0 shadow-lg">
+          <Lock className="w-5 h-5 text-red-400 flex-shrink-0 animate-bounce" />
           <div>
-            <h3 className="font-semibold text-red-800">{interactionWarning.title}</h3>
-            <p className="text-red-700 text-sm">{interactionWarning.message}</p>
+            <h3 className="font-extrabold text-red-400 text-xs uppercase tracking-wider">{interactionWarning.title}</h3>
+            <p className="text-red-300 text-[11px] leading-tight mt-0.5">{interactionWarning.message}</p>
           </div>
         </div>
       )}
 
-      {/* GRILLE DE NOTATION */}
+      {/* MAIN JUDGING WORKSPACE: SPLIT GRID AREA */}
       {!priorityOnly && (
-        <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-2">
-          <div className={`bg-gray-50 border-b border-gray-200 ${compactGrid ? 'px-3 py-2' : 'px-4 py-2.5'}`}>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setEntryMode('score')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${entryMode === 'score' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
-              >
-                Mode notes
-              </button>
-              <button
-                type="button"
-                onClick={() => setEntryMode('interference')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium ${entryMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-300 text-gray-700'}`}
-              >
-                Mode interférence
-              </button>
-              {entryMode === 'interference' && (
-                <>
-                  <select
-                    value={interferenceType}
-                    onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
-                    className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm"
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 overflow-hidden mt-3 min-h-0">
+          {/* LEFT 2/3 COLUMN: SCROLLABLE SCORING GRID CARDS */}
+          <div className="lg:col-span-2 flex flex-col min-h-0">
+            {/* SURFER CARDS CONTAINER */}
+            <div className="flex-1 flex flex-col gap-3 overflow-y-auto pr-1">
+              {/* ENTRY MODE CONTROLS */}
+              <div className="neon-card rounded-xl p-2 border border-white/5 flex items-center justify-between flex-wrap gap-2.5 flex-shrink-0 bg-slate-950/40">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode('score')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${entryMode === 'score' ? 'bg-indigo-600 text-white shadow-[0_0_12px_rgba(79,70,229,0.3)]' : 'bg-slate-900 border border-slate-850 text-slate-400 hover:text-slate-200'}`}
                   >
-                    <option value="INT1">Interférence #1 (B/2)</option>
-                    <option value="INT2">Interférence #2 (B=0)</option>
-                  </select>
-                  {isChiefJudge && (
-                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={headJudgeOverride}
-                        onChange={(e) => setHeadJudgeOverride(e.target.checked)}
-                      />
-                      Arbitrage Head Judge
-                    </label>
-                  )}
-                </>
-              )}
+                    Mode Notes 🏄‍♂️
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode('interference')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${entryMode === 'interference' ? 'bg-amber-600 text-white shadow-[0_0_12px_rgba(217,119,6,0.3)]' : 'bg-slate-900 border border-slate-850 text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Mode Interférence ⚠️
+                  </button>
+                </div>
+
+                {entryMode === 'interference' && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      value={interferenceType}
+                      onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
+                      className="px-2.5 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-slate-200 focus:outline-none"
+                    >
+                      <option value="INT1">Pénalité #1 (B/2)</option>
+                      <option value="INT2">Pénalité #2 (B=0)</option>
+                    </select>
+                    {isChiefJudge && (
+                      <label className="inline-flex items-center gap-1.5 text-xs text-slate-400 font-bold select-none cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={headJudgeOverride}
+                          onChange={(e) => setHeadJudgeOverride(e.target.checked)}
+                          className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0"
+                        />
+                        HJ Override
+                      </label>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* SURFER SCORING STRIPS */}
+              {config.surfers.map((surfer) => {
+                const stats = getSurferStats(surfer);
+                const colorClass = getSurferColorClass(surfer);
+                const isSurferInFlight = inFlightSurfers.includes(normalizeSurferKey(surfer));
+                const prioLabel = priorityLabels[normalizeSurferKey(surfer)] || '=';
+
+                return (
+                  <div
+                    key={surfer}
+                    className={`neon-card rounded-xl p-4 border transition-all duration-300 relative group flex flex-col gap-3 ${colorClass}`}
+                  >
+                    {/* Surfer strip header */}
+                    <div className="flex items-center justify-between border-b border-slate-800/50 pb-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: getSurferColor(surfer) }} />
+                        <span className="font-extrabold text-base tracking-wide text-slate-100 truncate">{surfer}</span>
+                        
+                        {/* Priority Badge */}
+                        <span className={`inline-flex items-center justify-center text-[10px] font-black rounded-md min-w-[20px] px-1 h-5 ${prioLabel === 'P' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : prioLabel === '=' ? 'bg-slate-850 text-slate-500 border border-slate-800/30' : 'bg-indigo-600 text-white'}`}>
+                          {prioLabel === '=' ? '=' : `PRIO ${prioLabel}`}
+                        </span>
+                        
+                        {/* In Flight Indicator */}
+                        {isSurferInFlight && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
+                            SURFING
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Score stats pill */}
+                      <div className="flex items-center gap-2 bg-slate-950 border border-slate-900 px-3 py-1 rounded-lg text-xs font-semibold select-none">
+                        <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">M1</span>
+                        <span className="text-slate-200 font-mono font-bold">{stats.best1.toFixed(1)}</span>
+                        <span className="text-slate-700">|</span>
+                        <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">M2</span>
+                        <span className="text-slate-200 font-mono font-bold">{stats.best2.toFixed(1)}</span>
+                        <span className="text-slate-700">/</span>
+                        <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">Total</span>
+                        <span className="text-cyan-400 font-mono font-black drop-shadow-[0_0_8px_rgba(34,211,238,0.2)]">{stats.total.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    {/* Horizontal Wave scoring strip */}
+                    <div className="flex flex-wrap gap-2">
+                      {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => {
+                        const scoreData = getScoreForWave(surfer, wave);
+                        const canScore = canScoreWave(surfer, wave);
+                        const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
+                        const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
+
+                        let cellClass = "inline-flex flex-col items-center justify-center rounded-xl font-bold border transition-all duration-200 relative select-none w-[52px] h-[52px] text-xs active:scale-95 touch-manipulation ";
+                        
+                        if (isActive) {
+                          cellClass += "bg-cyan-950/60 text-cyan-300 border-cyan-500 animate-active-cell";
+                        } else if (scoreData) {
+                          cellClass += entryMode === 'interference'
+                            ? "bg-amber-950/40 text-amber-300 border-amber-800/80 hover:bg-amber-900/40"
+                            : "bg-emerald-950/30 text-emerald-300 border-emerald-800/50 hover:bg-emerald-900/30";
+                        } else if (canScore) {
+                          cellClass += "border-2 border-dashed border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-200 bg-slate-900/20";
+                        } else {
+                          cellClass += "border-slate-950 text-slate-800 bg-slate-950/10 cursor-not-allowed opacity-25";
+                        }
+
+                        return (
+                          <button
+                            key={wave}
+                            type="button"
+                            disabled={!isActive && !scoreData && !canScore}
+                            onClick={() => handleCellClick(surfer, wave)}
+                            className={cellClass}
+                            title={scoreData ? `Note: ${scoreData.score.toFixed(2)}` : canScore ? `Noter la vague ${wave}` : `Vague ${wave} bloquée`}
+                          >
+                            <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mb-0.5">V{wave}</span>
+                            
+                            <div className="flex items-center justify-center font-mono text-sm">
+                              {isActive ? (
+                                <span className="text-cyan-400 font-extrabold">{inputValue || '—'}</span>
+                              ) : scoreData ? (
+                                <div className="flex flex-col items-center">
+                                  <span className="font-extrabold">{scoreData.score.toFixed(1)}</span>
+                                  <span className="absolute -top-0.5 -right-0.5 bg-slate-900 rounded-full p-0.5 border border-slate-850 text-[6px] text-slate-500">
+                                    🔒
+                                  </span>
+                                </div>
+                              ) : canScore ? (
+                                <Edit3 className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 animate-pulse" />
+                              ) : (
+                                <span className="text-slate-800 font-normal">—</span>
+                              )}
+                            </div>
+
+                            {effective && (
+                              <span className="absolute bottom-0 text-[7px] font-black uppercase text-amber-500 tracking-tighter leading-none mb-0.5 bg-slate-950/80 px-0.5 rounded border border-amber-950/50">
+                                {effective.type === 'INT1' ? 'I1' : 'I2'}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto">
-            <table className={`w-full table-fixed ${compactGrid ? 'text-sm' : ''}`}>
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className={`${compactGrid ? 'px-1 py-1 text-[10px] min-w-[36px] w-9' : 'px-2 py-2 text-xs min-w-[48px] w-12'} text-center font-bold text-gray-500 uppercase tracking-wider`}>
-                    Prio
-                  </th>
-                  <th className={`${compactGrid ? 'px-2 py-1.5 text-xs w-24' : 'px-3 py-2 text-sm w-32'} text-left font-bold text-gray-900 sticky left-0 bg-gray-50 z-10`}>
-                    Surfeur
-                  </th>
-                  {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => (
-                    <th key={wave} className={`${ultraCompactGrid ? 'px-0.5 py-1 text-[10px]' : compactGrid ? 'px-1 py-1.5 text-xs' : 'px-2 py-2 text-sm'} text-center font-bold text-gray-900 ${ultraCompactGrid ? 'min-w-[34px]' : compactGrid ? 'min-w-[42px]' : 'min-w-[50px]'}`}>
-                      V{wave}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {config.surfers.map((surfer, index) => (
-                  <tr key={surfer} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className={`${compactGrid ? 'px-1 py-1' : 'px-2 py-2'} text-center h-16 sm:h-20`}>
-                      <div className={`mx-auto flex items-center justify-center rounded-lg border font-bold ${inFlightSurfers.includes(normalizeSurferKey(surfer))
-                        ? 'border-gray-200 bg-white text-transparent'
-                        : 'border-gray-300 bg-gray-50 text-gray-900'
-                        } ${ultraCompactGrid ? 'min-h-[32px] min-w-[32px] text-[10px]' : compactGrid ? 'min-h-[36px] min-w-[36px] text-xs' : 'min-h-[40px] min-w-[40px] text-sm'}`}>
-                        {inFlightSurfers.includes(normalizeSurferKey(surfer)) ? '' : (priorityLabels[normalizeSurferKey(surfer)] || '=')}
-                      </div>
-                    </td>
-                    <td className={`${compactGrid ? 'px-2 py-1.5' : 'px-3 py-2'} sticky left-0 bg-inherit z-10 border-r border-gray-100`}>
-                      <div className={`flex items-center ${compactGrid ? 'space-x-1.5' : 'space-x-2'} min-w-0`}>
-                        <div
-                          className={`${compactGrid ? 'w-3.5 h-3.5' : 'w-4 h-4'} rounded-full flex-shrink-0`}
-                          style={{ backgroundColor: getSurferColor(surfer) }}
-                        />
-                        <span className={`font-semibold text-gray-900 truncate ${compactGrid ? 'text-sm' : ''}`}>{surfer}</span>
-                      </div>
-                    </td>
-                    {Array.from({ length: config.waves }, (_, i) => i + 1).map(wave => {
-                      const scoreData = getScoreForWave(surfer, wave);
-                      const canScore = canScoreWave(surfer, wave);
-                      const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
-                      const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
-
-                      return (
-                        <td key={wave} className={`${ultraCompactGrid ? 'px-0.5 py-1' : compactGrid ? 'px-1 py-1.5' : 'px-2 py-2'} text-center`}>
-                          {isActive ? (
-                            <input
-                              ref={activeInputRef}
-                              type="text"
-                              inputMode="decimal"
-                              enterKeyHint="done"
-                              value={inputValue}
-                              onChange={(e) => setInputValue(sanitizeScoreInput(e.target.value))}
-                              onKeyDown={handleKeyPress}
-                              onBlur={() => {
-                                if (inputValue.trim()) {
-                                  handleScoreSubmit();
-                                } else {
-                                  setActiveInput(null);
-                                  setInputValue('');
-                                }
-                              }}
-                              className={`${ultraCompactGrid ? 'w-full min-w-[34px] min-h-[32px] text-sm px-1 py-1' : compactGrid ? 'w-full min-w-[38px] min-h-[36px] text-base px-1 py-1.5' : 'w-16 min-w-[42px] min-h-[40px] text-lg px-1.5 py-2'} text-center font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-4 focus:ring-primary/30 shadow-sm touch-manipulation`}
-                              placeholder="0.0"
-                              autoFocus
-                            />
-                          ) : scoreData ? (
-                            <button
-                              onClick={() => handleCellClick(surfer, wave)}
-                              className={`inline-flex items-center justify-center rounded-lg font-bold transition-all duration-200 shadow-sm active:scale-95 touch-manipulation flex-1 w-full ${ultraCompactGrid ? 'min-w-[34px] min-h-[32px] px-0.5 py-0.5 text-xs' : compactGrid ? 'min-w-[38px] min-h-[36px] px-1 py-1 text-sm' : 'min-w-[42px] min-h-[40px] px-2 py-1.5 text-sm'} ${entryMode === 'interference'
-                                ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
-                                : 'bg-green-100 text-green-900 border border-green-300 hover:bg-green-200'} ${lastSubmitted && lastSubmitted.surfer === surfer && lastSubmitted.wave === wave ? 'animate-score-flash ring-2 ring-green-500' : ''}`}
-                            >
-                              {scoreData.score.toFixed(2)}
-                              {!ultraCompactGrid && !compactGrid && <Edit3 className="w-4 h-4 ml-1" />}
-                            </button>
-                          ) : canScore ? (
-                            <button
-                              onClick={() => handleCellClick(surfer, wave)}
-                              className={`w-full border-2 border-dashed border-gray-400 rounded-lg text-gray-500 hover:border-primary hover:text-primary hover:bg-primary/5 transition-all duration-200 flex items-center justify-center active:scale-95 touch-manipulation ${ultraCompactGrid ? 'min-w-[34px] min-h-[32px]' : compactGrid ? 'min-w-[38px] min-h-[36px]' : 'min-w-[42px] min-h-[40px]'}`}
-                              title={`Noter la vague ${wave} pour ${surfer}`}
-                            >
-                              <Edit3 className={`${compactGrid ? 'w-3.5 h-3.5' : 'w-4 h-4'} flex-shrink-0`} />
-                            </button>
-                          ) : (
-                            <span className={`${compactGrid ? 'text-xs' : 'text-sm'} text-gray-400`}>—</span>
-                          )}
-                          {effective && (
-                            <div className="mt-1 text-[10px] font-semibold text-amber-700">
-                              {effective.type === 'INT1' ? 'INT#1' : 'INT#2'} {effective.source === 'head_judge' ? '(HJ)' : ''}
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* RIGHT 1/3 COLUMN: TACTILE TOUCH KEYPAD PANEL */}
+          <div className="lg:col-span-1 min-h-0 flex flex-col justify-between">
+            {renderRightPanel()}
           </div>
         </div>
       )}
 
       {/* MODAL NOM DU JUGE */}
       {showNameModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700/50 rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4 text-slate-100">
             <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <User className="w-6 h-6 text-blue-600" />
+              <div className="w-12 h-12 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-3 border border-indigo-500/40">
+                <User className="w-6 h-6 text-indigo-400" />
               </div>
-              <h2 className="text-xl font-bold text-gray-900">Bienvenue Juge {judgeId}</h2>
-              <p className="text-gray-500 text-sm mt-1">
+              <h2 className="text-xl font-bold">Bienvenue Juge {judgeId}</h2>
+              <p className="text-slate-400 text-sm mt-1">
                 Veuillez entrer votre nom pour commencer la notation.
               </p>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-300 mb-1">
                   Votre Nom
                 </label>
                 <input
@@ -1345,7 +1609,7 @@ function JudgeInterface({
                   value={judgeNameInput}
                   onChange={(e) => setJudgeNameInput(e.target.value)}
                   placeholder="Ex: René Laraise"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   autoFocus
                 />
               </div>
@@ -1353,7 +1617,7 @@ function JudgeInterface({
               <button
                 onClick={handleNameSubmit}
                 disabled={!judgeNameInput.trim() || isSubmittingName}
-                className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
               >
                 {isSubmittingName ? (
                   <>
@@ -1373,12 +1637,12 @@ function JudgeInterface({
       {scoreFeedback && (
         <div
           key={scoreFeedback.ts}
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] px-5 py-2.5 bg-green-600 text-white rounded-xl shadow-lg font-bold text-lg flex items-center gap-2 animate-score-toast"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl shadow-[0_4px_20px_rgba(16,185,129,0.4)] border border-emerald-500/30 font-bold text-lg flex items-center gap-2 animate-score-toast"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+          <svg className="w-5 h-5 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
-          {scoreFeedback.score.toFixed(1)} enregistré
+          {scoreFeedback.score.toFixed(1)} enregistré !
         </div>
       )}
     </div>
