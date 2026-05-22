@@ -478,6 +478,11 @@ export function useHeatParticipants(heatId: string) {
             try {
                 const entries = await fetchHeatEntriesWithParticipants(requestedHeatId);
                 if (isStale()) return;
+                const entryColors = Array.from(new Set(
+                    (entries || [])
+                        .map((entry) => normalizeColor(entry.color))
+                        .filter(Boolean)
+                ));
                 const entryNames = (entries || []).reduce((acc, entry) => {
                     const color = normalizeColor(entry.color);
                     const name = entry.participant?.name?.trim();
@@ -485,12 +490,15 @@ export function useHeatParticipants(heatId: string) {
                     return { ...acc, [color]: name };
                 }, {} as Record<string, string>);
 
-                const hasRealEntryNames = Object.values(entryNames).some((name) => {
+                const isRealEntryName = (name?: string) => {
+                    if (!name) return false;
                     const normalized = normalizeColor(name);
                     if (normalized && normalized in COLOR_MAP) return false;
                     return !isPlaceholderLike(name);
-                });
-                if (hasRealEntryNames) {
+                };
+                const hasCompleteRealEntryNames = entryColors.length > 0
+                    && entryColors.every((color) => isRealEntryName(entryNames[color]));
+                if (hasCompleteRealEntryNames) {
                     setParticipants(entryNames);
                     setSource('entries');
                     setLoading(false);

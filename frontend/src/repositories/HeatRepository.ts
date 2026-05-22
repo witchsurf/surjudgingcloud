@@ -458,6 +458,34 @@ export class HeatRepository extends BaseRepository {
         }>;
     }
 
+    private async fetchHeatLineupFallbackRows(heatId: string): Promise<Array<{
+        color: string | null;
+        position: number;
+        seed: number | null;
+        participant: {
+            name: string;
+            country: string | null;
+            license: string | null;
+        } | null;
+    }>> {
+        const { data, error } = await this.supabase!
+            .from('v_heat_lineup')
+            .select('jersey_color, position, surfer_name, country, seed')
+            .eq('heat_id', heatId)
+            .order('position', { ascending: true });
+
+        if (error) return [];
+
+        return (data ?? []).map((row: any) => ({
+            color: row.jersey_color ?? null,
+            position: row.position,
+            seed: row.seed ?? null,
+            participant: row.surfer_name
+                ? { name: row.surfer_name, country: row.country ?? null, license: null }
+                : null,
+        }));
+    }
+
     private async ensureHeatEntries(heatId: string, config: any): Promise<void> {
         const existingEntries = await this.fetchHeatEntriesWithParticipantsRaw(heatId);
         if (existingEntries.length > 0) {
@@ -688,18 +716,31 @@ export class HeatRepository extends BaseRepository {
         }
 
         const entries = await this.fetchHeatEntriesWithParticipantsRaw(heatId);
+        const fallbackRows = await this.fetchHeatLineupFallbackRows(heatId);
+        const fallbackByPosition = new Map(fallbackRows.map((entry) => [Number(entry.position), entry]));
         const configSurfers = Array.isArray(config?.surfers)
             ? config.surfers.map((value: unknown) => String(value ?? '').trim()).filter(Boolean)
             : [];
         const configSurferNames = config?.surfer_names ?? config?.surferNames ?? {};
         const configSurferCountries = config?.surfer_countries ?? config?.surferCountries ?? {};
 
-        const normalizedEntries = entries.map((entry) => {
+        const sourceEntries = entries.length > 0
+            ? entries
+            : fallbackRows.map((entry) => ({
+                color: entry.color,
+                position: entry.position,
+                participant_id: null,
+                seed: entry.seed,
+                participant: entry.participant,
+            }));
+
+        const normalizedEntries = sourceEntries.map((entry) => {
             const color = String(entry.color ?? '').trim().toUpperCase();
+            const fallback = fallbackByPosition.get(Number(entry.position));
             return {
-                color,
-                name: String(entry.participant?.name ?? '').trim(),
-                country: String(entry.participant?.country ?? '').trim(),
+                color: color || String(fallback?.color ?? '').trim().toUpperCase(),
+                name: String(entry.participant?.name ?? fallback?.participant?.name ?? '').trim(),
+                country: String(entry.participant?.country ?? fallback?.participant?.country ?? '').trim(),
             };
         });
 

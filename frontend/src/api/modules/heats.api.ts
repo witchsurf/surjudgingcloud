@@ -494,10 +494,6 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
         })(),
     }));
 
-    if (typedRows.length > 0 && typedRows.some((row) => row.participant?.name)) {
-        return typedRows;
-    }
-
     const { data: lineup, error: lineupError } = await supabase!
         .from('v_heat_lineup')
         .select('jersey_color, position, surfer_name, country, seed')
@@ -510,6 +506,23 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
         color: row.jersey_color ?? null, position: row.position, participant_id: null, seed: row.seed ?? null,
         participant: row.surfer_name ? { name: row.surfer_name, country: row.country ?? null, license: null } : null,
     }));
+
+    if (typedRows.length > 0 && fallbackEntries.length > 0) {
+        const fallbackByPosition = new Map(fallbackEntries.map((entry) => [Number(entry.position), entry]));
+        return typedRows.map((entry) => {
+            if (entry.participant?.name) return entry;
+
+            const fallback = fallbackByPosition.get(Number(entry.position));
+            if (!fallback?.participant?.name) return entry;
+
+            return {
+                ...entry,
+                color: entry.color ?? fallback.color,
+                seed: entry.seed ?? fallback.seed,
+                participant: fallback.participant,
+            };
+        }) as HeatEntriesWithParticipantRow[];
+    }
 
     if (fallbackEntries.length === 0 && rows.length > 0) return typedRows;
     if (fallbackEntries.length > 0) {
