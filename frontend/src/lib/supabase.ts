@@ -484,6 +484,7 @@ interface OfflineEntry {
 
 const OFFLINE_KEY = 'surfapp_offline_queue'
 const HEAT_CONFIG_REPAIR_TABLE = '__heat_config_repair__'
+let offlineSyncInProgress = false
 
 // Sauvegarder une action hors ligne
 export function saveOffline(entry: OfflineEntry) {
@@ -711,36 +712,43 @@ async function repairHeatConfigSnapshot(payload: any) {
 // Synchroniser les actions offline dès que Supabase est dispo
 export async function syncOffline() {
   if (!isSupabaseConfigured() || !supabase) return
+  if (offlineSyncInProgress) return
   const queue = getOffline()
   if (queue.length === 0) return
   const failed: OfflineEntry[] = []
 
-  const isBenignConflict = (entry: OfflineEntry, err: unknown) => {
-    const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: string }).code || '') : ''
-    const message = typeof err === 'object' && err !== null && 'message' in err ? String((err as { message?: string }).message || '') : ''
-    const duplicate = code === '23505' || code === '409' || /duplicate|conflict/i.test(message)
-    if (!duplicate) return false
-    return entry.table === 'heats' || entry.table === 'heat_configs' || entry.table === 'heat_realtime_config'
-  }
+  offlineSyncInProgress = true
 
-  for (const entry of queue) {
-    try {
-      await replayOfflineEntry(entry)
-    } catch (err) {
-      if (isBenignConflict(entry, err)) {
-        console.warn('⚠️ Conflit offline ignoré (déjà synchronisé)', entry.table, err)
-        continue
-      }
-      console.error('Erreur de sync offline', err)
-      failed.push(entry)
+  try {
+    const isBenignConflict = (entry: OfflineEntry, err: unknown) => {
+      const code = typeof err === 'object' && err !== null && 'code' in err ? String((err as { code?: string }).code || '') : ''
+      const message = typeof err === 'object' && err !== null && 'message' in err ? String((err as { message?: string }).message || '') : ''
+      const duplicate = code === '23505' || code === '409' || /duplicate|conflict/i.test(message)
+      if (!duplicate) return false
+      return entry.table === 'heats' || entry.table === 'heat_configs' || entry.table === 'heat_realtime_config'
     }
-  }
-  if (failed.length > 0) {
-    localStorage.setItem(OFFLINE_KEY, JSON.stringify(failed))
-    console.warn('⚠️ Certaines actions hors ligne n\'ont pas pu être synchronisées. Elles resteront dans la file d\'attente.')
-  } else {
-    localStorage.removeItem(OFFLINE_KEY)
-    console.log('✅ Synchronisation offline terminée')
+
+    for (const entry of queue) {
+      try {
+        await replayOfflineEntry(entry)
+      } catch (err) {
+        if (isBenignConflict(entry, err)) {
+          console.warn('⚠️ Conflit offline ignoré (déjà synchronisé)', entry.table, err)
+          continue
+        }
+        console.error('Erreur de sync offline', err)
+        failed.push(entry)
+      }
+    }
+    if (failed.length > 0) {
+      localStorage.setItem(OFFLINE_KEY, JSON.stringify(failed))
+      console.warn('⚠️ Certaines actions hors ligne n\'ont pas pu être synchronisées. Elles resteront dans la file d\'attente.')
+    } else {
+      localStorage.removeItem(OFFLINE_KEY)
+      console.log('✅ Synchronisation offline terminée')
+    }
+  } finally {
+    offlineSyncInProgress = false
   }
 }
 
