@@ -45,6 +45,31 @@ async function checkIDBAvailability(): Promise<boolean> {
 }
 
 /**
+ * Migrate any legacy scores stored in localStorage into IndexedDB.
+ * Runs once upon successful database instantiation.
+ */
+async function migrateLocalStorageToIndexedDB(db: IDBPDatabase): Promise<void> {
+    try {
+        const raw = localStorage.getItem(LS_FALLBACK_KEY);
+        if (!raw) return;
+        const scores: Score[] = JSON.parse(raw);
+        if (Array.isArray(scores) && scores.length > 0) {
+            console.log(`📦 Migrating ${scores.length} legacy scores from localStorage to IndexedDB...`);
+            const tx = db.transaction(SCORES_STORE, 'readwrite');
+            await Promise.all([
+                ...scores.map(s => tx.store.put(s)),
+                tx.done
+            ]);
+            console.log('✅ Migration of legacy scores completed.');
+            // Clear the legacy key to prevent double migration and save localStorage space
+            localStorage.removeItem(LS_FALLBACK_KEY);
+        }
+    } catch (error) {
+        console.warn('⚠️ Failed to migrate legacy localStorage scores:', error);
+    }
+}
+
+/**
  * Get or create the IndexedDB instance
  */
 async function getDB(): Promise<IDBPDatabase | null> {
@@ -61,6 +86,8 @@ async function getDB(): Promise<IDBPDatabase | null> {
                 }
             },
         });
+        // Run migration on first load
+        await migrateLocalStorageToIndexedDB(dbInstance);
         return dbInstance;
     } catch (error) {
         console.warn('⚠️ Failed to open IndexedDB:', error);
@@ -94,35 +121,30 @@ function lsWrite(scores: Score[]): void {
  * Save or update a single score
  */
 export async function saveScoreIDB(score: Score): Promise<void> {
-    // Always write to localStorage as fallback/cache
+    // Write to IndexedDB first
+    const db = await getDB();
+    if (db) {
+        try {
+            await db.put(SCORES_STORE, score);
+            return; // Success! No need to write to localStorage fallback.
+        } catch (error) {
+            console.warn('⚠️ IDB put failed, falling back to localStorage:', error);
+        }
+    }
+
+    // Fallback if IndexedDB is unavailable
     const ls = lsRead();
     const idx = ls.findIndex(s => s.id === score.id);
     if (idx >= 0) ls[idx] = score;
     else ls.push(score);
     lsWrite(ls);
-
-    // Write to IndexedDB
-    const db = await getDB();
-    if (db) {
-        try {
-            await db.put(SCORES_STORE, score);
-        } catch (error) {
-            console.warn('⚠️ IDB put failed:', error);
-        }
-    }
 }
 
 /**
  * Save multiple scores at once (batch)
  */
 export async function saveScoresBatchIDB(scores: Score[]): Promise<void> {
-    // localStorage sync
-    const ls = lsRead();
-    const lsMap = new Map(ls.map(s => [s.id, s]));
-    scores.forEach(s => lsMap.set(s.id, s));
-    lsWrite(Array.from(lsMap.values()));
-
-    // IndexedDB batch
+    // Write to IndexedDB first
     const db = await getDB();
     if (db) {
         try {
@@ -131,10 +153,17 @@ export async function saveScoresBatchIDB(scores: Score[]): Promise<void> {
                 ...scores.map(s => tx.store.put(s)),
                 tx.done
             ]);
+            return; // Success!
         } catch (error) {
-            console.warn('⚠️ IDB batch put failed:', error);
+            console.warn('⚠️ IDB batch put failed, falling back to localStorage:', error);
         }
     }
+
+    // Fallback
+    const ls = lsRead();
+    const lsMap = new Map(ls.map(s => [s.id, s]));
+    scores.forEach(s => lsMap.set(s.id, s));
+    lsWrite(Array.from(lsMap.values()));
 }
 
 /**
@@ -151,7 +180,7 @@ export async function getScoresByHeatIDB(heatIds: string[]): Promise<Score[]> {
             }
             return results;
         } catch (error) {
-            console.warn('⚠️ IDB read failed, falling back to localStorage:', error);
+            console.warn('⚠️ IDB read by heat failed, falling back to localStorage:', error);
         }
     }
 
@@ -166,11 +195,10 @@ export async function getUnsyncedScoresIDB(): Promise<Score[]> {
     const db = await getDB();
     if (db) {
         try {
-            // IndexedDB keys cannot be boolean in TS typings; fetch all then filter.
             const all = (await db.getAll(SCORES_STORE)) as Score[];
             return all.filter((score) => score.synced === false);
         } catch (error) {
-            console.warn('⚠️ IDB unsynced query failed:', error);
+            console.warn('⚠️ IDB unsynced query failed, falling back to localStorage:', error);
         }
     }
     return lsRead().filter(s => s.synced === false);
@@ -180,13 +208,6 @@ export async function getUnsyncedScoresIDB(): Promise<Score[]> {
  * Mark scores as synced by their IDs
  */
 export async function markScoresSyncedIDB(ids: string[]): Promise<void> {
-    // localStorage
-    const ls = lsRead();
-    const idSet = new Set(ids);
-    const updated = ls.map(s => idSet.has(s.id || '') ? { ...s, synced: true } : s);
-    lsWrite(updated);
-
-    // IndexedDB
     const db = await getDB();
     if (db) {
         try {
@@ -199,10 +220,17 @@ export async function markScoresSyncedIDB(ids: string[]): Promise<void> {
                 }
             }
             await tx.done;
+            return; // Success!
         } catch (error) {
-            console.warn('⚠️ IDB markSynced failed:', error);
+            console.warn('⚠️ IDB markSynced failed, falling back to localStorage:', error);
         }
     }
+
+    // Fallback
+    const ls = lsRead();
+    const idSet = new Set(ids);
+    const updated = ls.map(s => idSet.has(s.id || '') ? { ...s, synced: true } : s);
+    lsWrite(updated);
 }
 
 /**
@@ -214,7 +242,7 @@ export async function getAllScoresIDB(): Promise<Score[]> {
         try {
             return (await db.getAll(SCORES_STORE)) as Score[];
         } catch (error) {
-            console.warn('⚠️ IDB getAll failed:', error);
+            console.warn('⚠️ IDB getAll failed, falling back to localStorage:', error);
         }
     }
     return lsRead();

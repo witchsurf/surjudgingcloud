@@ -191,6 +191,11 @@ String previousHeatStatus = "";
 
 // Prototypes de fonctions (requis pour éviter les erreurs de scope C++ avec arguments par défaut)
 void connectWiFi(bool blocking = false);
+void applyPriorityStateFromRow(JsonObject row);
+void clearActivePriority();
+void runSSEClient();
+void parseAndApplySSEPayload(String payload);
+String getSseHost();
 
 // ============================================================================
 //  SETUP
@@ -338,12 +343,20 @@ void setup() {
 // ============================================================================
 
 void pollingTask(void *parameter) {
-    Serial.println("📡 Polling démarré sur Core 0");
+    Serial.println("📡 Polling/SSE démarré sur Core 0");
     for (;;) {
         if (WiFi.status() == WL_CONNECTED) {
-            pollPriorityState();
+            if (WiFi.SSID() == "DLINK") {
+                // Sur le LAN de la plage, utiliser le streaming SSE haute-vitesse
+                runSSEClient();
+            } else {
+                // Sur le Cloud (ou autre réseau), utiliser le polling HTTP classique
+                pollPriorityState();
+                vTaskDelay(pdMS_TO_TICKS(getPollInterval()));
+            }
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(2000));
         }
-        vTaskDelay(pdMS_TO_TICKS(getPollInterval()));
     }
 }
 
@@ -571,21 +584,20 @@ void pollPriorityState() {
     lastResultCount = results.size();
 
     if (results.size() == 0) {
-        if (currentHeatId != "") {
-            Serial.println("⏸️  Veille.");
-            currentHeatId = "";
-            for (int m = 0; m < NUM_MODULES; m++) {
-                moduleStates[m].priorityRank = 0;
-                moduleStates[m].lycraColor = "";
-                moduleStates[m].color = COLOR_EQUAL;
-            }
-            statesUpdated = true;
-        }
+        clearActivePriority();
         return;
     }
 
     // La réponse RPC retourne : heat_id, status, priority_state, surfers
     JsonObject row = results[0];
+    applyPriorityStateFromRow(row);
+}
+
+// ============================================================================
+//  LAYOUT PRIORITY STATE APPLICATION ENGINE
+// ============================================================================
+
+void applyPriorityStateFromRow(JsonObject row) {
     String heatId = row["heat_id"].as<String>();
     String heatStatus = row["status"].as<String>();
 
@@ -618,15 +630,7 @@ void pollPriorityState() {
 
     // Ignorer les heats terminés
     if (heatStatus != "running" && heatStatus != "waiting" && heatStatus != "paused") {
-        if (currentHeatId != "") {
-            currentHeatId = "";
-            for (int m = 0; m < NUM_MODULES; m++) {
-                moduleStates[m].priorityRank = 0;
-                moduleStates[m].lycraColor = "";
-                moduleStates[m].color = COLOR_EQUAL;
-            }
-            statesUpdated = true;
-        }
+        clearActivePriority();
         return;
     }
 
@@ -637,7 +641,6 @@ void pollPriorityState() {
 
     // Champs retournés par la fonction RPC: priority_state (pas priorityState)
     JsonObject priorityState = row["priority_state"];
-    JsonArray surfers = row["surfers"];
 
     // Si pas de priorityState, mode equal
     if (priorityState.isNull()) {
@@ -686,6 +689,136 @@ void pollPriorityState() {
             Serial.printf("  P%d: %s\n", rank, lycra.c_str());
         }
     }
+}
+
+// ============================================================================
+//  CLEAR / STANDBY MODE APPLICATION
+// ============================================================================
+
+void clearActivePriority() {
+    if (currentHeatId != "") {
+        Serial.println("⏸️  Veille.");
+        currentHeatId = "";
+        for (int m = 0; m < NUM_MODULES; m++) {
+            moduleStates[m].priorityRank = 0;
+            moduleStates[m].lycraColor = "";
+            moduleStates[m].color = COLOR_EQUAL;
+        }
+        statesUpdated = true;
+    }
+}
+
+// ============================================================================
+//  DYNAMIC HOST PARSING & REAL-TIME SSE STREAMING (BEACH LAN ONLY)
+// ============================================================================
+
+String getSseHost() {
+    // SUPABASE_URL_LOCAL is "http://192.168.1.2:8000"
+    String url = SUPABASE_URL_LOCAL;
+    int start = url.indexOf("://");
+    if (start != -1) {
+        url = url.substring(start + 3);
+    }
+    int end = url.indexOf(":");
+    if (end != -1) {
+        url = url.substring(0, end);
+    }
+    return url;
+}
+
+void parseAndApplySSEPayload(String payload) {
+    JsonDocument doc;
+    DeserializationError jsonError = deserializeJson(doc, payload);
+    
+    if (jsonError) {
+        Serial.printf("❌ SSE JSON: %s\n", jsonError.c_str());
+        return;
+    }
+    
+    if (!doc.containsKey("event")) return;
+    
+    String event = doc["event"].as<String>();
+    
+    if (event == "priority_update") {
+        if (doc["data"].isNull()) {
+            clearActivePriority();
+        } else {
+            JsonObject data = doc["data"].as<JsonObject>();
+            applyPriorityStateFromRow(data);
+        }
+    }
+}
+
+void runSSEClient() {
+    WiFiClient client;
+    String host = getSseHost();
+    int port = 80;
+    
+    Serial.printf("📡 SSE: Connexion à %s:%d...\n", host.c_str(), port);
+    
+    if (!client.connect(host.c_str(), port)) {
+        Serial.println("❌ SSE: Échec de connexion au serveur LAN. Repli.");
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        return;
+    }
+    
+    Serial.println("✅ SSE: Connecté ! Envoi de la requête GET /priority/sse...");
+    
+    client.print("GET /priority/sse HTTP/1.1\r\n");
+    client.print("Host: " + host + "\r\n");
+    client.print("Accept: text/event-stream\r\n");
+    client.print("Connection: keep-alive\r\n");
+    client.print("\r\n");
+    
+    // Attendre la réponse HTTP (headers)
+    unsigned long timeout = millis();
+    while (client.connected() && !client.available()) {
+        if (millis() - timeout > 5000) {
+            Serial.println("❌ SSE: Timeout d'attente de réponse du serveur.");
+            client.stop();
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    
+    // Lire les headers jusqu'à la ligne vide
+    while (client.connected() && client.available()) {
+        String line = client.readStringUntil('\n');
+        line.trim();
+        if (line.length() == 0) {
+            break; // Fin des headers HTTP
+        }
+    }
+    
+    Serial.println("👂 SSE: Écoute des événements en cours...");
+    consecutiveErrors = 0;
+    unsigned long lastKeepAlive = millis();
+    
+    while (client.connected() && WiFi.status() == WL_CONNECTED) {
+        if (client.available()) {
+            String line = client.readStringUntil('\n');
+            lastKeepAlive = millis(); // Réinitialiser le timer keep-alive
+            
+            if (line.startsWith("data: ")) {
+                String payload = line.substring(6);
+                payload.trim();
+                Serial.println("📦 SSE data: " + payload);
+                parseAndApplySSEPayload(payload);
+            }
+        } else {
+            // Heartbeat check : reconnexion si aucun keep-alive pendant 45 secondes
+            if (millis() - lastKeepAlive > 45000) {
+                Serial.println("⚠️ SSE: Pas d'activité depuis 45s, reconnexion...");
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+    
+    Serial.println("🔌 SSE: Déconnecté du serveur LAN.");
+    client.stop();
+    vTaskDelay(pdMS_TO_TICKS(2000));
+}
 }
 
 // ============================================================================

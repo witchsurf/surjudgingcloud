@@ -15,52 +15,29 @@ HP_BASE_DIR="${SURF_HP_BASE_DIR:-/home/admin-surfjudging/surjudgingcloud}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-echo "==> Syncing stack files to ${HP_USER}@${HP_HOST}"
+echo "==> Ensuring remote directories exist on ${HP_USER}@${HP_HOST}"
+ssh "${HP_USER}@${HP_HOST}" "mkdir -p ${HP_BASE_DIR}/infra ${HP_BASE_DIR}/backend/sql ${HP_BASE_DIR}/backend/supabase/migrations"
+
+echo "==> Syncing stack and migration files"
 rsync -az \
   "$ROOT_DIR/infra/docker-compose-local.yml" \
   "$ROOT_DIR/infra/kong.yml" \
   "$ROOT_DIR/infra/nginx.conf" \
-  "$ROOT_DIR/backend/sql/PATCH_LOCAL_MISSING_OBJECTS.sql" \
-  "$ROOT_DIR/backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql" \
-  "$ROOT_DIR/backend/sql/FIX_SYNC_SCORING.sql" \
-  "$ROOT_DIR/backend/sql/14_ADD_INTERFERENCE_CALLS.sql" \
-  "$ROOT_DIR/backend/sql/UPGRADE_SYNC_SCHEMA_20260417.sql" \
-  "$ROOT_DIR/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260329003000_add_heat_missing_score_slots_view.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260329004000_add_heat_close_validation_function.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260329005000_fix_missing_score_slot_surfer_normalization.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260329006000_repair_heat_close_schema_drift.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260417133000_consolidate_live_config_writes.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260417223000_move_qualifier_propagation_to_db.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260418183000_allow_open_in_heat_realtime_config.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260418192000_support_best_second_qualifier_propagation.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260420154500_prevent_source_heat_rematches_in_qualifier_mappings.sql" \
-  "$ROOT_DIR/backend/supabase/migrations/20260420173000_add_admin_heat_entry_override.sql" \
-  "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/"
+  "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/infra/"
 
-echo "==> Refreshing HP local stack"
+rsync -az --delete \
+  "$ROOT_DIR/backend/sql/" \
+  "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/backend/sql/"
+
+rsync -az --delete \
+  "$ROOT_DIR/backend/supabase/migrations/" \
+  "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/backend/supabase/migrations/"
+
+echo "==> Refreshing HP local stack and applying migrations"
 ssh "${HP_USER}@${HP_HOST}" <<EOF
 set -euo pipefail
-cd "${HP_BASE_DIR}"
+cd "${HP_BASE_DIR}/infra"
 
-mkdir -p infra backend/sql
-
-if [ -f docker-compose-local.yml ]; then
-  mv docker-compose-local.yml infra/docker-compose-local.yml
-fi
-if [ -f kong.yml ]; then
-  mv kong.yml infra/kong.yml
-fi
-if [ -f nginx.conf ]; then
-  mv nginx.conf infra/nginx.conf
-fi
-for sql in PATCH_LOCAL_MISSING_OBJECTS.sql FIX_LOCAL_SYNC_SCHEMA.sql FIX_SYNC_SCORING.sql 14_ADD_INTERFERENCE_CALLS.sql UPGRADE_SYNC_SCHEMA_20260417.sql UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql 20260329003000_add_heat_missing_score_slots_view.sql 20260329004000_add_heat_close_validation_function.sql 20260329005000_fix_missing_score_slot_surfer_normalization.sql 20260329006000_repair_heat_close_schema_drift.sql 20260417133000_consolidate_live_config_writes.sql 20260417223000_move_qualifier_propagation_to_db.sql 20260418183000_allow_open_in_heat_realtime_config.sql 20260418192000_support_best_second_qualifier_propagation.sql 20260420154500_prevent_source_heat_rematches_in_qualifier_mappings.sql 20260420173000_add_admin_heat_entry_override.sql; do
-  if [ -f "\$sql" ]; then
-    mv "\$sql" "backend/sql/\$sql"
-  fi
-done
-
-cd infra
 docker compose -f docker-compose-local.yml up -d postgres auth realtime storage rest kong
 docker compose -f docker-compose-local.yml stop meta studio >/dev/null 2>&1 || true
 
@@ -69,28 +46,59 @@ until docker exec surfjudging_postgres pg_isready -U postgres >/dev/null 2>&1; d
   sleep 2
 done
 
-for sql_file in \
+# Initialize tracking table for applied migrations
+docker exec -i surfjudging_postgres psql -U postgres -d postgres -c "
+CREATE TABLE IF NOT EXISTS public._local_applied_migrations (
+  filename text PRIMARY KEY,
+  applied_at timestamp with time zone NOT NULL DEFAULT now()
+);"
+
+# Function to run an SQL script if it hasn't been applied yet
+apply_sql_if_needed() {
+  local sql_path="\$1"
+  local base_name=\$(basename "\$sql_path")
+
+  if [ ! -f "\$sql_path" ]; then
+    echo "⚠️  File not found: \$sql_path, skipping."
+    return
+  fi
+
+  # Check if migration has already been applied
+  local is_applied=\$(docker exec -i surfjudging_postgres psql -t -A -U postgres -d postgres -c "
+    SELECT EXISTS (SELECT 1 FROM public._local_applied_migrations WHERE filename = '\$base_name');
+  ")
+
+  if [ "\$is_applied" = "t" ]; then
+    echo "  [⏭️ Skipped] \$base_name"
+  else
+    echo "  [🚀 Applying] \$base_name..."
+    docker exec -i surfjudging_postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "\$sql_path"
+    
+    # Track completion
+    docker exec -i surfjudging_postgres psql -U postgres -d postgres -c "
+      INSERT INTO public._local_applied_migrations (filename) VALUES ('\$base_name') ON CONFLICT DO NOTHING;
+    "
+  fi
+}
+
+echo "==> Checking and applying baseline patches..."
+for patch in \
   "${HP_BASE_DIR}/backend/sql/PATCH_LOCAL_MISSING_OBJECTS.sql" \
   "${HP_BASE_DIR}/backend/sql/FIX_LOCAL_SYNC_SCHEMA.sql" \
   "${HP_BASE_DIR}/backend/sql/FIX_SYNC_SCORING.sql" \
   "${HP_BASE_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql" \
   "${HP_BASE_DIR}/backend/sql/UPGRADE_SYNC_SCHEMA_20260417.sql" \
-  "${HP_BASE_DIR}/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260329003000_add_heat_missing_score_slots_view.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260329004000_add_heat_close_validation_function.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260329005000_fix_missing_score_slot_surfer_normalization.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260329006000_repair_heat_close_schema_drift.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260417133000_consolidate_live_config_writes.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260417223000_move_qualifier_propagation_to_db.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260418183000_allow_open_in_heat_realtime_config.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260418192000_support_best_second_qualifier_propagation.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260420154500_prevent_source_heat_rematches_in_qualifier_mappings.sql" \
-  "${HP_BASE_DIR}/backend/sql/20260420173000_add_admin_heat_entry_override.sql"
+  "${HP_BASE_DIR}/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql"
 do
-  if [ -f "\${sql_file}" ]; then
-    echo "Applying \$(basename "\${sql_file}")"
-    docker exec -i surfjudging_postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "\${sql_file}"
-  fi
+  apply_sql_if_needed "\$patch"
+done
+
+echo "==> Checking and applying migrations alphabetically..."
+# Find all SQL migrations, sort them alphabetically to ensure correct order
+migrations=\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" | sort)
+
+for migration in \$migrations; do
+  apply_sql_if_needed "\$migration"
 done
 
 docker compose -f docker-compose-local.yml restart rest kong >/dev/null 2>&1 || true
@@ -98,3 +106,4 @@ docker compose -f docker-compose-local.yml ps
 EOF
 
 echo "==> HP stack refresh completed"
+

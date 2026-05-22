@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getColorSet } from '../utils/colorUtils';
+import { logger } from './logger';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -40,6 +41,7 @@ export const setCloudLocked = (locked: boolean) => {
     } else {
       window.localStorage.removeItem(SUPABASE_CLOUD_LOCK_KEY);
     }
+    rebuildSupabaseClient();
   } catch {
     // ignore storage errors
   }
@@ -50,9 +52,10 @@ export const setSupabaseMode = (mode: SupabaseMode) => {
   try {
     if (!mode) {
       window.localStorage.removeItem(SUPABASE_MODE_STORAGE_KEY);
-      return;
+    } else {
+      window.localStorage.setItem(SUPABASE_MODE_STORAGE_KEY, mode);
     }
-    window.localStorage.setItem(SUPABASE_MODE_STORAGE_KEY, mode);
+    rebuildSupabaseClient();
   } catch {
     // ignore storage errors
   }
@@ -71,6 +74,7 @@ export const setSupabaseOverrides = (url?: string, anonKey?: string) => {
     } else {
       window.localStorage.removeItem(SUPABASE_ANON_OVERRIDE_KEY);
     }
+    rebuildSupabaseClient();
   } catch {
     // ignore storage errors
   }
@@ -150,7 +154,6 @@ export const getSupabaseConfig = () => {
   };
 };
 
-export const { supabaseUrl, supabaseAnonKey, mode } = getSupabaseConfig();
 const debugRealtimeEnabled = resolveEnv('VITE_DEBUG_REALTIME') === 'true';
 const isVitestRuntime =
   resolveEnv('VITEST') === 'true'
@@ -161,24 +164,27 @@ export const isLocalSupabaseMode = (): boolean => {
 };
 
 export const canUseSupabaseConnection = (): boolean => {
-  if (!isSupabaseConfigured() || !supabase) return false;
+  if (!isSupabaseConfigured()) return false;
   if (typeof window === 'undefined') return true;
   return isLocalSupabaseMode() || window.navigator.onLine;
 };
 
-console.log(`🔌 Supabase Mode: ${mode}`);
-console.log(`🔗 Supabase URL: ${supabaseUrl}`);
-console.log(`🔑 Supabase Key (local): ${mode === 'local' ? (supabaseAnonKey?.substring(0, 15) + '...') : 'N/A'}`);
+// Dynamic client instantiation holder
+let currentClient: any = null;
 
-// Créer le client Supabase seulement si les variables d'environnement sont valides
-export const supabase =
-  supabaseUrl && supabaseAnonKey && supabaseUrl !== 'undefined' && supabaseAnonKey !== 'undefined'
-    ? createClient(supabaseUrl, supabaseAnonKey, {
+export const rebuildSupabaseClient = (url?: string, anonKey?: string) => {
+  const config = getSupabaseConfig();
+  const activeUrl = url || config.supabaseUrl;
+  const activeAnonKey = anonKey || config.supabaseAnonKey;
+
+  if (activeUrl && activeAnonKey && activeUrl !== 'undefined' && activeAnonKey !== 'undefined') {
+    logger.info('Supabase', `Rebuilding Supabase Client. Endpoint: ${activeUrl}, Mode: ${config.mode}`);
+    
+    currentClient = createClient(activeUrl, activeAnonKey, {
       auth: {
-        // Use strictly separate storage keys to avoid session bleeding
-        storageKey: mode === 'local'
+        storageKey: config.mode === 'local'
           ? 'surfjudging-local-auth-token'
-          : `surfjudging-cloud-auth-token`,
+          : 'surfjudging-cloud-auth-token',
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
@@ -188,12 +194,11 @@ export const supabase =
         heartbeatIntervalMs: 15000,
         heartbeatCallback: (status) => {
           if (typeof window !== 'undefined') {
-            ((window as typeof window & { __surfRealtimeDebug?: Record<string, unknown> }).__surfRealtimeDebug ??= {}).heartbeatStatus = {
+            ((window as any).__surfRealtimeDebug ??= {}).heartbeatStatus = {
               status,
               updatedAt: new Date().toISOString(),
             };
           }
-
           if (status === 'timeout' || status === 'disconnected') {
             console.warn(`⚠️ Supabase heartbeat ${status}`);
           }
@@ -207,17 +212,85 @@ export const supabase =
           }
           : {}),
       },
-    })
-    : null;
+    });
+  } else {
+    currentClient = null;
+  }
+};
+
+// Initial rebuild
+rebuildSupabaseClient();
+
+// Dynamic client proxy
+export const supabase = new Proxy({}, {
+  get(target, prop) {
+    if (!currentClient) return null;
+    const value = Reflect.get(currentClient, prop);
+    if (typeof value === 'function') {
+      return value.bind(currentClient);
+    }
+    return value;
+  }
+}) as unknown as ReturnType<typeof createClient>;
+
+// Export constants for legacy references (first evaluation)
+export const { supabaseUrl, supabaseAnonKey, mode } = getSupabaseConfig();
+
+// Heartbeat connection poller to dynamically maintain offline state and connection health reactively
+let lastConnectionStatus = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+export const startConnectionHeartbeat = (intervalMs = 15000) => {
+  if (typeof window === 'undefined') return;
+
+  const runCheck = async () => {
+    if (!currentClient) return;
+
+    try {
+      // Query a lightweight table to verify full end-to-end database connectivity
+      const { error } = await currentClient
+        .from('active_heat_pointer')
+        .select('id')
+        .limit(1);
+
+      const isConnected = !error || (error.code !== 'PGRST100' && error.code !== 'FETCH_ERROR' && error.status !== 0);
+      
+      if (isConnected !== lastConnectionStatus) {
+        lastConnectionStatus = isConnected;
+        logger.info('Supabase', `Database connection heartbeat status changed: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
+        
+        // Notify the offline store
+        const { useOfflineStore } = await import('../stores/offlineStore');
+        useOfflineStore.getState().setOnline(isConnected);
+      }
+    } catch {
+      if (lastConnectionStatus) {
+        lastConnectionStatus = false;
+        logger.warn('Supabase', 'Database connection heartbeat status changed: DISCONNECTED');
+        const { useOfflineStore } = await import('../stores/offlineStore');
+        useOfflineStore.getState().setOnline(false);
+      }
+    }
+  };
+
+  // Run immediately and then on interval
+  runCheck();
+  setInterval(runCheck, intervalMs);
+};
+
+// Start poller automatically in browser
+if (typeof window !== 'undefined') {
+  startConnectionHeartbeat();
+}
 
 // Fonction pour vérifier si Supabase est configuré
 export const isSupabaseConfigured = () => {
+  const config = getSupabaseConfig();
   return !!(
-    supabaseUrl &&
-    supabaseAnonKey &&
-    supabaseUrl !== 'undefined' &&
-    supabaseAnonKey !== 'undefined' &&
-    supabase
+    config.supabaseUrl &&
+    config.supabaseAnonKey &&
+    config.supabaseUrl !== 'undefined' &&
+    config.supabaseAnonKey !== 'undefined' &&
+    currentClient
   );
 };
 

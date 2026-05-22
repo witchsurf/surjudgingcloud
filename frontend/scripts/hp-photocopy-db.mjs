@@ -225,12 +225,16 @@ async function syncActiveHeatPointers(rows) {
   console.log('✅ Done');
 }
 
+import { execSync } from 'child_process';
+
 async function main() {
   console.log('======================================================');
   console.log('📦 HP Database Photocopy (Cloud -> Local) - PRO MODE');
   console.log(`☁️ Cloud: ${CLOUD_URL}`);
   console.log(`🏠 Local: ${LOCAL_URL}`);
   console.log('======================================================');
+
+  const forceDestructive = process.argv.includes('--force-destructive');
 
   try {
     // 0. Pre-flight check (Ping Local)
@@ -244,6 +248,58 @@ async function main() {
     } catch (e) {
       console.log('❌ Unreachable');
       process.exit(1);
+    }
+
+    // 0.1 Check for unsynced local data to prevent accidental erasure
+    process.stdout.write('🔍 Checking for unsynced local data... ');
+    let hasUnsynced = false;
+    try {
+      const { data: unsyncedScores, error: unsyncedErr } = await local
+        .from('scores')
+        .select('id')
+        .eq('synced', false)
+        .limit(1);
+
+      if (unsyncedErr) throw unsyncedErr;
+      if (unsyncedScores && unsyncedScores.length > 0) {
+        hasUnsynced = true;
+      }
+      console.log(hasUnsynced ? '⚠️ FOUND UNSYNCED DATA' : '✅ CLEAN');
+    } catch (err) {
+      console.log('⚠️ UNABLE TO CHECK (continuing with caution)', err.message);
+    }
+
+    if (hasUnsynced && !forceDestructive) {
+      console.error('\n======================================================');
+      console.error('❌ DANGER: UNSYNCED SCORES FOUND IN LOCAL DATABASE!');
+      console.error('There are scores in the local database that have not been synced to the Cloud.');
+      console.error('Running photocopy will PERMANENTLY ERASE these scores.');
+      console.error('Please sync local scores to the Cloud first.');
+      console.error('If you are ABSOLUTELY SURE you want to proceed and erase them, re-run with:');
+      console.error('  node scripts/hp-photocopy-db.mjs --force-destructive');
+      console.error('======================================================\n');
+      process.exit(1);
+    }
+
+    // 0.2 Perform automated pg_dump backup on the HP Box via SSH
+    const hpUser = process.env.SURF_HP_USER || 'admin-surfjudging';
+    const hpProfile = process.env.SURF_HP_PROFILE || 'home';
+    let hpHost = process.env.SURF_HP_HOST;
+    if (!hpHost) {
+      hpHost = hpProfile === 'home' ? '10.0.0.28' : '192.168.1.2';
+    }
+    const hpBaseDir = process.env.SURF_HP_BASE_DIR || '/home/admin-surfjudging/surjudgingcloud';
+    const backupTimestamp = Math.floor(Date.now() / 1000);
+    const backupFilename = `pre_photocopy_${backupTimestamp}.sql`;
+
+    console.log(`📦 Creating pre-flight safety backup on HP Host (${hpHost})...`);
+    try {
+      const sshCmd = `ssh -o ConnectTimeout=5 ${hpUser}@${hpHost} "mkdir -p ${hpBaseDir}/infra/backups && docker exec surfjudging_postgres pg_dump -U postgres -d postgres > ${hpBaseDir}/infra/backups/${backupFilename}"`;
+      execSync(sshCmd, { stdio: 'ignore', timeout: 8000 });
+      console.log(`✅ Backup successfully created on HP Host: ${hpBaseDir}/infra/backups/${backupFilename}`);
+    } catch (backupErr) {
+      console.warn(`⚠️ Backup via SSH failed (is SSH key config correct?): ${backupErr.message}`);
+      console.warn('Proceeding with caution...');
     }
 
     // 1. Sync Judges Registry (UPSERT by ID)

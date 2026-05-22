@@ -9,7 +9,14 @@ import { BaseRepository } from './BaseRepository';
 import type { Score, ScoreOverrideLog, OverrideReason } from '../types';
 import { ensureHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
-import { saveScoreIDB, saveScoresBatchIDB } from '../lib/idbStorage';
+import { 
+    saveScoreIDB, 
+    saveScoresBatchIDB, 
+    getScoresByHeatIDB, 
+    getUnsyncedScoresIDB, 
+    markScoresSyncedIDB,
+    getAllScoresIDB
+} from '../lib/idbStorage';
 import { canonicalizeScores, recordScoreOverrideSecure, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
 import { fetchHeatMetadata } from '../api/supabaseClient';
 
@@ -324,16 +331,19 @@ export class ScoreRepository extends BaseRepository {
 
                 // Mark as synced
                 newScore.synced = true;
-                this.saveScoreToLocalStorage(newScore);
+                await saveScoreIDB(newScore);
+                window.dispatchEvent(new CustomEvent('localScoresUpdated'));
 
                 logger.info('ScoreRepository', 'Score saved online', { scoreId: newScore.id });
                 return newScore;
             },
             // Offline fallback
-            () => {
-                // BUG FIX: Mark as NOT synced so it can be picked up by sync worker later
+            async () => {
                 newScore.synced = false;
-                this.saveScoreToLocalStorage(newScore);
+                await saveScoreIDB(newScore);
+                const { useOfflineStore } = await import('../stores/offlineStore');
+                useOfflineStore.getState().registerMutation('scores', 'insert', newScore);
+                window.dispatchEvent(new CustomEvent('localScoresUpdated'));
                 logger.info('ScoreRepository', 'Score saved offline (pending sync)', { scoreId: newScore.id });
                 return newScore;
             },
@@ -365,14 +375,19 @@ export class ScoreRepository extends BaseRepository {
                 if (error) throw error;
 
                 const scores = canonicalizeScores(((data || []) as RawScoreRow[]).map(toParsedScore));
+                
+                // Cache fetched scores asynchronously in IndexedDB
+                saveScoresBatchIDB(scores).catch((err) => {
+                    logger.warn('ScoreRepository', 'Failed to cache fetched scores in IndexedDB', err);
+                });
+
                 logger.info('ScoreRepository', 'Scores fetched online', { count: scores.length });
                 return scores;
             },
             // Offline fallback
-            () => {
-                const scores = canonicalizeScores(this.getScoresFromLocalStorage().filter(
-                    score => heatIds.includes(ensureHeatId(score.heat_id))
-                ));
+            async () => {
+                const rawScores = await getScoresByHeatIDB(heatIds);
+                const scores = canonicalizeScores(rawScores);
                 logger.info('ScoreRepository', 'Scores fetched offline', { count: scores.length });
                 return scores;
             },
@@ -387,10 +402,10 @@ export class ScoreRepository extends BaseRepository {
         const normalizedHeatId = ensureHeatId(request.heatId);
         const now = new Date();
 
-        // Find the latest logical score in localStorage without destroying history.
-        const localScores = this.getScoresFromLocalStorage();
+        // Find the latest logical score in IndexedDB without destroying history.
+        const localScores = await getAllScoresIDB();
         const matchingScores = localScores.filter(
-                score =>
+            score =>
                 ensureHeatId(score.heat_id) === normalizedHeatId &&
                 (score.judge_station || score.judge_id) === (request.judgeStation || request.judgeId) &&
                 score.wave_number === request.waveNumber &&
@@ -476,18 +491,25 @@ export class ScoreRepository extends BaseRepository {
                     created_at: overrideLog.created_at,
                 });
 
-                // Update local storage
-                this.saveScoreToLocalStorage(updatedScore);
+                // Update IndexedDB & local logs
+                updatedScore.synced = true;
+                await saveScoreIDB(updatedScore);
                 this.saveOverrideLogToLocalStorage(overrideLog);
+                window.dispatchEvent(new CustomEvent('localScoresUpdated'));
 
                 logger.info('ScoreRepository', 'Score overridden online (append-only)', { scoreId: updatedScore.id, previousScoreId: existingScore?.id });
 
                 return { updatedScore, previousScore: existingScore, log: overrideLog };
             },
             // Offline fallback
-            () => {
-                this.saveScoreToLocalStorage(updatedScore);
+            async () => {
+                updatedScore.synced = false;
+                await saveScoreIDB(updatedScore);
+                const { useOfflineStore } = await import('../stores/offlineStore');
+                useOfflineStore.getState().registerMutation('scores', 'insert', updatedScore);
+                useOfflineStore.getState().registerMutation('score_overrides', 'insert', overrideLog);
                 this.saveOverrideLogToLocalStorage(overrideLog);
+                window.dispatchEvent(new CustomEvent('localScoresUpdated'));
 
                 logger.info('ScoreRepository', 'Score overridden offline (append-only)', { scoreId: updatedScore.id, previousScoreId: existingScore?.id });
 
@@ -534,7 +556,7 @@ export class ScoreRepository extends BaseRepository {
 
     /**
      * Synchronize all local scores for a specific heat to Supabase.
-     * This is used for manual recovery if scores are in localStorage but not on server.
+     * This is used for manual recovery if scores are in IndexedDB but not on server.
      */
     async syncScores(heatId: string): Promise<{ success: number; failed: number }> {
         const normalizedHeatId = ensureHeatId(heatId);
@@ -543,8 +565,8 @@ export class ScoreRepository extends BaseRepository {
             throw new Error('Impossible de synchroniser : vous êtes hors ligne ou Supabase n\'est pas configuré.');
         }
 
-        const scores = this.getScoresFromLocalStorage().filter(
-            s => ensureHeatId(s.heat_id) === normalizedHeatId
+        const scores = (await getScoresByHeatIDB([normalizedHeatId])).filter(
+            s => !s.synced
         );
 
         if (scores.length === 0) return { success: 0, failed: 0 };
@@ -601,18 +623,11 @@ export class ScoreRepository extends BaseRepository {
                 }
             }
 
-            // Mark all as synced in local storage
-            const allLocalScores = this.getScoresFromLocalStorage();
-            const updatedScores = allLocalScores.map(s => {
-                if (ensureHeatId(s.heat_id) === normalizedHeatId) {
-                    return { ...s, synced: true };
-                }
-                return s;
-            });
-            localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(updatedScores));
+            // Mark all as synced in IndexedDB
+            const syncedIds = dedupedScores.map(s => s.id);
+            await markScoresSyncedIDB(syncedIds);
+
             window.dispatchEvent(new CustomEvent('localScoresUpdated'));
-            // Async dual-write synced status to IndexedDB
-            saveScoresBatchIDB(updatedScores.filter(s => ensureHeatId(s.heat_id) === normalizedHeatId)).catch(() => {});
 
             logger.info('ScoreRepository', 'Manual sync successful', { count: dedupedScores.length });
             return { success: dedupedScores.length, failed: 0 };
@@ -627,11 +642,10 @@ export class ScoreRepository extends BaseRepository {
      * Uses the same per-heat sync path as the manual recovery button.
      */
     async syncPendingScores(): Promise<{ success: number; failed: number; heats: number }> {
+        const unsyncedScores = await getUnsyncedScoresIDB();
         const pendingHeatIds = Array.from(
             new Set(
-                this.getScoresFromLocalStorage()
-                    .filter((score) => !score.synced)
-                    .map((score) => ensureHeatId(score.heat_id))
+                unsyncedScores.map((score) => ensureHeatId(score.heat_id))
             )
         );
 
@@ -648,9 +662,10 @@ export class ScoreRepository extends BaseRepository {
                 success += result.success;
                 failed += result.failed;
             } catch (error) {
-                failed += this.getScoresFromLocalStorage().filter(
-                    (score) => !score.synced && ensureHeatId(score.heat_id) === heatId
+                const heatUnsyncedCount = unsyncedScores.filter(
+                    (score) => ensureHeatId(score.heat_id) === heatId
                 ).length;
+                failed += heatUnsyncedCount;
                 logger.error('ScoreRepository', 'Pending heat sync failed', { heatId, error });
             }
         }
@@ -659,34 +674,6 @@ export class ScoreRepository extends BaseRepository {
     }
 
     // ========== Private Helper Methods ==========
-
-    private saveScoreToLocalStorage(score: Score): void {
-        const scores = this.getScoresFromLocalStorage();
-        // Upsert by ID to prevent unbounded growth over long events
-        const existingIndex = score.id ? scores.findIndex((s) => s.id === score.id) : -1;
-        if (existingIndex >= 0) {
-            scores[existingIndex] = score;
-        } else {
-            scores.push(score);
-        }
-        localStorage.setItem(SCORES_STORAGE_KEY, JSON.stringify(scores));
-        window.dispatchEvent(new CustomEvent('localScoresUpdated'));
-        // Async dual-write to IndexedDB (fire-and-forget)
-        saveScoreIDB(score).catch(() => {});
-    }
-
-
-
-    private getScoresFromLocalStorage(): Score[] {
-        try {
-            const raw = localStorage.getItem(SCORES_STORAGE_KEY);
-            if (!raw) return [];
-            return JSON.parse(raw) as Score[];
-        } catch (error) {
-            logger.error('ScoreRepository', 'Failed to read scores from localStorage', error);
-            return [];
-        }
-    }
 
     private saveOverrideLogToLocalStorage(log: ScoreOverrideLog): void {
         const logs = this.getOverrideLogsFromLocalStorage();
