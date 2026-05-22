@@ -125,6 +125,12 @@ export const useOfflineStore = create<OfflineStore>()(
                     logger.warn('OfflineStore', 'Device went offline (offline browser event)');
                     set({ isOnline: false });
                 });
+
+                if (navigator.onLine) {
+                    window.setTimeout(() => {
+                        executeSync().catch(() => {});
+                    }, 0);
+                }
             }
 
             return {

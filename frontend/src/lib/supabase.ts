@@ -787,3 +787,9 @@ export function useSupabaseWithFallback(table: string) {
 window.addEventListener('online', () => {
   syncOffline()
 })
+
+if (typeof navigator !== 'undefined' && navigator.onLine) {
+  window.setTimeout(() => {
+    syncOffline()
+  }, 0)
+}
