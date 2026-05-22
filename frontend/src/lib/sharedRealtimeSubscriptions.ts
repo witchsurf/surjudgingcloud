@@ -134,7 +134,8 @@ const emitToListeners = <T>(state: RegistryState<T>, payload: T) => {
 
 export const subscribeToEventConfig = (
   eventId: number,
-  listener: Listener<EventConfigRealtimeRow>
+  listener: Listener<EventConfigRealtimeRow>,
+  options?: { initialRefresh?: boolean }
 ) => {
   const existing = eventConfigRegistry.get(eventId);
   if (existing) {
@@ -164,7 +165,11 @@ export const subscribeToEventConfig = (
     }
   };
 
-  void refresh();
+  const shouldInitialRefresh = options?.initialRefresh !== false;
+
+  if (shouldInitialRefresh) {
+    void refresh();
+  }
   if (isLocalSupabaseMode() || !supabase) {
     startPolling(state, refresh, EVENT_CONFIG_POLL_INTERVAL_MS);
   }
@@ -193,7 +198,9 @@ export const subscribeToEventConfig = (
         updateSharedRealtimeDebug();
         if (status === 'SUBSCRIBED') {
           stopPolling(state);
-          void refresh();
+          if (shouldInitialRefresh) {
+            void refresh();
+          }
           return;
         }
         if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
@@ -209,7 +216,8 @@ export const subscribeToEventConfig = (
 export const subscribeToActiveHeatPointer = (
   eventId: number | null | undefined,
   eventName: string | undefined,
-  listener: Listener<ActiveHeatPointerRealtimeRow>
+  listener: Listener<ActiveHeatPointerRealtimeRow>,
+  options?: { initialRefresh?: boolean }
 ) => {
   const normalizedEventName = (eventName || '').trim();
   const eventNameKey = normalizeEventRealtimeKey(normalizedEventName);
@@ -247,7 +255,11 @@ export const subscribeToActiveHeatPointer = (
     }
   };
 
-  void refresh();
+  const shouldInitialRefresh = options?.initialRefresh !== false;
+
+  if (shouldInitialRefresh) {
+    void refresh();
+  }
   if (isLocalSupabaseMode() || !supabase) {
     startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
   }
@@ -276,7 +288,9 @@ export const subscribeToActiveHeatPointer = (
         updateSharedRealtimeDebug();
         if (status === 'SUBSCRIBED') {
           stopPolling(state);
-          void refresh();
+          if (shouldInitialRefresh) {
+            void refresh();
+          }
           return;
         }
         if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {

@@ -165,7 +165,7 @@ export default function JudgePage() {
                 round: row.round ?? prev.round,
                 heatId: row.heat_number ?? prev.heatId
             }));
-        });
+        }, { initialRefresh: false });
     }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, loadConfigFromDb, configSaved]);
 
 
@@ -218,6 +218,7 @@ export default function JudgePage() {
     // Fallback realtime path: switch tablets when active_heat_pointer changes.
     useEffect(() => {
         if (!isSupabaseConfigured() || configLoading) return;
+        if (eventIdFromUrl) return;
 
         const expectedEvent = normalizeEventRealtimeKey(config.competition);
         const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
@@ -258,7 +259,7 @@ export default function JudgePage() {
 
         return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
-        });
+        }, { initialRefresh: false });
     }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl]);
 
     // Purge local scores only when heat changes.
