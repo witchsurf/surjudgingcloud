@@ -20,7 +20,8 @@ const isLocalLanHost =
 if (!isLocalLanHost && !isPublicDisplayHost) {
   const updateSW = registerSW({
     onNeedRefresh() {
-      console.log('🔄 New version available – app will auto-update on next visit');
+      console.log('🔄 New version available – applying update now');
+      updateSW(true);
     },
     onOfflineReady() {
       console.log('✅ App ready to work offline');
