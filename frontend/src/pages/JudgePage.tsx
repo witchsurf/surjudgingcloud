@@ -124,7 +124,7 @@ export default function JudgePage() {
 
             console.log('📥 JudgePage: Loading config from DB for eventId:', numericId);
             setActiveEventId(numericId);
-            loadConfigFromDb(numericId).finally(() => setConfigLoading(false));
+            loadConfigFromDb(numericId, { includeCategories: false }).finally(() => setConfigLoading(false));
             return;
         }
 
@@ -155,7 +155,7 @@ export default function JudgePage() {
                     Number(row.round ?? config.round) === Number(config.round) &&
                     Number(row.heat_number ?? config.heatId) === Number(config.heatId);
                 if (!sameHeat) {
-                    void loadConfigFromDb(targetEventId);
+                    void loadConfigFromDb(targetEventId, { force: true, includeCategories: false });
                 }
                 return;
             }

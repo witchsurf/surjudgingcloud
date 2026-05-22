@@ -37,7 +37,7 @@ interface ConfigStore {
 
     // Complex actions
     loadKioskConfig: () => Promise<void>;
-    loadConfigFromDb: (eventId: number) => Promise<void>;
+    loadConfigFromDb: (eventId: number, options?: { force?: boolean; includeCategories?: boolean }) => Promise<void>;
     persistConfig: (config: AppConfig) => void;
     resetConfig: () => void;
     initializeFromUrl: () => Promise<void>;
@@ -45,6 +45,8 @@ interface ConfigStore {
 }
 
 const configLoadInFlight = new Map<number, Promise<void>>();
+const configLastLoadAt = new Map<number, number>();
+const CONFIG_LOAD_DEDUPE_MS = 12000;
 
 const areConfigsEquivalent = (left: AppConfig, right: AppConfig): boolean => {
     if (Object.is(left, right)) return true;
@@ -226,7 +228,22 @@ export const useConfigStore = create<ConfigStore>()(
             },
 
             // Load config from database
-            loadConfigFromDb: async (eventId: number) => {
+            loadConfigFromDb: async (eventId: number, options?: { force?: boolean; includeCategories?: boolean }) => {
+                const force = options?.force === true;
+                const includeCategories = options?.includeCategories !== false;
+                const lastLoadAt = configLastLoadAt.get(eventId) ?? 0;
+                const state = get();
+                if (
+                    !force &&
+                    state.loadedFromDb &&
+                    state.configSaved &&
+                    state.activeEventId === eventId &&
+                    Date.now() - lastLoadAt < CONFIG_LOAD_DEDUPE_MS
+                ) {
+                    logger.debug('ConfigStore', 'Skipping recent duplicate config load', { eventId });
+                    return;
+                }
+
                 const existingLoad = configLoadInFlight.get(eventId);
                 if (existingLoad) {
                     logger.debug('ConfigStore', 'Reusing in-flight config load', { eventId });
@@ -340,13 +357,15 @@ export const useConfigStore = create<ConfigStore>()(
                             }
                         }
 
-                        // Populate available divisions from heats (used by Admin dropdown)
-                        try {
-                            const categories = await fetchAllEventCategories(eventId);
-                            set({ availableDivisions: categories });
-                        } catch (err) {
-                            logger.warn('ConfigStore', 'Unable to load divisions from heats', err);
-                            set({ availableDivisions: [] });
+                        if (includeCategories) {
+                            // Populate available divisions from heats (used by Admin dropdown)
+                            try {
+                                const categories = await fetchAllEventCategories(eventId);
+                                set({ availableDivisions: categories });
+                            } catch (err) {
+                                logger.warn('ConfigStore', 'Unable to load divisions from heats', err);
+                                set({ availableDivisions: [] });
+                            }
                         }
 
                         if (snapshot) {
@@ -362,6 +381,7 @@ export const useConfigStore = create<ConfigStore>()(
                                 loadedFromDb: true,
                                 configSaved: true
                             });
+                            configLastLoadAt.set(eventId, Date.now());
                             // Note: Zustand persist middleware automatically saves to localStorage
                         } else {
                             logger.warn('ConfigStore', 'No snapshot found');
