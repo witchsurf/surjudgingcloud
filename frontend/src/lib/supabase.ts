@@ -790,14 +790,3 @@ export function useSupabaseWithFallback(table: string) {
     },
   }
 }
-
-// Synchronisation automatique à chaque reconnexion
-window.addEventListener('online', () => {
-  syncOffline()
-})
-
-if (typeof navigator !== 'undefined' && navigator.onLine) {
-  window.setTimeout(() => {
-    syncOffline()
-  }, 0)
-}

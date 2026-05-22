@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured, canUseSupabaseConnection, isLocalSupabaseMode, syncOffline } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, canUseSupabaseConnection, isLocalSupabaseMode } from '../lib/supabase';
+import { replayOfflineQueues } from '../lib/offlineSyncCoordinator';
 import type { Score, Heat, ScoreOverrideLog } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
 import { ensureHeatId, buildHeatId } from '../utils/heat';
@@ -356,7 +357,7 @@ export function useSupabaseSync() {
     if (canReachSupabase() && isSupabaseConfigured()) {
       syncPendingScores();
       syncOverrideLogs();
-      syncOffline();
+      replayOfflineQueues('useSupabaseSync-startup');
     }
 
     // Compter les scores en attente au chargement et sur màj

@@ -113,26 +113,6 @@ export const useOfflineStore = create<OfflineStore>()(
                 }
             };
 
-            // Setup browser network listeners automatically
-            if (typeof window !== 'undefined') {
-                window.addEventListener('online', () => {
-                    logger.info('OfflineStore', 'Device connection restored (online browser event)');
-                    set({ isOnline: true });
-                    executeSync().catch(() => {});
-                });
-
-                window.addEventListener('offline', () => {
-                    logger.warn('OfflineStore', 'Device went offline (offline browser event)');
-                    set({ isOnline: false });
-                });
-
-                if (navigator.onLine) {
-                    window.setTimeout(() => {
-                        executeSync().catch(() => {});
-                    }, 0);
-                }
-            }
-
             return {
                 // Initial State
                 isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -140,14 +120,9 @@ export const useOfflineStore = create<OfflineStore>()(
                 syncError: null,
                 mutations: [],
 
-                // Set Network status manually if needed (e.g. on manual check or ping)
+                // Set Network status manually. Queue replay is coordinated by offlineSyncCoordinator.
                 setOnline: (online: boolean) => {
-                    const wasOffline = !get().isOnline;
                     set({ isOnline: online });
-                    if (online && wasOffline) {
-                        logger.info('OfflineStore', 'Network status updated to online, triggering sync...');
-                        executeSync().catch(() => {});
-                    }
                 },
 
                 // Register a new mutation sequentially to the WAL

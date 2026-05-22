@@ -31,8 +31,7 @@ Writers:
 Replay:
 
 - FIFO replay through `OfflineStore.processSyncQueue`.
-- Replays on browser `online`.
-- Replays once on startup when the browser is already online.
+- Replays through `offlineSyncCoordinator`.
 - Guarded against concurrent replay inside the store.
 
 ### Legacy Queue: `surfapp_offline_queue`
@@ -56,9 +55,21 @@ Writers:
 Replay:
 
 - `syncOffline()`.
-- Replays on browser `online`.
-- Replays once on startup when the browser is already online.
+- Replays through `offlineSyncCoordinator`.
 - Guarded against concurrent replay.
+
+## Replay Coordinator
+
+Owner: `frontend/src/lib/offlineSyncCoordinator.ts`
+
+Responsibilities:
+
+- Installs the browser `online` / `offline` listeners.
+- Replays once on startup when the browser is already online.
+- Replays queues in deterministic order:
+  1. legacy queue for heats/config/timer;
+  2. score WAL for scores/overrides.
+- Prevents concurrent global replay.
 
 ## Realtime And Polling Rules
 

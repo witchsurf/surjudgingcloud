@@ -7,6 +7,7 @@ import './index.css';
 import './utils/heat';
 import { initStorageCleanup } from './utils/secureStorage';
 import { processMagicLinkCallback } from './utils/magicLink';
+import { installOfflineSyncCoordinator } from './lib/offlineSyncCoordinator';
 
 const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 const isPublicDisplayHost = hostname === 'display.surfjudging.cloud';
@@ -59,6 +60,7 @@ async function bootstrap() {
 
   // Initialize secure storage cleanup on app load
   initStorageCleanup();
+  installOfflineSyncCoordinator();
 
   if (typeof window !== 'undefined' && import.meta.env.DEV) {
     const resetFlagKey = 'surfapp_dev_bootstrap';
