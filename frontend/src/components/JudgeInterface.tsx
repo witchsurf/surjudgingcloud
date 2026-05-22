@@ -888,26 +888,6 @@ function JudgeInterface({
     return 'border-slate-800';
   }, [normalizeSurferKey]);
 
-  // Compute real-time statistics for Surfer HUD Card Context
-  const getSurferStats = useCallback((surferName: string) => {
-    const surferKey = normalizeSurferKey(surferName);
-    const surferScores = submittedScores
-      .filter(s => normalizeSurferKey(s.surfer) === surferKey && (s.judge_station || s.judge_id) === judgeStation)
-      .map(s => s.score);
-    
-    const sorted = [...surferScores].sort((a, b) => b - a);
-    const best1 = sorted[0] ?? 0;
-    const best2 = sorted[1] ?? 0;
-    const total = Math.round((best1 + best2) * 100) / 100;
-    
-    return {
-      count: surferScores.length,
-      best1,
-      best2,
-      total
-    };
-  }, [submittedScores, normalizeSurferKey, judgeStation]);
-
   // Keyboard suppression - virtual keypress programmatical mapping handler
   const handleVirtualKeyPress = useCallback((key: string) => {
     if (!activeInput) return;
@@ -1423,7 +1403,6 @@ function JudgeInterface({
           {/* SURFER ROWS — scrollable area */}
           <div className="judge-surfer-list flex-1 flex flex-col gap-[var(--judge-row-gap)]">
             {config.surfers.map((surfer) => {
-              const stats = getSurferStats(surfer);
               const isSurferInFlight = inFlightSurfers.includes(normalizeSurferKey(surfer));
               const prioLabel = priorityLabels[normalizeSurferKey(surfer)] || '=';
               const surferColor = getSurferColor(surfer);
@@ -1440,13 +1419,6 @@ function JudgeInterface({
                     {isSurferInFlight && (
                       <span className="text-[9px] font-bold text-amber-400">SURF</span>
                     )}
-                    <div className="ml-auto flex items-center gap-1 sm:gap-1.5 text-[10px] font-mono text-slate-400 whitespace-nowrap">
-                      <span>{stats.best1.toFixed(1)}</span>
-                      <span className="text-slate-600">+</span>
-                      <span>{stats.best2.toFixed(1)}</span>
-                      <span className="text-slate-600">=</span>
-                      <span className="font-bold text-slate-200">{stats.total.toFixed(1)}</span>
-                    </div>
                   </div>
 
                   {/* Wave cells — horizontal row */}
