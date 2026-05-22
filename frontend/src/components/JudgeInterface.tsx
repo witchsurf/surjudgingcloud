@@ -983,8 +983,8 @@ function JudgeInterface({
   }
 
   const priorityShellClass = priorityOnly
-    ? 'min-h-screen max-w-5xl mx-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4 flex flex-col overflow-hidden bg-hud-black text-slate-100'
-    : 'h-dvh max-w-full mx-auto px-2 sm:px-4 py-2 flex flex-col overflow-hidden bg-hud-black text-slate-100';
+    ? 'judge-shell judge-priority-shell max-w-5xl mx-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4 flex flex-col bg-hud-black text-slate-100'
+    : 'judge-shell max-w-full mx-auto flex flex-col bg-hud-black text-slate-100';
 
   const priorityCardPadding = priorityOnly ? 'p-4 sm:p-5' : 'p-2 sm:p-3';
 
@@ -997,42 +997,40 @@ function JudgeInterface({
     ];
 
     return (
-      <div className="flex flex-col gap-1.5 p-2 bg-slate-950 rounded-lg border border-slate-800">
-        {keys.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex gap-1.5">
-            {row.map((key) => {
-              let btnClass = "flex-1 py-2.5 text-lg font-bold rounded-md flex items-center justify-center active:scale-95 touch-manipulation ";
-              if (key === 'CLR') {
-                btnClass += "bg-red-900/30 text-red-400 border border-red-900/40";
-              } else if (key === '.') {
-                btnClass += "bg-slate-800 text-slate-300 border border-slate-700";
-              } else {
-                btnClass += "bg-slate-800 text-slate-100 border border-slate-700";
-              }
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    try { navigator?.vibrate?.(15); } catch {}
-                    handleVirtualKeyPress(key);
-                  }}
-                  className={btnClass}
-                >
-                  {key}
-                </button>
-              );
-            })}
-          </div>
-        ))}
-        <div className="flex gap-1.5 mt-0.5">
+      <div className="bg-slate-950 rounded-lg border border-slate-800 p-1.5">
+        <div className="judge-keypad">
+          {keys.flat().map((key) => {
+            let btnClass = "judge-key text-lg font-bold rounded-md flex items-center justify-center active:scale-95 touch-manipulation ";
+            if (key === 'CLR') {
+              btnClass += "bg-red-900/30 text-red-400 border border-red-900/40";
+            } else if (key === '.') {
+              btnClass += "bg-slate-800 text-slate-300 border border-slate-700";
+            } else {
+              btnClass += "bg-slate-800 text-slate-100 border border-slate-700";
+            }
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  try { navigator?.vibrate?.(15); } catch {}
+                  handleVirtualKeyPress(key);
+                }}
+                className={btnClass}
+              >
+                {key}
+              </button>
+            );
+          })}
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 px-1.5 pb-1.5">
           <button
             type="button"
             onClick={() => {
               try { navigator?.vibrate?.(15); } catch {}
               handleVirtualKeyPress('DEL');
             }}
-            className="flex-1 py-2.5 bg-amber-900/20 text-amber-400 border border-amber-900/30 font-bold rounded-md text-sm flex items-center justify-center gap-1 active:scale-95 touch-manipulation"
+            className="judge-key bg-amber-900/20 text-amber-400 border border-amber-900/30 font-bold rounded-md text-sm flex items-center justify-center gap-1 active:scale-95 touch-manipulation"
           >
             <Delete className="w-4 h-4" /> DEL
           </button>
@@ -1043,7 +1041,7 @@ function JudgeInterface({
               handleVirtualKeyPress('ENTR');
             }}
             disabled={isSubmittingScore || !inputValue.trim()}
-            className="flex-1 py-2.5 bg-emerald-600 text-white font-bold rounded-md text-sm flex items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 touch-manipulation"
+            className="judge-key bg-emerald-600 text-white font-bold rounded-md text-sm flex items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 touch-manipulation"
           >
             <Check className="w-4 h-4" /> OK
           </button>
@@ -1055,11 +1053,11 @@ function JudgeInterface({
   const renderScoreInput = () => {
     if (!activeInput) return null;
     return (
-      <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 flex items-center gap-3 flex-shrink-0">
+      <div className="judge-score-input bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-2.5 flex-shrink-0">
         <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getSurferColor(activeInput.surfer) }} />
-        <span className="text-sm font-bold text-slate-200">{activeInput.surfer}</span>
+        <span className="text-sm font-bold text-slate-200 truncate">{activeInput.surfer}</span>
         <span className="text-xs text-slate-400">V{activeInput.wave}</span>
-        <span className="text-2xl font-bold font-mono text-emerald-400 ml-auto">{inputValue || '—'}</span>
+        <span className="text-xl sm:text-2xl font-bold font-mono text-emerald-400 ml-auto">{inputValue || '—'}</span>
         <button
           type="button"
           onClick={() => { setActiveInput(null); setInputValue(''); }}
@@ -1074,10 +1072,10 @@ function JudgeInterface({
   return (
     <div className={priorityShellClass}>
       {/* HEADER + TIMER */}
-      <div className={isFullscreen ? 'sticky top-3 z-40' : ''}>
+      <div className={isFullscreen ? 'sticky top-[max(0.5rem,env(safe-area-inset-top))] z-40' : ''}>
         <div className={`neon-card border border-white/5 rounded-xl shadow-2xl ${priorityCardPadding}`}>
-          <div className={`flex items-center justify-between ${priorityOnly ? 'gap-3 sm:gap-5' : 'gap-4'}`}>
-            <div className={`flex items-center justify-between flex-1 min-w-0 ${priorityOnly ? 'gap-3 sm:gap-6' : 'gap-4'}`}>
+          <div className={priorityOnly ? `flex items-center justify-between gap-3 sm:gap-5` : 'judge-header-grid'}>
+            <div className={`flex items-center justify-between flex-1 min-w-0 ${priorityOnly ? 'gap-3 sm:gap-6' : 'gap-2'}`}>
               <div className="min-w-0">
                 <h1 className={`${priorityOnly ? 'text-xl sm:text-2xl md:text-3xl' : 'text-lg sm:text-xl'} font-extrabold flex items-center gap-2 truncate text-slate-100`}>
                   {resolvedInterfaceTitle}
@@ -1087,7 +1085,7 @@ function JudgeInterface({
                     </span>
                   )}
                 </h1>
-                <div className={`flex items-center gap-x-3 text-slate-400 flex-wrap ${priorityOnly ? 'text-xs sm:text-sm mt-1.5' : 'text-[10px]'}`}>
+                <div className={`judge-header-meta text-slate-400 ${priorityOnly ? 'text-xs sm:text-sm mt-1.5' : 'text-[10px]'}`}>
                   <span className={`font-bold text-slate-200 truncate ${priorityOnly ? 'max-w-[160px] sm:max-w-[220px]' : 'max-w-[100px]'}`}>{config.judgeNames[judgeId] || judgeName || judgeId}</span>
                   <span className="text-slate-600">•</span>
                   <span className={`${priorityOnly ? 'max-w-[180px] sm:max-w-[260px]' : 'max-w-[100px]'} truncate`}>{config.competition}</span>
@@ -1098,7 +1096,7 @@ function JudgeInterface({
                 </div>
               </div>
 
-              <div className="flex-shrink-0">
+              <div className={priorityOnly ? 'flex-shrink-0' : 'judge-timer-wrap flex-shrink-0'}>
                 <HeatTimer
                   timer={timer}
                   onStart={() => { }}
@@ -1107,6 +1105,7 @@ function JudgeInterface({
                   onDurationChange={() => { }}
                   showControls={isChiefJudge}
                   size={priorityOnly ? 'medium' : 'small'}
+                  compact={!priorityOnly}
                   landscape={true}
                   embedded={true}
                   configSaved={configSaved}
@@ -1114,7 +1113,7 @@ function JudgeInterface({
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className={priorityOnly ? 'flex items-center gap-2' : 'judge-actions'}>
               {!priorityOnly && (
                 <div className="relative">
                   <button
@@ -1138,7 +1137,7 @@ function JudgeInterface({
                       }
                     }}
                     disabled={isSyncing || !isConnected}
-                    className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg transition-all text-xs font-bold border shadow-sm ${isSyncing
+                    className={`min-h-[34px] flex items-center justify-center space-x-1 px-2.5 py-1.5 rounded-lg transition-all text-xs font-bold border shadow-sm ${isSyncing
                       ? 'bg-slate-800/50 text-slate-500 border-slate-700/30'
                       : 'bg-indigo-950/40 text-indigo-300 border-indigo-900/30 hover:bg-indigo-900/30 active:scale-95'
                       }`}
@@ -1160,7 +1159,7 @@ function JudgeInterface({
 
               <button
                 onClick={toggleFullscreen}
-                className={`flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors font-bold border border-slate-800 ${priorityOnly ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs'}`}
+                className={`min-h-[34px] flex items-center justify-center space-x-1 bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors font-bold border border-slate-800 ${priorityOnly ? 'px-3.5 py-2 text-sm' : 'px-2.5 py-1.5 text-xs'}`}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                 <span className="hidden sm:inline">{isFullscreen ? 'Réduire' : 'Plein Écran'}</span>
@@ -1376,9 +1375,9 @@ function JudgeInterface({
 
       {/* MAIN JUDGING WORKSPACE */}
       {!priorityOnly && (
-        <div className="flex-1 flex flex-col overflow-hidden mt-2 min-h-0">
+        <div className="judge-workspace flex-1 flex flex-col mt-2">
           {/* ENTRY MODE CONTROLS */}
-          <div className="flex items-center justify-between flex-wrap gap-2 flex-shrink-0 mb-2">
+          <div className="flex items-center justify-between flex-wrap gap-2 flex-shrink-0 mb-1.5">
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -1422,7 +1421,7 @@ function JudgeInterface({
           </div>
 
           {/* SURFER ROWS — scrollable area */}
-          <div className="flex-1 flex flex-col gap-1.5 overflow-y-auto min-h-0">
+          <div className="judge-surfer-list flex-1 flex flex-col gap-[var(--judge-row-gap)]">
             {config.surfers.map((surfer) => {
               const stats = getSurferStats(surfer);
               const isSurferInFlight = inFlightSurfers.includes(normalizeSurferKey(surfer));
@@ -1430,18 +1429,18 @@ function JudgeInterface({
               const surferColor = getSurferColor(surfer);
 
               return (
-                <div key={surfer} className="bg-slate-900/60 rounded-lg border border-slate-800 p-2 flex-shrink-0">
+                <div key={surfer} className="judge-surfer-card bg-slate-900/60 rounded-lg border border-slate-800 flex-shrink-0">
                   {/* Surfer header row: color + name + stats */}
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="w-4 h-4 rounded flex-shrink-0 border border-slate-700" style={{ backgroundColor: surferColor }} />
-                    <span className="font-bold text-sm text-slate-100 truncate min-w-[60px]">{surfer}</span>
+                    <span className="judge-surfer-title font-bold text-sm text-slate-100 truncate">{surfer}</span>
                     {prioLabel !== '=' && (
                       <span className="text-[9px] font-bold bg-indigo-600 text-white px-1 py-0.5 rounded">{prioLabel}</span>
                     )}
                     {isSurferInFlight && (
                       <span className="text-[9px] font-bold text-amber-400">SURF</span>
                     )}
-                    <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-slate-400">
+                    <div className="ml-auto flex items-center gap-1 sm:gap-1.5 text-[10px] font-mono text-slate-400 whitespace-nowrap">
                       <span>{stats.best1.toFixed(1)}</span>
                       <span className="text-slate-600">+</span>
                       <span>{stats.best2.toFixed(1)}</span>
@@ -1451,14 +1450,14 @@ function JudgeInterface({
                   </div>
 
                   {/* Wave cells — horizontal row */}
-                  <div className="flex gap-1 flex-wrap">
+                  <div className="judge-wave-grid">
                     {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => {
                       const scoreData = getScoreForWave(surfer, wave);
                       const canScore = canScoreWave(surfer, wave);
                       const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
                       const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
 
-                      let cellClass = "inline-flex flex-col items-center justify-center rounded-md font-bold border relative select-none w-[44px] h-[40px] text-xs active:scale-95 touch-manipulation ";
+                      let cellClass = "judge-wave-cell inline-flex flex-col items-center justify-center rounded-md font-bold border relative select-none text-xs active:scale-95 touch-manipulation ";
 
                       if (isActive) {
                         cellClass += "bg-cyan-900/50 text-cyan-300 border-cyan-500";
@@ -1507,9 +1506,9 @@ function JudgeInterface({
           </div>
 
           {/* SCORE INPUT + KEYPAD — always visible at bottom */}
-          <div className="flex-shrink-0 mt-2">
+          <div className="flex-shrink-0 mt-1.5">
             {renderScoreInput()}
-            <div className="mt-1.5">
+            <div className="mt-1">
               {renderKeypad()}
             </div>
           </div>
