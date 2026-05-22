@@ -249,7 +249,7 @@ export const startConnectionHeartbeat = (intervalMs = 15000) => {
       // Query a lightweight table to verify full end-to-end database connectivity
       const { error } = await currentClient
         .from('active_heat_pointer')
-        .select('id')
+        .select('event_name')
         .limit(1);
 
       const isConnected = !error || (error.code !== 'PGRST100' && error.code !== 'FETCH_ERROR' && error.status !== 0);
