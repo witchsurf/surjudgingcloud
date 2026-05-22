@@ -236,48 +236,24 @@ export const supabase = new Proxy({}, {
 // Export constants for legacy references (first evaluation)
 export const { supabaseUrl, supabaseAnonKey, mode } = getSupabaseConfig();
 
-// Heartbeat connection poller to dynamically maintain offline state and connection health reactively
 let lastConnectionStatus = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
-export const startConnectionHeartbeat = (intervalMs = 15000) => {
+export const startConnectionHeartbeat = () => {
   if (typeof window === 'undefined') return;
 
-  const runCheck = async () => {
-    if (!currentClient) return;
+  const applyStatus = async (isConnected: boolean) => {
+    if (isConnected === lastConnectionStatus) return;
+    lastConnectionStatus = isConnected;
+    logger.info('Supabase', `Browser network status changed: ${isConnected ? 'ONLINE' : 'OFFLINE'}`);
 
-    try {
-      // Query a lightweight table to verify full end-to-end database connectivity
-      const { error } = await currentClient
-        .from('events')
-        .select('id')
-        .limit(1);
-
-      const isConnected = !error || (error.code !== 'PGRST100' && error.code !== 'FETCH_ERROR' && error.status !== 0);
-      
-      if (isConnected !== lastConnectionStatus) {
-        lastConnectionStatus = isConnected;
-        logger.info('Supabase', `Database connection heartbeat status changed: ${isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
-        
-        // Notify the offline store
-        const { useOfflineStore } = await import('../stores/offlineStore');
-        useOfflineStore.getState().setOnline(isConnected);
-      }
-    } catch {
-      if (lastConnectionStatus) {
-        lastConnectionStatus = false;
-        logger.warn('Supabase', 'Database connection heartbeat status changed: DISCONNECTED');
-        const { useOfflineStore } = await import('../stores/offlineStore');
-        useOfflineStore.getState().setOnline(false);
-      }
-    }
+    const { useOfflineStore } = await import('../stores/offlineStore');
+    useOfflineStore.getState().setOnline(isConnected);
   };
 
-  // Run immediately and then on interval
-  runCheck();
-  setInterval(runCheck, intervalMs);
+  window.addEventListener('online', () => { void applyStatus(true); });
+  window.addEventListener('offline', () => { void applyStatus(false); });
 };
 
-// Start poller automatically in browser
 if (typeof window !== 'undefined') {
   startConnectionHeartbeat();
 }
