@@ -51,7 +51,7 @@ const getFallbackColorForPosition = (position: number): string | null => {
 };
 
 export function useHeatManager() {
-    const { config, setConfig, persistConfig, activeEventId } = useConfigStore();
+    const { config, setConfig, setConfigSaved, persistConfig, activeEventId } = useConfigStore();
     const {
         scores,
         timer,
@@ -675,17 +675,22 @@ export function useHeatManager() {
                     status: 'open',
                     surfers: newConfig.surfers.map((surfer) => ({
                         color: surfer,
-                        name: surfer,
-                        country: config.surferCountries?.[surfer] || '',
+                        name: newConfig.surferNames?.[surfer] || surfer,
+                        country: newConfig.surferCountries?.[surfer] || '',
                     })),
                 });
 
-                await saveHeatConfig(nextHeatKey, newConfig);
+                await saveHeatConfig(nextHeatKey, {
+                    ...newConfig,
+                    event_id: activeEventId ?? undefined,
+                });
                 await saveTimerState(nextHeatKey, { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION });
                 await publishConfigUpdate(nextHeatKey, newConfig);
                 await publishTimerReset(nextHeatKey, DEFAULT_TIMER_DURATION);
+                setConfigSaved(true);
             } catch (error) {
                 console.error('❌ Synchronisation du nouveau heat échouée:', error);
+                setConfigSaved(false);
                 const detail = error instanceof Error ? error.message : 'Erreur réseau';
                 setTimeout(() => {
                     alert(
@@ -710,6 +715,7 @@ export function useHeatManager() {
         setHeatStatus,
         setJudgeWorkCount,
         setConfig,
+        setConfigSaved,
         persistConfig,
         setScores,
         timer,
