@@ -1303,11 +1303,11 @@ export default function DisplayPage() {
         }
 
         const displayScoreMode = String(import.meta.env.VITE_DISPLAY_SCORE_MODE || '').trim().toLowerCase();
-        const useScoreRealtime = displayScoreMode === 'realtime';
+        const useScoreRealtime = displayScoreMode !== 'polling' && displayScoreMode !== 'poll';
         const displayPollIntervalMs = (() => {
             const fromEnv = Number(import.meta.env.VITE_DISPLAY_SCORE_POLL_MS);
             if (Number.isFinite(fromEnv) && fromEnv >= 1000) return fromEnv;
-            return isLocalSupabaseMode() ? 2500 : 5000;
+            return isLocalSupabaseMode() ? 2500 : 15000;
         })();
 
         let cancelled = false;
@@ -1352,10 +1352,10 @@ export default function DisplayPage() {
         // Keep a low-frequency safety poll on the display even when the socket
         // looks healthy. Some cloud runs stay connected but silently stop
         // delivering score inserts, which previously required a manual refresh.
-        // We use a longer interval (30s) in cloud mode to reduce load when realtime is enabled.
+        // We use a long interval in cloud mode to reduce load when realtime is enabled.
         const safetyPollInterval = window.setInterval(() => {
             refreshScores(liveHeatIdRef.current || currentHeatId);
-        }, useScoreRealtime ? (isLocalSupabaseMode() ? 2500 : 30000) : displayPollIntervalMs);
+        }, useScoreRealtime ? (isLocalSupabaseMode() ? 2500 : 60000) : displayPollIntervalMs);
 
         // Écouter les scores en temps réel (INSERT/UPDATE) uniquement si on a activé le stream realtime.
         const handleNewScore = (event: Event) => {

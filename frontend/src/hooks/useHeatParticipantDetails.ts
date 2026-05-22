@@ -29,9 +29,10 @@ type UseHeatParticipantDetailsArgs = {
   heatId: string | null;
   surfers: string[];
   enabled?: boolean;
+  watch?: boolean;
 };
 
-export function useHeatParticipantDetails({ heatId, surfers, enabled = true }: UseHeatParticipantDetailsArgs) {
+export function useHeatParticipantDetails({ heatId, surfers, enabled = true, watch = false }: UseHeatParticipantDetailsArgs) {
   const [entryMap, setEntryMap] = useState<Map<string, HeatParticipantInfo>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,16 +158,17 @@ export function useHeatParticipantDetails({ heatId, surfers, enabled = true }: U
     };
 
     void load(heatId);
-    const unsubscribe = subscribeToHeatParticipants(heatId, () => {
-      void load(heatId);
-    });
+    const unsubscribe = watch
+      ? subscribeToHeatParticipants(heatId, () => {
+        void load(heatId);
+      })
+      : () => {};
 
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [enabled, heatId, surfers, fallbackMap]);
+  }, [enabled, heatId, surfers, fallbackMap, watch]);
 
   return { entryMap, loading, error };
 }
-

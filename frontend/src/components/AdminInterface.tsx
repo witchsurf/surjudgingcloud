@@ -14,11 +14,10 @@ import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils'
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
 import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, ParticipantRecord } from '../api/supabaseClient';
-import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode, isLocalSupabaseMode } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
 import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
-import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
@@ -604,8 +603,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    let pollingInterval: ReturnType<typeof setInterval> | null = null;
-    let unsubscribeScores: (() => void) | null = null;
 
     const loadDbScores = async () => {
       try {
@@ -619,38 +616,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     loadDbScores();
 
-    const handleRealtimeScore = (event: Event) => {
-      const detail = (event as CustomEvent<Partial<Score>>).detail;
-      if (!detail?.heat_id) return;
-      if (ensureHeatId(detail.heat_id) !== heatId) return;
-      void loadDbScores();
-    };
-
-    window.addEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
     const handleOverrideEvent = () => {
       void loadDbScores();
     };
     window.addEventListener('scoreOverrideApplied', handleOverrideEvent as EventListener);
-    if (!isLocalSupabaseMode()) {
-      unsubscribeScores = subscribeToHeatScores(heatId, () => {
-        void loadDbScores();
-      });
-    }
-    pollingInterval = isLocalSupabaseMode()
-      ? setInterval(() => {
-          void loadDbScores();
-        }, 2500)
-      : null;
     return () => {
       cancelled = true;
-      window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
       window.removeEventListener('scoreOverrideApplied', handleOverrideEvent as EventListener);
-      if (unsubscribeScores) {
-        unsubscribeScores();
-      }
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
     };
   }, [heatId, refreshCorrectionPanelData]);
 

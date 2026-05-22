@@ -441,7 +441,7 @@ async function resolveNamesFromMappings(
  * @param heatId - Normalized heat ID (e.g., "djegane_surf_trophy_ondine_u16_r1_h1")
  * @returns Object mapping colors to participant names or placeholders
  */
-export function useHeatParticipants(heatId: string) {
+export function useHeatParticipants(heatId: string, options?: { watch?: boolean }) {
     const [participants, setParticipants] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -570,9 +570,11 @@ export function useHeatParticipants(heatId: string) {
 
         scheduleReload(true);
 
-        const unsubscribe = subscribeToHeatParticipants(heatId, () => {
-            scheduleReload();
-        });
+        const unsubscribe = options?.watch
+            ? subscribeToHeatParticipants(heatId, () => {
+                scheduleReload();
+            })
+            : () => {};
 
         return () => {
             if (reloadTimeoutRef.current) {
@@ -580,7 +582,7 @@ export function useHeatParticipants(heatId: string) {
             }
             unsubscribe();
         };
-    }, [heatId]);
+    }, [heatId, options?.watch]);
 
     return { participants, loading, error, source };
 }

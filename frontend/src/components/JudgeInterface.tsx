@@ -357,7 +357,7 @@ function JudgeInterface({
       refetchJudgeScores('shared_update').catch((err) => {
         console.warn('Failed to refetch judge scores after shared heat update:', err);
       });
-    });
+    }, { mode: 'realtime' });
 
     return () => {
       unsubscribe();
