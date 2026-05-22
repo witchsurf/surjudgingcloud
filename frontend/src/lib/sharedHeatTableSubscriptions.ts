@@ -20,10 +20,15 @@ type HeatSignalState = {
   reconnecting: boolean;
   retryCount: number;
   listeners: Record<HeatSignalType, Map<string, ListenerEntry>>;
+  lastPollAt: Partial<Record<HeatSignalType, number>>;
 };
 
 const HEAT_SIGNAL_POLL_INTERVAL_MS = 2500;
-const HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS = 5000;
+const HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS = 15000;
+const HEAT_SIGNAL_CLOUD_POLL_INTERVALS_MS: Partial<Record<HeatSignalType, number>> = {
+  scores: 15000,
+  participants: 60000,
+};
 const HEAT_SIGNAL_EMIT_DEBOUNCE_MS = 150;
 const HEAT_SIGNAL_RETRY_BASE_MS = 3000;
 const HEAT_SIGNAL_RETRY_MAX_MS = 30000;
@@ -84,6 +89,7 @@ const createState = (): HeatSignalState => ({
     interference: new Map(),
     participants: new Map(),
   },
+  lastPollAt: {},
 });
 
 const resolveMode = (type: HeatSignalType, mode: SubscriptionMode) => {
@@ -135,7 +141,16 @@ const startPolling = (state: HeatSignalState) => {
   const intervalMs = isLocalSupabaseMode() ? HEAT_SIGNAL_POLL_INTERVAL_MS : HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS;
   state.pollingInterval = setInterval(() => {
     const desired = getDesiredPollingTypes(state);
-    desired.forEach((type) => emit(state, type));
+    const now = Date.now();
+    desired.forEach((type) => {
+      if (!isLocalSupabaseMode()) {
+        const typeIntervalMs = HEAT_SIGNAL_CLOUD_POLL_INTERVALS_MS[type] ?? HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS;
+        const lastPollAt = state.lastPollAt[type] ?? 0;
+        if (now - lastPollAt < typeIntervalMs) return;
+        state.lastPollAt[type] = now;
+      }
+      emit(state, type);
+    });
   }, intervalMs);
 };
 

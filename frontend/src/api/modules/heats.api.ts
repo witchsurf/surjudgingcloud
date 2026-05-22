@@ -1008,17 +1008,26 @@ export async function rebuildDivisionQualifiersFromScores(eventId: number, divis
 
 export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string): Promise<ActiveHeatPointer | null> {
     ensureSupabase();
-    let query = supabase!
-        .from('active_heat_pointer')
-        .select('*');
 
-    if (eventId && Number.isFinite(eventId)) {
-        query = query.eq('event_id', eventId);
-    } else if (eventName) {
-        query = query.eq('event_name', eventName);
+    const runQuery = async (filterByEventId: boolean) => {
+        let query = supabase!
+            .from('active_heat_pointer')
+            .select('*');
+
+        if (filterByEventId && eventId && Number.isFinite(eventId)) {
+            query = query.eq('event_id', eventId);
+        } else if (eventName) {
+            query = query.eq('event_name', eventName);
+        }
+
+        return query.limit(1);
+    };
+
+    let { data, error } = await runQuery(Boolean(eventId && Number.isFinite(eventId)));
+
+    if (error && eventId && Number.isFinite(eventId) && eventName && isActiveHeatPointerEventIdSchemaError(error)) {
+        ({ data, error } = await runQuery(false));
     }
-
-    const { data, error } = await query.limit(1);
 
     if (error) return null;
     return data && data.length > 0 ? (data[0] as ActiveHeatPointer) : null;
