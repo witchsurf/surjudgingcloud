@@ -984,7 +984,7 @@ function JudgeInterface({
 
   const priorityShellClass = priorityOnly
     ? 'min-h-screen max-w-5xl mx-auto px-3 sm:px-5 md:px-6 py-3 sm:py-4 flex flex-col overflow-hidden bg-hud-black text-slate-100'
-    : 'h-screen max-w-full mx-auto px-2 sm:px-4 py-2 flex flex-col overflow-hidden bg-hud-black text-slate-100';
+    : 'h-dvh max-w-full mx-auto px-2 sm:px-4 py-2 flex flex-col overflow-hidden bg-hud-black text-slate-100';
 
   const priorityCardPadding = priorityOnly ? 'p-4 sm:p-5' : 'p-2 sm:p-3';
 
@@ -997,17 +997,17 @@ function JudgeInterface({
     ];
 
     return (
-      <div className="flex flex-col gap-2 p-3 bg-slate-950/80 rounded-xl border border-slate-800/80 shadow-inner flex-1 justify-center">
+      <div className="flex flex-col gap-1.5 p-2 bg-slate-950 rounded-lg border border-slate-800">
         {keys.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex gap-2">
+          <div key={rowIndex} className="flex gap-1.5">
             {row.map((key) => {
-              let btnClass = "flex-1 py-3 text-xl font-bold rounded-lg transition-all duration-100 flex items-center justify-center active:scale-95 touch-manipulation ";
+              let btnClass = "flex-1 py-2.5 text-lg font-bold rounded-md flex items-center justify-center active:scale-95 touch-manipulation ";
               if (key === 'CLR') {
-                btnClass += "bg-red-950/40 text-red-400 hover:bg-red-900/40 border border-red-900/30";
+                btnClass += "bg-red-900/30 text-red-400 border border-red-900/40";
               } else if (key === '.') {
-                btnClass += "bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800";
+                btnClass += "bg-slate-800 text-slate-300 border border-slate-700";
               } else {
-                btnClass += "bg-slate-900/90 text-slate-100 hover:bg-slate-800 border border-slate-800";
+                btnClass += "bg-slate-800 text-slate-100 border border-slate-700";
               }
               return (
                 <button
@@ -1025,16 +1025,16 @@ function JudgeInterface({
             })}
           </div>
         ))}
-        <div className="flex gap-2 mt-1">
+        <div className="flex gap-1.5 mt-0.5">
           <button
             type="button"
             onClick={() => {
               try { navigator?.vibrate?.(15); } catch {}
               handleVirtualKeyPress('DEL');
             }}
-            className="flex-1 py-3 bg-amber-950/30 text-amber-400 hover:bg-amber-900/30 border border-amber-900/30 font-bold rounded-lg text-sm flex items-center justify-center gap-1 active:scale-95 touch-manipulation"
+            className="flex-1 py-2.5 bg-amber-900/20 text-amber-400 border border-amber-900/30 font-bold rounded-md text-sm flex items-center justify-center gap-1 active:scale-95 touch-manipulation"
           >
-            <Delete className="w-4 h-4" /> RETOUR
+            <Delete className="w-4 h-4" /> DEL
           </button>
           <button
             type="button"
@@ -1043,74 +1043,30 @@ function JudgeInterface({
               handleVirtualKeyPress('ENTR');
             }}
             disabled={isSubmittingScore || !inputValue.trim()}
-            className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold rounded-lg text-sm flex items-center justify-center gap-1 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 touch-manipulation shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+            className="flex-1 py-2.5 bg-emerald-600 text-white font-bold rounded-md text-sm flex items-center justify-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 touch-manipulation"
           >
-            <Check className="w-4 h-4" /> VALIDER
+            <Check className="w-4 h-4" /> OK
           </button>
         </div>
       </div>
     );
   };
 
-  const renderRightPanel = () => {
+  const renderScoreInput = () => {
+    if (!activeInput) return null;
     return (
-      <div className="neon-card rounded-xl p-4 border border-white/5 flex flex-col h-full gap-4">
-        {/* Dynamic Display Panel */}
-        <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 flex flex-col items-center justify-center text-center shadow-inner relative overflow-hidden min-h-[140px]">
-          {activeInput ? (
-            <>
-              {/* Surfer color strip */}
-              <div className="absolute top-0 left-0 right-0 h-1.5" style={{ backgroundColor: getSurferColor(activeInput.surfer) }} />
-              
-              <div className="flex items-center gap-2 mb-1">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getSurferColor(activeInput.surfer) }} />
-                <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">{activeInput.surfer}</span>
-              </div>
-              <div className="text-xs font-bold text-cyan-400 uppercase tracking-widest mb-2 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-800/20">
-                Vague {activeInput.wave}
-              </div>
-              
-              <div className="flex items-center justify-center mt-1">
-                <div className="text-4xl font-extrabold tracking-wider font-mono text-emerald-400 select-none drop-shadow-[0_0_10px_rgba(52,211,153,0.3)] animate-pulse">
-                  {inputValue || '0.0'}
-                  <span className="text-emerald-500/80 animate-ping">|</span>
-                </div>
-              </div>
-              
-              <p className="text-[10px] text-slate-500 mt-2 italic">
-                Utilisez le clavier virtuel ou votre clavier physique.
-              </p>
-            </>
-          ) : (
-            <div className="flex flex-col items-center justify-center text-slate-500 p-2">
-              <Waves className="w-8 h-8 text-slate-600 mb-2 animate-bounce" />
-              <div className="text-xs font-bold uppercase tracking-widest text-slate-400 animate-prio-pulse">STANDBY</div>
-              <p className="text-[10px] text-slate-500 mt-1 max-w-[200px] leading-relaxed">
-                Touchez une cellule active (cellule avec Edit ✍️) pour saisir une note.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Tactile Touch Keypad */}
-        <div className="flex-grow flex flex-col justify-end">
-          <div className="text-[10px] font-bold text-slate-400 tracking-wider uppercase mb-2 ml-1 flex items-center justify-between">
-            <span>Clavier tactile</span>
-            {activeInput && (
-              <button 
-                type="button" 
-                onClick={() => {
-                  setActiveInput(null);
-                  setInputValue('');
-                }}
-                className="text-[10px] text-red-400 hover:text-red-300 font-semibold"
-              >
-                Annuler
-              </button>
-            )}
-          </div>
-          {renderKeypad()}
-        </div>
+      <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 flex items-center gap-3 flex-shrink-0">
+        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: getSurferColor(activeInput.surfer) }} />
+        <span className="text-sm font-bold text-slate-200">{activeInput.surfer}</span>
+        <span className="text-xs text-slate-400">V{activeInput.wave}</span>
+        <span className="text-2xl font-bold font-mono text-emerald-400 ml-auto">{inputValue || '—'}</span>
+        <button
+          type="button"
+          onClick={() => { setActiveInput(null); setInputValue(''); }}
+          className="text-xs text-red-400 hover:text-red-300 font-bold ml-2"
+        >
+          ✕
+        </button>
       </div>
     );
   };
@@ -1418,169 +1374,144 @@ function JudgeInterface({
         </div>
       )}
 
-      {/* MAIN JUDGING WORKSPACE: SPLIT GRID AREA */}
+      {/* MAIN JUDGING WORKSPACE */}
       {!priorityOnly && (
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 overflow-hidden mt-3 min-h-0">
-          {/* LEFT 2/3 COLUMN: SCROLLABLE SCORING GRID CARDS */}
-          <div className="lg:col-span-2 flex flex-col min-h-0">
-            {/* SURFER CARDS CONTAINER */}
-            <div className="flex-1 flex flex-col gap-3 overflow-y-auto pr-1">
-              {/* ENTRY MODE CONTROLS */}
-              <div className="neon-card rounded-xl p-2 border border-white/5 flex items-center justify-between flex-wrap gap-2.5 flex-shrink-0 bg-slate-950/40">
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setEntryMode('score')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${entryMode === 'score' ? 'bg-indigo-600 text-white shadow-[0_0_12px_rgba(79,70,229,0.3)]' : 'bg-slate-900 border border-slate-850 text-slate-400 hover:text-slate-200'}`}
-                  >
-                    Mode Notes 🏄‍♂️
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEntryMode('interference')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${entryMode === 'interference' ? 'bg-amber-600 text-white shadow-[0_0_12px_rgba(217,119,6,0.3)]' : 'bg-slate-900 border border-slate-850 text-slate-400 hover:text-slate-200'}`}
-                  >
-                    Mode Interférence ⚠️
-                  </button>
-                </div>
+        <div className="flex-1 flex flex-col overflow-hidden mt-2 min-h-0">
+          {/* ENTRY MODE CONTROLS */}
+          <div className="flex items-center justify-between flex-wrap gap-2 flex-shrink-0 mb-2">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setEntryMode('score')}
+                className={`px-3 py-1 rounded-md text-xs font-bold ${entryMode === 'score' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}
+              >
+                Notes
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryMode('interference')}
+                className={`px-3 py-1 rounded-md text-xs font-bold ${entryMode === 'interference' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}
+              >
+                Interférence
+              </button>
+            </div>
 
-                {entryMode === 'interference' && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <select
-                      value={interferenceType}
-                      onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
-                      className="px-2.5 py-1 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-slate-200 focus:outline-none"
-                    >
-                      <option value="INT1">Pénalité #1 (B/2)</option>
-                      <option value="INT2">Pénalité #2 (B=0)</option>
-                    </select>
-                    {isChiefJudge && (
-                      <label className="inline-flex items-center gap-1.5 text-xs text-slate-400 font-bold select-none cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={headJudgeOverride}
-                          onChange={(e) => setHeadJudgeOverride(e.target.checked)}
-                          className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0 focus:ring-offset-0"
-                        />
-                        HJ Override
-                      </label>
-                    )}
-                  </div>
+            {entryMode === 'interference' && (
+              <div className="flex items-center gap-2">
+                <select
+                  value={interferenceType}
+                  onChange={(e) => setInterferenceType(e.target.value as InterferenceType)}
+                  className="px-2 py-1 bg-slate-800 border border-slate-700 rounded-md text-xs font-bold text-slate-200 focus:outline-none"
+                >
+                  <option value="INT1">#1 (B/2)</option>
+                  <option value="INT2">#2 (B=0)</option>
+                </select>
+                {isChiefJudge && (
+                  <label className="inline-flex items-center gap-1 text-xs text-slate-400 font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={headJudgeOverride}
+                      onChange={(e) => setHeadJudgeOverride(e.target.checked)}
+                      className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
+                    />
+                    HJ
+                  </label>
                 )}
               </div>
-
-              {/* SURFER SCORING STRIPS */}
-              {config.surfers.map((surfer) => {
-                const stats = getSurferStats(surfer);
-                const colorClass = getSurferColorClass(surfer);
-                const isSurferInFlight = inFlightSurfers.includes(normalizeSurferKey(surfer));
-                const prioLabel = priorityLabels[normalizeSurferKey(surfer)] || '=';
-
-                return (
-                  <div
-                    key={surfer}
-                    className={`neon-card rounded-xl p-4 border transition-all duration-300 relative group flex flex-col gap-3 ${colorClass}`}
-                  >
-                    {/* Surfer strip header */}
-                    <div className="flex items-center justify-between border-b border-slate-800/50 pb-2.5">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: getSurferColor(surfer) }} />
-                        <span className="font-extrabold text-base tracking-wide text-slate-100 truncate">{surfer}</span>
-                        
-                        {/* Priority Badge */}
-                        <span className={`inline-flex items-center justify-center text-[10px] font-black rounded-md min-w-[20px] px-1 h-5 ${prioLabel === 'P' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : prioLabel === '=' ? 'bg-slate-850 text-slate-500 border border-slate-800/30' : 'bg-indigo-600 text-white'}`}>
-                          {prioLabel === '=' ? '=' : `PRIO ${prioLabel}`}
-                        </span>
-                        
-                        {/* In Flight Indicator */}
-                        {isSurferInFlight && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse">
-                            SURFING
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Score stats pill */}
-                      <div className="flex items-center gap-2 bg-slate-950 border border-slate-900 px-3 py-1 rounded-lg text-xs font-semibold select-none">
-                        <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">M1</span>
-                        <span className="text-slate-200 font-mono font-bold">{stats.best1.toFixed(1)}</span>
-                        <span className="text-slate-700">|</span>
-                        <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">M2</span>
-                        <span className="text-slate-200 font-mono font-bold">{stats.best2.toFixed(1)}</span>
-                        <span className="text-slate-700">/</span>
-                        <span className="text-slate-500 text-[10px] uppercase tracking-wider font-bold">Total</span>
-                        <span className="text-cyan-400 font-mono font-black drop-shadow-[0_0_8px_rgba(34,211,238,0.2)]">{stats.total.toFixed(2)}</span>
-                      </div>
-                    </div>
-
-                    {/* Horizontal Wave scoring strip */}
-                    <div className="flex flex-wrap gap-2">
-                      {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => {
-                        const scoreData = getScoreForWave(surfer, wave);
-                        const canScore = canScoreWave(surfer, wave);
-                        const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
-                        const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
-
-                        let cellClass = "inline-flex flex-col items-center justify-center rounded-xl font-bold border transition-all duration-200 relative select-none w-[52px] h-[52px] text-xs active:scale-95 touch-manipulation ";
-                        
-                        if (isActive) {
-                          cellClass += "bg-cyan-950/60 text-cyan-300 border-cyan-500 animate-active-cell";
-                        } else if (scoreData) {
-                          cellClass += entryMode === 'interference'
-                            ? "bg-amber-950/40 text-amber-300 border-amber-800/80 hover:bg-amber-900/40"
-                            : "bg-emerald-950/30 text-emerald-300 border-emerald-800/50 hover:bg-emerald-900/30";
-                        } else if (canScore) {
-                          cellClass += "border-2 border-dashed border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-200 bg-slate-900/20";
-                        } else {
-                          cellClass += "border-slate-950 text-slate-800 bg-slate-950/10 cursor-not-allowed opacity-25";
-                        }
-
-                        return (
-                          <button
-                            key={wave}
-                            type="button"
-                            disabled={!isActive && !scoreData && !canScore}
-                            onClick={() => handleCellClick(surfer, wave)}
-                            className={cellClass}
-                            title={scoreData ? `Note: ${scoreData.score.toFixed(2)}` : canScore ? `Noter la vague ${wave}` : `Vague ${wave} bloquée`}
-                          >
-                            <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mb-0.5">V{wave}</span>
-                            
-                            <div className="flex items-center justify-center font-mono text-sm">
-                              {isActive ? (
-                                <span className="text-cyan-400 font-extrabold">{inputValue || '—'}</span>
-                              ) : scoreData ? (
-                                <div className="flex flex-col items-center">
-                                  <span className="font-extrabold">{scoreData.score.toFixed(1)}</span>
-                                  <span className="absolute -top-0.5 -right-0.5 bg-slate-900 rounded-full p-0.5 border border-slate-850 text-[6px] text-slate-500">
-                                    🔒
-                                  </span>
-                                </div>
-                              ) : canScore ? (
-                                <Edit3 className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 animate-pulse" />
-                              ) : (
-                                <span className="text-slate-800 font-normal">—</span>
-                              )}
-                            </div>
-
-                            {effective && (
-                              <span className="absolute bottom-0 text-[7px] font-black uppercase text-amber-500 tracking-tighter leading-none mb-0.5 bg-slate-950/80 px-0.5 rounded border border-amber-950/50">
-                                {effective.type === 'INT1' ? 'I1' : 'I2'}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            )}
           </div>
 
-          {/* RIGHT 1/3 COLUMN: TACTILE TOUCH KEYPAD PANEL */}
-          <div className="lg:col-span-1 min-h-0 flex flex-col justify-between">
-            {renderRightPanel()}
+          {/* SURFER ROWS — scrollable area */}
+          <div className="flex-1 flex flex-col gap-1.5 overflow-y-auto min-h-0">
+            {config.surfers.map((surfer) => {
+              const stats = getSurferStats(surfer);
+              const isSurferInFlight = inFlightSurfers.includes(normalizeSurferKey(surfer));
+              const prioLabel = priorityLabels[normalizeSurferKey(surfer)] || '=';
+              const surferColor = getSurferColor(surfer);
+
+              return (
+                <div key={surfer} className="bg-slate-900/60 rounded-lg border border-slate-800 p-2 flex-shrink-0">
+                  {/* Surfer header row: color + name + stats */}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="w-4 h-4 rounded flex-shrink-0 border border-slate-700" style={{ backgroundColor: surferColor }} />
+                    <span className="font-bold text-sm text-slate-100 truncate min-w-[60px]">{surfer}</span>
+                    {prioLabel !== '=' && (
+                      <span className="text-[9px] font-bold bg-indigo-600 text-white px-1 py-0.5 rounded">{prioLabel}</span>
+                    )}
+                    {isSurferInFlight && (
+                      <span className="text-[9px] font-bold text-amber-400">SURF</span>
+                    )}
+                    <div className="ml-auto flex items-center gap-1.5 text-[10px] font-mono text-slate-400">
+                      <span>{stats.best1.toFixed(1)}</span>
+                      <span className="text-slate-600">+</span>
+                      <span>{stats.best2.toFixed(1)}</span>
+                      <span className="text-slate-600">=</span>
+                      <span className="font-bold text-slate-200">{stats.total.toFixed(1)}</span>
+                    </div>
+                  </div>
+
+                  {/* Wave cells — horizontal row */}
+                  <div className="flex gap-1 flex-wrap">
+                    {Array.from({ length: config.waves }, (_, i) => i + 1).map((wave) => {
+                      const scoreData = getScoreForWave(surfer, wave);
+                      const canScore = canScoreWave(surfer, wave);
+                      const isActive = activeInput?.surfer === surfer && activeInput?.wave === wave;
+                      const effective = effectiveByTarget.get(`${normalizeSurferKey(surfer)}::${wave}`);
+
+                      let cellClass = "inline-flex flex-col items-center justify-center rounded-md font-bold border relative select-none w-[44px] h-[40px] text-xs active:scale-95 touch-manipulation ";
+
+                      if (isActive) {
+                        cellClass += "bg-cyan-900/50 text-cyan-300 border-cyan-500";
+                      } else if (scoreData) {
+                        cellClass += entryMode === 'interference'
+                          ? "bg-amber-900/20 text-amber-300 border-amber-800/60"
+                          : "bg-emerald-900/20 text-emerald-300 border-emerald-800/40";
+                      } else if (canScore) {
+                        cellClass += "border border-dashed border-slate-600 text-slate-500 bg-slate-800/30";
+                      } else {
+                        cellClass += "border-slate-900 text-slate-800 bg-slate-950/20 cursor-not-allowed opacity-20";
+                      }
+
+                      return (
+                        <button
+                          key={wave}
+                          type="button"
+                          disabled={!isActive && !scoreData && !canScore}
+                          onClick={() => handleCellClick(surfer, wave)}
+                          className={cellClass}
+                        >
+                          <span className="text-[7px] font-bold text-slate-600">{wave}</span>
+                          <div className="font-mono text-sm leading-none">
+                            {isActive ? (
+                              <span className="text-cyan-300 font-bold">{inputValue || '—'}</span>
+                            ) : scoreData ? (
+                              <span className="font-bold">{scoreData.score.toFixed(1)}</span>
+                            ) : canScore ? (
+                              <span className="text-slate-500">✍</span>
+                            ) : (
+                              <span className="text-slate-800">—</span>
+                            )}
+                          </div>
+                          {effective && (
+                            <span className="absolute -bottom-0.5 text-[6px] font-bold text-amber-500">
+                              {effective.type === 'INT1' ? 'I1' : 'I2'}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* SCORE INPUT + KEYPAD — always visible at bottom */}
+          <div className="flex-shrink-0 mt-2">
+            {renderScoreInput()}
+            <div className="mt-1.5">
+              {renderKeypad()}
+            </div>
           </div>
         </div>
       )}

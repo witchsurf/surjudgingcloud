@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Pause, RotateCcw, Clock, Settings } from 'lucide-react';
 import { TimerAudio } from '../utils/audioUtils';
 import type { HeatTimer as HeatTimerType } from '../types';
@@ -34,10 +34,13 @@ function HeatTimer({
 }: HeatTimerProps) {
   const [timeLeft, setTimeLeft] = useState(timer.duration * 60);
   const [showSettings, setShowSettings] = useState(false);
-  const [fiveMinuteAlarmPlayed, setFiveMinuteAlarmPlayed] = useState(false);
-  const [lastCountdownSecond, setLastCountdownSecond] = useState(-1);
-  const [finalBeepPlayed, setFinalBeepPlayed] = useState(false);
-  const timerAudio = TimerAudio.getInstance();
+  // Use refs for alarm flags so the ticking interval stays stable
+  const fiveMinuteAlarmPlayedRef = useRef(false);
+  const lastCountdownSecondRef = useRef(-1);
+  const finalBeepPlayedRef = useRef(false);
+  const timerAudioRef = useRef(TimerAudio.getInstance());
+  const onPauseRef = useRef(onPause);
+  onPauseRef.current = onPause;
 
   // Écouter les événements de synchronisation du timer
   useEffect(() => {
@@ -61,8 +64,8 @@ function HeatTimer({
         console.log('⏰ Timer mis à jour via événement:', { remaining, elapsed });
       } else {
         // Reset des alarmes si le timer est réinitialisé
-        setFiveMinuteAlarmPlayed(false);
-        setLastCountdownSecond(-1);
+        fiveMinuteAlarmPlayedRef.current = false;
+        lastCountdownSecondRef.current = -1;
         setTimeLeft(syncedTimer.duration * 60);
         console.log('⏰ Timer reset via événement:', { duration: syncedTimer.duration });
       }
@@ -83,8 +86,10 @@ function HeatTimer({
     let interval: NodeJS.Timeout;
 
     if (timer.isRunning) {
-      interval = setInterval(() => {
-        let remaining = timeLeft;
+      // Compute remaining time and update — uses refs for alarm state so
+      // this interval is NOT torn down on every tick.
+      const tick = () => {
+        let remaining: number;
         if (timer.startTime) {
           const elapsed = Math.floor((Date.now() - new Date(timer.startTime).getTime()) / 1000);
           remaining = Math.min(
@@ -93,51 +98,58 @@ function HeatTimer({
           );
         } else {
           // Fallback: décrémente localement si pas de startTime
-          remaining = Math.max(0, remaining - 1);
+          setTimeLeft(prev => Math.max(0, prev - 1));
+          return; // skip alarm checks since we don't have an absolute remaining
         }
         setTimeLeft(remaining);
 
+        const audio = timerAudioRef.current;
+
         // Alarme 5 minutes (300 secondes)
-        if (remaining === 300 && !fiveMinuteAlarmPlayed) {
-          timerAudio.playFiveMinuteAlarm();
-          setFiveMinuteAlarmPlayed(true);
+        if (remaining === 300 && !fiveMinuteAlarmPlayedRef.current) {
+          audio.playFiveMinuteAlarm();
+          fiveMinuteAlarmPlayedRef.current = true;
         }
 
         // Countdown des 5 dernières secondes
-        if (remaining <= 5 && remaining > 0 && remaining !== lastCountdownSecond) {
-          timerAudio.playCountdownBeep();
-          setLastCountdownSecond(remaining);
+        if (remaining <= 5 && remaining > 0 && remaining !== lastCountdownSecondRef.current) {
+          audio.playCountdownBeep();
+          lastCountdownSecondRef.current = remaining;
         }
 
         // Son final quand le temps est écoulé (play only once!)
-        if (remaining === 0 && !finalBeepPlayed) {
-          timerAudio.playFinalBeep();
-          setFinalBeepPlayed(true);
-          onPause();
+        if (remaining === 0 && !finalBeepPlayedRef.current) {
+          audio.playFinalBeep();
+          finalBeepPlayedRef.current = true;
+          onPauseRef.current();
         }
-      }, 1000);
+      };
+
+      // Fire immediately to avoid 1-second delay on start
+      tick();
+      interval = setInterval(tick, 1000);
     }
 
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [timer.isRunning, timer.startTime, timer.duration, onPause, timeLeft, fiveMinuteAlarmPlayed, lastCountdownSecond, finalBeepPlayed, timerAudio]);
+  }, [timer.isRunning, timer.startTime, timer.duration]);
 
   useEffect(() => {
     if (!timer.isRunning && !timer.startTime) {
       // Only reset to full duration if purposefully reset (no startTime)
       setTimeLeft(timer.duration * 60);
-      setFiveMinuteAlarmPlayed(false);
-      setLastCountdownSecond(-1);
-      setFinalBeepPlayed(false);
-      timerAudio.stopAll?.();
+      fiveMinuteAlarmPlayedRef.current = false;
+      lastCountdownSecondRef.current = -1;
+      finalBeepPlayedRef.current = false;
+      timerAudioRef.current.stopAll?.();
     } else if (!timer.isRunning && timer.startTime) {
       // If paused/stopped but startTime exists, double check if we should be at 0
       const elapsed = Math.floor((Date.now() - new Date(timer.startTime).getTime()) / 1000);
       const remaining = Math.max(0, timer.duration * 60 - elapsed);
       if (remaining < 1) setTimeLeft(0);
     }
-  }, [timer.duration, timer.isRunning, timer.startTime, timerAudio]);
+  }, [timer.duration, timer.isRunning, timer.startTime]);
 
   const formatTime = (seconds: number): string => {
     const roundedSeconds = Math.floor(seconds);

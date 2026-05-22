@@ -30,6 +30,13 @@ export const JudgeLogin = ({ judgeId, onSuccess }: JudgeLoginProps) => {
         setError('');
         setLoading(true);
 
+        // Request fullscreen immediately during user gesture
+        try {
+            await document.documentElement.requestFullscreen();
+        } catch (err) {
+            console.warn('Fullscreen request declined:', err);
+        }
+
         try {
             const judge = await validateJudgeCode(judgeId, personalCode.trim());
 

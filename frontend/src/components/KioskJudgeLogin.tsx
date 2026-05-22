@@ -29,6 +29,13 @@ export const KioskJudgeLogin = ({ position, assignedName, assignedJudgeId, onSuc
 
         setLoading(true);
 
+        // Request fullscreen immediately during user gesture
+        try {
+            await document.documentElement.requestFullscreen();
+        } catch (err) {
+            console.warn('Fullscreen request declined:', err);
+        }
+
         try {
             // Store in session storage
             sessionStorage.setItem('authenticated_judge_id', position);
