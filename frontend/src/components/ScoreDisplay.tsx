@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { Users, Trophy, FileText } from 'lucide-react';
 import HeatTimer from './HeatTimer';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
@@ -72,6 +72,18 @@ function getPriorityBadgeTextClass(label?: string) {
   return normalized === 'BLANC' || normalized === 'WHITE'
     ? 'text-primary-950 font-extrabold drop-shadow-none'
     : 'text-white';
+}
+
+function getPriorityBadgeTextStyle(label?: string): CSSProperties {
+  const normalized = normalizePriorityKey(label);
+  const needsDarkText = normalized === 'BLANC' || normalized === 'WHITE' || normalized === 'JAUNE' || normalized === 'YELLOW';
+
+  return {
+    color: needsDarkText ? '#0f172a' : '#ffffff',
+    fontWeight: 1000,
+    textShadow: needsDarkText ? '0 1px 0 rgba(255,255,255,0.8)' : '0 2px 3px rgba(0,0,0,0.75)',
+    WebkitTextStroke: needsDarkText ? '0.35px rgba(15,23,42,0.55)' : '0.25px rgba(0,0,0,0.45)',
+  };
 }
 
 type NeededScoreInfo = {
@@ -498,7 +510,7 @@ export default function ScoreDisplay({
                         <div className="relative">
                           <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full ${style.badge} neon-glow-${colorKey} flex items-center justify-center`}>
                             {isPriorityActive && !isInFlight && priorityBadge && (
-                              <span className={`${getPriorityBadgeTextClass(row.surfer)} font-bebas text-base sm:text-lg leading-none drop-shadow`}>{priorityBadge}</span>
+                              <span className={`${getPriorityBadgeTextClass(row.surfer)} text-xl sm:text-2xl leading-none`} style={getPriorityBadgeTextStyle(row.surfer)}>{priorityBadge}</span>
                             )}
                           </div>
                           <div className="absolute -bottom-1 -right-1 bg-slate-950 border border-white/10 rounded-full p-0.5">
@@ -579,7 +591,7 @@ export default function ScoreDisplay({
                           <div className="relative">
                             <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full ${style.badge} neon-glow-${colorKey} flex items-center justify-center`}>
                               {isPriorityActive && !isInFlight && priorityBadge && (
-                                <span className={`${getPriorityBadgeTextClass(stat.surfer)} font-bebas text-base sm:text-lg leading-none drop-shadow`}>{priorityBadge}</span>
+                                <span className={`${getPriorityBadgeTextClass(stat.surfer)} text-xl sm:text-2xl leading-none`} style={getPriorityBadgeTextStyle(stat.surfer)}>{priorityBadge}</span>
                               )}
                             </div>
                             <div className="absolute -bottom-1 -right-1 bg-slate-950 border border-white/10 rounded-full p-0.5">
