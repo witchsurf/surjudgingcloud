@@ -51,6 +51,7 @@ interface HeatChannelState {
   lastConfig: AppConfig | null;
   lastStatus: HeatLifecycleStatus | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
+  releaseTimer: ReturnType<typeof setTimeout> | null;
   pollingInterval: ReturnType<typeof setInterval> | null;
   reconnecting: boolean;
   retryCount: number;
@@ -65,6 +66,7 @@ const CLOUD_POLL_INTERVAL_MS = 3000;
 const REALTIME_RETRY_BASE_MS = 3000;
 const REALTIME_RETRY_MAX_MS = 30000;
 const REALTIME_RETRY_POLL_ONLY_THRESHOLD = 4;
+const HEAT_CHANNEL_RELEASE_GRACE_MS = 1500;
 
 const hasOfflineAdminSession = () => {
   if (typeof window === 'undefined') return false;
@@ -187,6 +189,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
     lastConfig: null,
     lastStatus: null,
     retryTimer: null,
+    releaseTimer: null,
     pollingInterval: null,
     reconnecting: false,
     retryCount: 0,
@@ -216,8 +219,7 @@ const createHeatChannel = (normalizedHeatId: string) => {
       try {
         const previousChannel = state.channel;
         state.channel = null;
-        previousChannel.unsubscribe();
-        supabase.removeChannel(previousChannel);
+        void supabase.removeChannel(previousChannel).catch(() => {});
       } catch (error) {
         console.warn('⚠️ Failed to recycle realtime channel', normalizedHeatId, error);
       }
@@ -337,30 +339,39 @@ const createHeatChannel = (normalizedHeatId: string) => {
 const releaseHeatChannel = (normalizedHeatId: string) => {
   const state = heatChannelRegistry.get(normalizedHeatId);
   if (!state) return;
+  if (state.releaseTimer) return;
 
   if (state.listeners.size === 0) {
-    try {
-      if (state.retryTimer) {
-        clearTimeout(state.retryTimer);
-        state.retryTimer = null;
+    state.releaseTimer = setTimeout(() => {
+      state.releaseTimer = null;
+      if (state.listeners.size > 0) {
+        updateHeatChannelDebug();
+        return;
       }
-      if (state.pollingInterval) {
-        clearInterval(state.pollingInterval);
-        state.pollingInterval = null;
+
+      try {
+        if (state.retryTimer) {
+          clearTimeout(state.retryTimer);
+          state.retryTimer = null;
+        }
+        if (state.pollingInterval) {
+          clearInterval(state.pollingInterval);
+          state.pollingInterval = null;
+        }
+        if (state.channel) {
+          const channel = state.channel;
+          state.channel = null;
+          state.reconnecting = false;
+          const removal = supabase?.removeChannel(channel);
+          removal?.catch(() => {});
+        }
+      } catch (error) {
+        console.warn('⚠️ Failed to release realtime channel', normalizedHeatId, error);
+      } finally {
+        heatChannelRegistry.delete(normalizedHeatId);
+        updateHeatChannelDebug();
       }
-      if (state.channel) {
-        const channel = state.channel;
-        state.channel = null;
-        state.reconnecting = false;
-        channel.unsubscribe();
-        supabase?.removeChannel(channel);
-      }
-    } catch (error) {
-      console.warn('⚠️ Failed to release realtime channel', normalizedHeatId, error);
-    } finally {
-      heatChannelRegistry.delete(normalizedHeatId);
-      updateHeatChannelDebug();
-    }
+    }, HEAT_CHANNEL_RELEASE_GRACE_MS);
   }
 };
 
@@ -612,6 +623,10 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     if (!usePollingOnly) {
       listenerId = `listener-${++heatListenerSequence}`;
       const state = heatChannelRegistry.get(normalizedHeatId) ?? createHeatChannel(normalizedHeatId);
+      if (state.releaseTimer) {
+        clearTimeout(state.releaseTimer);
+        state.releaseTimer = null;
+      }
       state.listeners.set(listenerId, (timer, config, status) => {
         setLastUpdate(new Date());
         onUpdate(timer, config, status);
