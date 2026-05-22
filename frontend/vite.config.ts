@@ -10,6 +10,9 @@ export default defineConfig({
       // Use the existing manifest.json in /public
       manifest: false,
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         // Cache all built assets (JS, CSS, HTML)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         runtimeCaching: [
