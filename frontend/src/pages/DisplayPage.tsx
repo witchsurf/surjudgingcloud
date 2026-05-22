@@ -24,8 +24,8 @@ import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
-import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
-import { isLocalSupabaseMode, supabase } from '../lib/supabase';
+import { subscribeToHeatInterference, subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
+import { supabase } from '../lib/supabase';
 import type { AppConfig, EventTopScoreEntry, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
 
@@ -1304,11 +1304,10 @@ export default function DisplayPage() {
 
         const displayScoreMode = String(import.meta.env.VITE_DISPLAY_SCORE_MODE || '').trim().toLowerCase();
         const useScoreRealtime = displayScoreMode !== 'polling' && displayScoreMode !== 'poll';
-        const displayPollIntervalMs = (() => {
-            const fromEnv = Number(import.meta.env.VITE_DISPLAY_SCORE_POLL_MS);
-            if (Number.isFinite(fromEnv) && fromEnv >= 1000) return fromEnv;
-            return isLocalSupabaseMode() ? 2500 : 15000;
-        })();
+        const displayPollIntervalMs = Math.max(
+            1000,
+            Number(import.meta.env.VITE_DISPLAY_SCORE_POLL_MS) || 15000
+        );
 
         let cancelled = false;
         const applyFetchedScores = (heatId: string, fetched: Score[] | null | undefined) => {
@@ -1348,14 +1347,14 @@ export default function DisplayPage() {
             ? subscribeToHeatScores(currentHeatId, () => {
                 refreshScores(liveHeatIdRef.current || currentHeatId);
             }, { mode: 'realtime' })
+            : window.setInterval(() => {
+                refreshScores(liveHeatIdRef.current || currentHeatId);
+            }, displayPollIntervalMs);
+        const unsubscribeInterference = useScoreRealtime
+            ? subscribeToHeatInterference(currentHeatId, () => {
+                refreshScores(liveHeatIdRef.current || currentHeatId);
+            }, { mode: 'realtime' })
             : () => { };
-        // Keep a low-frequency safety poll on the display even when the socket
-        // looks healthy. Some cloud runs stay connected but silently stop
-        // delivering score inserts, which previously required a manual refresh.
-        // We use a long interval in cloud mode to reduce load when realtime is enabled.
-        const safetyPollInterval = window.setInterval(() => {
-            refreshScores(liveHeatIdRef.current || currentHeatId);
-        }, useScoreRealtime ? (isLocalSupabaseMode() ? 2500 : 60000) : displayPollIntervalMs);
 
         // Écouter les scores en temps réel (INSERT/UPDATE) uniquement si on a activé le stream realtime.
         const handleNewScore = (event: Event) => {
@@ -1382,8 +1381,12 @@ export default function DisplayPage() {
         return () => {
             cancelled = true;
             unsubscribe();
-            unsubscribeScores();
-            window.clearInterval(safetyPollInterval);
+            if (typeof unsubscribeScores === 'number') {
+                window.clearInterval(unsubscribeScores);
+            } else {
+                unsubscribeScores();
+            }
+            unsubscribeInterference();
             if (useScoreRealtime) {
                 window.removeEventListener('newScoreRealtime', handleNewScore);
             }
