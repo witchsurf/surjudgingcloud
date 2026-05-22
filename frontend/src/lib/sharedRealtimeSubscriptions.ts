@@ -217,17 +217,21 @@ export const subscribeToActiveHeatPointer = (
   eventId: number | null | undefined,
   eventName: string | undefined,
   listener: Listener<ActiveHeatPointerRealtimeRow>,
-  options?: { initialRefresh?: boolean }
+  options?: { initialRefresh?: boolean; fallbackPolling?: boolean }
 ) => {
   const normalizedEventName = (eventName || '').trim();
   const eventNameKey = normalizeEventRealtimeKey(normalizedEventName);
   const eventIdKey = Number.isFinite(Number(eventId)) && Number(eventId) > 0 ? Number(eventId) : null;
   const key = eventIdKey ?? (eventNameKey || 'global');
+  const allowPollingFallback = options?.fallbackPolling !== false;
   const realtimeFilter = canUseRealtimeEqualityFilter(normalizedEventName)
       ? `event_name=eq.${normalizedEventName}`
       : (eventIdKey ? `event_id=eq.${eventIdKey}` : undefined);
   const existing = activeHeatPointerRegistry.get(key);
   if (existing) {
+    if (!allowPollingFallback) {
+      stopPolling(existing);
+    }
     return addListener(activeHeatPointerRegistry, key, existing, listener);
   }
 
@@ -260,7 +264,7 @@ export const subscribeToActiveHeatPointer = (
   if (shouldInitialRefresh) {
     void refresh();
   }
-  if (isLocalSupabaseMode() || !supabase) {
+  if (allowPollingFallback && (isLocalSupabaseMode() || !supabase)) {
     startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
   }
 
@@ -294,7 +298,9 @@ export const subscribeToActiveHeatPointer = (
           return;
         }
         if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
-          startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
+          if (allowPollingFallback) {
+            startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
+          }
           console.warn(`⚠️ Shared active heat channel dropped for key ${key}: ${status}`);
         }
       });

@@ -280,7 +280,7 @@ export default function JudgePage() {
 
         return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
-        }, { initialRefresh: false });
+        }, { initialRefresh: false, fallbackPolling: !positionFromUrl });
     }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl, loadConfigFromDb]);
 
     // Purge local scores only when heat changes.
