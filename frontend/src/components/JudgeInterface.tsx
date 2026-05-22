@@ -11,7 +11,6 @@ import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, promoteOpeningToOrdered, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
 import { sanitizeScoreInput, validateScore } from '../utils/scoring';
 import { canonicalizeScores } from '../api/modules/scoring.api';
-import { subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 
 interface JudgeInterfaceProps {
   config?: AppConfig;
@@ -350,21 +349,6 @@ function JudgeInterface({
     return () => window.removeEventListener('scoreOverrideApplied', handleOverride);
   }, [currentHeatId, refetchJudgeScores]);
 
-  useEffect(() => {
-    if (!currentHeatId || !isSupabaseConfigured()) return () => { };
-
-    const unsubscribe = subscribeToHeatScores(currentHeatId, () => {
-      refetchJudgeScores('shared_update').catch((err) => {
-        console.warn('Failed to refetch judge scores after shared heat update:', err);
-      });
-    }, { mode: 'realtime' });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [currentHeatId, refetchJudgeScores]);
-
-
   const mergeRealtimeScore = useCallback((incoming: Score) => {
     if (!currentHeatId) return;
     const currentId = ensureHeatId(currentHeatId);
@@ -512,17 +496,6 @@ function JudgeInterface({
       console.warn('Erreur hydratation scores', error);
     });
   }, [currentHeatId, judgeId, judgeStation, readAllScoresFromStorage, persistScoresToStorage, readScoresFromStorage]);
-
-  useEffect(() => {
-    const handleRealtimeScore = (event: Event) => {
-      const custom = event as CustomEvent<Score>;
-      if (!custom.detail) return;
-      mergeRealtimeScore(custom.detail);
-    };
-
-    window.addEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
-    return () => window.removeEventListener('newScoreRealtime', handleRealtimeScore as EventListener);
-  }, [mergeRealtimeScore]);
 
   useLayoutEffect(() => {
     if (!activeInputRef.current) return;
