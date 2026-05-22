@@ -42,6 +42,11 @@ export interface RealtimeDiagnosticEntry {
 export interface RuntimeDiagnostics {
   frontendVersion: string;
   frontendBuild: string;
+  expectedSchemaVersion: string;
+  databaseSchemaVersion: string | null;
+  schemaVersionMatches: boolean | null;
+  lastSchemaCheckAt: string | null;
+  schemaVersionError: string | null;
   hpReachable: boolean | null;
   localSupabaseReachable: boolean | null;
   lastHpCheckAt: string | null;
@@ -108,6 +113,11 @@ const readRuntimeDiagnostics = (): RuntimeDiagnostics =>
   readJson<RuntimeDiagnostics>(RUNTIME_DIAGNOSTICS_KEY, {
     frontendVersion: (import.meta.env.VITE_APP_VERSION as string | undefined) || '0.0.0',
     frontendBuild: (import.meta.env.VITE_APP_BUILD as string | undefined) || 'dev',
+    expectedSchemaVersion: (import.meta.env.VITE_EXPECTED_SCHEMA_VERSION as string | undefined) || 'unknown',
+    databaseSchemaVersion: null,
+    schemaVersionMatches: null,
+    lastSchemaCheckAt: null,
+    schemaVersionError: null,
     hpReachable: null,
     localSupabaseReachable: null,
     lastHpCheckAt: null,
@@ -201,6 +211,10 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
   if (typeof window === 'undefined') return;
 
   const runtime = readRuntimeDiagnostics();
+  const expectedSchemaVersion =
+    (import.meta.env.VITE_EXPECTED_SCHEMA_VERSION as string | undefined)
+    || runtime.expectedSchemaVersion
+    || 'unknown';
   const origin = window.location.origin;
   const hostname = window.location.hostname;
   const isLocalHost =
@@ -213,18 +227,34 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
   if (!isLocalHost) {
     writeRuntimeDiagnostics({
       ...runtime,
+      expectedSchemaVersion,
       hpReachable: null,
       localSupabaseReachable: null,
+      schemaVersionMatches: null,
       lastHpCheckAt: nowIso(),
       lastHpError: null,
     });
     return;
   }
 
+  const supabaseAnonKey =
+    (import.meta.env.VITE_SUPABASE_ANON_KEY_LAN as string | undefined)
+    || (import.meta.env.VITE_SUPABASE_ANON_KEY_LOCAL as string | undefined)
+    || '';
+  const supabaseHeaders = supabaseAnonKey
+    ? {
+      apikey: supabaseAnonKey,
+      authorization: `Bearer ${supabaseAnonKey}`,
+    }
+    : undefined;
   const supabaseUrl = `http://${hostname}:8000/rest/v1/events?select=id&limit=1`;
+  const schemaVersionUrl = `http://${hostname}:8000/rest/v1/app_runtime_schema_version?select=schema_version,updated_at&limit=1`;
   let hpReachable = false;
   let localSupabaseReachable = false;
   let lastHpError: string | null = null;
+  let databaseSchemaVersion: string | null = runtime.databaseSchemaVersion ?? null;
+  let schemaVersionMatches: boolean | null = runtime.schemaVersionMatches ?? null;
+  let schemaVersionError: string | null = null;
 
   try {
     const response = await fetch(origin, { method: 'HEAD', cache: 'no-store' });
@@ -237,11 +267,7 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
     const response = await fetch(supabaseUrl, {
       method: 'GET',
       cache: 'no-store',
-      headers: {
-        apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY_LAN as string | undefined)
-          || (import.meta.env.VITE_SUPABASE_ANON_KEY_LOCAL as string | undefined)
-          || '',
-      },
+      headers: supabaseHeaders,
     });
     localSupabaseReachable = response.ok;
     if (!response.ok) {
@@ -251,8 +277,40 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
     lastHpError = toErrorMessage(error);
   }
 
+  if (localSupabaseReachable) {
+    try {
+      const response = await fetch(schemaVersionUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: supabaseHeaders,
+      });
+      if (!response.ok) {
+        throw new Error(`Schema version HTTP ${response.status}`);
+      }
+      const rows = await response.json() as Array<{ schema_version?: string | null }>;
+      databaseSchemaVersion = rows[0]?.schema_version || null;
+      schemaVersionMatches = Boolean(databaseSchemaVersion)
+        && databaseSchemaVersion === expectedSchemaVersion;
+      if (!databaseSchemaVersion) {
+        schemaVersionError = 'Version schéma absente';
+      } else if (!schemaVersionMatches) {
+        schemaVersionError = `Schéma HP ${databaseSchemaVersion} attendu ${expectedSchemaVersion}`;
+      }
+    } catch (error) {
+      schemaVersionMatches = false;
+      schemaVersionError = toErrorMessage(error);
+    }
+  } else {
+    schemaVersionMatches = null;
+  }
+
   writeRuntimeDiagnostics({
     ...runtime,
+    expectedSchemaVersion,
+    databaseSchemaVersion,
+    schemaVersionMatches,
+    lastSchemaCheckAt: nowIso(),
+    schemaVersionError,
     hpReachable,
     localSupabaseReachable,
     lastHpCheckAt: nowIso(),

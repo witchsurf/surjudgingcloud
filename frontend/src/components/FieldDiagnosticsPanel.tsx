@@ -33,13 +33,14 @@ export default function FieldDiagnosticsPanel() {
   const recentRealtime = diagnostics.runtime.realtime.slice(0, 4);
   const hasError = diagnostics.lastReplayStatus === 'failed' || recentOperations.some((operation) => operation.status === 'failed');
   const realtimeFallback = diagnostics.runtime.realtime.some((entry) => entry.hasPolling || entry.status === 'fallback_polling');
+  const schemaMismatch = diagnostics.runtime.schemaVersionMatches === false;
 
   return (
     <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <summary className="cursor-pointer list-none px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {hasError ? (
+            {hasError || schemaMismatch ? (
               <AlertTriangle className="h-5 w-5 text-red-600" />
             ) : diagnostics.totalPending > 0 ? (
               <Clock className="h-5 w-5 text-amber-600" />
@@ -51,6 +52,7 @@ export default function FieldDiagnosticsPanel() {
               <div className="text-xs text-slate-500">
                 Mode {config.mode || 'auto'} · {diagnostics.isBrowserOnline ? 'navigateur en ligne' : 'navigateur hors ligne'}
                 {realtimeFallback ? ' · fallback polling actif' : ' · realtime prioritaire'}
+                {schemaMismatch ? ' · schéma à vérifier' : ''}
               </div>
             </div>
           </div>
@@ -115,9 +117,18 @@ export default function FieldDiagnosticsPanel() {
           </button>
         </div>
 
-        {(diagnostics.lastReplayError || diagnostics.runtime.lastHpError) && (
+        <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${schemaMismatch ? 'border-red-200 bg-red-50 text-red-700' : diagnostics.runtime.schemaVersionMatches ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+          <div className="font-bold">Version schéma HP</div>
+          <div className="mt-1 grid gap-1 text-xs md:grid-cols-3">
+            <span>Attendue: <strong>{diagnostics.runtime.expectedSchemaVersion}</strong></span>
+            <span>Installée: <strong>{diagnostics.runtime.databaseSchemaVersion || 'inconnue'}</strong></span>
+            <span>État: <strong>{diagnostics.runtime.schemaVersionMatches === null ? 'non vérifié' : diagnostics.runtime.schemaVersionMatches ? 'aligné' : 'mismatch'}</strong></span>
+          </div>
+        </div>
+
+        {(diagnostics.lastReplayError || diagnostics.runtime.schemaVersionError || diagnostics.runtime.lastHpError) && (
           <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-            {diagnostics.lastReplayError || diagnostics.runtime.lastHpError}
+            {diagnostics.lastReplayError || diagnostics.runtime.schemaVersionError || diagnostics.runtime.lastHpError}
           </div>
         )}
 

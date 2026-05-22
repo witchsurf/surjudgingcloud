@@ -104,6 +104,9 @@ It shows:
 - HP/web reachability when served from a LAN host.
 - Local Supabase API reachability when served from a LAN host.
 - Frontend version/build identifier.
+- Expected schema version (latest migration known at frontend build time).
+- Installed HP schema version from `public.app_runtime_schema_version`.
+- A visible mismatch warning when the HP schema does not match the frontend.
 - Realtime channel state, including whether fallback polling is active.
 - Browser online/offline state.
 - Legacy queue count.
@@ -127,8 +130,28 @@ It also exposes a manual "Rejouer les files" button that calls
 - Heat timer/config performs one initial REST fetch, then relies on realtime
   unless degraded fallback polling is active.
 
+## Runtime Schema Version
+
+Owner:
+
+- Migration: `backend/supabase/migrations/20260523010000_add_runtime_schema_version.sql`
+- Build-time expectation: `frontend/vite.config.ts`
+- Runtime check: `frontend/src/lib/offlineOperations.ts`
+
+Mechanism:
+
+- The migration writes a singleton row in `public.app_runtime_schema_version`.
+- The frontend build embeds `VITE_EXPECTED_SCHEMA_VERSION` from the latest
+  migration filename.
+- The field diagnostics panel compares the embedded expected version with the
+  installed database version.
+
+Operational rule:
+
+- A schema mismatch is a terrain warning. Apply HP migrations before trusting
+  newly deployed frontend behavior that depends on database changes.
+
 ## Follow-Up Candidates
 
 - Gradually migrate legacy queue writers to typed business operations.
-- Add schema-version checks between frontend and HP Supabase migrations.
 - Add targeted tests for replay idempotency and duplicate online events.

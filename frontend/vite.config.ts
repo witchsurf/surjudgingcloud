@@ -1,11 +1,31 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const resolveExpectedSchemaVersion = () => {
+  if (process.env.SURFJUDGING_SCHEMA_VERSION) {
+    return process.env.SURFJUDGING_SCHEMA_VERSION
+  }
+
+  try {
+    const migrationsDir = resolve(__dirname, '../backend/supabase/migrations')
+    const migrationFiles = readdirSync(migrationsDir)
+      .filter((file) => /^\d.+\.sql$/.test(file))
+      .sort()
+    const latest = migrationFiles.at(-1)
+    return latest ? latest.replace(/\.sql$/, '') : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
 
 export default defineConfig({
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.npm_package_version || '0.0.0'),
     'import.meta.env.VITE_APP_BUILD': JSON.stringify(process.env.SURFJUDGING_BUILD_ID || new Date().toISOString()),
+    'import.meta.env.VITE_EXPECTED_SCHEMA_VERSION': JSON.stringify(resolveExpectedSchemaVersion()),
   },
   plugins: [
     react(),
