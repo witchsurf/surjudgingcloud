@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { User, Waves, Lock, Unlock, CreditCard as Edit3, Maximize, Minimize, Check, Delete, Trash2, AlertCircle } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
@@ -750,6 +750,18 @@ function JudgeInterface({
     return SURFER_COLORS[normalizeSurferKey(surfer)] || '#6B7280';
   };
 
+  const getPriorityBadgeStyle = (surfer: string): CSSProperties => {
+    const key = normalizeSurferKey(surfer);
+    const needsDarkText = key === 'BLANC' || key === 'WHITE' || key === 'JAUNE' || key === 'YELLOW';
+
+    return {
+      backgroundColor: getSurferColor(surfer),
+      borderColor: needsDarkText ? 'rgba(15, 23, 42, 0.42)' : 'rgba(255, 255, 255, 0.45)',
+      color: needsDarkText ? '#0f172a' : '#ffffff',
+      textShadow: needsDarkText ? '0 1px 0 rgba(255, 255, 255, 0.45)' : '0 1px 2px rgba(0, 0, 0, 0.65)',
+    };
+  };
+
   const normalizedSurfers = useMemo(
     () => config.surfers.map(normalizeSurferKey).filter(Boolean),
     [config.surfers, normalizeSurferKey]
@@ -1441,7 +1453,9 @@ function JudgeInterface({
                     <span className="w-4 h-4 rounded flex-shrink-0 border border-slate-700" style={{ backgroundColor: surferColor }} />
                     <span className="judge-surfer-title font-bold text-sm text-slate-100 truncate">{surfer}</span>
                     {prioLabel !== '=' && (
-                      <span className="text-[9px] font-bold bg-indigo-600 text-white px-1 py-0.5 rounded">{prioLabel}</span>
+                      <span className="judge-priority-badge" style={getPriorityBadgeStyle(surfer)}>
+                        {prioLabel}
+                      </span>
                     )}
                     {isSurferInFlight && (
                       <span className="text-[9px] font-bold text-amber-400">SURF</span>
