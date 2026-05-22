@@ -11,7 +11,7 @@ import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useHeatManager } from '../hooks/useHeatManager';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isLocalSupabaseMode, isSupabaseConfigured } from '../lib/supabase';
 import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
@@ -280,7 +280,7 @@ export default function JudgePage() {
 
         return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
-        }, { initialRefresh: false, fallbackPolling: !positionFromUrl });
+        }, { initialRefresh: false, fallbackPolling: !positionFromUrl || isLocalSupabaseMode() });
     }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl, loadConfigFromDb]);
 
     // Purge local scores only when heat changes.
