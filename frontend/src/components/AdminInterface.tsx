@@ -1385,21 +1385,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   }, [config, configSaved, heatStatus, timer]);
 
-  const publicDisplayUrl = React.useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    const url = new URL(window.location.origin);
-    url.pathname = '/display';
-
-    // Use eventId if available (Preferred for cross-device sync)
-    if (activeEventId) {
-      url.searchParams.set('eventId', activeEventId.toString());
-    } else if (encodedDisplayPayload) {
-      // Fallback to config payload (Legacy/Offline)
-      url.searchParams.set('config', encodedDisplayPayload);
-    }
-    return url.toString();
-  }, [encodedDisplayPayload, activeEventId]);
-
   const kioskBaseUrl = React.useMemo(() => {
     if (typeof window === 'undefined') return '';
 
@@ -1436,6 +1421,28 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return kioskBase || currentOrigin;
   }, []);
 
+  const buildAccessUrl = React.useCallback((pathname: string) => {
+    const base = kioskBaseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+    if (!base) return null;
+    const url = new URL(base);
+    url.pathname = pathname;
+    return url;
+  }, [kioskBaseUrl]);
+
+  const publicDisplayUrl = React.useMemo(() => {
+    const url = buildAccessUrl('/display');
+    if (!url) return '';
+
+    // Use eventId if available (Preferred for cross-device sync)
+    if (activeEventId) {
+      url.searchParams.set('eventId', activeEventId.toString());
+    } else if (encodedDisplayPayload) {
+      // Fallback to config payload (Legacy/Offline)
+      url.searchParams.set('config', encodedDisplayPayload);
+    }
+    return url.toString();
+  }, [activeEventId, buildAccessUrl, encodedDisplayPayload]);
+
   const kioskEventId = React.useMemo(() => {
     if (typeof window === 'undefined') return null;
     const eventIdRaw = window.localStorage.getItem(ACTIVE_EVENT_STORAGE_KEY);
@@ -1457,16 +1464,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [kioskBaseUrl, kioskEventId]);
 
   const priorityJudgeUrl = React.useMemo(() => {
-    if (typeof window === 'undefined') return '';
-    const url = new URL(window.location.origin);
-    url.pathname = '/priority';
+    const url = buildAccessUrl('/priority');
+    if (!url) return '';
 
     if (activeEventId) {
       url.searchParams.set('eventId', activeEventId.toString());
     }
 
     return url.toString();
-  }, [activeEventId]);
+  }, [activeEventId, buildAccessUrl]);
 
   const handleOpenDisplay = () => {
     if (!publicDisplayUrl) return;
