@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
-import { User, Waves, Lock, Unlock, CreditCard as Edit3, Maximize, Minimize, Check, Delete, Trash2 } from 'lucide-react';
+import { User, Waves, Lock, Unlock, CreditCard as Edit3, Maximize, Minimize, Check, Delete, Trash2, AlertCircle } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
@@ -94,6 +94,7 @@ function JudgeInterface({
   const [interactionWarning, setInteractionWarning] = useState<{ title: string; message: string } | null>(null);
   const [lastSubmitted, setLastSubmitted] = useState<{ surfer: string; wave: number; score: number; ts: number } | null>(null);
   const [scoreFeedback, setScoreFeedback] = useState<{ score: number; ts: number } | null>(null);
+  const [judgeTimerTick, setJudgeTimerTick] = useState(Date.now());
   const activeInputRef = useRef<HTMLInputElement | null>(null);
   const lastTapRef = useRef<{ surfer: string; wave: number; time: number } | null>(null);
   const scoreRefreshInFlightRef = useRef(false);
@@ -874,7 +875,25 @@ function JudgeInterface({
     return () => window.clearTimeout(timerId);
   }, [interactionWarning]);
 
+  useEffect(() => {
+    if (priorityOnly || heatStatus === 'closed' || !timer?.startTime) return;
+
+    setJudgeTimerTick(Date.now());
+    const intervalId = window.setInterval(() => setJudgeTimerTick(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [heatStatus, priorityOnly, timer?.startTime]);
+
   const timerActive = isTimerActive();
+  const judgeTimerElapsed = useMemo(() => {
+    if (priorityOnly || heatStatus === 'closed') return false;
+    if (heatStatus === 'finished') return true;
+    if (!timer?.startTime) return false;
+
+    const startMs = new Date(timer.startTime).getTime();
+    if (!Number.isFinite(startMs)) return false;
+    const durationMs = Math.max(0, Number(timer.duration || 0)) * 60 * 1000;
+    return judgeTimerTick - startMs >= durationMs;
+  }, [heatStatus, judgeTimerTick, priorityOnly, timer?.duration, timer?.startTime]);
 
   // Custom surfer color borders neon glow classes
   const getSurferColorClass = useCallback((surferName: string): string => {
@@ -1155,6 +1174,14 @@ function JudgeInterface({
           )}
         </div>
       </div>
+
+      {!priorityOnly && judgeTimerElapsed && (
+        <div className="judge-elapsed-badge flex-shrink-0">
+          <AlertCircle className="w-4 h-4" />
+          <span>TEMPS ÉCOULÉ</span>
+          <small>En attente de clôture chef juge</small>
+        </div>
+      )}
 
       {heatStatus === 'closed' && (
         <div className="mt-3 rounded-xl border border-red-900 bg-red-950/30 px-6 py-4 text-center shadow-lg flex-shrink-0">

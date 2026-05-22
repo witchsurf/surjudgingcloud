@@ -171,6 +171,31 @@ body {
   overflow: hidden;
 }
 
+.judge-elapsed-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  border-radius: 0.75rem;
+  background: rgba(127, 29, 29, 0.38);
+  color: #fecaca;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 0 24px rgba(185, 28, 28, 0.2);
+}
+
+.judge-elapsed-badge small {
+  color: rgba(254, 202, 202, 0.78);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
 .judge-surfer-list {
   min-height: 0;
   overflow-y: auto;
@@ -210,11 +235,16 @@ body {
 }
 
 .judge-key {
-  min-height: clamp(36px, 6.2vh, 52px);
+  min-height: clamp(46px, 8.5vh, 66px);
 }
 
 .judge-score-input {
   min-height: 42px;
+}
+
+.judge-keypad-panel {
+  align-self: center;
+  width: min(100%, 560px);
 }
 
 @media (max-width: 700px) {
@@ -286,10 +316,11 @@ body {
     position: sticky;
     bottom: max(5px, var(--judge-safe-bottom));
     z-index: 30;
+    width: min(100%, 330px);
   }
 
   .judge-key {
-    min-height: 38px;
+    min-height: 46px;
   }
 }
 
