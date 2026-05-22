@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   getOfflineDiagnosticsSnapshot,
+  refreshLocalRuntimeDiagnostics,
   subscribeOfflineDiagnostics,
   type OfflineDiagnosticsSnapshot,
 } from '../lib/offlineOperations';
@@ -11,7 +12,15 @@ export function useOfflineDiagnostics(): OfflineDiagnosticsSnapshot {
   useEffect(() => {
     const refresh = () => setSnapshot(getOfflineDiagnosticsSnapshot());
     refresh();
-    return subscribeOfflineDiagnostics(refresh);
+    void refreshLocalRuntimeDiagnostics();
+    const interval = window.setInterval(() => {
+      void refreshLocalRuntimeDiagnostics();
+    }, 30000);
+    const unsubscribe = subscribeOfflineDiagnostics(refresh);
+    return () => {
+      window.clearInterval(interval);
+      unsubscribe();
+    };
   }, []);
 
   return snapshot;

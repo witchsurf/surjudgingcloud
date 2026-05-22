@@ -6,6 +6,7 @@ import { DEFAULT_TIMER_DURATION, INITIAL_CONFIG } from '../utils/constants';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { reportRealtimeDiagnostic } from '../lib/offlineOperations';
 
 interface RealtimeHeatConfig {
   heat_id: string;
@@ -63,7 +64,7 @@ const heatChannelRegistry = new Map<string, HeatChannelState>();
 let heatListenerSequence = 0;
 
 const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
-const LOCAL_POLL_INTERVAL_MS = 1000;
+const LOCAL_FALLBACK_POLL_INTERVAL_MS = 30000;
 const CLOUD_POLL_INTERVAL_MS = 3000;
 const REALTIME_RETRY_BASE_MS = 3000;
 const REALTIME_RETRY_MAX_MS = 30000;
@@ -204,18 +205,11 @@ const createHeatChannel = (normalizedHeatId: string) => {
 
   const startPolling = () => {
     if (state.pollingInterval) return;
-    const intervalMs = isLocalSupabaseMode() ? LOCAL_POLL_INTERVAL_MS : CLOUD_POLL_INTERVAL_MS;
+    const intervalMs = isLocalSupabaseMode() ? LOCAL_FALLBACK_POLL_INTERVAL_MS : CLOUD_POLL_INTERVAL_MS;
     state.pollingInterval = setInterval(() => {
       void refreshHeatSnapshot(normalizedHeatId);
     }, intervalMs);
   };
-
-  // Keep the poller active in local mode where websocket delivery is less
-  // predictable. In cloud mode we only enable polling as a degraded fallback
-  // after channel failures to avoid constant duplicate database reads.
-  if (isLocalSupabaseMode()) {
-    startPolling();
-  }
 
   const setupChannel = () => {
     if (!heatChannelRegistry.has(normalizedHeatId)) return;
@@ -247,6 +241,14 @@ const createHeatChannel = (normalizedHeatId: string) => {
           }
           const data = payload.new as RealtimeHeatConfig;
           if (!data) return;
+          reportRealtimeDiagnostic({
+            key: `heat-config:${normalizedHeatId}`,
+            label: `Heat config ${normalizedHeatId}`,
+            status: 'subscribed',
+            hasPolling: Boolean(state.pollingInterval),
+            lastActionAt: new Date().toISOString(),
+            message: data.status,
+          });
 
           const timer: HeatTimer = {
             isRunning: data.status === 'running',
@@ -272,6 +274,14 @@ const createHeatChannel = (normalizedHeatId: string) => {
           const row = payload.new as { status?: string } | null;
           const normalizedStatus = (row?.status || '').toString().trim().toLowerCase();
           if (normalizedStatus !== 'closed') return;
+          reportRealtimeDiagnostic({
+            key: `heat-config:${normalizedHeatId}`,
+            label: `Heat config ${normalizedHeatId}`,
+            status: 'subscribed',
+            hasPolling: Boolean(state.pollingInterval),
+            lastActionAt: new Date().toISOString(),
+            message: 'heat closed',
+          });
 
           const currentState = heatChannelRegistry.get(normalizedHeatId);
           const nextTimer: HeatTimer = {
@@ -308,10 +318,16 @@ const createHeatChannel = (normalizedHeatId: string) => {
         state.reconnecting = false;
         state.retryCount = 0;
         state.releaseAttempts = 0;
-        if (!isLocalSupabaseMode() && state.pollingInterval) {
+        if (state.pollingInterval) {
           clearInterval(state.pollingInterval);
           state.pollingInterval = null;
         }
+        reportRealtimeDiagnostic({
+          key: `heat-config:${normalizedHeatId}`,
+          label: `Heat config ${normalizedHeatId}`,
+          status: 'subscribed',
+          hasPolling: false,
+        });
         void refreshHeatSnapshot(normalizedHeatId);
         window.dispatchEvent(new CustomEvent('heatRealtimeResync', {
           detail: { heatId: normalizedHeatId }
@@ -333,6 +349,13 @@ const createHeatChannel = (normalizedHeatId: string) => {
           `⚠️ Heat stream ${channelName} dropped (${status}), ${fallbackOnly ? 'falling back to polling before next retry' : 'scheduling reconnect'}...`
         );
         startPolling();
+        reportRealtimeDiagnostic({
+          key: `heat-config:${normalizedHeatId}`,
+          label: `Heat config ${normalizedHeatId}`,
+          status: status === 'TIMED_OUT' ? 'timed_out' : 'fallback_polling',
+          hasPolling: Boolean(state.pollingInterval),
+          message: status,
+        });
         state.channel = null;
         state.channelStatus = 'closed';
         supabase!.removeChannel(channel).catch(() => {});
@@ -641,30 +664,25 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
       return () => { };
     }
 
-    const usePollingOnly = isLocalSupabaseMode();
     let listenerId: string | null = null;
     let lastSnapshotKey: string | null = null;
     let missingRealtimeStateLogged = false;
 
-    if (!usePollingOnly) {
-      listenerId = `listener-${++heatListenerSequence}`;
-      const state = heatChannelRegistry.get(normalizedHeatId) ?? createHeatChannel(normalizedHeatId);
-      if (state.releaseTimer) {
-        clearTimeout(state.releaseTimer);
-        state.releaseTimer = null;
-        state.releaseAttempts = 0;
-      }
-      state.listeners.set(listenerId, (timer, config, status) => {
-        setLastUpdate(new Date());
-        onUpdate(timer, config, status);
-      });
-      updateHeatChannelDebug();
+    listenerId = `listener-${++heatListenerSequence}`;
+    const state = heatChannelRegistry.get(normalizedHeatId) ?? createHeatChannel(normalizedHeatId);
+    if (state.releaseTimer) {
+      clearTimeout(state.releaseTimer);
+      state.releaseTimer = null;
+      state.releaseAttempts = 0;
+    }
+    state.listeners.set(listenerId, (timer, config, status) => {
+      setLastUpdate(new Date());
+      onUpdate(timer, config, status);
+    });
+    updateHeatChannelDebug();
 
-      if (debugRealtimeEnabled) {
-        console.log('🔔 Subscription au heat:', normalizedHeatId, 'listener:', listenerId, 'active listeners:', state.listeners.size);
-      }
-    } else {
-      console.log('📡 Realtime WS désactivé en mode LAN, fallback polling pour', normalizedHeatId);
+    if (debugRealtimeEnabled) {
+      console.log('🔔 Subscription au heat:', normalizedHeatId, 'listener:', listenerId, 'active listeners:', state.listeners.size);
     }
 
     // Charger l'état initial
@@ -783,17 +801,6 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     };
 
     loadInitialState();
-
-    if (usePollingOnly) {
-      const pollIntervalMs = LOCAL_POLL_INTERVAL_MS;
-      const pollingInterval = setInterval(() => {
-        void loadInitialState({ skipIfUnchanged: true });
-      }, pollIntervalMs);
-
-      return () => {
-        clearInterval(pollingInterval);
-      };
-    }
 
     // Fonction de nettoyage
     return () => {

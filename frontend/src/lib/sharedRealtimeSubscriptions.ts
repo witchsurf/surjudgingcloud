@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { fetchActiveHeatPointer, fetchEventConfigSnapshot } from '../api/supabaseClient';
-import { isLocalSupabaseMode, supabase } from './supabase';
+import { supabase } from './supabase';
+import { reportRealtimeDiagnostic } from './offlineOperations';
 
 type Listener<T> = (payload: T) => void;
 
@@ -25,8 +26,8 @@ export type ActiveHeatPointerRealtimeRow = {
   active_heat_id?: string;
 };
 
-const EVENT_CONFIG_POLL_INTERVAL_MS = 3000;
-const ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS = 3000;
+const EVENT_CONFIG_POLL_INTERVAL_MS = 30000;
+const ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS = 30000;
 const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
 
 type RegistryKey = string | number;
@@ -170,11 +171,11 @@ export const subscribeToEventConfig = (
   if (shouldInitialRefresh) {
     void refresh();
   }
-  if (isLocalSupabaseMode() || !supabase) {
+  if (!supabase) {
     startPolling(state, refresh, EVENT_CONFIG_POLL_INTERVAL_MS);
   }
 
-  if (!isLocalSupabaseMode() && supabase) {
+  if (supabase) {
     state.channel = supabase
       .channel(`shared-event-config-${eventId}`)
       .on(
@@ -191,6 +192,13 @@ export const subscribeToEventConfig = (
           }
           const row = payload.new as EventConfigRealtimeRow | null;
           if (!row) return;
+          reportRealtimeDiagnostic({
+            key: `event-config:${eventId}`,
+            label: `Event config ${eventId}`,
+            status: 'subscribed',
+            hasPolling: Boolean(state.pollingInterval),
+            lastActionAt: new Date().toISOString(),
+          });
           emitToListeners(state, row);
         }
       )
@@ -198,6 +206,12 @@ export const subscribeToEventConfig = (
         updateSharedRealtimeDebug();
         if (status === 'SUBSCRIBED') {
           stopPolling(state);
+          reportRealtimeDiagnostic({
+            key: `event-config:${eventId}`,
+            label: `Event config ${eventId}`,
+            status: 'subscribed',
+            hasPolling: false,
+          });
           if (shouldInitialRefresh) {
             void refresh();
           }
@@ -205,6 +219,13 @@ export const subscribeToEventConfig = (
         }
         if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
           startPolling(state, refresh, EVENT_CONFIG_POLL_INTERVAL_MS);
+          reportRealtimeDiagnostic({
+            key: `event-config:${eventId}`,
+            label: `Event config ${eventId}`,
+            status: status === 'TIMED_OUT' ? 'timed_out' : 'fallback_polling',
+            hasPolling: Boolean(state.pollingInterval),
+            message: status,
+          });
           console.warn(`⚠️ Shared event config channel dropped for event ${eventId}: ${status}`);
         }
       });
@@ -264,11 +285,11 @@ export const subscribeToActiveHeatPointer = (
   if (shouldInitialRefresh) {
     void refresh();
   }
-  if (allowPollingFallback && (isLocalSupabaseMode() || !supabase)) {
+  if (allowPollingFallback && !supabase) {
     startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
   }
 
-  if (!isLocalSupabaseMode() && supabase) {
+  if (supabase) {
     state.channel = supabase
       .channel(`shared-active-heat-${key}`)
       .on(
@@ -285,6 +306,13 @@ export const subscribeToActiveHeatPointer = (
           }
           const row = payload.new as ActiveHeatPointerRealtimeRow | null;
           if (!matchesEvent(row)) return;
+          reportRealtimeDiagnostic({
+            key: `active-heat:${key}`,
+            label: `Active heat ${key}`,
+            status: 'subscribed',
+            hasPolling: Boolean(state.pollingInterval),
+            lastActionAt: new Date().toISOString(),
+          });
           emitToListeners(state, row);
         }
       )
@@ -292,6 +320,12 @@ export const subscribeToActiveHeatPointer = (
         updateSharedRealtimeDebug();
         if (status === 'SUBSCRIBED') {
           stopPolling(state);
+          reportRealtimeDiagnostic({
+            key: `active-heat:${key}`,
+            label: `Active heat ${key}`,
+            status: 'subscribed',
+            hasPolling: false,
+          });
           if (shouldInitialRefresh) {
             void refresh();
           }
@@ -301,6 +335,13 @@ export const subscribeToActiveHeatPointer = (
           if (allowPollingFallback) {
             startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
           }
+          reportRealtimeDiagnostic({
+            key: `active-heat:${key}`,
+            label: `Active heat ${key}`,
+            status: status === 'TIMED_OUT' ? 'timed_out' : 'fallback_polling',
+            hasPolling: Boolean(state.pollingInterval),
+            message: status,
+          });
           console.warn(`⚠️ Shared active heat channel dropped for key ${key}: ${status}`);
         }
       });

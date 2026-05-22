@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, CheckCircle2, Clock, Database, RotateCw } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, Database, Radio, RotateCw, Server } from 'lucide-react';
 import { replayOfflineQueues } from '../lib/offlineSyncCoordinator';
 import { getSupabaseConfig } from '../lib/supabase';
 import { useOfflineDiagnostics } from '../hooks/useOfflineDiagnostics';
@@ -30,7 +30,9 @@ export default function FieldDiagnosticsPanel() {
   const diagnostics = useOfflineDiagnostics();
   const config = getSupabaseConfig();
   const recentOperations = diagnostics.operations.slice(0, 5);
+  const recentRealtime = diagnostics.runtime.realtime.slice(0, 4);
   const hasError = diagnostics.lastReplayStatus === 'failed' || recentOperations.some((operation) => operation.status === 'failed');
+  const realtimeFallback = diagnostics.runtime.realtime.some((entry) => entry.hasPolling || entry.status === 'fallback_polling');
 
   return (
     <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -48,6 +50,7 @@ export default function FieldDiagnosticsPanel() {
               <div className="text-sm font-bold text-slate-900">Diagnostic terrain</div>
               <div className="text-xs text-slate-500">
                 Mode {config.mode || 'auto'} · {diagnostics.isBrowserOnline ? 'navigateur en ligne' : 'navigateur hors ligne'}
+                {realtimeFallback ? ' · fallback polling actif' : ' · realtime prioritaire'}
               </div>
             </div>
           </div>
@@ -67,13 +70,28 @@ export default function FieldDiagnosticsPanel() {
       </summary>
 
       <div className="border-t border-slate-100 px-4 pb-4 pt-3">
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
               <Database className="h-4 w-4" />
               Endpoint
             </div>
             <div className="truncate text-sm font-semibold text-slate-900">{config.supabaseUrl || 'Non configuré'}</div>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+              <Server className="h-4 w-4" />
+              HP / API locale
+            </div>
+            <div className="flex flex-wrap gap-1.5 text-xs font-bold">
+              <span className={`rounded-full border px-2 py-0.5 ${diagnostics.runtime.hpReachable === false ? 'border-red-200 bg-red-50 text-red-700' : diagnostics.runtime.hpReachable ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
+                HP {diagnostics.runtime.hpReachable === null ? 'n/a' : diagnostics.runtime.hpReachable ? 'OK' : 'KO'}
+              </span>
+              <span className={`rounded-full border px-2 py-0.5 ${diagnostics.runtime.localSupabaseReachable === false ? 'border-red-200 bg-red-50 text-red-700' : diagnostics.runtime.localSupabaseReachable ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>
+                Supabase {diagnostics.runtime.localSupabaseReachable === null ? 'n/a' : diagnostics.runtime.localSupabaseReachable ? 'OK' : 'KO'}
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-slate-500">Build {diagnostics.runtime.frontendBuild}</div>
           </div>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -97,11 +115,32 @@ export default function FieldDiagnosticsPanel() {
           </button>
         </div>
 
-        {diagnostics.lastReplayError && (
+        {(diagnostics.lastReplayError || diagnostics.runtime.lastHpError) && (
           <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-            {diagnostics.lastReplayError}
+            {diagnostics.lastReplayError || diagnostics.runtime.lastHpError}
           </div>
         )}
+
+        <div className="mt-3 overflow-hidden rounded-md border border-slate-200">
+          <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+            <Radio className="h-4 w-4" />
+            Realtime local / fallback
+          </div>
+          {recentRealtime.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">Aucun canal realtime observé.</div>
+          ) : (
+            recentRealtime.map((entry) => (
+              <div key={entry.key} className="grid gap-2 border-b border-slate-100 px-3 py-2 text-xs last:border-b-0 md:grid-cols-[1fr_130px_120px_90px]">
+                <span className="min-w-0 truncate font-semibold text-slate-800">{entry.label}</span>
+                <span className={`w-fit rounded-full border px-2 py-0.5 font-bold ${entry.status === 'subscribed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : entry.status === 'fallback_polling' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  {entry.status === 'subscribed' ? 'Realtime OK' : entry.status === 'fallback_polling' ? 'Fallback polling' : entry.status}
+                </span>
+                <span className="font-mono text-slate-500">{entry.hasPolling ? 'poll actif' : 'poll off'}</span>
+                <span className="text-right font-mono text-slate-500">{formatTime(entry.lastActionAt || entry.updatedAt)}</span>
+              </div>
+            ))
+          )}
+        </div>
 
         <div className="mt-3 overflow-hidden rounded-md border border-slate-200">
           {recentOperations.length === 0 ? (

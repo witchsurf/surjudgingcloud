@@ -101,6 +101,10 @@ Visible in the admin shell below the existing sync status.
 It shows:
 
 - Supabase mode and endpoint.
+- HP/web reachability when served from a LAN host.
+- Local Supabase API reachability when served from a LAN host.
+- Frontend version/build identifier.
+- Realtime channel state, including whether fallback polling is active.
 - Browser online/offline state.
 - Legacy queue count.
 - Score WAL queue count.
@@ -116,8 +120,12 @@ It also exposes a manual "Rejouer les files" button that calls
 - Display scores in cloud mode should update from realtime score/interference
   actions, not interval polling.
 - Judge tablets in cloud mode should not poll `active_heat_pointer`.
-- Judge tablets in local beach mode may poll `active_heat_pointer` as a fallback.
-- Heat timer/config keeps local polling in local mode.
+- Local beach mode now tries Supabase Realtime first for `scores`,
+  `interference_calls`, `active_heat_pointer`, and `heat_realtime_config`.
+- Local fallback polling is slow (`30s`) and exists only when the websocket is
+  unavailable or explicitly forced by a consumer.
+- Heat timer/config performs one initial REST fetch, then relies on realtime
+  unless degraded fallback polling is active.
 
 ## Follow-Up Candidates
 

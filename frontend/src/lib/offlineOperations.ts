@@ -23,12 +23,36 @@ export interface OfflineDiagnosticsSnapshot {
   lastReplayAt: string | null;
   lastReplayStatus: OfflineOperationStatus | null;
   lastReplayError: string | null;
+  runtime: RuntimeDiagnostics;
   operations: OfflineOperationLogEntry[];
+}
+
+export type RealtimeHealthStatus = 'idle' | 'subscribed' | 'fallback_polling' | 'error' | 'closed' | 'timed_out';
+
+export interface RealtimeDiagnosticEntry {
+  key: string;
+  label: string;
+  status: RealtimeHealthStatus;
+  hasPolling: boolean;
+  updatedAt: string;
+  lastActionAt?: string;
+  message?: string;
+}
+
+export interface RuntimeDiagnostics {
+  frontendVersion: string;
+  frontendBuild: string;
+  hpReachable: boolean | null;
+  localSupabaseReachable: boolean | null;
+  lastHpCheckAt: string | null;
+  lastHpError: string | null;
+  realtime: RealtimeDiagnosticEntry[];
 }
 
 const LEGACY_QUEUE_KEY = 'surfapp_offline_queue';
 const SCORE_WAL_KEY = 'surfJudgingOfflineWAL';
 const OPERATION_LOG_KEY = 'surfJudgingOfflineOperationLog';
+const RUNTIME_DIAGNOSTICS_KEY = 'surfJudgingRuntimeDiagnostics';
 const OPERATION_EVENT = 'surfjudging:offline-diagnostics-updated';
 const MAX_OPERATION_LOG_ENTRIES = 120;
 
@@ -79,6 +103,22 @@ const toErrorMessage = (error: unknown): string => {
 
 const readOperationLog = (): OfflineOperationLogEntry[] =>
   readJson<OfflineOperationLogEntry[]>(OPERATION_LOG_KEY, []);
+
+const readRuntimeDiagnostics = (): RuntimeDiagnostics =>
+  readJson<RuntimeDiagnostics>(RUNTIME_DIAGNOSTICS_KEY, {
+    frontendVersion: (import.meta.env.VITE_APP_VERSION as string | undefined) || '0.0.0',
+    frontendBuild: (import.meta.env.VITE_APP_BUILD as string | undefined) || 'dev',
+    hpReachable: null,
+    localSupabaseReachable: null,
+    lastHpCheckAt: null,
+    lastHpError: null,
+    realtime: [],
+  });
+
+const writeRuntimeDiagnostics = (runtime: RuntimeDiagnostics) => {
+  writeJson(RUNTIME_DIAGNOSTICS_KEY, runtime);
+  emitDiagnosticsUpdated();
+};
 
 export function recordOfflineOperation(input: {
   id?: string;
@@ -139,8 +179,85 @@ export function getOfflineDiagnosticsSnapshot(): OfflineDiagnosticsSnapshot {
     lastReplayAt: lastReplay?.updatedAt || null,
     lastReplayStatus: lastReplay?.status || null,
     lastReplayError: lastReplay?.error || null,
+    runtime: readRuntimeDiagnostics(),
     operations,
   };
+}
+
+export function reportRealtimeDiagnostic(input: Omit<RealtimeDiagnosticEntry, 'updatedAt'>) {
+  const runtime = readRuntimeDiagnostics();
+  const entry: RealtimeDiagnosticEntry = {
+    ...input,
+    updatedAt: nowIso(),
+  };
+  const nextRealtime = [
+    entry,
+    ...runtime.realtime.filter((item) => item.key !== entry.key),
+  ].slice(0, 40);
+  writeRuntimeDiagnostics({ ...runtime, realtime: nextRealtime });
+}
+
+export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  const runtime = readRuntimeDiagnostics();
+  const origin = window.location.origin;
+  const hostname = window.location.hostname;
+  const isLocalHost =
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.') ||
+    hostname.startsWith('192.168.');
+
+  if (!isLocalHost) {
+    writeRuntimeDiagnostics({
+      ...runtime,
+      hpReachable: null,
+      localSupabaseReachable: null,
+      lastHpCheckAt: nowIso(),
+      lastHpError: null,
+    });
+    return;
+  }
+
+  const supabaseUrl = `http://${hostname}:8000/rest/v1/events?select=id&limit=1`;
+  let hpReachable = false;
+  let localSupabaseReachable = false;
+  let lastHpError: string | null = null;
+
+  try {
+    const response = await fetch(origin, { method: 'HEAD', cache: 'no-store' });
+    hpReachable = response.ok;
+  } catch (error) {
+    lastHpError = toErrorMessage(error);
+  }
+
+  try {
+    const response = await fetch(supabaseUrl, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY_LAN as string | undefined)
+          || (import.meta.env.VITE_SUPABASE_ANON_KEY_LOCAL as string | undefined)
+          || '',
+      },
+    });
+    localSupabaseReachable = response.ok;
+    if (!response.ok) {
+      lastHpError = `Supabase local HTTP ${response.status}`;
+    }
+  } catch (error) {
+    lastHpError = toErrorMessage(error);
+  }
+
+  writeRuntimeDiagnostics({
+    ...runtime,
+    hpReachable,
+    localSupabaseReachable,
+    lastHpCheckAt: nowIso(),
+    lastHpError,
+  });
 }
 
 export function subscribeOfflineDiagnostics(listener: () => void): () => void {

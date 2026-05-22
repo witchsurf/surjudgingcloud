@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { ensureHeatId } from '../utils/heat';
 import { isLocalSupabaseMode, supabase } from './supabase';
+import { reportRealtimeDiagnostic } from './offlineOperations';
 
 type HeatSignalType = 'scores' | 'interference' | 'participants';
 type Listener = () => void;
@@ -23,7 +24,7 @@ type HeatSignalState = {
   lastPollAt: Partial<Record<HeatSignalType, number>>;
 };
 
-const HEAT_SIGNAL_POLL_INTERVAL_MS = 2500;
+const HEAT_SIGNAL_LOCAL_FALLBACK_POLL_INTERVAL_MS = 30000;
 const HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS = 15000;
 const HEAT_SIGNAL_CLOUD_POLL_INTERVALS_MS: Partial<Record<HeatSignalType, number>> = {
   scores: 15000,
@@ -98,11 +99,11 @@ const resolveMode = (type: HeatSignalType, mode: SubscriptionMode) => {
   const envMode = envDefaultModes[type];
   if (envMode) return envMode;
 
-  return isLocalSupabaseMode() ? 'polling' : defaultCloudModes[type];
+  return isLocalSupabaseMode() ? 'realtime' : defaultCloudModes[type];
 };
 
 const getDesiredRealtimeTypes = (state: HeatSignalState): Set<HeatSignalType> => {
-  if (forcePolling || isLocalSupabaseMode() || !supabase) return new Set();
+  if (forcePolling || !supabase) return new Set();
 
   const desired = new Set<HeatSignalType>();
   (Object.keys(state.listeners) as HeatSignalType[]).forEach((type) => {
@@ -126,19 +127,13 @@ const getDesiredPollingTypes = (state: HeatSignalState): Set<HeatSignalType> => 
       }
     }
   });
-  // Local mode always polls, regardless of listener modes, because websocket delivery is less predictable.
-  if (isLocalSupabaseMode()) {
-    (Object.keys(state.listeners) as HeatSignalType[]).forEach((type) => {
-      if (state.listeners[type].size > 0) desired.add(type);
-    });
-  }
   return desired;
 };
 
 const startPolling = (state: HeatSignalState) => {
   if (state.pollingInterval) return;
 
-  const intervalMs = isLocalSupabaseMode() ? HEAT_SIGNAL_POLL_INTERVAL_MS : HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS;
+  const intervalMs = isLocalSupabaseMode() ? HEAT_SIGNAL_LOCAL_FALLBACK_POLL_INTERVAL_MS : HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS;
   state.pollingInterval = setInterval(() => {
     const desired = getDesiredPollingTypes(state);
     const now = Date.now();
@@ -235,8 +230,8 @@ const reconcile = (heatId: string, state: HeatSignalState) => {
   const desiredRealtimeTypes = getDesiredRealtimeTypes(state);
   const desiredPollingTypes = getDesiredPollingTypes(state);
 
-  // Polling is enabled when local mode forces it, when realtime is degraded,
-  // or when at least one consumer explicitly requests polling.
+  // Polling is enabled when realtime is degraded, or when a consumer explicitly
+  // requests polling. Local mode no longer polls permanently by default.
   if (desiredPollingTypes.size > 0 || state.reconnecting) {
     startPolling(state);
   } else {
@@ -296,6 +291,14 @@ const reconcile = (heatId: string, state: HeatSignalState) => {
               detail: payload.new,
             }));
           }
+          reportRealtimeDiagnostic({
+            key: `heat-signals:${heatId}`,
+            label: `Heat tables ${heatId}`,
+            status: 'subscribed',
+            hasPolling: Boolean(state.pollingInterval),
+            lastActionAt: new Date().toISOString(),
+            message: 'scores',
+          });
           emit(state, 'scores');
         }
       );
@@ -305,7 +308,17 @@ const reconcile = (heatId: string, state: HeatSignalState) => {
       channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'interference_calls', filter: `heat_id=eq.${heatId}` },
-        () => emit(state, 'interference')
+        () => {
+          reportRealtimeDiagnostic({
+            key: `heat-signals:${heatId}`,
+            label: `Heat tables ${heatId}`,
+            status: 'subscribed',
+            hasPolling: Boolean(state.pollingInterval),
+            lastActionAt: new Date().toISOString(),
+            message: 'interference',
+          });
+          emit(state, 'interference');
+        }
       );
     }
 
@@ -332,6 +345,13 @@ const reconcile = (heatId: string, state: HeatSignalState) => {
         state.reconnecting = true;
         state.retryCount += 1;
         startPolling(state);
+        reportRealtimeDiagnostic({
+          key: `heat-signals:${heatId}`,
+          label: `Heat tables ${heatId}`,
+          status: status === 'TIMED_OUT' ? 'timed_out' : 'fallback_polling',
+          hasPolling: Boolean(state.pollingInterval),
+          message: status,
+        });
         const retryDelay = Math.min(
           HEAT_SIGNAL_RETRY_MAX_MS,
           HEAT_SIGNAL_RETRY_BASE_MS * 2 ** Math.max(state.retryCount - 1, 0)
@@ -360,6 +380,13 @@ const reconcile = (heatId: string, state: HeatSignalState) => {
         if (getDesiredPollingTypes(state).size === 0) {
           stopPolling(state);
         }
+        reportRealtimeDiagnostic({
+          key: `heat-signals:${heatId}`,
+          label: `Heat tables ${heatId}`,
+          status: 'subscribed',
+          hasPolling: Boolean(state.pollingInterval),
+          lastActionAt: new Date().toISOString(),
+        });
         // Heal any missed events upon reconnect by emitting events
         desiredRealtimeTypes.forEach((type) => emit(state, type));
       }
