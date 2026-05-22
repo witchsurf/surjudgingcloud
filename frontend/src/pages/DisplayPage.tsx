@@ -1303,7 +1303,7 @@ export default function DisplayPage() {
         }
 
         const displayScoreMode = String(import.meta.env.VITE_DISPLAY_SCORE_MODE || '').trim().toLowerCase();
-        const useScoreRealtime = displayScoreMode !== 'polling' && displayScoreMode !== 'poll';
+        const useScoreRealtime = displayScoreMode === 'realtime';
         const displayPollIntervalMs = (() => {
             const fromEnv = Number(import.meta.env.VITE_DISPLAY_SCORE_POLL_MS);
             if (Number.isFinite(fromEnv) && fromEnv >= 1000) return fromEnv;

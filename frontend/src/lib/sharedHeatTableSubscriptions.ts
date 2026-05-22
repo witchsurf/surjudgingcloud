@@ -23,6 +23,7 @@ type HeatSignalState = {
 };
 
 const HEAT_SIGNAL_POLL_INTERVAL_MS = 2500;
+const HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS = 5000;
 const HEAT_SIGNAL_EMIT_DEBOUNCE_MS = 150;
 const HEAT_SIGNAL_RETRY_BASE_MS = 3000;
 const HEAT_SIGNAL_RETRY_MAX_MS = 30000;
@@ -30,11 +31,21 @@ const HEAT_SIGNAL_POLL_ONLY_THRESHOLD = 4;
 const debugRealtimeEnabled = import.meta.env.VITE_DEBUG_REALTIME === 'true';
 const heatSignalMode = String(import.meta.env.VITE_HEAT_SIGNAL_MODE || '').trim().toLowerCase();
 const forcePolling = heatSignalMode === 'polling' || heatSignalMode === 'poll';
+const normalizeSubscriptionMode = (value: string): SubscriptionMode | '' => {
+  if (value === 'realtime') return 'realtime';
+  if (value === 'polling' || value === 'poll') return 'polling';
+  return '';
+};
 const envDefaultModes = {
-  scores: String(import.meta.env.VITE_HEAT_SIGNAL_SCORES_MODE || '').trim().toLowerCase() as SubscriptionMode | '',
-  interference: String(import.meta.env.VITE_HEAT_SIGNAL_INTERFERENCE_MODE || '').trim().toLowerCase() as SubscriptionMode | '',
-  participants: String(import.meta.env.VITE_HEAT_SIGNAL_PARTICIPANTS_MODE || '').trim().toLowerCase() as SubscriptionMode | '',
+  scores: normalizeSubscriptionMode(String(import.meta.env.VITE_HEAT_SIGNAL_SCORES_MODE || '').trim().toLowerCase()),
+  interference: normalizeSubscriptionMode(String(import.meta.env.VITE_HEAT_SIGNAL_INTERFERENCE_MODE || '').trim().toLowerCase()),
+  participants: normalizeSubscriptionMode(String(import.meta.env.VITE_HEAT_SIGNAL_PARTICIPANTS_MODE || '').trim().toLowerCase()),
 } as const;
+const defaultCloudModes: Record<HeatSignalType, SubscriptionMode> = {
+  scores: 'polling',
+  interference: 'realtime',
+  participants: 'polling',
+};
 
 const heatSignalRegistry = new Map<string, HeatSignalState>();
 let listenerSequence = 0;
@@ -79,9 +90,9 @@ const resolveMode = (type: HeatSignalType, mode: SubscriptionMode) => {
   if (mode !== 'auto') return mode;
 
   const envMode = envDefaultModes[type];
-  if (envMode === 'realtime' || envMode === 'polling') return envMode;
+  if (envMode) return envMode;
 
-  return isLocalSupabaseMode() ? 'polling' : 'realtime';
+  return isLocalSupabaseMode() ? 'polling' : defaultCloudModes[type];
 };
 
 const getDesiredRealtimeTypes = (state: HeatSignalState): Set<HeatSignalType> => {
@@ -121,7 +132,7 @@ const getDesiredPollingTypes = (state: HeatSignalState): Set<HeatSignalType> => 
 const startPolling = (state: HeatSignalState) => {
   if (state.pollingInterval) return;
 
-  const intervalMs = isLocalSupabaseMode() ? HEAT_SIGNAL_POLL_INTERVAL_MS : 10000;
+  const intervalMs = isLocalSupabaseMode() ? HEAT_SIGNAL_POLL_INTERVAL_MS : HEAT_SIGNAL_CLOUD_POLL_INTERVAL_MS;
   state.pollingInterval = setInterval(() => {
     const desired = getDesiredPollingTypes(state);
     desired.forEach((type) => emit(state, type));
