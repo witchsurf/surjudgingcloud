@@ -1008,10 +1008,11 @@ export async function rebuildDivisionQualifiersFromScores(eventId: number, divis
 
 export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string): Promise<ActiveHeatPointer | null> {
     ensureSupabase();
+    const eventIdSupport = readActiveHeatPointerEventIdSupport();
     const canUseEventId = Boolean(
         eventId
         && Number.isFinite(eventId)
-        && readActiveHeatPointerEventIdSupport() !== false
+        && (eventIdSupport === true || !eventName)
     );
 
     const runQuery = async (filterByEventId: boolean) => {
