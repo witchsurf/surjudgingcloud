@@ -70,6 +70,46 @@ Responsibilities:
   1. legacy queue for heats/config/timer;
   2. score WAL for scores/overrides.
 - Prevents concurrent global replay.
+- Records replay start/success/failure in the unified operation log.
+
+## Unified Operation Log
+
+Owner: `frontend/src/lib/offlineOperations.ts`
+
+Storage key: `surfJudgingOfflineOperationLog`
+
+Purpose:
+
+- Provide one operational view over both physical queues.
+- Give every newly queued legacy operation an `operation_id`.
+- Track score WAL mutations by their existing mutation ID.
+- Record statuses: `queued`, `replaying`, `synced`, `failed`, `skipped`.
+- Keep the log bounded to the last 120 entries so diagnostics do not grow
+  indefinitely on event-day tablets.
+
+Important rule:
+
+- This log is diagnostic only. It must never block scoring, heat closure, replay,
+  or local HP operation if localStorage is unavailable or malformed.
+
+## Field Diagnostics Panel
+
+Owner: `frontend/src/components/FieldDiagnosticsPanel.tsx`
+
+Visible in the admin shell below the existing sync status.
+
+It shows:
+
+- Supabase mode and endpoint.
+- Browser online/offline state.
+- Legacy queue count.
+- Score WAL queue count.
+- Total pending operations.
+- Last replay status and error.
+- Last five offline/replay operations.
+
+It also exposes a manual "Rejouer les files" button that calls
+`replayOfflineQueues('admin-diagnostics-manual')`.
 
 ## Realtime And Polling Rules
 
@@ -81,6 +121,6 @@ Responsibilities:
 
 ## Follow-Up Candidates
 
-- Merge both queues behind one replay coordinator.
-- Add a visible field diagnostics panel for both queue lengths.
+- Gradually migrate legacy queue writers to typed business operations.
+- Add schema-version checks between frontend and HP Supabase migrations.
 - Add targeted tests for replay idempotency and duplicate online events.

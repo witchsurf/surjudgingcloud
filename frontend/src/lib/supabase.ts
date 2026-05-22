@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { getColorSet } from '../utils/colorUtils';
 import { logger } from './logger';
+import { createOfflineOperationId, recordOfflineOperation } from './offlineOperations';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -476,6 +477,8 @@ export async function getHeatsForCompetition(competitionId: string) {
 // --------------------------------------------------
 
 interface OfflineEntry {
+  operation_id?: string
+  queued_at?: string
   table: string
   action: 'insert' | 'update' | 'delete' | 'upsert'
   payload: any
@@ -489,8 +492,20 @@ let offlineSyncInProgress = false
 // Sauvegarder une action hors ligne
 export function saveOffline(entry: OfflineEntry) {
   const queue: OfflineEntry[] = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]')
-  queue.push(entry)
+  const nextEntry: OfflineEntry = {
+    ...entry,
+    operation_id: entry.operation_id || createOfflineOperationId(),
+    queued_at: entry.queued_at || new Date().toISOString(),
+  }
+  queue.push(nextEntry)
   localStorage.setItem(OFFLINE_KEY, JSON.stringify(queue))
+  recordOfflineOperation({
+    id: nextEntry.operation_id,
+    queue: 'legacy',
+    status: 'queued',
+    kind: `${nextEntry.table}.${nextEntry.action}`,
+    target: String(nextEntry.payload?.heat_id ?? nextEntry.payload?.data?.heat_id ?? nextEntry.payload?.id ?? ''),
+  })
 }
 
 // Récupérer la queue offline
@@ -729,14 +744,45 @@ export async function syncOffline() {
     }
 
     for (const entry of queue) {
+      const operationId = entry.operation_id || createOfflineOperationId()
       try {
+        recordOfflineOperation({
+          id: operationId,
+          queue: 'legacy',
+          status: 'replaying',
+          kind: `${entry.table}.${entry.action}`,
+          target: String(entry.payload?.heat_id ?? entry.payload?.data?.heat_id ?? entry.payload?.id ?? ''),
+        })
         await replayOfflineEntry(entry)
+        recordOfflineOperation({
+          id: operationId,
+          queue: 'legacy',
+          status: 'synced',
+          kind: `${entry.table}.${entry.action}`,
+          target: String(entry.payload?.heat_id ?? entry.payload?.data?.heat_id ?? entry.payload?.id ?? ''),
+        })
       } catch (err) {
         if (isBenignConflict(entry, err)) {
           console.warn('⚠️ Conflit offline ignoré (déjà synchronisé)', entry.table, err)
+          recordOfflineOperation({
+            id: operationId,
+            queue: 'legacy',
+            status: 'skipped',
+            kind: `${entry.table}.${entry.action}`,
+            target: String(entry.payload?.heat_id ?? entry.payload?.data?.heat_id ?? entry.payload?.id ?? ''),
+            message: 'Conflit bénin ignoré',
+          })
           continue
         }
         console.error('Erreur de sync offline', err)
+        recordOfflineOperation({
+          id: operationId,
+          queue: 'legacy',
+          status: 'failed',
+          kind: `${entry.table}.${entry.action}`,
+          target: String(entry.payload?.heat_id ?? entry.payload?.data?.heat_id ?? entry.payload?.id ?? ''),
+          error: err,
+        })
         failed.push(entry)
       }
     }

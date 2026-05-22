@@ -6,6 +6,7 @@ import { useSync } from '../contexts/SyncContext';
 import { OfflineSettingsModal } from '../components/OfflineSettingsModal';
 import { getOfflineUser } from '../lib/offlineAuth';
 import { useState } from 'react';
+import FieldDiagnosticsPanel from '../components/FieldDiagnosticsPanel';
 
 // Note: SyncStatus props are currently passed from App.tsx. 
 // We might need a SyncContext or similar if we want to avoid prop drilling here.
@@ -80,6 +81,9 @@ export default function AdminLayout() {
                     realtimeConnected={isConnected}
                     realtimeLastUpdate={lastUpdate}
                 />
+                <div className="mt-2">
+                    <FieldDiagnosticsPanel />
+                </div>
             </div>
 
             <main className="max-w-7xl mx-auto px-4 py-6">

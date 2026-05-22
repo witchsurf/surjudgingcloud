@@ -9,6 +9,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { logger } from '../lib/logger';
+import { recordOfflineOperation } from '../lib/offlineOperations';
 
 export interface OfflineMutation {
     id: string;
@@ -59,6 +60,13 @@ export const useOfflineStore = create<OfflineStore>()(
 
                     for (const mutation of queue) {
                         logger.info('OfflineStore', `Replaying mutation ${mutation.id} on table '${mutation.table}'...`);
+                        recordOfflineOperation({
+                            id: mutation.id,
+                            queue: 'score_wal',
+                            status: 'replaying',
+                            kind: `${mutation.table}.${mutation.action}`,
+                            target: mutation.payload?.heat_id,
+                        });
 
                         if (mutation.table === 'scores') {
                             // Map the raw payload to saveScore request format
@@ -100,6 +108,13 @@ export const useOfflineStore = create<OfflineStore>()(
                         set((state) => ({
                             mutations: state.mutations.filter((m) => m.id !== mutation.id),
                         }));
+                        recordOfflineOperation({
+                            id: mutation.id,
+                            queue: 'score_wal',
+                            status: 'synced',
+                            kind: `${mutation.table}.${mutation.action}`,
+                            target: mutation.payload?.heat_id,
+                        });
                     }
 
                     logger.info('OfflineStore', 'WAL sync replay completed successfully.');
@@ -107,6 +122,17 @@ export const useOfflineStore = create<OfflineStore>()(
                 } catch (error: any) {
                     const errorMsg = error?.message || 'Unknown synchronization error';
                     logger.error('OfflineStore', 'WAL sync replay failed', error);
+                    const failedMutation = get().mutations[0];
+                    if (failedMutation) {
+                        recordOfflineOperation({
+                            id: failedMutation.id,
+                            queue: 'score_wal',
+                            status: 'failed',
+                            kind: `${failedMutation.table}.${failedMutation.action}`,
+                            target: failedMutation.payload?.heat_id,
+                            error,
+                        });
+                    }
                     set({ isSyncing: false, syncError: errorMsg });
                 } finally {
                     syncInProgress = false;
@@ -144,6 +170,17 @@ export const useOfflineStore = create<OfflineStore>()(
                     }));
 
                     logger.debug('OfflineStore', `Mutation registered in WAL: ${table} (${action})`, { id });
+                    recordOfflineOperation({
+                        id,
+                        queue: 'score_wal',
+                        status: 'queued',
+                        kind: `${table}.${action}`,
+                        target: payload?.heat_id,
+                        metadata: {
+                            surfer: payload?.surfer,
+                            wave_number: payload?.wave_number,
+                        },
+                    });
                 },
 
                 // Clear queue manually in case of forced overrides/resets
