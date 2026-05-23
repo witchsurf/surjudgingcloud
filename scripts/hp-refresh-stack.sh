@@ -208,6 +208,15 @@ if [ "\$missing_count" -gt 0 ]; then
   exit 1
 fi
 
+# Explicitly guarantee that the active runtime schema version is correctly stamped in the singleton table
+docker exec surfjudging_postgres psql -U postgres -d postgres -c "
+  INSERT INTO public.app_runtime_schema_version (id, schema_version, updated_at)
+  VALUES (true, '20260523191500_fix_beach_offline_corrections_and_accuracy', now())
+  ON CONFLICT (id) DO UPDATE
+    SET schema_version = excluded.schema_version,
+        updated_at = excluded.updated_at;
+" >/dev/null
+
 echo "==> Migration tracker OK: latest \$tracked_latest"
 
 docker compose -f docker-compose-local.yml restart rest kong >/dev/null 2>&1 || true

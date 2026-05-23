@@ -499,4 +499,11 @@ $$;
 -- Perform a synchronous one-shot refresh of the materialized view to ensure it is immediately active
 select public.refresh_judge_accuracy_summary();
 
+insert into public.app_runtime_schema_version (id, schema_version, updated_at)
+values (true, '20260523191500_fix_beach_offline_corrections_and_accuracy', now())
+on conflict (id) do update
+  set schema_version = excluded.schema_version,
+      updated_at = excluded.updated_at;
+
 commit;
+
