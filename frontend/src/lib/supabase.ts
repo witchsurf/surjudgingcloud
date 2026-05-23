@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { getColorSet } from '../utils/colorUtils';
 import { logger } from './logger';
-import { createOfflineOperationId, recordOfflineOperation } from './offlineOperations';
+import { createOfflineOperationId, describeLegacyOfflineEntry, recordOfflineOperation } from './offlineOperations';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -499,12 +499,14 @@ export function saveOffline(entry: OfflineEntry) {
   }
   queue.push(nextEntry)
   localStorage.setItem(OFFLINE_KEY, JSON.stringify(queue))
+  const operation = describeLegacyOfflineEntry(nextEntry)
   recordOfflineOperation({
     id: nextEntry.operation_id,
     queue: 'legacy',
     status: 'queued',
-    kind: `${nextEntry.table}.${nextEntry.action}`,
-    target: String(nextEntry.payload?.heat_id ?? nextEntry.payload?.data?.heat_id ?? nextEntry.payload?.id ?? ''),
+    kind: operation.kind,
+    target: operation.target,
+    metadata: operation.metadata,
   })
 }
 
@@ -745,21 +747,24 @@ export async function syncOffline() {
 
     for (const entry of queue) {
       const operationId = entry.operation_id || createOfflineOperationId()
+      const operation = describeLegacyOfflineEntry(entry)
       try {
         recordOfflineOperation({
           id: operationId,
           queue: 'legacy',
           status: 'replaying',
-          kind: `${entry.table}.${entry.action}`,
-          target: String(entry.payload?.heat_id ?? entry.payload?.data?.heat_id ?? entry.payload?.id ?? ''),
+          kind: operation.kind,
+          target: operation.target,
+          metadata: operation.metadata,
         })
         await replayOfflineEntry(entry)
         recordOfflineOperation({
           id: operationId,
           queue: 'legacy',
           status: 'synced',
-          kind: `${entry.table}.${entry.action}`,
-          target: String(entry.payload?.heat_id ?? entry.payload?.data?.heat_id ?? entry.payload?.id ?? ''),
+          kind: operation.kind,
+          target: operation.target,
+          metadata: operation.metadata,
         })
       } catch (err) {
         if (isBenignConflict(entry, err)) {
@@ -768,9 +773,10 @@ export async function syncOffline() {
             id: operationId,
             queue: 'legacy',
             status: 'skipped',
-            kind: `${entry.table}.${entry.action}`,
-            target: String(entry.payload?.heat_id ?? entry.payload?.data?.heat_id ?? entry.payload?.id ?? ''),
+            kind: operation.kind,
+            target: operation.target,
             message: 'Conflit bénin ignoré',
+            metadata: operation.metadata,
           })
           continue
         }
@@ -779,9 +785,10 @@ export async function syncOffline() {
           id: operationId,
           queue: 'legacy',
           status: 'failed',
-          kind: `${entry.table}.${entry.action}`,
-          target: String(entry.payload?.heat_id ?? entry.payload?.data?.heat_id ?? entry.payload?.id ?? ''),
+          kind: operation.kind,
+          target: operation.target,
           error: err,
+          metadata: operation.metadata,
         })
         failed.push(entry)
       }

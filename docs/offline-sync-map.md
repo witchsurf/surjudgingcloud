@@ -84,6 +84,11 @@ Purpose:
 - Give every newly queued legacy operation an `operation_id`.
 - Track score WAL mutations by their existing mutation ID.
 - Record statuses: `queued`, `replaying`, `synced`, `failed`, `skipped`.
+- Normalize legacy/WAL entries into field business intentions:
+  `submit_score`, `submit_interference`, `override_score`, `close_heat`,
+  `switch_heat`, `save_heat_config`, `timer_update`, and `replay_queues`.
+- Keep a trace with heat, event, surfer, wave, judge station, status, attempts,
+  and target where available.
 - Keep the log bounded to the last 120 entries so diagnostics do not grow
   indefinitely on event-day tablets.
 
@@ -117,6 +122,10 @@ It shows:
 
 It also exposes a manual "Rejouer les files" button that calls
 `replayOfflineQueues('admin-diagnostics-manual')`.
+
+The panel now shows pending business intentions separately from the physical
+queues. This is the transition layer toward a single intent queue while still
+preserving the current legacy queue and score WAL replay behavior.
 
 ## Realtime And Polling Rules
 

@@ -26,10 +26,39 @@ const formatTime = (value: string | null) => {
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
 
+const intentLabel: Record<string, string> = {
+  submit_score: 'Note juge',
+  submit_interference: 'Interférence',
+  override_score: 'Correction note',
+  close_heat: 'Fermeture heat',
+  switch_heat: 'Changement heat',
+  save_heat_config: 'Config heat',
+  timer_update: 'Timer',
+  replay_queues: 'Replay files',
+  legacy_mutation: 'Mutation legacy',
+};
+
+const formatTrace = (operation: { trace?: Record<string, unknown>; target?: string }) => {
+  const trace = operation.trace || {};
+  const parts = [
+    trace.heatId || operation.target,
+    trace.surfer && trace.waveNumber ? `${trace.surfer} V${trace.waveNumber}` : trace.surfer,
+    trace.judgeStation ? `juge ${trace.judgeStation}` : '',
+    trace.status ? `status ${trace.status}` : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
+};
+
 export default function FieldDiagnosticsPanel() {
   const diagnostics = useOfflineDiagnostics();
   const config = getSupabaseConfig();
   const recentOperations = diagnostics.operations.slice(0, 5);
+  const recentIntents = diagnostics.operations
+    .filter((operation) => operation.status === 'queued' || operation.status === 'replaying')
+    .reduce<Record<string, number>>((acc, operation) => {
+      acc[operation.intent] = (acc[operation.intent] || 0) + 1;
+      return acc;
+    }, {});
   const recentRealtime = diagnostics.runtime.realtime.slice(0, 4);
   const hasError = diagnostics.lastReplayStatus === 'failed' || recentOperations.some((operation) => operation.status === 'failed');
   const realtimeFallback = diagnostics.runtime.realtime.some((entry) => entry.hasPolling || entry.status === 'fallback_polling');
@@ -154,21 +183,40 @@ export default function FieldDiagnosticsPanel() {
         </div>
 
         <div className="mt-3 overflow-hidden rounded-md border border-slate-200">
+          <div className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+            Intentions métier en attente
+          </div>
+          {Object.keys(recentIntents).length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">Aucune intention métier en attente.</div>
+          ) : (
+            <div className="flex flex-wrap gap-2 px-3 py-3">
+              {Object.entries(recentIntents).map(([intent, count]) => (
+                <span key={intent} className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                  {intentLabel[intent] || intent} {count}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-3 overflow-hidden rounded-md border border-slate-200">
           {recentOperations.length === 0 ? (
             <div className="px-3 py-3 text-sm text-slate-500">Aucune opération offline enregistrée.</div>
           ) : (
             recentOperations.map((operation) => (
-              <div key={operation.id} className="grid gap-2 border-b border-slate-100 px-3 py-2 text-xs last:border-b-0 md:grid-cols-[110px_1fr_90px_90px]">
+              <div key={operation.id} className="grid gap-2 border-b border-slate-100 px-3 py-2 text-xs last:border-b-0 md:grid-cols-[110px_1fr_90px_90px_80px]">
                 <span className={`w-fit rounded-full border px-2 py-0.5 font-bold ${statusClass[operation.status]}`}>
                   {statusLabel[operation.status]}
                 </span>
                 <span className="min-w-0 truncate font-semibold text-slate-800">
-                  {operation.kind}{operation.target ? ` · ${operation.target}` : ''}
+                  {intentLabel[operation.intent] || operation.intent}
+                  {formatTrace(operation) ? ` · ${formatTrace(operation)}` : ''}
                 </span>
                 <span className="font-mono text-slate-500">{operation.queue}</span>
+                <span className="font-mono text-slate-500">try {operation.attempts}</span>
                 <span className="text-right font-mono text-slate-500">{formatTime(operation.updatedAt)}</span>
                 {operation.error && (
-                  <span className="min-w-0 truncate text-red-600 md:col-span-4">{operation.error}</span>
+                  <span className="min-w-0 truncate text-red-600 md:col-span-5">{operation.error}</span>
                 )}
               </div>
             ))
