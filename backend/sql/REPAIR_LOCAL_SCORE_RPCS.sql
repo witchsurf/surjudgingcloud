@@ -205,7 +205,7 @@ begin
   select *
     into v_score
   from public.scores
-  where id = p_score_id
+  where id = p_score_id::text
     and heat_id = trim(p_heat_id);
 
   if not found then
@@ -220,7 +220,7 @@ begin
   values (
     p_id,
     trim(p_heat_id),
-    p_score_id,
+    p_score_id::text,
     coalesce(nullif(trim(coalesce(p_judge_id, '')), ''), v_score.judge_id),
     coalesce(nullif(trim(coalesce(p_judge_name, '')), ''), v_score.judge_name),
     coalesce(nullif(trim(coalesce(p_judge_station, '')), ''), v_score.judge_station, v_score.judge_id),

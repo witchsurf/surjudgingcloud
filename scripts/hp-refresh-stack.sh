@@ -236,7 +236,7 @@ fi
 # Explicitly guarantee that the active runtime schema version is correctly stamped in the singleton table
 docker exec surfjudging_postgres psql -U postgres -d postgres -c "
   INSERT INTO public.app_runtime_schema_version (id, schema_version, updated_at)
-  VALUES (true, '20260523215500_robust_scores_trigger_autofill', now())
+  VALUES (true, '20260523231000_fix_local_score_override_text_ids', now())
   ON CONFLICT (id) DO UPDATE
     SET schema_version = excluded.schema_version,
         updated_at = excluded.updated_at;
