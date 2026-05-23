@@ -45,6 +45,38 @@ function loadEnv() {
 
 loadEnv();
 
+function parseArgs(argv) {
+  const options = {
+    eventIds: [],
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--event-id' || arg === '--event') {
+      const value = argv[index + 1];
+      index += 1;
+      if (!value) throw new Error(`${arg} requires a value`);
+      options.eventIds.push(...value.split(',').map((item) => Number(item.trim())).filter(Number.isFinite));
+    } else if (arg.startsWith('--event-id=')) {
+      const value = arg.slice('--event-id='.length);
+      options.eventIds.push(...value.split(',').map((item) => Number(item.trim())).filter(Number.isFinite));
+    } else if (arg === '-h' || arg === '--help') {
+      console.log(`Usage: node scripts/hp-photocopy-db.mjs [--event-id 17]`);
+      process.exit(0);
+    }
+  }
+
+  const envEventId = process.env.SURF_SYNC_EVENT_ID || process.env.SURF_EVENT_ID;
+  if (!options.eventIds.length && envEventId) {
+    options.eventIds.push(...envEventId.split(',').map((item) => Number(item.trim())).filter(Number.isFinite));
+  }
+
+  options.eventIds = Array.from(new Set(options.eventIds));
+  return options;
+}
+
+const options = parseArgs(process.argv.slice(2));
+
 const CLOUD_URL = process.env.VITE_SUPABASE_URL_CLOUD;
 const CLOUD_KEY = process.env.VITE_SUPABASE_ANON_KEY_CLOUD;
 const LOCAL_URL = process.env.VITE_SUPABASE_URL_LAN;
