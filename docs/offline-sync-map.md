@@ -151,6 +151,38 @@ Operational rule:
 - A schema mismatch is a terrain warning. Apply HP migrations before trusting
   newly deployed frontend behavior that depends on database changes.
 
+## Field Smoke Test
+
+Owner: `scripts/hp-field-smoke-test.mjs`
+
+Purpose:
+
+- Run a read-only browser smoke test against the HP local web app.
+- Resolve a real event from local Supabase, by default `SANDY CUP`.
+- Open admin, display, and judge screens.
+- Fail if those screens call the cloud Supabase/project host.
+- Fail on HTTP `4xx`/`5xx` responses such as the recurring
+  `active_heat_pointer` `400`.
+- Compare the HP runtime schema version with the latest migration known by the
+  repository.
+- Measure background fetches during an idle window so polling regressions are
+  visible before an event.
+
+Home profile example:
+
+```bash
+SURF_HP_PROFILE=home SURF_HP_HOST=10.0.0.14 node scripts/hp-field-smoke-test.mjs --event=SANDY\ CUP
+```
+
+Beach profile example:
+
+```bash
+SURF_HP_PROFILE=field node scripts/hp-field-smoke-test.mjs --event=SANDY\ CUP
+```
+
+The script is intentionally non-destructive: it does not submit scores, close
+heats, or replay offline queues.
+
 ## Follow-Up Candidates
 
 - Gradually migrate legacy queue writers to typed business operations.
