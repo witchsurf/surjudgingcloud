@@ -17,23 +17,29 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper to load env from frontend/.env.local if not already in process.env
+// Helper to load env from frontend/.env.local and infra envs if not already in process.env
 function loadEnv() {
-  try {
-    const envPath = path.resolve(__dirname, '../.env.local');
-    if (fs.existsSync(envPath)) {
-      const content = fs.readFileSync(envPath, 'utf8');
-      content.split('\n').forEach(line => {
-        const match = line.match(/^([^#=]+)=(.*)$/);
-        if (match) {
-          const key = match[1].trim();
-          const value = match[2].trim().replace(/^["']|["']$/g, '');
-          if (!process.env[key]) process.env[key] = value;
-        }
-      });
+  const envFiles = [
+    path.resolve(__dirname, '../.env.local'),
+    path.resolve(__dirname, '../../infra/.env'),
+    path.resolve(__dirname, '../../infra/.env.local'),
+  ];
+  for (const envPath of envFiles) {
+    try {
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8');
+        content.split('\n').forEach(line => {
+          const match = line.match(/^([^#=]+)=(.*)$/);
+          if (match) {
+            const key = match[1].trim();
+            const value = match[2].trim().replace(/^["']|["']$/g, '');
+            if (!process.env[key]) process.env[key] = value;
+          }
+        });
+      }
+    } catch (err) {
+      console.error(`⚠️ Could not load env file ${envPath}:`, err.message);
     }
-  } catch (err) {
-    console.error('⚠️ Could not load .env.local automatically:', err.message);
   }
 }
 
@@ -42,7 +48,8 @@ loadEnv();
 const CLOUD_URL = process.env.VITE_SUPABASE_URL_CLOUD;
 const CLOUD_KEY = process.env.VITE_SUPABASE_ANON_KEY_CLOUD;
 const LOCAL_URL = process.env.VITE_SUPABASE_URL_LAN;
-const LOCAL_KEY = process.env.VITE_SUPABASE_ANON_KEY_LAN;
+// Use SERVICE_ROLE_KEY for the local client to bypass RLS policies during administrative copy
+const LOCAL_KEY = process.env.SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY_LAN;
 
 if (!CLOUD_URL || !CLOUD_KEY || !LOCAL_URL || !LOCAL_KEY) {
   console.error('❌ Error: Supabase credentials missing in environment.');
@@ -310,7 +317,11 @@ async function main() {
 
     // 2. Identify Events to sync
     console.log('🔍 Identifying events to photocopy...');
-    const { data: events, error: eErr } = await cloud.from('events').select('*');
+    let query = cloud.from('events').select('*');
+    if (options.eventIds.length > 0) {
+      query = query.in('id', options.eventIds);
+    }
+    const { data: events, error: eErr } = await query;
     if (eErr) throw eErr;
     
     if (events && events.length > 0) {

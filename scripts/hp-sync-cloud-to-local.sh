@@ -9,10 +9,11 @@ fi
 PROFILE="home"
 REPAIR_QUALIFIERS="0"
 SKIP_HEALTHCHECK="0"
+EVENT_ARGS=""
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/hp-sync-cloud-to-local.sh [--home|--field] [--repair-qualifiers] [--skip-healthcheck]
+Usage: ./scripts/hp-sync-cloud-to-local.sh [--home|--field] [--event-id <ID>] [--repair-qualifiers] [--skip-healthcheck]
 
 Copies the Cloud Supabase database into the HP local Supabase database.
 
@@ -35,6 +36,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --field)
       PROFILE="field"
+      ;;
+    --event-id|--event)
+      EVENT_ARGS="--event-id $2"
+      shift
       ;;
     --repair-qualifiers)
       REPAIR_QUALIFIERS="1"
@@ -81,6 +86,8 @@ load_env_file() {
 
 load_env_file "$FRONTEND_DIR/.env.production"
 load_env_file "$FRONTEND_DIR/.env.local"
+load_env_file "$ROOT_DIR/infra/.env"
+load_env_file "$ROOT_DIR/infra/.env.local"
 
 # Always target the selected HP profile, regardless of the LAN URL stored in env files.
 export VITE_SUPABASE_URL_LAN="http://${HP_HOST}:8000"
@@ -112,7 +119,7 @@ fi
 
 echo
 echo "==> Copying Cloud Supabase to HP local Supabase"
-(cd "$FRONTEND_DIR" && node scripts/hp-photocopy-db.mjs)
+(cd "$FRONTEND_DIR" && node scripts/hp-photocopy-db.mjs $EVENT_ARGS)
 
 if [[ "$REPAIR_QUALIFIERS" == "1" ]]; then
   echo
