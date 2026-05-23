@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured, canUseSupabaseConnection, isLocalSupabaseMode } from '../lib/supabase';
 import { replayOfflineQueues } from '../lib/offlineSyncCoordinator';
+import { getLocalRuntimeSchemaReplayReadiness } from '../lib/offlineOperations';
 import type { Score, Heat, ScoreOverrideLog } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
 import { ensureHeatId, buildHeatId } from '../utils/heat';
@@ -80,6 +81,11 @@ export function useSupabaseSync() {
 
   const syncOverrideLogs = useCallback(async () => {
     if (!canReachSupabase() || !supabaseEnabled) return;
+    const schemaReadiness = await getLocalRuntimeSchemaReplayReadiness();
+    if (!schemaReadiness.ready) {
+      console.warn('⏸️ Synchronisation overrides différée:', schemaReadiness.reason);
+      return;
+    }
 
     const localLogs = readLocalOverrideLogs();
     const pendingLogs = localLogs.filter(log => !log.synced);
@@ -126,6 +132,15 @@ export function useSupabaseSync() {
     }
 
     try {
+      const schemaReadiness = await getLocalRuntimeSchemaReplayReadiness();
+      if (!schemaReadiness.ready) {
+        setSyncStatus(prev => ({
+          ...prev,
+          syncError: schemaReadiness.reason || 'Schéma HP local non aligné'
+        }));
+        return;
+      }
+
       const result = await scoreRepository.syncPendingScores();
 
       const localScores = localStorage.getItem('surfJudgingScores');

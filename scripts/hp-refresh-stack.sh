@@ -127,7 +127,8 @@ MIGRATIONS
     "${HP_BASE_DIR}/backend/sql/FIX_SYNC_SCORING.sql" \
     "${HP_BASE_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql" \
     "${HP_BASE_DIR}/backend/sql/UPGRADE_SYNC_SCHEMA_20260417.sql" \
-    "${HP_BASE_DIR}/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql"
+    "${HP_BASE_DIR}/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql" \
+    "${HP_BASE_DIR}/backend/sql/REPAIR_LOCAL_SCORE_RPCS.sql"
   do
     if [ -f "\$patch" ]; then
       mark_sql_applied "\$(basename "\$patch")"
@@ -136,6 +137,29 @@ MIGRATIONS
 }
 
 seed_tracking_if_runtime_is_current
+
+unmark_sql_if_function_missing() {
+  local base_name="\$1"
+  local signature="\$2"
+  local exists
+  exists=\$(psql_scalar "SELECT to_regprocedure('\$signature') IS NOT NULL;")
+  if [ "\$exists" != "t" ]; then
+    echo "==> Drift detected: \$signature missing, forcing \$base_name"
+    docker exec surfjudging_postgres psql -U postgres -d postgres -c "
+      DELETE FROM public._local_applied_migrations WHERE filename = '\$base_name';
+    " >/dev/null
+  fi
+}
+
+unmark_sql_if_function_missing \
+  "REPAIR_LOCAL_SCORE_RPCS.sql" \
+  "public.is_local_database()"
+unmark_sql_if_function_missing \
+  "REPAIR_LOCAL_SCORE_RPCS.sql" \
+  "public.upsert_score_secure(uuid,bigint,text,text,text,integer,text,text,text,text,text,integer,numeric,timestamp with time zone,timestamp with time zone)"
+unmark_sql_if_function_missing \
+  "REPAIR_LOCAL_SCORE_RPCS.sql" \
+  "public.record_score_override_secure(uuid,text,uuid,text,text,text,text,text,integer,numeric,numeric,text,text,text,text,timestamp with time zone)"
 
 # Function to run an SQL script if it hasn't been applied yet
 apply_sql_if_needed() {
@@ -168,7 +192,8 @@ for patch in \
   "${HP_BASE_DIR}/backend/sql/FIX_SYNC_SCORING.sql" \
   "${HP_BASE_DIR}/backend/sql/14_ADD_INTERFERENCE_CALLS.sql" \
   "${HP_BASE_DIR}/backend/sql/UPGRADE_SYNC_SCHEMA_20260417.sql" \
-  "${HP_BASE_DIR}/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql"
+  "${HP_BASE_DIR}/backend/sql/UPGRADE_LOCAL_HEAT_WORKFLOW_20260418.sql" \
+  "${HP_BASE_DIR}/backend/sql/REPAIR_LOCAL_SCORE_RPCS.sql"
 do
   apply_sql_if_needed "\$patch"
 done
@@ -211,11 +236,13 @@ fi
 # Explicitly guarantee that the active runtime schema version is correctly stamped in the singleton table
 docker exec surfjudging_postgres psql -U postgres -d postgres -c "
   INSERT INTO public.app_runtime_schema_version (id, schema_version, updated_at)
-  VALUES (true, '20260523191500_fix_beach_offline_corrections_and_accuracy', now())
+  VALUES (true, '20260523215500_robust_scores_trigger_autofill', now())
   ON CONFLICT (id) DO UPDATE
     SET schema_version = excluded.schema_version,
         updated_at = excluded.updated_at;
 " >/dev/null
+
+docker exec surfjudging_postgres psql -U postgres -d postgres -c "NOTIFY pgrst, 'reload schema';" >/dev/null
 
 echo "==> Migration tracker OK: latest \$tracked_latest"
 

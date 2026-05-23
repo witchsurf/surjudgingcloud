@@ -18,6 +18,11 @@ const isMissingViewError = (error: unknown, viewName: string) => {
         statusCode?: number;
         hint?: string;
     };
+    // A 404 HTTP status on a table/view query always means it's not in the
+    // PostgREST schema cache — treat it as missing immediately.
+    const httpStatus = candidate.status ?? candidate.statusCode ?? 0;
+    if (httpStatus === 404) return true;
+
     const text = [
         candidate.code,
         candidate.message,
@@ -62,6 +67,11 @@ const isRpcUnavailableError = (error: unknown, functionName: string) => {
         statusCode?: number;
         hint?: string;
     };
+    // A 404 HTTP status on an RPC call always means PostgREST could not find
+    // the function in its schema cache — treat it as unavailable immediately.
+    const httpStatus = candidate.status ?? candidate.statusCode ?? 0;
+    if (httpStatus === 404) return true;
+
     const text = [
         candidate.code,
         candidate.message,

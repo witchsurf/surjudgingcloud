@@ -386,6 +386,24 @@ export function reportRealtimeDiagnostic(input: Omit<RealtimeDiagnosticEntry, 'u
   writeRuntimeDiagnostics({ ...runtime, realtime: nextRealtime });
 }
 
+export async function getLocalRuntimeSchemaReplayReadiness(): Promise<{ ready: boolean; reason?: string }> {
+  if (typeof window === 'undefined' || !isLocalNetworkHost()) {
+    return { ready: true };
+  }
+
+  await refreshLocalRuntimeDiagnostics();
+  const runtime = readRuntimeDiagnostics();
+
+  if (runtime.localSupabaseReachable === true && runtime.schemaVersionMatches === false) {
+    return {
+      ready: false,
+      reason: runtime.schemaVersionError || 'Schéma HP local non aligné',
+    };
+  }
+
+  return { ready: true };
+}
+
 export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
   if (typeof window === 'undefined') return;
 

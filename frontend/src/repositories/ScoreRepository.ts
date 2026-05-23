@@ -136,6 +136,8 @@ export class ScoreRepository extends BaseRepository {
             String(candidate.statusCode ?? ''),
             JSON.stringify(candidate),
         ].join(' ').toLowerCase();
+        const httpStatus = candidate.status ?? candidate.statusCode ?? 0;
+        if (httpStatus === 404) return true;
 
         return (
             text.includes('upsert_score_secure')

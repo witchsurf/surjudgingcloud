@@ -1,6 +1,6 @@
 import { getOffline, syncOffline } from './supabase';
 import { logger } from './logger';
-import { recordOfflineOperation } from './offlineOperations';
+import { getLocalRuntimeSchemaReplayReadiness, recordOfflineOperation } from './offlineOperations';
 
 let replayInProgress = false;
 let listenersInstalled = false;
@@ -21,6 +21,22 @@ export async function replayOfflineQueues(reason = 'manual'): Promise<void> {
   replayInProgress = true;
   const operationId = `coordinator-${reason}`;
   try {
+    const schemaReadiness = await getLocalRuntimeSchemaReplayReadiness();
+    if (!schemaReadiness.ready) {
+      recordOfflineOperation({
+        id: operationId,
+        queue: 'coordinator',
+        status: 'skipped',
+        kind: 'replay_queues',
+        message: schemaReadiness.reason || reason,
+      });
+      logger.warn('OfflineSync', 'Replay skipped until local schema is aligned', {
+        reason,
+        schemaReason: schemaReadiness.reason,
+      });
+      return;
+    }
+
     logger.info('OfflineSync', 'Replaying offline queues', { reason });
     recordOfflineOperation({
       id: operationId,
