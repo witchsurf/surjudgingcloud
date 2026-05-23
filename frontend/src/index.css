@@ -357,3 +357,53 @@ body {
     min-height: 36px;
   }
 }
+
+@media (min-width: 640px) and (orientation: landscape), (min-width: 768px) {
+  .judge-workspace {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    gap: 16px !important;
+  }
+
+  .judge-surfer-list {
+    flex: 1 1 0% !important;
+    margin-bottom: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-evenly !important;
+    gap: 8px !important;
+  }
+
+  .judge-surfer-card {
+    margin-bottom: 0 !important;
+    padding: clamp(6px, 1.2vh, 10px) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+  }
+
+  .judge-keypad-panel {
+    width: 320px !important;
+    max-width: 320px !important;
+    flex-shrink: 0 !important;
+    align-self: stretch !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    margin-top: 0 !important;
+  }
+  
+  .judge-keypad {
+    gap: 8px !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .judge-key {
+    min-height: clamp(52px, 9.5vh, 76px) !important;
+    font-size: 1.35rem !important;
+  }
+}
+
