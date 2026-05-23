@@ -9,14 +9,11 @@ import { initStorageCleanup } from './utils/secureStorage';
 import { processMagicLinkCallback } from './utils/magicLink';
 import { installOfflineSyncCoordinator } from './lib/offlineSyncCoordinator';
 
+import { isLocalNetworkHost } from './lib/networkDetection';
+
 const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 const isPublicDisplayHost = hostname === 'display.surfjudging.cloud';
-const isLocalLanHost =
-  hostname === 'localhost' ||
-  hostname === '127.0.0.1' ||
-  hostname.startsWith('192.168.') ||
-  hostname.startsWith('10.') ||
-  hostname.startsWith('172.');
+const isLocalLanHost = isLocalNetworkHost();
 
 if (!isLocalLanHost && !isPublicDisplayHost) {
   const updateSW = registerSW({

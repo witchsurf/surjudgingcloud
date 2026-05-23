@@ -2,6 +2,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { ensureHeatId } from '../utils/heat';
 import { isLocalSupabaseMode, supabase } from './supabase';
 import { reportRealtimeDiagnostic } from './offlineOperations';
+import { computeReconnectDelay } from './realtimeBackoff';
 
 type HeatSignalType = 'scores' | 'interference' | 'participants';
 type Listener = () => void;
@@ -352,11 +353,12 @@ const reconcile = (heatId: string, state: HeatSignalState) => {
           hasPolling: Boolean(state.pollingInterval),
           message: status,
         });
-        const retryDelay = Math.min(
-          HEAT_SIGNAL_RETRY_MAX_MS,
-          HEAT_SIGNAL_RETRY_BASE_MS * 2 ** Math.max(state.retryCount - 1, 0)
-        );
         const fallbackOnly = state.retryCount >= HEAT_SIGNAL_POLL_ONLY_THRESHOLD;
+        const retryDelay = computeReconnectDelay(state.retryCount - 1, {
+          baseMs: HEAT_SIGNAL_RETRY_BASE_MS,
+          maxMs: HEAT_SIGNAL_RETRY_MAX_MS,
+          jitter: !fallbackOnly,
+        });
         console.warn(
           `⚠️ Shared stream ${channelName} dropped (${status}), ${fallbackOnly ? 'falling back to polling before next retry' : 'scheduling reconnect'}...`,
           err
@@ -372,7 +374,7 @@ const reconcile = (heatId: string, state: HeatSignalState) => {
             console.log(`🔄 Reconnecting shared heat stream ${channelName}...`);
             setupChannel();
           }
-        }, fallbackOnly ? retryDelay : retryDelay + Math.random() * 2000);
+        }, retryDelay);
       } else if (status === 'SUBSCRIBED') {
         state.reconnecting = false;
         state.retryCount = 0;

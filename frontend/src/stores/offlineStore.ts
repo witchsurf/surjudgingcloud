@@ -10,6 +10,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { logger } from '../lib/logger';
 import { describeScoreWalMutation, recordOfflineOperation } from '../lib/offlineOperations';
+import { createIDBZustandStorage } from '../lib/idbOfflineStore';
 
 export interface OfflineMutation {
     id: string;
@@ -200,7 +201,7 @@ export const useOfflineStore = create<OfflineStore>()(
         },
         {
             name: 'surfJudgingOfflineWAL',
-            storage: createJSONStorage(() => localStorage),
+            storage: createJSONStorage(() => createIDBZustandStorage()),
             partialize: (state) => ({ mutations: state.mutations }), // Only persist mutations list
         }
     )

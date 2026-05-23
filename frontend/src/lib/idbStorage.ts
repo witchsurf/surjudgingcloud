@@ -9,7 +9,7 @@ import { openDB, type IDBPDatabase } from 'idb';
 import type { Score } from '../types';
 
 const DB_NAME = 'SurfJudging';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SCORES_STORE = 'scores';
 
 // Fallback key for localStorage
@@ -78,11 +78,21 @@ async function getDB(): Promise<IDBPDatabase | null> {
 
     try {
         dbInstance = await openDB(DB_NAME, DB_VERSION, {
-            upgrade(db) {
+            upgrade(db, oldVersion) {
                 if (!db.objectStoreNames.contains(SCORES_STORE)) {
                     const store = db.createObjectStore(SCORES_STORE, { keyPath: 'id' });
                     store.createIndex('by-heat', 'heat_id');
                     store.createIndex('by-synced', 'synced');
+                }
+                
+                // V2 stores – offline queues
+                if (oldVersion < 2) {
+                    if (!db.objectStoreNames.contains('offline_wal')) {
+                        db.createObjectStore('offline_wal', { keyPath: 'id' });
+                    }
+                    if (!db.objectStoreNames.contains('legacy_queue')) {
+                        db.createObjectStore('legacy_queue', { autoIncrement: true });
+                    }
                 }
             },
         });

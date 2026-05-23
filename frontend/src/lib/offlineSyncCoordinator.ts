@@ -33,7 +33,7 @@ export async function replayOfflineQueues(reason = 'manual'): Promise<void> {
     await syncOffline();
     const { useOfflineStore } = await import('../stores/offlineStore');
     await useOfflineStore.getState().processSyncQueue();
-    const legacyPending = getOffline().length;
+    const legacyPending = (await getOffline()).length;
     const scoreWalState = useOfflineStore.getState();
     if (legacyPending > 0 || scoreWalState.syncError) {
       throw new Error([

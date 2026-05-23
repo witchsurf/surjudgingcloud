@@ -3,6 +3,7 @@ import { User, Waves, Lock, Unlock, CreditCard as Edit3, Maximize, Minimize, Che
 import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
+import JudgeSyncBadge from './JudgeSyncBadge';
 import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchHeatMetadata, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
@@ -1078,6 +1079,7 @@ function JudgeInterface({
               <div className="min-w-0">
                 <h1 className={`${priorityOnly ? 'text-xl sm:text-2xl md:text-3xl' : 'text-lg sm:text-xl'} font-extrabold flex items-center gap-2 truncate text-slate-100`}>
                   {resolvedInterfaceTitle}
+                  <JudgeSyncBadge />
                   {!isConnected && (
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-950/60 border border-red-800/40 text-red-400 animate-pulse">
                       Hors Ligne

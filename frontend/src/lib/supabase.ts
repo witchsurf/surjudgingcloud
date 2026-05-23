@@ -2,6 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import { getColorSet } from '../utils/colorUtils';
 import { logger } from './logger';
 import { createOfflineOperationId, describeLegacyOfflineEntry, recordOfflineOperation } from './offlineOperations';
+import { legacyGetAll, legacyAdd, legacySetAll, legacyClear } from './idbOfflineStore';
+import { isLocalNetworkHost, isLocalNetworkUrl } from './networkDetection';
+import { createReconnectAfterMs } from './realtimeBackoff';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -87,13 +90,7 @@ export const getSupabaseConfig = () => {
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const urlMode = searchParams?.get('mode') as SupabaseMode;
 
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-  const isServedFromLocalNetwork =
-    hostname.startsWith('192.168.') ||
-    hostname.startsWith('10.') ||
-    hostname.startsWith('172.') ||
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1';
+  const isServedFromLocalNetwork = isLocalNetworkHost();
 
   let mode: SupabaseMode | null = cloudLocked ? 'local' : storedMode;
 
@@ -114,7 +111,7 @@ export const getSupabaseConfig = () => {
     mode = storedMode || null;
     if (!mode) {
       const currentUrl = overrideUrl || resolveEnv('VITE_SUPABASE_URL') || window.location.origin;
-      if (currentUrl.includes('192.168') || currentUrl.includes('10.0.0') || currentUrl.includes('localhost') || currentUrl.includes(':8000') || currentUrl.includes(':8080')) {
+      if (isLocalNetworkUrl(currentUrl)) {
         mode = 'local';
       } else {
         mode = 'cloud';
@@ -122,7 +119,7 @@ export const getSupabaseConfig = () => {
     }
   }
 
-  const isLocalDevice = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  const isLocalDevice = typeof window !== 'undefined' && isLocalNetworkHost() && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 
   const dynamicLocalUrl = isLocalDevice
     ? `http://${window.location.hostname}:8000`
@@ -191,6 +188,7 @@ export const rebuildSupabaseClient = (url?: string, anonKey?: string) => {
         detectSessionInUrl: false,
       },
       realtime: {
+        reconnectAfterMs: createReconnectAfterMs(),
         worker: !isVitestRuntime,
         heartbeatIntervalMs: 15000,
         heartbeatCallback: (status) => {
@@ -447,7 +445,7 @@ export async function saveHeatsToDatabase(heats: any, eventId: string) {
 export async function getHeatsForCompetition(competitionId: string) {
   if (!isSupabaseConfigured() || !supabase) {
     // Récupérer depuis le stockage local
-    const entries = getOffline().filter(e => e.table === 'heats');
+    const entries = (await getOffline()).filter(e => e.table === 'heats');
     // Trouver les entrées dont la charge utile contient des heats pour cette compétition
     for (const entry of entries) {
       const p = entry.payload;
@@ -490,15 +488,13 @@ const HEAT_CONFIG_REPAIR_TABLE = '__heat_config_repair__'
 let offlineSyncInProgress = false
 
 // Sauvegarder une action hors ligne
-export function saveOffline(entry: OfflineEntry) {
-  const queue: OfflineEntry[] = JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]')
+export async function saveOffline(entry: OfflineEntry): Promise<void> {
   const nextEntry: OfflineEntry = {
     ...entry,
     operation_id: entry.operation_id || createOfflineOperationId(),
     queued_at: entry.queued_at || new Date().toISOString(),
   }
-  queue.push(nextEntry)
-  localStorage.setItem(OFFLINE_KEY, JSON.stringify(queue))
+  await legacyAdd(nextEntry)
   const operation = describeLegacyOfflineEntry(nextEntry)
   recordOfflineOperation({
     id: nextEntry.operation_id,
@@ -511,8 +507,8 @@ export function saveOffline(entry: OfflineEntry) {
 }
 
 // Récupérer la queue offline
-export function getOffline(): OfflineEntry[] {
-  return JSON.parse(localStorage.getItem(OFFLINE_KEY) || '[]')
+export async function getOffline(): Promise<OfflineEntry[]> {
+  return legacyGetAll()
 }
 
 function applyOfflineFilters(query: any, filter: Record<string, unknown>) {
@@ -730,7 +726,7 @@ async function repairHeatConfigSnapshot(payload: any) {
 export async function syncOffline() {
   if (!isSupabaseConfigured() || !supabase) return
   if (offlineSyncInProgress) return
-  const queue = getOffline()
+  const queue = await getOffline()
   if (queue.length === 0) return
   const failed: OfflineEntry[] = []
 
@@ -794,10 +790,10 @@ export async function syncOffline() {
       }
     }
     if (failed.length > 0) {
-      localStorage.setItem(OFFLINE_KEY, JSON.stringify(failed))
+      await legacySetAll(failed)
       console.warn('⚠️ Certaines actions hors ligne n\'ont pas pu être synchronisées. Elles resteront dans la file d\'attente.')
     } else {
-      localStorage.removeItem(OFFLINE_KEY)
+      await legacyClear()
       console.log('✅ Synchronisation offline terminée')
     }
   } finally {
@@ -814,7 +810,7 @@ export function useSupabaseWithFallback(table: string) {
         if (error) throw error
         return data
       } else {
-        return getOffline().filter(e => e.table === table && e.action === 'insert').map(e => e.payload)
+        return (await getOffline()).filter(e => e.table === table && e.action === 'insert').map(e => e.payload)
       }
     },
     async insert(payload: any) {
@@ -822,7 +818,7 @@ export function useSupabaseWithFallback(table: string) {
         const { error } = await supabase.from(table).insert(payload)
         if (error) throw error
       } else {
-        saveOffline({ table, action: 'insert', payload, timestamp: Date.now() })
+        await saveOffline({ table, action: 'insert', payload, timestamp: Date.now() })
       }
     },
     async update(id: string, data: any) {
@@ -830,7 +826,7 @@ export function useSupabaseWithFallback(table: string) {
         const { error } = await supabase.from(table).update(data).eq('id', id)
         if (error) throw error
       } else {
-        saveOffline({ table, action: 'update', payload: { id, data }, timestamp: Date.now() })
+        await saveOffline({ table, action: 'update', payload: { id, data }, timestamp: Date.now() })
       }
     },
     async delete(id: string) {
@@ -838,7 +834,7 @@ export function useSupabaseWithFallback(table: string) {
         const { error } = await supabase.from(table).delete().eq('id', id)
         if (error) throw error
       } else {
-        saveOffline({ table, action: 'delete', payload: { id }, timestamp: Date.now() })
+        await saveOffline({ table, action: 'delete', payload: { id }, timestamp: Date.now() })
       }
     },
   }

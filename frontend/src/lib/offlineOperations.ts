@@ -1,3 +1,6 @@
+import { legacyGetAll, walGetAll } from './idbOfflineStore';
+import { isLocalNetworkHost } from './networkDetection';
+
 export type OfflineQueueName = 'legacy' | 'score_wal' | 'coordinator';
 export type OfflineOperationStatus = 'queued' | 'replaying' | 'synced' | 'failed' | 'skipped';
 export type FieldOperationIntent =
@@ -350,20 +353,18 @@ export function createOfflineOperationId(): string {
   return makeId();
 }
 
-export function getOfflineDiagnosticsSnapshot(): OfflineDiagnosticsSnapshot {
-  const legacyQueue = readJson<unknown[]>(LEGACY_QUEUE_KEY, []);
-  const walPersisted = readJson<{ state?: { mutations?: unknown[] } }>(SCORE_WAL_KEY, {});
-  const scoreWalCount = Array.isArray(walPersisted?.state?.mutations)
-    ? walPersisted.state.mutations.length
-    : 0;
+export async function getOfflineDiagnosticsSnapshot(): Promise<OfflineDiagnosticsSnapshot> {
+  const legacyQueue = await legacyGetAll();
+  const walMutations = await walGetAll();
+  const scoreWalCount = walMutations.length;
   const operations = readOperationLog();
   const lastReplay = operations.find((entry) => entry.queue === 'coordinator');
 
   return {
     isBrowserOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
-    legacyQueueCount: Array.isArray(legacyQueue) ? legacyQueue.length : 0,
+    legacyQueueCount: legacyQueue.length,
     scoreWalCount,
-    totalPending: (Array.isArray(legacyQueue) ? legacyQueue.length : 0) + scoreWalCount,
+    totalPending: legacyQueue.length + scoreWalCount,
     lastReplayAt: lastReplay?.updatedAt || null,
     lastReplayStatus: lastReplay?.status || null,
     lastReplayError: lastReplay?.error || null,
@@ -393,14 +394,7 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
     (import.meta.env.VITE_EXPECTED_SCHEMA_VERSION as string | undefined)
     || runtime.expectedSchemaVersion
     || 'unknown';
-  const origin = window.location.origin;
-  const hostname = window.location.hostname;
-  const isLocalHost =
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname.startsWith('10.') ||
-    hostname.startsWith('172.') ||
-    hostname.startsWith('192.168.');
+  const isLocalHost = isLocalNetworkHost();
 
   if (!isLocalHost) {
     writeRuntimeDiagnostics({
