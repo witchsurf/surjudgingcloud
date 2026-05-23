@@ -52,11 +52,13 @@ curl -fsS "$LOCAL_API_URL" | head -c 300; echo
 
 section "Bundle alignment"
 LOCAL_BUNDLE="$(curl -fsS "$LOCAL_DISPLAY_URL" | extract_bundle)"
-PUBLIC_BUNDLE="$(curl -fsS "$DISPLAY_URL" | extract_bundle)"
+PUBLIC_BUNDLE="$(curl -fsS --connect-timeout 4 "$DISPLAY_URL" 2>/dev/null | extract_bundle || true)"
 echo "HP local display bundle : ${LOCAL_BUNDLE:-missing}"
-echo "Public display bundle   : ${PUBLIC_BUNDLE:-missing}"
+echo "Public display bundle   : ${PUBLIC_BUNDLE:-Cloud offline / no internet}"
 
-if [[ -n "$LOCAL_BUNDLE" && -n "$PUBLIC_BUNDLE" && "$LOCAL_BUNDLE" == "$PUBLIC_BUNDLE" ]]; then
+if [[ -z "$PUBLIC_BUNDLE" ]]; then
+  echo "Bundle alignment: SKIPPED (Cloud offline / no internet)"
+elif [[ -n "$LOCAL_BUNDLE" && "$LOCAL_BUNDLE" == "$PUBLIC_BUNDLE" ]]; then
   echo "Bundle alignment: OK"
 else
   echo "Bundle alignment: MISMATCH"
