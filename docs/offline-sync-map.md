@@ -183,6 +183,32 @@ SURF_HP_PROFILE=field node scripts/hp-field-smoke-test.mjs --event=SANDY\ CUP
 The script is intentionally non-destructive: it does not submit scores, close
 heats, or replay offline queues.
 
+## Field Mutation Test
+
+Owner: `scripts/hp-field-mutation-test.mjs`
+
+Purpose:
+
+- Run an isolated write-path test against the HP local stack.
+- Create or reuse the technical event `FIELD SMOKE TEST`.
+- Create a fresh test heat on each run so existing event data is not touched.
+- Open the judge and display screens.
+- Submit one real score through the judge UI.
+- Verify the score is written to local Supabase and visible on display.
+- Close only that generated test heat.
+- Verify the judge UI blocks further scoring after closure.
+- Fail if the browser calls cloud Supabase or `surfjudging.cloud`.
+
+Home profile example:
+
+```bash
+SURF_HP_PROFILE=home SURF_HP_HOST=10.0.0.14 node scripts/hp-field-mutation-test.mjs
+```
+
+The output includes `displayRealtimeOk` and `closeRealtimeOk`. If either is
+`false`, the state became correct after reload/fallback, but not through the
+short realtime window. That is a useful signal for beach-mode websocket quality.
+
 ## Follow-Up Candidates
 
 - Gradually migrate legacy queue writers to typed business operations.
