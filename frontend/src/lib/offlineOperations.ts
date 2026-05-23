@@ -395,6 +395,8 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
     || runtime.expectedSchemaVersion
     || 'unknown';
   const isLocalHost = isLocalNetworkHost();
+  const hostname = window.location.hostname;
+  const origin = window.location.origin;
 
   if (!isLocalHost) {
     writeRuntimeDiagnostics({
