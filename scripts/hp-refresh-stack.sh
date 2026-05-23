@@ -46,6 +46,12 @@ until docker exec surfjudging_postgres pg_isready -U postgres >/dev/null 2>&1; d
   sleep 2
 done
 
+if [ -f "${HP_BASE_DIR}/backend/sql/REPAIR_LOCAL_REALTIME_TENANT.sql" ]; then
+  echo "==> Repairing local Realtime tenant alias"
+  docker exec -i surfjudging_postgres sh -lc 'PGPASSWORD="${POSTGRES_PASSWORD:-your-super-secret-password}" psql -v ON_ERROR_STOP=1 -h localhost -U supabase_admin -d postgres' \
+    < "${HP_BASE_DIR}/backend/sql/REPAIR_LOCAL_REALTIME_TENANT.sql"
+fi
+
 # Initialize tracking table for applied migrations.
 # Do not use docker exec -i with psql -c inside this heredoc: it can consume
 # the remaining SSH stdin and skip the rest of this script.

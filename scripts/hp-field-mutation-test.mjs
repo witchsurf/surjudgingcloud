@@ -360,6 +360,30 @@ async function submitScoreFromJudge(page, scoreText) {
   return waveNumber;
 }
 
+async function waitForHeatSignalSubscription(page, heatId, timeoutMs = 15000) {
+  await page.waitForFunction(
+    (expectedHeatId) => {
+      const raw = window.localStorage.getItem('surfJudgingRuntimeDiagnostics');
+      if (!raw) return false;
+
+      try {
+        const diagnostics = JSON.parse(raw);
+        const realtimeEntries = Array.isArray(diagnostics?.realtime)
+          ? diagnostics.realtime
+          : [];
+        return realtimeEntries.some((entry) =>
+          entry?.key === `heat-signals:${expectedHeatId}` &&
+          entry?.status === 'subscribed'
+        );
+      } catch {
+        return false;
+      }
+    },
+    heatId,
+    { timeout: timeoutMs },
+  );
+}
+
 async function assertClosedBlocksScoring(page) {
   let closeRealtimeOk = true;
   await page.waitForFunction(
@@ -463,6 +487,16 @@ async function main() {
   ).catch(async (error) => {
     const text = await judgePage.evaluate(() => document.body.innerText.slice(0, 1200));
     throw new Error(`Judge interface not ready: ${error.message}\n${text}`);
+  });
+
+  await waitForHeatSignalSubscription(displayPage, heatId).catch(async (error) => {
+    const text = await displayPage.evaluate(() => document.body.innerText.slice(0, 1200));
+    const diagnostics = await displayPage.evaluate(() =>
+      window.localStorage.getItem('surfJudgingRuntimeDiagnostics') || '',
+    );
+    throw new Error(
+      `Display realtime not subscribed before scoring: ${error.message}\n${text}\n${diagnostics.slice(0, 1600)}`,
+    );
   });
 
   const scoredWaveNumber = await submitScoreFromJudge(judgePage, scoreValue.toFixed(1));

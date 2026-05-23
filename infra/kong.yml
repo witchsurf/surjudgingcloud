@@ -16,7 +16,9 @@ services:
           - /rest/v1
         strip_path: true
   - name: realtime
-    url: http://surfjudging_realtime:4000
+    # Supabase JS connects to /realtime/v1/websocket. Kong strips /realtime/v1,
+    # so the upstream service path must restore the Phoenix socket prefix.
+    url: http://surfjudging_realtime:4000/socket
     routes:
       - name: realtime
         paths:
