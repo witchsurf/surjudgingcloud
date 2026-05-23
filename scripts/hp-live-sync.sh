@@ -18,6 +18,11 @@
 # =============================================================================
 set -euo pipefail
 
+# Add local HP Node.js path if it exists
+if [[ -d "$HOME/node/bin" ]]; then
+  export PATH="$HOME/node/bin:$PATH"
+fi
+
 INTERVAL=10
 EVENT_ID=""
 

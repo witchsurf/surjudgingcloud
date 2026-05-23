@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Add local HP Node.js path if it exists
+if [[ -d "$HOME/node/bin" ]]; then
+  export PATH="$HOME/node/bin:$PATH"
+fi
+
 PROFILE="home"
 REPAIR_QUALIFIERS="0"
 SKIP_HEALTHCHECK="0"
