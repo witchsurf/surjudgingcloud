@@ -5,7 +5,7 @@ HP_PROFILE="${SURF_HP_PROFILE:-field}"
 if [[ -n "${SURF_HP_HOST:-}" ]]; then
   HP_HOST="${SURF_HP_HOST}"
 elif [[ "$HP_PROFILE" == "home" ]]; then
-  HP_HOST="10.0.0.28"
+  HP_HOST="10.0.0.14"
 else
   HP_HOST="192.168.1.2"
 fi

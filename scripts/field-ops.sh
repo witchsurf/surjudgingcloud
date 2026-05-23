@@ -33,7 +33,7 @@ Usage: ./scripts/field-ops.sh [--field|--home] [--full-stack] [--skip-deploy] [-
 
 Defaults:
   --field          Use HP on D-LINK / beach LAN (192.168.1.2)
-  --home           Use HP on home LAN (10.0.0.28)
+  --home           Use HP on home LAN (10.0.0.14)
   --full-stack     Also refresh the HP local stack before frontend deploy
   --skip-deploy    Do not rebuild/redeploy the frontend artifact
   --skip-healthcheck
@@ -80,7 +80,7 @@ if [[ "$PROFILE" == "field" && "$FULL_STACK" == "0" ]]; then
 fi
 
 if [[ "$PROFILE" == "home" ]]; then
-  HP_HOST="${SURF_HP_HOST:-10.0.0.28}"
+  HP_HOST="${SURF_HP_HOST:-10.0.0.14}"
 else
   HP_HOST="${SURF_HP_HOST:-192.168.1.2}"
 fi
@@ -146,9 +146,9 @@ if [[ "$PROFILE" == "field" ]]; then
   echo "Local app     : http://192.168.1.2:8080"
   echo "Local API     : http://192.168.1.2:8000/rest/v1/events?select=id&limit=1"
 else
-  echo "Local display : http://10.0.0.28:8080/display"
-  echo "Local app     : http://10.0.0.28:8080"
-  echo "Local API     : http://10.0.0.28:8000/rest/v1/events?select=id&limit=1"
+  echo "Local display : http://10.0.0.14:8080/display"
+  echo "Local app     : http://10.0.0.14:8080"
+  echo "Local API     : http://10.0.0.14:8000/rest/v1/events?select=id&limit=1"
 fi
 echo "Public display: https://display.surfjudging.cloud/display"
 echo "Cloud display : https://surfjudging.cloud/display"

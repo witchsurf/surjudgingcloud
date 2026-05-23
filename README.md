@@ -4,7 +4,7 @@ Application de jugement surf pour événement en mode cloud + terrain local HP.
 
 ## Points D’entrée
 
-- `./event-box` : menu maison / maintenance HP (`10.0.0.28`).
+- `./event-box` : menu maison / maintenance HP (`10.0.0.14`).
 - `./beach` : menu plage / D-LINK (`192.168.1.2`).
 - `docs/hp-operations-runbook.md` : runbook opérationnel principal.
 - `DEPLOYMENT.md` : déploiement cloud et HP.

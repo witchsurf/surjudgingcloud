@@ -29,7 +29,7 @@ function resolveLocalSupabaseUrl() {
 
   const profile = String(process.env.SURF_HP_PROFILE || '').trim().toLowerCase();
   if (profile === 'field') return 'http://192.168.1.2:8000';
-  if (profile === 'home') return 'http://10.0.0.28:8000';
+  if (profile === 'home') return 'http://10.0.0.14:8000';
 
   return process.env.VITE_SUPABASE_URL_LAN;
 }

@@ -12,7 +12,7 @@ choose_profile() {
   echo
   echo "Profile actuel: $PROFILE"
   echo "1. field (plage / D-LINK / 192.168.1.2)"
-  echo "2. home  (maison / 10.0.0.28)"
+  echo "2. home  (maison / 10.0.0.14)"
   read -r -p "Choix profil [1/2, Entrée pour garder]: " answer
   case "$answer" in
     1) PROFILE="field" ;;

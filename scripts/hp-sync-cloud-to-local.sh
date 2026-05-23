@@ -24,7 +24,7 @@ This script is intentionally DB-only:
   - no automatic qualifier repair by default
 
 Profiles:
-  --home   HP on home LAN: 10.0.0.28 (default)
+  --home   HP on home LAN: 10.0.0.14 (default)
   --field  HP on D-LINK / beach LAN: 192.168.1.2
 EOF
 }
@@ -68,7 +68,7 @@ if [[ -n "${SURF_HP_HOST:-}" ]]; then
 elif [[ "$PROFILE" == "field" ]]; then
   HP_HOST="192.168.1.2"
 else
-  HP_HOST="10.0.0.28"
+  HP_HOST="10.0.0.14"
 fi
 
 export SURF_HP_PROFILE="$PROFILE"

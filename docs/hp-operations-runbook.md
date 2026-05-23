@@ -20,7 +20,7 @@ En clair : si le code n’a pas changé, on ne déploie pas le frontend. Si la s
 `home`
 
 - Maison / maintenance.
-- IP typique du HP : `10.0.0.28`.
+- IP typique du HP : `10.0.0.14`.
 - C’est le profil recommandé pour préparer la box avant l’événement.
 
 `field`
@@ -77,7 +77,7 @@ Depuis le Mac, connecté à Internet et au réseau où le HP répond :
 
 Ce script :
 
-- vérifie que le HP répond sur `10.0.0.28:8000`
+- vérifie que le HP répond sur `10.0.0.14:8000`
 - charge les variables Supabase
 - copie les tables cloud utiles vers la base locale HP
 - nettoie/remplace localement les données de ces événements pour garder la parité des IDs
@@ -102,7 +102,7 @@ SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
 Puis ouvrir :
 
 ```text
-http://10.0.0.28:8080
+http://10.0.0.14:8080
 ```
 
 Vérifier dans `Mes événements` que l’événement est présent et que les heats sont chargés.

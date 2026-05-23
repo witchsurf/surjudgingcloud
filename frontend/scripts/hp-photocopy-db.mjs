@@ -325,7 +325,7 @@ async function main() {
     const hpProfile = process.env.SURF_HP_PROFILE || 'home';
     let hpHost = process.env.SURF_HP_HOST;
     if (!hpHost) {
-      hpHost = hpProfile === 'home' ? '10.0.0.28' : '192.168.1.2';
+      hpHost = hpProfile === 'home' ? '10.0.0.14' : '192.168.1.2';
     }
     const hpBaseDir = process.env.SURF_HP_BASE_DIR || '/home/admin-surfjudging/surjudgingcloud';
     const backupTimestamp = Math.floor(Date.now() / 1000);
