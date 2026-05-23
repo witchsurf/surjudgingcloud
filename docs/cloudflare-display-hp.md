@@ -45,7 +45,7 @@ Ce document décrit comment le display public (`surfjudging.cloud/display`) est 
 
 1. Le HP reste la **source de vérité** pendant l'événement (réseau DLINK local).
 2. Un hotspot 4G (téléphone en partage de connexion) est branché au réseau.
-3. Le script `hp-live-sync.sh` tourne en arrière-plan et **pousse les scores vers le Cloud** toutes les 30 secondes.
+3. Le script `hp-live-sync.sh` tourne en arrière-plan et **pousse le paquet live display vers le Cloud** toutes les 10 secondes par défaut.
 4. Le display public (`surfjudging.cloud/display`) lit les données depuis le Cloud Supabase et se met à jour automatiquement.
 
 ## Utilisation
@@ -68,8 +68,8 @@ Puis choisir :
 # Démarrer en arrière-plan
 ./scripts/hp-live-sync.sh --event-id 17 &
 
-# Avec un intervalle personnalisé (60 secondes)
-./scripts/hp-live-sync.sh --event-id 17 --interval 60 &
+# Avec un intervalle personnalisé (30 secondes si la 4G est fragile)
+./scripts/hp-live-sync.sh --event-id 17 --interval 30 &
 
 # Arrêter
 kill $(pgrep -f hp-live-sync.sh)
@@ -89,17 +89,27 @@ Les logs de la sync live sont écrits dans :
 
 ```text
 infra/.live-sync.log
+infra/.live-sync.status.json
 ```
+
+## Modes De Lancement
+
+- **Mac opérateur recommandé aujourd'hui :** le Mac doit voir le HP local (`10.0.0.14` à la maison ou `192.168.1.2` plage) et internet. C'est le chemin validé.
+- **HP autonome USB/4G :** possible si Node.js est installé sur le HP, car `hp-live-sync.sh` lance `frontend/scripts/hp-push-db-to-cloud.mjs`.
 
 ## Prérequis
 
 1. Le HP doit pouvoir atteindre internet (via hotspot 4G relié au DLINK ou en USB).
 2. Les variables `SUPABASE_SERVICE_ROLE_KEY_CLOUD` et `VITE_SUPABASE_URL_CLOUD` doivent être définies dans `frontend/.env.local`.
 3. Le script `hp-push-db-to-cloud.mjs` doit pouvoir joindre le HP local ET le Cloud simultanément.
+4. Node.js doit être disponible sur la machine qui lance `hp-live-sync.sh`.
 
 ## Robustesse
 
+- **Paquet display complet :** le live sync pousse les tables nécessaires au display cloud: `events`, `heats`, `participants`, `heat_entries`, `heat_slot_mappings`, `event_last_config`, `heat_realtime_config`, `active_heat_pointer`, `scores`, `score_overrides`, `interference_calls` et les overrides de lineup.
 - **Erreurs réseau :** Si le Cloud est inaccessible (coupure 4G), le script retente au cycle suivant. Après 5 erreurs consécutives, il fait une pause de 2 minutes puis reprend.
+- **Anti double-lancement :** un verrou local empêche de lancer deux live syncs sur le même HP.
+- **Observabilité :** `infra/.live-sync.status.json` donne l’état courant (`running`, `degraded`, `backoff`, `stopped`), le PID, le cycle et le dernier résultat.
 - **Arrêt propre :** Le script intercepte SIGTERM/SIGINT pour se fermer proprement. L'option 0 (Quit) du menu arrête aussi le sync s'il tourne.
 - **Diff intelligent :** Seules les lignes modifiées sont poussées vers le Cloud (pas de full-sync inutile).
 - **Pas d'impact sur le HP :** Le sync est en lecture seule côté local. Aucune donnée terrain n'est modifiée.

@@ -145,8 +145,12 @@ Le display public (`surfjudging.cloud/display`) est alimenté par le **Cloud Sup
 1. Brancher un **hotspot 4G** (téléphone en partage de connexion) sur le réseau.
 2. Dans le menu terrain, choisir **option 8 : 📡 Live Score Sync via 4G**.
 3. Entrer l'`event_id` de la compétition en cours.
-4. Le script synchronise les scores vers le Cloud **toutes les 30 secondes**.
+4. Le script synchronise le paquet live display vers le Cloud **toutes les 10 secondes** par défaut.
 5. Pour arrêter : **option 9** du menu.
+
+Chemin validé aujourd'hui : lancer le sync depuis le Mac opérateur, qui voit à
+la fois le HP local et internet. Pour lancer directement depuis le HP en mode
+USB/4G autonome, Node.js doit être installé sur le HP.
 
 ```bash
 # Ou en ligne de commande directe :
@@ -154,6 +158,7 @@ Le display public (`surfjudging.cloud/display`) est alimenté par le **Cloud Sup
 ```
 
 Logs disponibles dans `infra/.live-sync.log`.
+Statut live disponible dans `infra/.live-sync.status.json`.
 
 Si pas de 4G disponible : les scores seront poussés en une seule fois après l'événement (option 7 du menu).
 

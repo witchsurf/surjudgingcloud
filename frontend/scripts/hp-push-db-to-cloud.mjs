@@ -65,6 +65,14 @@ function parseArgs(argv) {
   return options;
 }
 
+function resolveLocalUrl() {
+  if (process.env.SURF_HP_HOST) return `http://${process.env.SURF_HP_HOST}:8000`;
+  if (process.env.VITE_SUPABASE_URL_LAN) return process.env.VITE_SUPABASE_URL_LAN;
+  const host =
+    String(process.env.SURF_HP_PROFILE || '').toLowerCase() === 'home' ? '10.0.0.14' : '192.168.1.2';
+  return `http://${host}:8000`;
+}
+
 const options = parseArgs(process.argv.slice(2));
 const CLOUD_URL = process.env.VITE_SUPABASE_URL_CLOUD;
 const CLOUD_KEY =
@@ -72,7 +80,7 @@ const CLOUD_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.VITE_SUPABASE_SERVICE_ROLE_KEY_CLOUD ||
   process.env.VITE_SUPABASE_ANON_KEY_CLOUD;
-const LOCAL_URL = process.env.VITE_SUPABASE_URL_LAN;
+const LOCAL_URL = resolveLocalUrl();
 const LOCAL_KEY = process.env.VITE_SUPABASE_ANON_KEY_LAN;
 const usingCloudServiceRole = Boolean(
   process.env.SUPABASE_SERVICE_ROLE_KEY_CLOUD ||
@@ -151,12 +159,23 @@ async function checkReachability(label, url) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    await fetch(url, { signal: controller.signal, mode: 'no-cors' });
+    const headers = {};
+    if (url === CLOUD_URL && CLOUD_KEY) {
+      headers.apikey = CLOUD_KEY;
+      headers.Authorization = `Bearer ${CLOUD_KEY}`;
+    }
+    if (url === LOCAL_URL && LOCAL_KEY) {
+      headers.apikey = LOCAL_KEY;
+      headers.Authorization = `Bearer ${LOCAL_KEY}`;
+    }
+    const healthUrl = `${url.replace(/\/$/, '')}/rest/v1/events?select=id&limit=1`;
+    const response = await fetch(healthUrl, { signal: controller.signal, headers });
     clearTimeout(timeoutId);
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     console.log('✅ OK');
     return true;
   } catch (error) {
-    console.log('❌ Unreachable');
+    console.log(`❌ Unreachable (${error.message})`);
     return false;
   }
 }
@@ -339,6 +358,16 @@ async function main() {
     }
 
     console.log('☁️ Preparing local data payloads...');
+    const eventsPayload = await fetchPagedRows(local, 'events', (query) =>
+      query
+        .select('id, name, organizer, start_date, end_date, price, currency, method, status, paid, categories, judges, created_at')
+        .in('id', eventIds)
+    );
+    const heatRows = await fetchPagedRows(local, 'heats', (query) =>
+      query
+        .select('id, event_id, competition, division, round, heat_number, heat_size, color_order, status, is_active, closed_at, created_at, updated_at')
+        .in('id', heatIds)
+    );
     const participants = await fetchPagedRows(local, 'participants', (query) =>
       query
         .select('id, event_id, category, seed, name, country, license, created_at')
@@ -347,6 +376,11 @@ async function main() {
     const heatEntries = await fetchPagedRows(local, 'heat_entries', (query) =>
       query
         .select('heat_id, participant_id, position, seed, color, created_at')
+        .in('heat_id', heatIds)
+    );
+    const heatSlotMappings = await fetchPagedRows(local, 'heat_slot_mappings', (query) =>
+      query
+        .select('heat_id, position, placeholder, source_round, source_heat, source_position, created_at')
         .in('heat_id', heatIds)
     );
     const scores = await fetchPagedRows(local, 'scores', (query) =>
@@ -370,6 +404,22 @@ async function main() {
         .select('event_id, event_name, active_heat_id, updated_at')
         .in('event_id', eventIds)
     );
+    const eventLastConfigs = await fetchPagedRows(local, 'event_last_config', (query) =>
+      query
+        .select('event_id, event_name, division, round, heat_number, judges, surfers, surfer_names, surfer_countries, updated_at, updated_by')
+        .in('event_id', eventIds)
+    ).catch((error) => {
+      console.warn('⚠️ event_last_config not available yet, skipping:', error.message);
+      return [];
+    });
+    const scoreOverrides = await fetchPagedRows(local, 'score_overrides', (query) =>
+      query
+        .select('id, heat_id, score_id, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, previous_score, new_score, reason, comment, overridden_by, overridden_by_name, created_at')
+        .in('heat_id', heatIds)
+    ).catch((error) => {
+      console.warn('⚠️ score_overrides not available yet, skipping:', error.message);
+      return [];
+    });
     const heatEntryOverrides = await fetchPagedRows(local, 'heat_entry_overrides', (query) =>
       query
         .select('id, event_id, heat_id, position, color, previous_participant_id, previous_participant_name, new_participant_id, new_participant_name, new_country, reason, created_by, created_at')
@@ -392,37 +442,58 @@ async function main() {
         return rows;
       }
     }
+    const changedEvents = await safeDiff('events', eventsPayload, ['id']);
+    const changedHeats = await safeDiff('heats', heatRows, ['id']);
     const changedParticipants = await safeDiff('participants', participants, ['id']);
     const changedHeatEntries = await safeDiff('heat_entries', heatEntries, ['heat_id', 'position']);
+    const changedHeatSlotMappings = await safeDiff('heat_slot_mappings', heatSlotMappings, ['heat_id', 'position']);
     const changedScores = await safeDiff('scores', scores, ['id']);
     const changedInterferenceCalls = await safeDiff('interference_calls', interferenceCalls, ['heat_id', 'judge_id', 'surfer', 'wave_number']);
     const changedRealtimeConfigs = await safeDiff('heat_realtime_config', realtimeConfigs, ['heat_id']);
+    const changedEventLastConfigs = await safeDiff('event_last_config', eventLastConfigs, ['event_id'])
+      .catch(() => []);
+    const changedScoreOverrides = await safeDiff('score_overrides', scoreOverrides, ['id'])
+      .catch(() => []);
     const changedHeatEntryOverrides = await safeDiff('heat_entry_overrides', heatEntryOverrides, ['id'])
       .catch(() => []);
     const changedActiveHeatPointers = await safeDiff('active_heat_pointer', activeHeatPointers, ['event_id'])
       .catch(async () => safeDiff('active_heat_pointer', activeHeatPointers, ['event_name']));
 
 
+    console.log(`  - events: ${changedEvents.length}/${eventsPayload.length} changed`);
+    console.log(`  - heats: ${changedHeats.length}/${heatRows.length} changed`);
     console.log(`  - participants: ${changedParticipants.length}/${participants.length} changed`);
     console.log(`  - heat_entries: ${changedHeatEntries.length}/${heatEntries.length} changed`);
+    console.log(`  - heat_slot_mappings: ${changedHeatSlotMappings.length}/${heatSlotMappings.length} changed`);
     console.log(`  - scores: ${changedScores.length}/${scores.length} changed`);
     console.log(`  - interference_calls: ${changedInterferenceCalls.length}/${interferenceCalls.length} changed`);
     console.log(`  - heat_realtime_config: ${changedRealtimeConfigs.length}/${realtimeConfigs.length} changed`);
+    console.log(`  - event_last_config: ${changedEventLastConfigs.length}/${eventLastConfigs.length} changed`);
+    console.log(`  - score_overrides: ${changedScoreOverrides.length}/${scoreOverrides.length} changed`);
     console.log(`  - heat_entry_overrides: ${changedHeatEntryOverrides.length}/${heatEntryOverrides.length} changed`);
     console.log(`  - active_heat_pointer: ${changedActiveHeatPointers.length}/${activeHeatPointers.length} changed`);
 
+    let eventCount = 0;
+    let heatCount = 0;
     let participantCount = 0;
     let heatEntryCount = 0;
+    let heatSlotMappingCount = 0;
     let scoreCount = 0;
     let interferenceCount = 0;
     let realtimeCount = 0;
+    let eventLastConfigCount = 0;
+    let scoreOverrideCount = 0;
     let lineupOverrideCount = 0;
     let pointerCount = 0;
 
     console.log('🚀 Pushing local field diff to Cloud...');
     if (!options.dryRun) {
+      eventCount = await upsertRows(cloud, 'events', changedEvents, 'id');
+      heatCount = await upsertRows(cloud, 'heats', changedHeats, 'id');
       participantCount = await upsertRows(cloud, 'participants', changedParticipants, 'id');
       heatEntryCount = await upsertRows(cloud, 'heat_entries', changedHeatEntries, 'heat_id,position');
+      heatSlotMappingCount = await upsertRows(cloud, 'heat_slot_mappings', changedHeatSlotMappings, 'heat_id,position');
+      eventLastConfigCount = await upsertRows(cloud, 'event_last_config', changedEventLastConfigs, 'event_id');
 
       // Temporarily force ALL heats with scores to 'running' on Cloud 
       // so the fn_block_scoring_when_not_running trigger allows the upsert.
@@ -437,6 +508,7 @@ async function main() {
       }
 
       scoreCount = await upsertRows(cloud, 'scores', changedScores, 'id');
+      scoreOverrideCount = await upsertRows(cloud, 'score_overrides', changedScoreOverrides, 'id');
       interferenceCount = await upsertRows(
         cloud,
         'interference_calls',
@@ -499,11 +571,16 @@ async function main() {
       console.log('✅ SYNC COMPLETED SUCCESSFULLY');
     }
     console.log('======================================================');
+    console.log(`Events synced: ${eventCount}`);
+    console.log(`Heats synced: ${heatCount}`);
     console.log(`Participants synced: ${participantCount}`);
     console.log(`Heat entries synced: ${heatEntryCount}`);
+    console.log(`Heat slot mappings synced: ${heatSlotMappingCount}`);
     console.log(`Scores synced: ${scoreCount}`);
+    console.log(`Score overrides synced: ${scoreOverrideCount}`);
     console.log(`Interference calls synced: ${interferenceCount}`);
     console.log(`Realtime rows synced: ${realtimeCount}`);
+    console.log(`Event last configs synced: ${eventLastConfigCount}`);
     console.log(`Lineup overrides synced: ${lineupOverrideCount}`);
     console.log(`Active heat pointers synced: ${pointerCount}`);
     console.log(`Closed heats replayed: ${closedHeatIds.length}`);

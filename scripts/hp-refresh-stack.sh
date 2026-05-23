@@ -16,7 +16,7 @@ HP_BASE_DIR="${SURF_HP_BASE_DIR:-/home/admin-surfjudging/surjudgingcloud}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> Ensuring remote directories exist on ${HP_USER}@${HP_HOST}"
-ssh "${HP_USER}@${HP_HOST}" "mkdir -p ${HP_BASE_DIR}/infra ${HP_BASE_DIR}/backend/sql ${HP_BASE_DIR}/backend/supabase/migrations"
+ssh "${HP_USER}@${HP_HOST}" "mkdir -p ${HP_BASE_DIR}/infra ${HP_BASE_DIR}/scripts ${HP_BASE_DIR}/frontend/scripts ${HP_BASE_DIR}/backend/sql ${HP_BASE_DIR}/backend/supabase/migrations"
 
 echo "==> Syncing stack and migration files"
 rsync -az \
@@ -24,6 +24,19 @@ rsync -az \
   "$ROOT_DIR/infra/kong.yml" \
   "$ROOT_DIR/infra/nginx.conf" \
   "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/infra/"
+
+rsync -az \
+  "$ROOT_DIR/scripts/" \
+  "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/scripts/"
+
+rsync -az \
+  "$ROOT_DIR/frontend/scripts/" \
+  "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/frontend/scripts/"
+
+rsync -az \
+  "$ROOT_DIR/frontend/package.json" \
+  "$ROOT_DIR/frontend/package-lock.json" \
+  "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/frontend/"
 
 rsync -az --delete \
   "$ROOT_DIR/backend/sql/" \

@@ -92,7 +92,7 @@ while true; do
         ./scripts/hp-live-sync.sh --event-id "$live_event_id" &
         LIVE_SYNC_PID=$!
         echo "📡 Live sync démarré en arrière-plan (PID: $LIVE_SYNC_PID)"
-        echo "   Event: $live_event_id | Intervalle: 30s"
+        echo "   Event: $live_event_id | Intervalle: 10s"
         echo "   Utilisez l'option 9 pour arrêter."
       fi
       read -r -p "Entrée pour continuer..."
