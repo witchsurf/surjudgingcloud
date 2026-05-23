@@ -579,26 +579,42 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const refreshCorrectionPanelData = useCallback(async () => {
     if (!supabase) throw new Error('Supabase non initialisé');
 
-    const [{ data: scoreRows, error: scoresError }, { data: overrideRows, error: overridesError }] = await Promise.all([
-      supabase
-        .from('scores')
-        .select('*')
-        .eq('heat_id', heatId)
-        .order('created_at', { ascending: true }),
-      supabase
-        .from('score_overrides')
-        .select('*')
-        .eq('heat_id', heatId)
-        .order('created_at', { ascending: false }),
-    ]);
+    try {
+      const [{ data: scoreRows, error: scoresError }, { data: overrideRows, error: overridesError }] = await Promise.all([
+        supabase
+          .from('scores')
+          .select('*')
+          .eq('heat_id', heatId)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('score_overrides')
+          .select('*')
+          .eq('heat_id', heatId)
+          .order('created_at', { ascending: false }),
+      ]);
 
-    if (scoresError) throw scoresError;
-    if (overridesError) throw overridesError;
+      if (scoresError) throw scoresError;
+      if (overridesError) throw overridesError;
 
-    const nextScores = (scoreRows || []) as Score[];
-    setDbHeatScoreHistory(nextScores);
-    setDbHeatScores(canonicalizeScores(nextScores));
-    setDbOverrideLogs((overrideRows || []) as ScoreOverrideLog[]);
+      const nextScores = (scoreRows || []) as Score[];
+      setDbHeatScoreHistory(nextScores);
+      setDbHeatScores(canonicalizeScores(nextScores));
+      setDbOverrideLogs((overrideRows || []) as ScoreOverrideLog[]);
+    } catch (error) {
+      console.warn('⚠️ Base de données inaccessible - chargement des scores locaux de secours', error);
+      
+      // Fallback: Read from IndexedDB / localStorage cache!
+      const { getScoresByHeatIDB } = await import('../lib/idbStorage');
+      const localScores = await getScoresByHeatIDB([heatId]);
+      
+      // Also read local override logs from localStorage
+      const localLogsRaw = localStorage.getItem('surfJudgingOverrideLogs');
+      const localLogs = localLogsRaw ? (JSON.parse(localLogsRaw) as ScoreOverrideLog[]).filter(log => log.heat_id === heatId) : [];
+
+      setDbHeatScoreHistory(localScores);
+      setDbHeatScores(canonicalizeScores(localScores));
+      setDbOverrideLogs(localLogs);
+    }
   }, [heatId]);
 
   useEffect(() => {

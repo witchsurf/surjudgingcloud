@@ -119,7 +119,7 @@ export const getSupabaseConfig = () => {
     }
   }
 
-  const isLocalDevice = typeof window !== 'undefined' && isLocalNetworkHost() && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  const isLocalDevice = typeof window !== 'undefined' && isLocalNetworkHost();
 
   const dynamicLocalUrl = isLocalDevice
     ? `http://${window.location.hostname}:8000`

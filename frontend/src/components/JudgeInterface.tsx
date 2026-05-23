@@ -489,7 +489,7 @@ function JudgeInterface({
 
       } catch (error) {
         console.warn('Impossible de synchroniser les scores du heat - conservation des données locales', error);
-        // Ne PAS purger les données locales en cas d'erreur de connexion
+        setSubmittedScores(readScoresFromStorage());
       }
     };
 

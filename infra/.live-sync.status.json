@@ -1,0 +1,11 @@
+{
+  "state": "running",
+  "event_id": "28",
+  "pid": 16198,
+  "cycle": 97,
+  "consecutive_errors": 0,
+  "last_ok": true,
+  "message": "last sync OK",
+  "updated_at": "2026-05-23T19:20:40Z",
+  "log": "/Users/sandy/Desktop/judging/infra/.live-sync.log"
+}
