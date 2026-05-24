@@ -357,7 +357,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!timer.isRunning || isTimerOpen) return;
+    if (!timer.isRunning) return;
 
     setFloatingTimerTick(Date.now());
     const interval = window.setInterval(() => {
@@ -365,7 +365,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }, 1000);
 
     return () => window.clearInterval(interval);
-  }, [timer.isRunning, isTimerOpen]);
+  }, [timer.isRunning]);
 
   const loadOfficialJudges = useCallback(async () => {
     if (!isSupabaseConfigured()) {
@@ -3897,6 +3897,115 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   Status Actuel : <strong className="uppercase text-cyan-400">{currentHeatStatus}</strong>
                 </div>
               </div>
+
+              <div className="md:col-span-2 pt-4 border-t border-white/5">
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/15 p-4 flex flex-col justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-cyan-300">
+                        <ClipboardCheck className="w-4 h-4" />
+                        <h4 className="text-xs font-black uppercase tracking-widest">Configuration heat</h4>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Sauvegarde le contexte actif, les affectations et le lineup courant.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleSaveConfig}
+                      disabled={configSaved || loadState === 'loading' || !judgeAssignmentStatus.isReady}
+                      className={`w-full py-3 px-4 rounded-xl font-bebas text-xl tracking-widest transition-all shadow-lg flex justify-center items-center gap-2 border border-white/5 ${configSaved
+                        ? 'bg-emerald-950/40 text-emerald-400 cursor-not-allowed opacity-80'
+                        : !judgeAssignmentStatus.isReady
+                          ? 'bg-amber-950/40 text-amber-400 cursor-not-allowed opacity-90'
+                          : 'bg-cyan-600 hover:bg-cyan-500 text-white font-medium hover:-translate-y-0.5 active:translate-y-0 shadow-cyan-900/20'
+                        }`}
+                    >
+                      {configSaved ? (
+                        <>
+                          <CheckCircle className="w-5 h-5 text-emerald-400" /> SAUVEGARDÉE
+                        </>
+                      ) : !judgeAssignmentStatus.isReady ? (
+                        <>JUGES INCOMPLETS</>
+                      ) : (
+                        <>SAUVEGARDER</>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="rounded-xl border border-violet-500/20 bg-violet-950/15 p-4 space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-violet-300">
+                          <Clock className="w-4 h-4" />
+                          <h4 className="text-xs font-black uppercase tracking-widest">Chronomètre</h4>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Pilotage rapide du heat depuis le cockpit.
+                        </p>
+                      </div>
+                      <div className={`font-bebas text-4xl leading-none tracking-wider ${timer.isRunning ? 'text-cyan-300' : 'text-slate-200'}`}>
+                        {formatMinSec(floatingTimeLeft)}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={timer.isRunning ? handleTimerPause : handleTimerResume}
+                        disabled={!configSaved || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
+                        className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wider transition-all border ${timer.isRunning
+                          ? 'bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500/30 text-white'
+                        } disabled:cursor-not-allowed disabled:opacity-45`}
+                      >
+                        {heatStartDependencyChecking ? 'Vérif...' : timer.isRunning ? 'Pause' : 'Start'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTimerRestartFull}
+                        disabled={!configSaved || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
+                        className="rounded-lg border border-amber-500/30 bg-amber-600 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        Recommencer
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsTimerOpen(true);
+                        window.setTimeout(() => {
+                          document.getElementById('admin-timer-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 50);
+                      }}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-300 transition-all hover:bg-slate-900"
+                    >
+                      Réglages chronomètre
+                    </button>
+                  </div>
+
+                  {shouldShowKioskPanel && (
+                    <div className="rounded-xl border border-rose-500/20 bg-rose-950/15 p-4 flex flex-col justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 text-rose-300">
+                          <CheckCircle className="w-4 h-4" />
+                          <h4 className="text-xs font-black uppercase tracking-widest">Clôture heat</h4>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          Ferme le heat courant et prépare le passage au suivant.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCloseHeat}
+                        className="flex items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-600 px-4 py-3 text-sm font-black uppercase tracking-wider text-white shadow-lg shadow-rose-950/30 transition-all hover:-translate-y-0.5 hover:bg-rose-500 active:translate-y-0"
+                      >
+                        <CheckCircle className="w-5 h-5" />
+                        <span>Fermer le heat</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Diagnostic sub-panel */}
@@ -4089,35 +4198,15 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             )}
           </div>
 
-          <button
-            onClick={handleSaveConfig}
-            disabled={configSaved || loadState === 'loading' || !judgeAssignmentStatus.isReady}
-            className={`w-full py-4 px-6 rounded-xl font-bebas text-2xl tracking-widest transition-all shadow-lg flex justify-center items-center gap-2 border border-white/5 ${configSaved
-              ? 'bg-emerald-950/40 text-emerald-400 cursor-not-allowed opacity-80'
-              : !judgeAssignmentStatus.isReady
-                ? 'bg-amber-950/40 text-amber-400 cursor-not-allowed opacity-90'
-                : 'bg-cyan-600 hover:bg-cyan-500 text-white font-medium hover:-translate-y-0.5 active:translate-y-0 shadow-cyan-900/20'
-              }`}
-          >
-            {configSaved ? (
-              <>
-                <CheckCircle className="w-6 h-6 text-emerald-400" /> CONFIGURATION SAUVEGARDÉE
-              </>
-            ) : !judgeAssignmentStatus.isReady ? (
-              <>
-                AFFECTATIONS JUGES INCOMPLÈTES
-              </>
-            ) : (
-              <>
-                SAUVEGARDER LA CONFIGURATION
-              </>
-            )}
-          </button>
+          <div className="rounded-xl border border-cyan-900/40 bg-cyan-950/10 px-4 py-3 text-xs text-slate-400">
+            La sauvegarde de configuration est maintenant dans le volet 1, avec le chronomètre et la clôture du heat.
+          </div>
         </div>
       </details>
 
       {/* Timer */}
       <details 
+        id="admin-timer-panel"
         className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40" 
         open={isTimerOpen} 
         onToggle={(e) => setIsTimerOpen(e.currentTarget.open)}
