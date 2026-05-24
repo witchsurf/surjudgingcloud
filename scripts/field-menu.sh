@@ -26,11 +26,11 @@ while true; do
   clear
   if [[ "$PROFILE" == "home" ]]; then
     TITLE="📦 Surf Judging Event Box"
-    ACTION_ONE="Prepare Event Box"
+    ACTION_ONE="Upgrade Event Box"
     ACTION_FOUR="Refresh Event Box local stack"
   else
     TITLE="🏄 Surf Judging Beach Ops"
-    ACTION_ONE="Run Beach Ops"
+    ACTION_ONE="Upgrade Beach Box"
     ACTION_FOUR="Refresh Beach local stack"
   fi
   echo "======================================================"
@@ -52,30 +52,26 @@ while true; do
 
   case "$choice" in
     1)
-      if [[ "$PROFILE" == "home" ]]; then
-        ./scripts/hp-sync-cloud-to-local.sh --home
-      else
-        ./scripts/field-ops.sh "--$PROFILE"
-      fi
+      ./scripts/hp-ops.sh upgrade "--$PROFILE"
       read -r -p "Entrée pour continuer..."
       ;;
     2)
-      ./scripts/hp-healthcheck.sh
+      ./scripts/hp-ops.sh healthcheck "--$PROFILE"
       read -r -p "Entrée pour continuer..."
       ;;
     3)
-      ./scripts/hp-deploy-frontend.sh
+      ./scripts/hp-ops.sh deploy "--$PROFILE"
       read -r -p "Entrée pour continuer..."
       ;;
     4)
-      ./scripts/hp-refresh-stack.sh
+      ./scripts/hp-ops.sh refresh "--$PROFILE"
       read -r -p "Entrée pour continuer..."
       ;;
     5)
       choose_profile
       ;;
     6)
-      ./scripts/hp-sync-cloud-to-local.sh "--$PROFILE"
+      ./scripts/hp-ops.sh cloud-to-local "--$PROFILE"
       read -r -p "Entrée pour continuer..."
       ;;
     7)
@@ -84,7 +80,7 @@ while true; do
       if [[ -z "${sync_event_id// }" ]]; then
         echo "Sync annulée: aucun event_id fourni."
       else
-        (cd frontend && node scripts/hp-push-db-to-cloud.mjs --event-id "$sync_event_id")
+        ./scripts/hp-ops.sh local-to-cloud "--$PROFILE" --event-id "$sync_event_id"
       fi
       read -r -p "Entrée pour continuer..."
       ;;
@@ -94,7 +90,7 @@ while true; do
       if [[ -z "${live_event_id// }" ]]; then
         echo "Live sync annulé: aucun event_id fourni."
       else
-        ./scripts/hp-live-sync.sh --event-id "$live_event_id" &
+        ./scripts/hp-ops.sh live-start "--$PROFILE" --event-id "$live_event_id" &
         LIVE_SYNC_PID=$!
         echo "📡 Live sync démarré en arrière-plan (PID: $LIVE_SYNC_PID)"
         echo "   Event: $live_event_id | Intervalle: 10s"

@@ -16,13 +16,13 @@ Application de jugement surf pour événement en mode cloud + terrain local HP.
 2. Copier Cloud Supabase vers HP local :
 
 ```bash
-./scripts/hp-sync-cloud-to-local.sh --home
+./scripts/hp-ops.sh cloud-to-local --home
 ```
 
 3. Vérifier le HP :
 
 ```bash
-SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
+./scripts/hp-ops.sh healthcheck --home
 ```
 
 4. Exploiter l’événement en LAN via `./beach`.
@@ -41,8 +41,9 @@ npm run build
 
 Scripts utiles :
 
-- `scripts/hp-deploy-frontend.sh` : build + déploiement du frontend sur le HP.
-- `scripts/hp-refresh-stack.sh` : refresh stack Docker + migrations locales HP.
+- `scripts/hp-ops.sh` : point d'entrée opérateur unique (`upgrade`, `refresh`, `deploy`, `healthcheck`, `cloud-to-local`, `local-to-cloud`, `live-start`).
+- `scripts/hp-deploy-frontend.sh` : moteur bas niveau build + déploiement du frontend sur le HP.
+- `scripts/hp-refresh-stack.sh` : moteur bas niveau refresh stack Docker + migrations locales HP.
 - `frontend/scripts/hp-photocopy-db.mjs` : moteur Cloud -> HP.
 - `frontend/scripts/hp-push-db-to-cloud.mjs` : moteur HP -> Cloud.
 - `frontend/scripts/repair-broken-qualifiers.mjs` : secours qualifiés, à utiliser seulement si l’audit le demande.

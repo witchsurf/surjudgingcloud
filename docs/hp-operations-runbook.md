@@ -34,7 +34,7 @@ En clair : si le code n’a pas changé, on ne déploie pas le frontend. Si la s
 Préparer la box depuis le cloud, sans toucher au code :
 
 ```bash
-./scripts/hp-sync-cloud-to-local.sh --home
+./scripts/hp-ops.sh cloud-to-local --home
 ```
 
 Menu maison :
@@ -52,7 +52,7 @@ Menu plage :
 Audit rapide :
 
 ```bash
-SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
+./scripts/hp-ops.sh healthcheck --home
 ```
 
 ## Workflow Recommandé Prochain Événement
@@ -72,7 +72,7 @@ Dans l’app cloud :
 Depuis le Mac, connecté à Internet et au réseau où le HP répond :
 
 ```bash
-./scripts/hp-sync-cloud-to-local.sh --home
+./scripts/hp-ops.sh cloud-to-local --home
 ```
 
 Ce script :
@@ -96,7 +96,7 @@ Ce script ne fait pas :
 Après la sync :
 
 ```bash
-SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
+./scripts/hp-ops.sh healthcheck --home
 ```
 
 Puis ouvrir :
