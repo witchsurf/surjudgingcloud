@@ -3,7 +3,6 @@ import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCir
 import { useNavigate } from 'react-router-dom';
 // @ts-ignore - Ignore missing types for qrcode if not installed in environment
 import QRCode from 'qrcode';
-import HeatTimer from './HeatTimer';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
 import { sanitizeScoreInput, validateScore } from '../utils/scoring';
 import { buildJudgeDeviationDetails, calculateJudgeAccuracy, calculateSurferStats } from '../utils/scoring';
@@ -206,7 +205,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [selectedJudgeProfileId, setSelectedJudgeProfileId] = useState<string | null>(null);
   const [showClosedHeats, setShowClosedHeats] = useState(false);
   const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<Array<{ division: string; round: number; heat_number: number; status: string }>>([]);
-  const [isTimerOpen, setIsTimerOpen] = useState(true);
   const [rejudgeOverrideHeatKey, setRejudgeOverrideHeatKey] = useState<string | null>(null);
   const [rejudgeConfirmText, setRejudgeConfirmText] = useState('');
   const [rejudgeOverridePending, setRejudgeOverridePending] = useState(false);
@@ -2329,7 +2327,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const handleTimerResume = () => {
     if (timer.isRunning) return;
     if (heatRejudgeProtected) {
-      setIsTimerOpen(true);
       setRejudgeOverrideError('Heat protégé: confirmez le mode REJUGER avant de relancer le timer.');
       return;
     }
@@ -2439,7 +2436,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         const blockers = dependencyCheck.blockers || [];
         setHeatStartBlockers(blockers);
         setSyncError(formatHeatStartDependencyError(blockers));
-        setIsTimerOpen(true);
         return false;
       }
 
@@ -2454,7 +2450,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       const message = error instanceof Error ? error.message : String(error);
       setSyncError(`Impossible de valider les qualifiés avant démarrage: ${message}`);
-      setIsTimerOpen(true);
       return false;
     } finally {
       setHeatStartDependencyChecking(false);
@@ -2468,7 +2463,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       return;
     }
     if (!(await ensureHeatCanStart())) return;
-    setIsTimerOpen(false);
     timerAudio.playStartHorn();
     const fullDuration = Math.max(1, plannedTimerDuration || timer.duration || 20);
     const newTimer = {
@@ -2500,7 +2494,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const handleTimerRestartFull = async () => {
     if (!configSaved) return;
     if (heatRejudgeProtected) {
-      setIsTimerOpen(true);
       setRejudgeOverrideError('Heat protégé: confirmez le mode REJUGER avant de recommencer.');
       return;
     }
@@ -3898,6 +3891,112 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 </div>
               </div>
 
+              {(syncError || !judgeAssignmentStatus.isReady || heatStartBlockers.length > 0 || heatRejudgeProtected || rejudgeOverrideActive) && (
+                <div className="md:col-span-2 pt-4 border-t border-white/5 space-y-3">
+                  {syncError && (
+                    <div className="w-full p-2.5 bg-red-950/40 border border-red-800/40 rounded-lg text-red-400 text-xs font-bold font-mono animate-pulse">
+                      {syncError}
+                    </div>
+                  )}
+                  {!judgeAssignmentStatus.isReady && (
+                    <div className="w-full p-4 bg-amber-950/30 border border-amber-850/40 rounded-xl">
+                      <div className="flex items-start">
+                        <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5 mr-3 flex-shrink-0" />
+                        <div>
+                          <h4 className="text-sm font-bold text-amber-300 uppercase tracking-widest">Démarrage bloqué</h4>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Le heat ne peut pas démarrer tant que ces postes n’ont pas une identité officielle complète: {judgeAssignmentErrorMessage}.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {heatStartBlockers.length > 0 && (
+                    <div className="w-full p-4 bg-red-950/50 border border-red-600/60 rounded-xl shadow-[0_0_30px_rgba(220,38,38,0.20)]">
+                      <div className="flex items-start">
+                        <AlertCircle className="w-5 h-5 text-red-300 mt-0.5 mr-3 flex-shrink-0 animate-pulse" />
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-black text-red-200 uppercase tracking-widest">Démarrage bloqué: qualifiés manquants</h4>
+                          <p className="text-xs text-red-100/85 mt-1 leading-relaxed">
+                            Ce heat dépend d’un ou plusieurs heats précédents qui ne sont pas clôturés ou qui n’ont pas de résultat exploitable.
+                            Recalculez les qualifiés ou corrigez le lineup avant de lancer le chronomètre.
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {heatStartBlockers.slice(0, 6).map((blocker, index) => (
+                              <span
+                                key={`${blocker.position ?? index}-${blocker.source_round ?? 'x'}-${blocker.source_heat ?? 'x'}-${blocker.source_position ?? 'x'}`}
+                                className="rounded-full border border-red-500/40 bg-red-900/40 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-red-100"
+                              >
+                                Slot {blocker.position ?? '?'} · {blocker.message ?? 'Qualifié indisponible'}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {(heatRejudgeProtected || rejudgeOverrideActive) && (
+                    <div className={`w-full p-4 rounded-xl border ${
+                      rejudgeOverrideActive
+                        ? 'bg-emerald-950/30 border-emerald-800/40'
+                        : 'bg-red-950/40 border-red-700/60 shadow-[0_0_30px_rgba(185,28,28,0.18)]'
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className={`w-6 h-6 mt-0.5 flex-shrink-0 ${rejudgeOverrideActive ? 'text-emerald-300' : 'text-red-300 animate-pulse'}`} />
+                        <div className="min-w-0 flex-1">
+                          <h4 className={`text-sm font-black uppercase tracking-widest ${rejudgeOverrideActive ? 'text-emerald-300' : 'text-red-200'}`}>
+                            {rejudgeOverrideActive ? 'Mode REJUGER activé' : 'Heat déjà jugé - relance bloquée'}
+                          </h4>
+                          <p className={`text-xs mt-1 leading-relaxed ${rejudgeOverrideActive ? 'text-emerald-100/80' : 'text-red-100/90'}`}>
+                            {rejudgeOverrideActive
+                              ? 'Le chef juge a déverrouillé exceptionnellement ce heat. Les scores existants restent conservés; toute nouvelle saisie doit correspondre à une vraie correction terrain.'
+                              : rejudgeProtectionReason === 'closed'
+                                ? `Ce heat est clôturé et contient ${currentHeatScoreCount} note(s). Le timer et la notation restent bloqués pour éviter de rejuger par accident.`
+                                : `Ce heat contient déjà ${currentHeatScoreCount} note(s), mais il n'est plus en cours. Il peut s'agir d'une fermeture incomplète ou d'un retour arrière accidentel.`}
+                          </p>
+
+                          {heatRejudgeProtected && (
+                            <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3 items-end">
+                              <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-red-200 mb-1.5">
+                                  Override exceptionnel
+                                </label>
+                                <input
+                                  value={rejudgeConfirmText}
+                                  onChange={(e) => {
+                                    setRejudgeConfirmText(e.target.value);
+                                    setRejudgeOverrideError(null);
+                                  }}
+                                  placeholder="Tapez REJUGER"
+                                  className="w-full rounded-lg border border-red-800/60 bg-slate-950 px-3 py-2 text-sm font-black uppercase tracking-widest text-red-100 placeholder:text-red-900/80 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                />
+                                <p className="mt-1.5 text-[11px] text-red-100/70">
+                                  À utiliser seulement si le heat a été fermé par erreur ou doit réellement être rejugé.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleRejudgeOverrideEnable}
+                                disabled={rejudgeOverridePending || rejudgeConfirmText.trim().toUpperCase() !== 'REJUGER'}
+                                className="rounded-lg border border-red-500/40 bg-red-600 px-4 py-2.5 text-sm font-black uppercase tracking-wider text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {rejudgeOverridePending ? 'Déverrouillage...' : 'Déverrouiller'}
+                              </button>
+                            </div>
+                          )}
+
+                          {rejudgeOverrideError && (
+                            <div className="mt-3 rounded-lg border border-red-800/50 bg-red-950/50 px-3 py-2 text-xs font-bold text-red-200">
+                              {rejudgeOverrideError}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="md:col-span-2 pt-4 border-t border-white/5">
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
                   <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/15 p-4 flex flex-col justify-between gap-4">
@@ -3968,18 +4067,28 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                         Recommencer
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsTimerOpen(true);
-                        window.setTimeout(() => {
-                          document.getElementById('admin-timer-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 50);
-                      }}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-300 transition-all hover:bg-slate-900"
-                    >
-                      Réglages chronomètre
-                    </button>
+                    <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+                      <label className="block">
+                        <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Durée (min)</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="60"
+                          value={timer.duration}
+                          onChange={(e) => handleTimerDurationChange(parseInt(e.target.value) || 20)}
+                          disabled={timer.isRunning || heatRejudgeProtected || heatStartDependencyChecking}
+                          className="w-full rounded-lg border border-violet-500/20 bg-slate-950 px-3 py-2 text-sm font-black text-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-45"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleTimerReset}
+                        disabled={!configSaved || heatRejudgeProtected || heatStartDependencyChecking}
+                        className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-300 transition-all hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        Reset
+                      </button>
+                    </div>
                   </div>
 
                   {shouldShowKioskPanel && (
@@ -4079,12 +4188,12 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         </div>
       </details>
 
-      {/* Configuration Juges et Surfeurs - Collapsible (Fermé par défaut) */}
+      {/* Juges - Collapsible (Fermé par défaut) */}
       <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
         <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
             <Users className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">2. JUGES ET SURFEURS</h2>
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">2. JUGES</h2>
           </div>
           <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
@@ -4163,15 +4272,26 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </div>
             )}
           </div>
+        </div>
+      </details>
 
-          {/* Surfeurs (lecture seule depuis Supabase) */}
-          <div className="mb-4">
+      {/* Surfeurs - Collapsible (Fermé par défaut) */}
+      <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
+        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
+          <div className="flex items-center space-x-3">
+            <Trophy className="w-6 h-6 text-cyan-400" />
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">3. SURFEURS</h2>
+          </div>
+          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
+        </summary>
+        <div className="p-6 bg-slate-950/20 flex flex-col space-y-6">
+          <div>
             <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Surfeurs du heat</label>
             <div className="mt-1 mb-4 flex items-start space-x-2 text-xs text-slate-400 bg-slate-900/40 border border-white/5 rounded-xl p-3">
               <InfoIcon className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" />
               <p>
                 Cette liste est synchronisée automatiquement à partir des heats planifiés dans la base.
-                Modifiez les participants directement dans l’outil de planification si nécessaire.
+                Les overrides chef juge ci-dessous corrigent le lineup sans modifier les scores attachés aux lycras.
               </p>
             </div>
 
@@ -4197,170 +4317,16 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </div>
             )}
           </div>
-
-          <div className="rounded-xl border border-cyan-900/40 bg-cyan-950/10 px-4 py-3 text-xs text-slate-400">
-            La sauvegarde de configuration est maintenant dans le volet 1, avec le chronomètre et la clôture du heat.
-          </div>
-        </div>
-      </details>
-
-      {/* Timer */}
-      <details 
-        id="admin-timer-panel"
-        className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40" 
-        open={isTimerOpen} 
-        onToggle={(e) => setIsTimerOpen(e.currentTarget.open)}
-      >
-        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
-          <div className="flex items-center space-x-3">
-            <Clock className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">3. CHRONOMÈTRE</h2>
-          </div>
-          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
-        </summary>
-        <div className="p-6 bg-slate-950/20 flex flex-col space-y-4">
-          {syncError && (
-            <div className="w-full p-2.5 bg-red-950/40 border border-red-800/40 rounded-lg text-red-400 text-xs font-bold font-mono animate-pulse">
-              {syncError}
-            </div>
-          )}
-          {(heatRejudgeProtected || rejudgeOverrideActive) && (
-            <div className={`w-full p-4 rounded-xl border ${
-              rejudgeOverrideActive
-                ? 'bg-emerald-950/30 border-emerald-800/40'
-                : 'bg-red-950/40 border-red-700/60 shadow-[0_0_30px_rgba(185,28,28,0.18)]'
-            }`}>
-              <div className="flex items-start gap-3">
-                <AlertCircle className={`w-6 h-6 mt-0.5 flex-shrink-0 ${rejudgeOverrideActive ? 'text-emerald-300' : 'text-red-300 animate-pulse'}`} />
-                <div className="min-w-0 flex-1">
-                  <h4 className={`text-sm font-black uppercase tracking-widest ${rejudgeOverrideActive ? 'text-emerald-300' : 'text-red-200'}`}>
-                    {rejudgeOverrideActive ? 'Mode REJUGER activé' : 'Heat déjà jugé - relance bloquée'}
-                  </h4>
-                  <p className={`text-xs mt-1 leading-relaxed ${rejudgeOverrideActive ? 'text-emerald-100/80' : 'text-red-100/90'}`}>
-                    {rejudgeOverrideActive
-                      ? 'Le chef juge a déverrouillé exceptionnellement ce heat. Les scores existants restent conservés; toute nouvelle saisie doit correspondre à une vraie correction terrain.'
-                      : rejudgeProtectionReason === 'closed'
-                        ? `Ce heat est clôturé et contient ${currentHeatScoreCount} note(s). Le timer et la notation restent bloqués pour éviter de rejuger par accident.`
-                        : `Ce heat contient déjà ${currentHeatScoreCount} note(s), mais il n'est plus en cours. Il peut s'agir d'une fermeture incomplète ou d'un retour arrière accidentel.`}
-                  </p>
-
-                  {heatRejudgeProtected && (
-                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3 items-end">
-                      <div>
-                        <label className="block text-[10px] font-black uppercase tracking-widest text-red-200 mb-1.5">
-                          Override exceptionnel
-                        </label>
-                        <input
-                          value={rejudgeConfirmText}
-                          onChange={(e) => {
-                            setRejudgeConfirmText(e.target.value);
-                            setRejudgeOverrideError(null);
-                          }}
-                          placeholder="Tapez REJUGER"
-                          className="w-full rounded-lg border border-red-800/60 bg-slate-950 px-3 py-2 text-sm font-black uppercase tracking-widest text-red-100 placeholder:text-red-900/80 focus:outline-none focus:ring-2 focus:ring-red-500"
-                        />
-                        <p className="mt-1.5 text-[11px] text-red-100/70">
-                          À utiliser seulement si le heat a été fermé par erreur ou doit réellement être rejugé.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleRejudgeOverrideEnable}
-                        disabled={rejudgeOverridePending || rejudgeConfirmText.trim().toUpperCase() !== 'REJUGER'}
-                        className="rounded-lg border border-red-500/40 bg-red-600 px-4 py-2.5 text-sm font-black uppercase tracking-wider text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {rejudgeOverridePending ? 'Déverrouillage...' : 'Déverrouiller'}
-                      </button>
-                    </div>
-                  )}
-
-                  {rejudgeOverrideError && (
-                    <div className="mt-3 rounded-lg border border-red-800/50 bg-red-950/50 px-3 py-2 text-xs font-bold text-red-200">
-                      {rejudgeOverrideError}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          {!judgeAssignmentStatus.isReady && (
-            <div className="w-full p-4 bg-amber-950/30 border border-amber-850/40 rounded-xl">
-              <div className="flex items-start">
-                <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5 mr-3 flex-shrink-0" />
-                <div>
-                  <h4 className="text-sm font-bold text-amber-300 uppercase tracking-widest">Démarrage bloqué</h4>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Le heat ne peut pas démarrer tant que ces postes n’ont pas une identité officielle complète: {judgeAssignmentErrorMessage}.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-          {heatStartBlockers.length > 0 && (
-            <div className="w-full p-4 bg-red-950/50 border border-red-600/60 rounded-xl shadow-[0_0_30px_rgba(220,38,38,0.20)]">
-              <div className="flex items-start">
-                <AlertCircle className="w-5 h-5 text-red-300 mt-0.5 mr-3 flex-shrink-0 animate-pulse" />
-                <div className="min-w-0">
-                  <h4 className="text-sm font-black text-red-200 uppercase tracking-widest">Démarrage bloqué: qualifiés manquants</h4>
-                  <p className="text-xs text-red-100/85 mt-1 leading-relaxed">
-                    Ce heat dépend d’un ou plusieurs heats précédents qui ne sont pas clôturés ou qui n’ont pas de résultat exploitable.
-                    Recalculez les qualifiés ou corrigez le lineup avant de lancer le chronomètre.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {heatStartBlockers.slice(0, 6).map((blocker, index) => (
-                      <span
-                        key={`${blocker.position ?? index}-${blocker.source_round ?? 'x'}-${blocker.source_heat ?? 'x'}-${blocker.source_position ?? 'x'}`}
-                        className="rounded-full border border-red-500/40 bg-red-900/40 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-red-100"
-                      >
-                        Slot {blocker.position ?? '?'} · {blocker.message ?? 'Qualifié indisponible'}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <HeatTimer
-            key={`timer-${config.competition}-${config.division}-R${config.round}-H${config.heatId}`}
-            timer={timer}
-            onStart={handleTimerStartImpl}
-            onPause={handleTimerPause}
-            onReset={handleTimerReset}
-            onDurationChange={handleTimerDurationChange}
-            configSaved={configSaved}
-            disabled={heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
-          />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={handleTimerResume}
-              disabled={!configSaved || timer.isRunning || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
-              className="py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-950/40 disabled:text-emerald-700 disabled:border-emerald-900/20 border border-emerald-500/20 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {heatStartDependencyChecking ? 'Vérification...' : 'Reprendre (temps restant)'}
-            </button>
-            <button
-              type="button"
-              onClick={handleTimerRestartFull}
-              disabled={!configSaved || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
-              className="py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:bg-amber-950/40 disabled:text-amber-700 disabled:border-amber-900/20 border border-amber-500/20 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {heatStartDependencyChecking ? 'Vérification...' : 'Recommencer (durée complète)'}
-            </button>
-          </div>
         </div>
       </details>
 
       {/* Floating Timer Widget */}
-      {(!isTimerOpen && timer.isRunning) && (
+      {timer.isRunning && (
         <div className="fixed top-8 right-8 z-[100] neon-card bg-slate-950/90 border border-cyan-500/30 rounded-2xl shadow-2xl p-4 flex flex-col items-center pointer-events-auto backdrop-blur-md transform transition-all">
           <div className="flex items-center space-x-2 w-full justify-between mb-2">
             <Clock className={`w-4 h-4 ${floatingTimeLeft <= 300 ? 'text-rose-500 animate-pulse' : 'text-cyan-400'}`} />
             <h3 className="text-xs font-bebas tracking-widest text-cyan-400">CHRONO PRO</h3>
-            <button onClick={() => setIsTimerOpen(true)} className="text-slate-400 hover:text-white transition-colors">
-              ▼
-            </button>
+            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Volet 1</span>
           </div>
           <div className={`font-bebas tracking-wider text-5xl leading-none ${
             floatingTimeLeft <= 5 
@@ -4562,39 +4528,17 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         </div>
       </details>
 
-      {/* Close Heat */}
+      {/* Analyse Juges */}
       {shouldShowKioskPanel && (
         <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
           <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
             <div className="flex items-center space-x-3">
-              <CheckCircle className="w-6 h-6 text-cyan-400" />
-              <h2 className="text-xl font-bebas tracking-wider text-slate-100">5. GESTION DU HEAT (CLÔTURE)</h2>
+              <Users className="w-6 h-6 text-cyan-400" />
+              <h2 className="text-xl font-bebas tracking-wider text-slate-100">5. ANALYSE JUGES</h2>
             </div>
             <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
           </summary>
           <div className="p-6 bg-slate-950/20 flex flex-col space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 bg-slate-900/60 border border-white/5 rounded-2xl shadow-lg">
-              <div className="flex items-center space-x-3">
-                <CheckCircle className="w-8 h-8 text-emerald-400 flex-shrink-0" />
-                <div>
-                  <h3 className="text-lg font-bold text-slate-200 uppercase tracking-wide">Gestion du Heat</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Heat actuel: {config.competition} - {config.division} - R{config.round} H{config.heatId}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCloseHeat}
-                className="flex items-center justify-center space-x-2 px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl shadow-lg shadow-rose-950/30 font-semibold transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-sm"
-              >
-                <CheckCircle className="w-5 h-5" />
-                <span>Fermer le Heat</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-
             {/* Statistiques des juges */}
             {Object.keys(judgeWorkCount).length > 0 && (
               <div className="p-4 bg-slate-900/40 border border-white/5 rounded-2xl">
@@ -4806,7 +4750,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
             <Settings className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">5. PARAMÈTRES AVANCÉS</h2>
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">6. PARAMÈTRES AVANCÉS</h2>
           </div>
           <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
@@ -5228,7 +5172,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         >
           <div className="flex items-center space-x-3">
             <ClipboardCheck className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">6. CORRECTION DE NOTES</h2>
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">7. CORRECTION DE NOTES</h2>
           </div>
           <div className="flex items-center space-x-4">
             {!configSaved && <span className="text-[10px] text-rose-450 border border-rose-900/40 bg-rose-950/20 font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">Non sauvegardé</span>}
