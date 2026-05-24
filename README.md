@@ -48,6 +48,12 @@ Scripts utiles :
 - `frontend/scripts/hp-push-db-to-cloud.mjs` : moteur HP -> Cloud.
 - `frontend/scripts/repair-broken-qualifiers.mjs` : secours qualifiés, à utiliser seulement si l’audit le demande.
 
+Si le routeur maison change l’IP du HP, `hp-ops.sh` demande la nouvelle IP pendant le preflight. Elle peut aussi être fournie directement :
+
+```bash
+./scripts/hp-ops.sh upgrade --home --host 10.0.0.23
+```
+
 ## Supabase
 
 - Migrations : `backend/supabase/migrations`.

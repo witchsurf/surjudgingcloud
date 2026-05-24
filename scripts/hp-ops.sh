@@ -38,7 +38,7 @@ Commands:
   local-to-cloud   Push one event from HP local DB to Cloud
   live-start       Start live HP -> Cloud display sync
   live-stop        Stop live HP -> Cloud display sync
-  preflight        Check selected HP host ports only
+  preflight        Check selected HP host ports and ask for a new IP if needed
   urls             Print useful URLs for the selected profile
 
 Profiles:
@@ -137,6 +137,11 @@ print_context() {
   echo "======================================================"
 }
 
+set_hp_host() {
+  HOST="$1"
+  export SURF_HP_HOST="$HOST"
+}
+
 wait_for_port() {
   local host="$1"
   local port="$2"
@@ -153,26 +158,68 @@ wait_for_port() {
   return 1
 }
 
-preflight() {
-  section "Preflight network"
-  if ping -c 1 -W 1000 "$HOST" >/dev/null 2>&1; then
-    echo "$HOST ping ok"
-  else
-    echo "$HOST ping unavailable, checking TCP ports"
-  fi
+probe_port() {
+  local host="$1"
+  local port="$2"
+  nc -zvw2 "$host" "$port" >/dev/null 2>&1
+}
 
-  for port in 22 8080 8000; do
-    if nc -zvw2 "$HOST" "$port" >/dev/null 2>&1; then
-      echo "$HOST:$port ok"
-    else
-      echo "$HOST:$port not reachable"
-    fi
-  done
+prompt_for_hp_host() {
+  local current_host="$1"
+  local answer
 
-  if ! nc -zvw2 "$HOST" 22 >/dev/null 2>&1; then
-    echo "SSH is required for this operation and is not reachable on $HOST:22" >&2
+  if [[ ! -t 0 ]]; then
+    echo "SSH is required but $current_host:22 is not reachable." >&2
+    echo "Run again with the current HP IP, for example:" >&2
+    echo "  ./scripts/hp-ops.sh $COMMAND --$PROFILE --host <HP_IP>" >&2
     exit 1
   fi
+
+  echo
+  echo "HP SSH is not reachable on $current_host:22."
+  echo "If the router reassigned the HP IP, enter the new HP IP now."
+  read -r -p "HP IP [$current_host]: " answer
+  answer="${answer//[[:space:]]/}"
+  if [[ -z "$answer" ]]; then
+    answer="$current_host"
+  fi
+
+  set_hp_host "$answer"
+  echo "Using HP host: $HOST"
+}
+
+preflight() {
+  section "Preflight network"
+  local attempts=0
+
+  while true; do
+    attempts=$((attempts + 1))
+
+    if ping -c 1 -W 1000 "$HOST" >/dev/null 2>&1; then
+      echo "$HOST ping ok"
+    else
+      echo "$HOST ping unavailable, checking TCP ports"
+    fi
+
+    for port in 22 8080 8000; do
+      if probe_port "$HOST" "$port"; then
+        echo "$HOST:$port ok"
+      else
+        echo "$HOST:$port not reachable"
+      fi
+    done
+
+    if probe_port "$HOST" 22; then
+      return 0
+    fi
+
+    if [[ "$attempts" -ge 2 ]]; then
+      echo "SSH is required for this operation and is still not reachable on $HOST:22" >&2
+      exit 1
+    fi
+
+    prompt_for_hp_host "$HOST"
+  done
 }
 
 print_urls() {
