@@ -603,11 +603,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setDbOverrideLogs((overrideRows || []) as ScoreOverrideLog[]);
     } catch (error) {
       console.warn('⚠️ Base de données inaccessible - chargement des scores locaux de secours', error);
-      
+
       // Fallback: Read from IndexedDB / localStorage cache!
       const { getScoresByHeatIDB } = await import('../lib/idbStorage');
       const localScores = await getScoresByHeatIDB([heatId]);
-      
+
       // Also read local override logs from localStorage
       const localLogsRaw = localStorage.getItem('surfJudgingOverrideLogs');
       const localLogs = localLogsRaw ? (JSON.parse(localLogsRaw) as ScoreOverrideLog[]).filter(log => log.heat_id === heatId) : [];
@@ -3607,8 +3607,8 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       // 1. Fetch data
       const divisionsData = await fetchAllEventHeats(eventId);
       const allHeats: HeatRow[] = Object.entries(divisionsData)
-        .flatMap(([category, rounds]) => 
-          (rounds || []).flatMap(round => 
+        .flatMap(([category, rounds]) =>
+          (rounds || []).flatMap(round =>
             (round.heats || []).map(heat => ({
               id: heat.heatId || '',
               event_id: eventId,
@@ -3689,7 +3689,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       // 3. Export
       console.log('✅ Divisions trouvées pour export:', Object.keys(divisionsData));
       console.log('✅ Total séries traitées:', allHeats.length);
-      
+
       exportFinalRankingToPDF({
         eventName: resolvedEventName,
         organizer,
@@ -3875,7 +3875,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   })}
                 </select>
               </div>
-              
+
               <div className="md:col-span-2 pt-2 border-t border-white/5 flex items-center justify-between flex-wrap gap-2">
                 <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer">
                   <input
@@ -4272,6 +4272,126 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </div>
             )}
           </div>
+
+          <div className="pt-6 border-t border-slate-850">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
+                <Users className="w-5 h-5 text-cyan-400" />
+                Juges / Officiels
+              </h3>
+            </div>
+            {officialJudgeStatus && (
+              <div className={`rounded-lg border px-4 py-3 text-sm ${
+                officialJudgeStatus.type === 'success'
+                  ? 'border-emerald-850/40 bg-emerald-950/20 text-emerald-400'
+                  : 'border-rose-850/40 bg-rose-950/20 text-rose-400'
+              }`}>
+                {officialJudgeStatus.message}
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {config.judges.map((judgeId, index) => (
+                <div key={judgeId} className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl shadow-lg flex flex-col gap-3">
+                  {(() => {
+                    const assignedIdentityId = resolveAssignedJudgeIdentity(judgeId);
+                    const assignedOfficialJudge = availableOfficialJudges.find((judge) => judge.id === assignedIdentityId);
+                    const isOfficialAssigned = Boolean(assignedIdentityId);
+                    const manualJudgeName = (config.judgeNames[judgeId] || '').trim();
+                    const canCreateOfficial = !isOfficialAssigned && manualJudgeName.length > 0;
+                    return (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Juge #{index + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveJudge(judgeId)}
+                            className="p-1.5 text-rose-400 hover:bg-rose-950/30 rounded-lg transition-colors border border-transparent hover:border-rose-900/30"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          <select
+                            value={assignedIdentityId}
+                            onChange={(e) => handleJudgeIdentityChange(judgeId, e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-xs"
+                          >
+                            <option value="" className="bg-slate-950">Sélectionner un juge officiel</option>
+                            {availableOfficialJudges.map((judge) => (
+                              <option key={judge.id} value={judge.id} className="bg-slate-950">
+                                {judge.name}{judge.certification_level ? ` · ${judge.certification_level}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={config.judgeNames[judgeId] || ''}
+                            onChange={(e) => handleJudgeNameChange(judgeId, e.target.value)}
+                            placeholder="Nom du Juge"
+                            readOnly={isOfficialAssigned}
+                            className={`w-full px-3 py-2 bg-slate-950 border text-xs font-bold rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 ${isOfficialAssigned ? 'border-emerald-850/40 text-emerald-400 bg-emerald-950/10 cursor-not-allowed' : 'border-slate-800'}`}
+                          />
+                          <input
+                            type="email"
+                            value={config.judgeEmails?.[judgeId] || ''}
+                            onChange={(e) => handleJudgeEmailChange(judgeId, e.target.value)}
+                            placeholder="Email (optionnel)"
+                            readOnly={isOfficialAssigned}
+                            className={`w-full px-3 py-1.5 border text-[10px] font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 ${isOfficialAssigned ? 'bg-emerald-950/10 border-emerald-850/40 text-emerald-400 cursor-not-allowed' : 'bg-slate-950 border-slate-800'}`}
+                          />
+                          <p className="text-[9px] text-slate-450 font-mono">
+                            {isOfficialAssigned
+                              ? `Officiel lié: ${assignedOfficialJudge?.name || config.judgeNames[judgeId] || judgeId}`
+                              : `Aucune identité officielle liée à ${judgeId}`}
+                          </p>
+                          {!isOfficialAssigned && (
+                            <button
+                              type="button"
+                              onClick={() => handleCreateOfficialJudge(judgeId)}
+                              disabled={!canCreateOfficial || creatingOfficialJudgeFor === judgeId}
+                              className={`w-full rounded-lg px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase transition-colors ${
+                                canCreateOfficial && creatingOfficialJudgeFor !== judgeId
+                                  ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                                  : 'bg-slate-900 border border-slate-800 text-slate-505 cursor-not-allowed'
+                              }`}
+                            >
+                              {creatingOfficialJudgeFor === judgeId ? 'Creation en cours...' : 'Creer et lier comme juge officiel'}
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={handleAddJudge}
+                className="p-6 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-cyan-500 hover:text-cyan-400 hover:bg-slate-900/40 transition-all group"
+              >
+                <PlusCircle className="w-8 h-8 group-hover:scale-110 transition-transform" />
+                <span className="font-bebas tracking-widest text-lg">Ajouter un Juge</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-slate-850 space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+              Code Secret (PIN) pour les Juges
+            </label>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <input
+                type="text"
+                value={config.secretKey || ''}
+                onChange={(e) => handleConfigChange('secretKey', e.target.value)}
+                placeholder="Ex: 1234"
+                className="w-full md:w-64 px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500"
+              />
+              <span className="text-[10px] text-slate-500 font-medium">
+                Code simple permettant aux juges de se connecter sans email.
+              </span>
+            </div>
+          </div>
         </div>
       </details>
 
@@ -4317,6 +4437,189 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </div>
             )}
           </div>
+
+          <div className="pt-6 border-t border-slate-850">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-cyan-400" />
+                Surfeurs par Couleur de Lycra
+              </h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {(['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const).map((color) => {
+                const isAssigned = config.surfers.includes(color);
+                return (
+                  <div key={color} className={`bg-slate-900/60 border border-white/5 rounded-2xl overflow-hidden shadow-lg transition-all ${!isAssigned && 'opacity-40 grayscale'}`}>
+                    <div className={`px-4 py-2 flex items-center justify-between font-bold text-[10px] uppercase tracking-widest ${
+                      color === 'ROUGE' ? 'bg-red-600 text-white' :
+                      color === 'BLANC' ? 'bg-slate-100 text-slate-900' :
+                      color === 'JAUNE' ? 'bg-yellow-400 text-slate-900' :
+                      color === 'BLEU' ? 'bg-blue-600 text-white' :
+                      color === 'VERT' ? 'bg-green-600 text-white' :
+                      'bg-slate-950 text-white border-b border-white/5'
+                    }`}>
+                      <span>{color}</span>
+                      <input
+                        type="checkbox"
+                        checked={isAssigned}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...config.surfers, color]
+                            : config.surfers.filter(s => s !== color);
+                          handleConfigChange('surfers', next);
+                        }}
+                        className="w-3.5 h-3.5 rounded border-slate-850 text-cyan-600 focus:ring-0 cursor-pointer"
+                      />
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <input
+                        type="text"
+                        value={config.surferNames?.[color] || ''}
+                        onChange={(e) => handleSurferNameChange(color, e.target.value)}
+                        placeholder="Nom"
+                        disabled={!isAssigned}
+                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
+                      />
+                      <input
+                        type="text"
+                        value={config.surferCountries?.[color] || ''}
+                        onChange={(e) => handleSurferCountryChange(color, e.target.value)}
+                        placeholder="Pays"
+                        disabled={!isAssigned}
+                        className="w-full px-2.5 py-1 bg-slate-950 border border-slate-850 text-slate-450 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-slate-850">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-cyan-400" />
+                  Lineup officiel du heat
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Override chef juge: remplace ou ajoute le surfeur officiel d'une couleur sans toucher aux scores déjà saisis.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLineupRefreshToken((value) => value + 1)}
+                disabled={lineupOverrideLoading}
+                className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-bold text-slate-350 hover:bg-slate-850 disabled:opacity-50 transition-all self-end"
+              >
+                <RotateCcw className="w-3.5 h-3.5 animate-spin-slow" />
+                Recharger lineup
+              </button>
+            </div>
+
+            {lineupOverrideStatus && (
+              <div className={`mb-4 rounded-lg border px-4 py-3 text-xs ${
+                lineupOverrideStatus.type === 'success'
+                  ? 'border-emerald-850/40 bg-emerald-950/20 text-emerald-400'
+                  : lineupOverrideStatus.type === 'error'
+                    ? 'border-rose-850/40 bg-rose-950/20 text-rose-400'
+                    : 'border-cyan-850/40 bg-cyan-950/20 text-cyan-400'
+              }`}>
+                {lineupOverrideStatus.message}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {lineupDisplayRows.map(({ color, position, row }) => {
+                const draft = lineupDrafts[position] || {
+                  participantId: row.participant_id ? String(row.participant_id) : '',
+                  manualName: row.participant?.name || '',
+                  country: row.participant?.country || '',
+                  reason: '',
+                };
+                const currentName = row.participant?.name || config.surferNames?.[color] || 'Slot vide';
+                const currentCountry = row.participant?.country || config.surferCountries?.[color] || '';
+                const pending = lineupPendingPosition === position;
+
+                return (
+                  <div key={`${position}-${color}`} className="rounded-2xl border border-white/5 bg-slate-900/60 p-4 shadow-lg flex flex-col justify-between">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Position {position}</p>
+                        <h4 className="text-base font-bebas tracking-wide text-slate-300">{color}</h4>
+                        <p className="text-sm font-bold text-slate-200">{currentName}</p>
+                        {currentCountry && <p className="text-xs text-slate-400 mt-0.5">{currentCountry}</p>}
+                      </div>
+                      <span className="rounded-full bg-amber-950/20 border border-amber-900/30 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-400">
+                        Source officielle
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      <select
+                        value={draft.participantId}
+                        onChange={(event) => {
+                          const nextParticipantId = event.target.value;
+                          const participant = lineupParticipantOptions.find((item) => String(item.id) === nextParticipantId);
+                          updateLineupDraft(position, {
+                            participantId: nextParticipantId,
+                            manualName: participant?.name || '',
+                            country: participant?.country || '',
+                          });
+                        }}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-250 rounded-lg text-xs"
+                      >
+                        <option value="" className="bg-slate-950">Choisir dans les inscrits...</option>
+                        {lineupParticipantOptions.map((participant) => (
+                          <option key={participant.id} value={participant.id} className="bg-slate-950">
+                            #{participant.seed} · {participant.name}{participant.country ? ` · ${participant.country}` : ''}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={draft.manualName}
+                          onChange={(event) => updateLineupDraft(position, { participantId: '', manualName: event.target.value })}
+                          placeholder="Ou nouveau nom"
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        />
+                        <input
+                          type="text"
+                          value={draft.country}
+                          onChange={(event) => updateLineupDraft(position, { country: event.target.value })}
+                          placeholder="Pays / Club"
+                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                        />
+                      </div>
+
+                      <input
+                        type="text"
+                        value={draft.reason}
+                        onChange={(event) => updateLineupDraft(position, { reason: event.target.value })}
+                        placeholder="Motif optionnel..."
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 text-slate-400 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleApplyLineupOverride(position, color)}
+                        disabled={lineupOverrideLoading}
+                        className={`w-full rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition-colors ${
+                          pending
+                            ? 'bg-amber-600 animate-pulse'
+                            : 'bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-900 disabled:text-slate-505 disabled:border-slate-850'
+                        }`}
+                      >
+                        {pending ? 'Application...' : 'Appliquer modification'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </details>
 
@@ -4329,12 +4632,12 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Volet 1</span>
           </div>
           <div className={`font-bebas tracking-wider text-5xl leading-none ${
-            floatingTimeLeft <= 5 
-              ? 'text-red-500 animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]' 
-              : floatingTimeLeft <= 60 
-                ? 'text-red-400 drop-shadow-[0_0_6px_rgba(248,113,113,0.4)]' 
-                : floatingTimeLeft <= 300 
-                  ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.3)]' 
+            floatingTimeLeft <= 5
+              ? 'text-red-500 animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]'
+              : floatingTimeLeft <= 60
+                ? 'text-red-400 drop-shadow-[0_0_6px_rgba(248,113,113,0.4)]'
+                : floatingTimeLeft <= 300
+                  ? 'text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.3)]'
                   : 'text-cyan-400 drop-shadow-[0_0_6px_rgba(34,211,238,0.3)]'
           }`}>
             {formatMinSec(floatingTimeLeft)}
@@ -4366,7 +4669,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             <div className="space-y-6">
               {/* 3 Columns Grid for Sharing Cards */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
+
                 {/* Column 1: Public Live Display */}
                 <div className="flex flex-col justify-between p-4 bg-slate-900/60 border border-white/5 rounded-2xl shadow-lg gap-4">
                   <div className="space-y-2">
@@ -4378,7 +4681,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                       Diffuse les scores et classements en direct pour le public et les speakers.
                     </p>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <button
                       type="button"
@@ -4506,9 +4809,9 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">POSTE {position.replace("J", "")}</span>
                         </div>
                         <input value={kioskUrl} readOnly className="w-full px-2 py-1 text-[8px] font-mono bg-slate-950 border border-slate-850 text-slate-400 rounded select-all" />
-                        <button 
+                        <button
                           type="button"
-                          onClick={() => { void copyTextSafely(kioskUrl); }} 
+                          onClick={() => { void copyTextSafely(kioskUrl); }}
                           className="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all"
                         >
                           Copier le lien
@@ -4546,10 +4849,10 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {Object.entries(judgeWorkCount).map(([judgeId, count]) => (
                     <div key={judgeId} className={`flex items-center justify-between p-3 rounded-xl border ${
-                      count >= 4 
-                        ? 'bg-rose-950/20 border-rose-800/40 text-rose-300' 
-                        : count >= 3 
-                          ? 'bg-amber-950/20 border-amber-800/40 text-amber-300' 
+                      count >= 4
+                        ? 'bg-rose-950/20 border-rose-800/40 text-rose-300'
+                        : count >= 3
+                          ? 'bg-amber-950/20 border-amber-800/40 text-amber-300'
                           : 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
                     }`}>
                       <span className="text-sm font-semibold">
@@ -4755,293 +5058,6 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
           <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
         <div className="p-6 bg-slate-950/20 space-y-6 flex flex-col">
-          {/* JUDGES SECTION */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
-                <Users className="w-5 h-5 text-cyan-400" />
-                Juges / Officiels
-              </h3>
-            </div>
-            {officialJudgeStatus && (
-              <div className={`rounded-lg border px-4 py-3 text-sm ${
-                officialJudgeStatus.type === 'success'
-                  ? 'border-emerald-850/40 bg-emerald-950/20 text-emerald-400'
-                  : 'border-rose-850/40 bg-rose-950/20 text-rose-400'
-              }`}>
-                {officialJudgeStatus.message}
-              </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {config.judges.map((judgeId, index) => (
-                <div key={judgeId} className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl shadow-lg flex flex-col gap-3">
-                  {(() => {
-                    const assignedIdentityId = resolveAssignedJudgeIdentity(judgeId);
-                    const assignedOfficialJudge = availableOfficialJudges.find((judge) => judge.id === assignedIdentityId);
-                    const isOfficialAssigned = Boolean(assignedIdentityId);
-                    const manualJudgeName = (config.judgeNames[judgeId] || '').trim();
-                    const canCreateOfficial = !isOfficialAssigned && manualJudgeName.length > 0;
-                    return (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Juge #{index + 1}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveJudge(judgeId)}
-                            className="p-1.5 text-rose-400 hover:bg-rose-950/30 rounded-lg transition-colors border border-transparent hover:border-rose-900/30"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <div className="space-y-2">
-                          <select
-                            value={assignedIdentityId}
-                            onChange={(e) => handleJudgeIdentityChange(judgeId, e.target.value)}
-                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-xs"
-                          >
-                            <option value="" className="bg-slate-950">Sélectionner un juge officiel</option>
-                            {availableOfficialJudges.map((judge) => (
-                              <option key={judge.id} value={judge.id} className="bg-slate-950">
-                                {judge.name}{judge.certification_level ? ` · ${judge.certification_level}` : ''}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="text"
-                            value={config.judgeNames[judgeId] || ''}
-                            onChange={(e) => handleJudgeNameChange(judgeId, e.target.value)}
-                            placeholder="Nom du Juge"
-                            readOnly={isOfficialAssigned}
-                            className={`w-full px-3 py-2 bg-slate-950 border text-xs font-bold rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 ${isOfficialAssigned ? 'border-emerald-850/40 text-emerald-400 bg-emerald-950/10 cursor-not-allowed' : 'border-slate-800'}`}
-                          />
-                          <input
-                            type="email"
-                            value={config.judgeEmails?.[judgeId] || ''}
-                            onChange={(e) => handleJudgeEmailChange(judgeId, e.target.value)}
-                            placeholder="Email (optionnel)"
-                            readOnly={isOfficialAssigned}
-                            className={`w-full px-3 py-1.5 border text-[10px] font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 ${isOfficialAssigned ? 'bg-emerald-950/10 border-emerald-850/40 text-emerald-400 cursor-not-allowed' : 'bg-slate-950 border-slate-800'}`}
-                          />
-                          <p className="text-[9px] text-slate-450 font-mono">
-                            {isOfficialAssigned
-                              ? `Officiel lié: ${assignedOfficialJudge?.name || config.judgeNames[judgeId] || judgeId}`
-                              : `Aucune identité officielle liée à ${judgeId}`}
-                          </p>
-                          {!isOfficialAssigned && (
-                            <button
-                              type="button"
-                              onClick={() => handleCreateOfficialJudge(judgeId)}
-                              disabled={!canCreateOfficial || creatingOfficialJudgeFor === judgeId}
-                              className={`w-full rounded-lg px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase transition-colors ${
-                                canCreateOfficial && creatingOfficialJudgeFor !== judgeId
-                                  ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
-                                  : 'bg-slate-900 border border-slate-800 text-slate-505 cursor-not-allowed'
-                              }`}
-                            >
-                              {creatingOfficialJudgeFor === judgeId ? 'Creation en cours...' : 'Creer et lier comme juge officiel'}
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={handleAddJudge}
-                className="p-6 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-500 hover:border-cyan-500 hover:text-cyan-400 hover:bg-slate-900/40 transition-all group"
-              >
-                <PlusCircle className="w-8 h-8 group-hover:scale-110 transition-transform" />
-                <span className="font-bebas tracking-widest text-lg">Ajouter un Juge</span>
-              </button>
-            </div>
-          </div>
-
-          {/* SURFERS SECTION */}
-          <div className="pt-6 border-t border-slate-850">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-cyan-400" />
-                Surfeurs par Couleur de Lycra
-              </h3>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {(['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const).map((color) => {
-                const isAssigned = config.surfers.includes(color);
-                return (
-                  <div key={color} className={`bg-slate-900/60 border border-white/5 rounded-2xl overflow-hidden shadow-lg transition-all ${!isAssigned && 'opacity-40 grayscale'}`}>
-                    <div className={`px-4 py-2 flex items-center justify-between font-bold text-[10px] uppercase tracking-widest ${
-                      color === 'ROUGE' ? 'bg-red-600 text-white' :
-                      color === 'BLANC' ? 'bg-slate-100 text-slate-900' :
-                      color === 'JAUNE' ? 'bg-yellow-400 text-slate-900' :
-                      color === 'BLEU' ? 'bg-blue-600 text-white' :
-                      color === 'VERT' ? 'bg-green-600 text-white' :
-                      'bg-slate-950 text-white border-b border-white/5'
-                    }`}>
-                      <span>{color}</span>
-                      <input
-                        type="checkbox"
-                        checked={isAssigned}
-                        onChange={(e) => {
-                          const next = e.target.checked
-                            ? [...config.surfers, color]
-                            : config.surfers.filter(s => s !== color);
-                          handleConfigChange('surfers', next);
-                        }}
-                        className="w-3.5 h-3.5 rounded border-slate-850 text-cyan-600 focus:ring-0 cursor-pointer"
-                      />
-                    </div>
-                    <div className="p-3 space-y-2">
-                      <input
-                        type="text"
-                        value={config.surferNames?.[color] || ''}
-                        onChange={(e) => handleSurferNameChange(color, e.target.value)}
-                        placeholder="Nom"
-                        disabled={!isAssigned}
-                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
-                      />
-                      <input
-                        type="text"
-                        value={config.surferCountries?.[color] || ''}
-                        onChange={(e) => handleSurferCountryChange(color, e.target.value)}
-                        placeholder="Pays"
-                        disabled={!isAssigned}
-                        className="w-full px-2.5 py-1 bg-slate-950 border border-slate-850 text-slate-450 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50"
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="pt-6 border-t border-slate-850">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bebas tracking-wide text-slate-200 flex items-center gap-2">
-                  <ClipboardCheck className="w-5 h-5 text-cyan-400" />
-                  Lineup officiel du heat
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Override chef juge: remplace ou ajoute le surfeur officiel d'une couleur sans toucher aux scores déjà saisis.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setLineupRefreshToken((value) => value + 1)}
-                disabled={lineupOverrideLoading}
-                className="inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border border-slate-800 bg-slate-900 text-xs font-bold text-slate-350 hover:bg-slate-850 disabled:opacity-50 transition-all self-end"
-              >
-                <RotateCcw className="w-3.5 h-3.5 animate-spin-slow" />
-                Recharger lineup
-              </button>
-            </div>
-
-            {lineupOverrideStatus && (
-              <div className={`mb-4 rounded-lg border px-4 py-3 text-xs ${
-                lineupOverrideStatus.type === 'success'
-                  ? 'border-emerald-850/40 bg-emerald-950/20 text-emerald-400'
-                  : lineupOverrideStatus.type === 'error'
-                    ? 'border-rose-850/40 bg-rose-950/20 text-rose-400'
-                    : 'border-cyan-850/40 bg-cyan-950/20 text-cyan-400'
-              }`}>
-                {lineupOverrideStatus.message}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {lineupDisplayRows.map(({ color, position, row }) => {
-                const draft = lineupDrafts[position] || {
-                  participantId: row.participant_id ? String(row.participant_id) : '',
-                  manualName: row.participant?.name || '',
-                  country: row.participant?.country || '',
-                  reason: '',
-                };
-                const currentName = row.participant?.name || config.surferNames?.[color] || 'Slot vide';
-                const currentCountry = row.participant?.country || config.surferCountries?.[color] || '';
-                const pending = lineupPendingPosition === position;
-
-                return (
-                  <div key={`${position}-${color}`} className="rounded-2xl border border-white/5 bg-slate-900/60 p-4 shadow-lg flex flex-col justify-between">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Position {position}</p>
-                        <h4 className="text-base font-bebas tracking-wide text-slate-300">{color}</h4>
-                        <p className="text-sm font-bold text-slate-200">{currentName}</p>
-                        {currentCountry && <p className="text-xs text-slate-400 mt-0.5">{currentCountry}</p>}
-                      </div>
-                      <span className="rounded-full bg-amber-950/20 border border-amber-900/30 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-400">
-                        Source officielle
-                      </span>
-                    </div>
-
-                    <div className="mt-4 space-y-3">
-                      <select
-                        value={draft.participantId}
-                        onChange={(event) => {
-                          const nextParticipantId = event.target.value;
-                          const participant = lineupParticipantOptions.find((item) => String(item.id) === nextParticipantId);
-                          updateLineupDraft(position, {
-                            participantId: nextParticipantId,
-                            manualName: participant?.name || '',
-                            country: participant?.country || '',
-                          });
-                        }}
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-250 rounded-lg text-xs"
-                      >
-                        <option value="" className="bg-slate-950">Choisir dans les inscrits...</option>
-                        {lineupParticipantOptions.map((participant) => (
-                          <option key={participant.id} value={participant.id} className="bg-slate-950">
-                            #{participant.seed} · {participant.name}{participant.country ? ` · ${participant.country}` : ''}
-                          </option>
-                        ))}
-                      </select>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <input
-                          type="text"
-                          value={draft.manualName}
-                          onChange={(event) => updateLineupDraft(position, { participantId: '', manualName: event.target.value })}
-                          placeholder="Ou nouveau nom"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                        />
-                        <input
-                          type="text"
-                          value={draft.country}
-                          onChange={(event) => updateLineupDraft(position, { country: event.target.value })}
-                          placeholder="Pays / Club"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                        />
-                      </div>
-
-                      <input
-                        type="text"
-                        value={draft.reason}
-                        onChange={(event) => updateLineupDraft(position, { reason: event.target.value })}
-                        placeholder="Motif optionnel..."
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-850 text-slate-400 rounded-lg text-[10px] focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() => handleApplyLineupOverride(position, color)}
-                        disabled={lineupOverrideLoading}
-                        className={`w-full rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition-colors ${
-                          pending
-                            ? 'bg-amber-600 animate-pulse'
-                            : 'bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-900 disabled:text-slate-505 disabled:border-slate-850'
-                        }`}
-                      >
-                        {pending ? 'Application...' : 'Appliquer modification'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           <div className="pt-6 border-t border-slate-850 flex flex-wrap gap-3">
             <button
               onClick={onReloadData}
@@ -5115,24 +5131,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             </button>
           </div>
 
-          <div className="pt-6 border-t border-slate-850 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                Code Secret (PIN) pour les Juges
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  value={config.secretKey || ''}
-                  onChange={(e) => handleConfigChange('secretKey', e.target.value)}
-                  placeholder="Ex: 1234"
-                  className="w-full md:w-1/2 px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                />
-                <span className="text-[10px] text-slate-500 font-medium">
-                  Code simple permettant aux juges de se connecter sans email.
-                </span>
-              </div>
-            </div>
+          <div className="pt-6 border-t border-slate-850">
             <div className="space-y-2">
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
                 Code Admin Hors-ligne (LAN)
@@ -5188,8 +5187,8 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   type="button"
                   onClick={() => setCorrectionMode('score')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                    correctionMode === 'score' 
-                      ? 'bg-amber-600 border-amber-500/20 text-white' 
+                    correctionMode === 'score'
+                      ? 'bg-amber-600 border-amber-500/20 text-white'
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-205'
                   }`}
                 >
@@ -5199,8 +5198,8 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   type="button"
                   onClick={() => setCorrectionMode('interference')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                    correctionMode === 'interference' 
-                      ? 'bg-amber-600 border-amber-500/20 text-white' 
+                    correctionMode === 'interference'
+                      ? 'bg-amber-600 border-amber-500/20 text-white'
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-205'
                   }`}
                 >
@@ -5379,8 +5378,8 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                     onClick={handleMoveScore}
                     disabled={overridePending || !configSaved}
                     className={`px-4 py-2 border rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all ${
-                      overridePending 
-                        ? 'bg-indigo-950/20 border-indigo-900/20 text-indigo-750 cursor-wait' 
+                      overridePending
+                        ? 'bg-indigo-950/20 border-indigo-900/20 text-indigo-750 cursor-wait'
                         : 'bg-indigo-900/40 hover:bg-indigo-800/40 border-indigo-800/40 text-indigo-300'
                     } ${!configSaved ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
@@ -5404,8 +5403,8 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   type="submit"
                   disabled={overridePending || !configSaved}
                   className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all ${
-                    overridePending 
-                      ? 'bg-amber-950/20 border-amber-900/20 text-amber-750 cursor-wait' 
+                    overridePending
+                      ? 'bg-amber-950/20 border-amber-900/20 text-amber-750 cursor-wait'
                       : 'bg-amber-600 hover:bg-amber-500 border border-amber-500/20 shadow-md shadow-amber-950/30'
                   } ${!configSaved ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
@@ -5417,8 +5416,8 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   onClick={handleInterferenceSubmit}
                   disabled={overridePending || !configSaved}
                   className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all ${
-                    overridePending 
-                      ? 'bg-amber-950/20 border-amber-900/20 text-amber-750 cursor-wait' 
+                    overridePending
+                      ? 'bg-amber-950/20 border-amber-900/20 text-amber-750 cursor-wait'
                       : 'bg-amber-600 hover:bg-amber-500 border border-amber-500/20 shadow-md shadow-amber-950/30'
                   } ${!configSaved ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
