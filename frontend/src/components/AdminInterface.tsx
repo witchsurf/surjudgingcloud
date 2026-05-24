@@ -4087,7 +4087,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               )}
 
               <div className="md:col-span-2 pt-4 border-t border-white/5">
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
                   <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/15 p-4 flex flex-col justify-between gap-4">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 text-cyan-300">
@@ -4202,6 +4202,46 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                       </button>
                     </div>
                   )}
+
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/15 p-4 flex flex-col justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-emerald-300">
+                        <FileText className="w-4 h-4" />
+                        <h4 className="text-xs font-black uppercase tracking-widest">Exports / Rapports</h4>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Génère les documents officiels depuis le contexte courant.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleExportPdf}
+                        className="flex items-center justify-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-600/80 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-indigo-500"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>PDF Heat</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleExportEventPdf}
+                        disabled={eventPdfPending}
+                        className="flex items-center justify-center gap-2 rounded-lg border border-purple-500/30 bg-purple-600/80 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>{eventPdfPending ? 'Événement...' : 'PDF Événement'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleExportFinalRankingPdf}
+                        disabled={rankingPdfPending}
+                        className="flex items-center justify-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-600/80 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Trophy className="w-4 h-4" />
+                        <span>{rankingPdfPending ? 'Ranking...' : 'Classement final'}</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -5137,12 +5177,12 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         </details>
       )}
 
-      {/* Paramètres avancés */}
+      {/* Maintenance terrain */}
       <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
         <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
             <Settings className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">6. PARAMÈTRES AVANCÉS</h2>
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">6. MAINTENANCE TERRAIN</h2>
           </div>
           <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
@@ -5162,40 +5202,6 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             >
               <Trash2 className="w-4 h-4 text-rose-400" />
               <span>RESET NUCLÉAIRE</span>
-            </button>
-
-            <button
-              onClick={handleExportPdf}
-              className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-900/40 hover:bg-indigo-800/40 border border-indigo-800/40 text-indigo-300 rounded-lg text-xs font-bold transition-all"
-            >
-              <FileText className="w-4 h-4 text-indigo-400" />
-              <span>Export PDF Heat</span>
-            </button>
-
-            <button
-              onClick={handleExportEventPdf}
-              disabled={eventPdfPending}
-              className={`flex items-center space-x-2 px-4 py-2.5 border rounded-lg text-xs font-bold transition-all ${
-                eventPdfPending
-                  ? 'bg-purple-950/20 border-purple-900/20 text-purple-650 cursor-not-allowed opacity-50'
-                  : 'bg-purple-900/40 hover:bg-purple-800/40 border-purple-800/40 text-purple-300'
-              }`}
-            >
-              <FileText className="w-4 h-4 text-purple-400" />
-              <span>{eventPdfPending ? 'Export évènement…' : 'Export complet (PDF)'}</span>
-            </button>
-
-            <button
-              onClick={handleExportFinalRankingPdf}
-              disabled={rankingPdfPending}
-              className={`flex items-center space-x-2 px-4 py-2.5 border rounded-lg text-xs font-bold transition-all ${
-                rankingPdfPending
-                  ? 'bg-emerald-950/20 border-emerald-900/20 text-emerald-650 cursor-not-allowed opacity-50'
-                  : 'bg-emerald-900/40 hover:bg-emerald-800/40 border-emerald-800/40 text-emerald-300'
-              }`}
-            >
-              <Trophy className="w-4 h-4 text-emerald-400" />
-              <span>{rankingPdfPending ? 'Génération ranking…' : 'Classement Final (PDF)'}</span>
             </button>
 
             <button
