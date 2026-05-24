@@ -233,26 +233,115 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const lineupLoadRequestRef = React.useRef(0);
 
   useEffect(() => {
-    const syncFromLocalStorage = () => {
+    let cancelled = false;
+
+    const readLocalEventData = () => {
       try {
-        const data = JSON.parse(localStorage.getItem('eventData') || '{}');
-        setEventPdfMeta({
-          organizer: String(data.organizerDisplayName || data.organizer_display_name || data.organizer || ''),
-          startDate: String(data.startDateOverride || data.start_date_override || data.start_date || ''),
-        });
+        return JSON.parse(localStorage.getItem('eventData') || '{}');
       } catch {
-        // ignore
+        return {};
       }
     };
-    window.addEventListener('storage', syncFromLocalStorage);
-    return () => window.removeEventListener('storage', syncFromLocalStorage);
-  }, []);
+
+    const writeLocalEventData = (patch: Record<string, unknown>) => {
+      try {
+        const current = readLocalEventData();
+        localStorage.setItem('eventData', JSON.stringify({ ...current, ...patch }));
+      } catch {
+        // ignore local cache errors
+      }
+    };
+
+    const syncEventPdfMeta = async () => {
+      const localData = readLocalEventData();
+      const localEventId = Number(localData.id ?? localData.event_id ?? 0);
+      const sameEvent = activeEventId ? localEventId === Number(activeEventId) : true;
+      const localOrganizer = sameEvent
+        ? String(localData.organizerDisplayName || localData.organizer_display_name || localData.organizer || '').trim()
+        : '';
+      const localStartDate = sameEvent
+        ? String(localData.startDateOverride || localData.start_date_override || localData.start_date || '').trim()
+        : '';
+
+      let nextOrganizer = localOrganizer;
+      let nextStartDate = localStartDate;
+      let dbPatch: Record<string, unknown> = {};
+
+      if (activeEventId && isSupabaseConfigured() && supabase) {
+        const { data, error } = await supabase
+          .from('events')
+          .select('id, organizer, start_date, config')
+          .eq('id', activeEventId)
+          .maybeSingle();
+
+        if (!error && data) {
+          const configData = (data.config || {}) as Record<string, any>;
+          const eventDetails = (configData.eventDetails || {}) as Record<string, any>;
+          const dbOrganizer = String(
+            configData.organizerDisplayName ||
+            configData.organizer_display_name ||
+            eventDetails.organizer ||
+            data.organizer ||
+            ''
+          ).trim();
+          const dbStartDate = String(
+            configData.startDateOverride ||
+            configData.start_date_override ||
+            eventDetails.date ||
+            data.start_date ||
+            ''
+          ).trim();
+
+          nextOrganizer = localOrganizer || dbOrganizer;
+          nextStartDate = localStartDate || dbStartDate;
+          dbPatch = {
+            id: data.id,
+            event_id: data.id,
+            organizer: data.organizer,
+            start_date: data.start_date,
+          };
+        }
+      }
+
+      if (cancelled) return;
+
+      setEventPdfMeta({
+        organizer: nextOrganizer,
+        startDate: nextStartDate,
+      });
+
+      if (activeEventId && (nextOrganizer || nextStartDate)) {
+        writeLocalEventData({
+          ...dbPatch,
+          id: activeEventId,
+          event_id: activeEventId,
+          organizerDisplayName: nextOrganizer,
+          startDateOverride: nextStartDate,
+        });
+      }
+    };
+
+    const handleStorage = () => {
+      void syncEventPdfMeta();
+    };
+
+    void syncEventPdfMeta();
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [activeEventId]);
 
   const persistEventPdfMeta = useCallback((patch: Partial<{ organizer: string; startDate: string }>) => {
     setEventPdfMeta((current) => {
       const next = { ...current, ...patch };
       try {
         const data = JSON.parse(localStorage.getItem('eventData') || '{}');
+        if (activeEventId) {
+          data.id = activeEventId;
+          data.event_id = activeEventId;
+        }
         data.organizerDisplayName = next.organizer;
         data.startDateOverride = next.startDate;
         localStorage.setItem('eventData', JSON.stringify(data));
@@ -262,7 +351,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
       return next;
     });
-  }, []);
+  }, [activeEventId]);
 
   const formatEventDateFr = useCallback((value?: string | null) => {
     const raw = String(value || '').trim();
