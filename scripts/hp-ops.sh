@@ -18,6 +18,7 @@ fi
 
 PROFILE="${SURF_HP_PROFILE:-home}"
 HOST="${SURF_HP_HOST:-}"
+HOST_FROM_CLI="0"
 EVENT_ID=""
 INTERVAL="10"
 SKIP_REFRESH="0"
@@ -43,7 +44,7 @@ Commands:
 
 Profiles:
   --home           HP on home LAN, default host 10.0.0.14
-  --field          HP on D-LINK / beach LAN, default host 192.168.1.2
+  --field          HP on D-LINK / beach LAN, locked host 192.168.1.2
   --host <ip>      Override selected profile host
 
 Common options:
@@ -73,6 +74,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --host)
       HOST="$2"
+      HOST_FROM_CLI="1"
       shift
       ;;
     --event-id|--event)
@@ -116,9 +118,6 @@ if [[ -z "$HOST" ]]; then
   fi
 fi
 
-export SURF_HP_PROFILE="$PROFILE"
-export SURF_HP_HOST="$HOST"
-
 if [[ "$COMMAND" == "help" || "$COMMAND" == "-h" || "$COMMAND" == "--help" ]]; then
   usage
   exit 0
@@ -140,6 +139,40 @@ print_context() {
 set_hp_host() {
   HOST="$1"
   export SURF_HP_HOST="$HOST"
+}
+
+command_uses_hp_host() {
+  case "$COMMAND" in
+    upgrade|refresh|deploy|healthcheck|cloud-to-local|local-to-cloud|live-start|preflight|urls)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+prompt_for_home_hp_host_if_needed() {
+  local answer
+
+  if [[ "$PROFILE" != "home" || "$HOST_FROM_CLI" == "1" || ! -t 0 ]]; then
+    return
+  fi
+
+  if ! command_uses_hp_host; then
+    return
+  fi
+
+  echo
+  echo "Home profile: enter the current HP IP."
+  echo "Press Enter to keep the suggested IP."
+  read -r -p "HP IP [$HOST]: " answer
+  answer="${answer//[[:space:]]/}"
+  if [[ -n "$answer" ]]; then
+    set_hp_host "$answer"
+  else
+    set_hp_host "$HOST"
+  fi
 }
 
 wait_for_port() {
@@ -257,6 +290,9 @@ run_healthcheck() {
   (cd "$ROOT_DIR" && ./scripts/hp-healthcheck.sh)
 }
 
+export SURF_HP_PROFILE="$PROFILE"
+set_hp_host "$HOST"
+prompt_for_home_hp_host_if_needed
 print_context
 
 case "$COMMAND" in

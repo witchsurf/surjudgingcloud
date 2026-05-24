@@ -37,7 +37,7 @@ Préparer la box depuis le cloud, sans toucher au code :
 ./scripts/hp-ops.sh cloud-to-local --home
 ```
 
-Si le routeur maison a réassigné l’IP du HP, `hp-ops.sh` le demande au preflight quand SSH ne répond pas sur l’IP connue. On peut aussi forcer l’IP :
+En profil maison, `hp-ops.sh` demande l’IP actuelle du HP dès le départ, car le routeur Home peut la réassigner après redémarrage. Le profil D-LINK/plage reste verrouillé sur `192.168.1.2`. On peut aussi forcer l’IP :
 
 ```bash
 ./scripts/hp-ops.sh upgrade --home --host 10.0.0.23
