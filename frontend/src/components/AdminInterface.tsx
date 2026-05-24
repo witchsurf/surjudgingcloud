@@ -12,8 +12,8 @@ import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
-import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, ParticipantRecord } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
+import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
@@ -211,6 +211,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [rejudgeConfirmText, setRejudgeConfirmText] = useState('');
   const [rejudgeOverridePending, setRejudgeOverridePending] = useState(false);
   const [rejudgeOverrideError, setRejudgeOverrideError] = useState<string | null>(null);
+  const [heatStartBlockers, setHeatStartBlockers] = useState<HeatStartDependencyBlocker[]>([]);
+  const [heatStartDependencyChecking, setHeatStartDependencyChecking] = useState(false);
   const [floatingTimerTick, setFloatingTimerTick] = useState(Date.now());
   const [availableOfficialJudges, setAvailableOfficialJudges] = useState<Judge[]>([]);
   const [officialJudgeStatus, setOfficialJudgeStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -517,6 +519,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   useEffect(() => {
     setPlannedTimerDuration(timer.duration);
+    setHeatStartBlockers([]);
   }, [heatId]);
 
   const reasonLabels: Record<OverrideReason, string> = {
@@ -2285,11 +2288,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     localStorage.setItem('surfJudgingConfigSaved', 'true');
   };
 
-  const handleTimerStart = () => {
+  const handleTimerStart = async () => {
     if (!judgeAssignmentStatus.isReady) {
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
       return;
     }
+    if (!(await ensureHeatCanStart())) return;
 
     const newTimer = {
       ...timer,
@@ -2329,7 +2333,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setRejudgeOverrideError('Heat protégé: confirmez le mode REJUGER avant de relancer le timer.');
       return;
     }
-    handleTimerStart();
+    handleTimerStart().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      setSyncError(`Impossible de reprendre le timer: ${message}`);
+    });
   };
 
   const handleRejudgeOverrideEnable = async () => {
@@ -2399,12 +2406,68 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   };
 
+  const formatHeatStartDependencyError = useCallback((blockers: HeatStartDependencyBlocker[]) => {
+    if (!blockers.length) {
+      return 'Heat bloqué: les qualifiés nécessaires ne sont pas encore disponibles.';
+    }
+
+    const details = blockers
+      .slice(0, 4)
+      .map((blocker) => {
+        if (blocker.message) return blocker.message;
+        const source = blocker.source_round && blocker.source_heat
+          ? `R${blocker.source_round} H${blocker.source_heat}`
+          : 'source inconnue';
+        const position = blocker.source_position ? ` P${blocker.source_position}` : '';
+        return `${source}${position} indisponible.`;
+      })
+      .join(' ');
+
+    return `Démarrage bloqué: ${details} Recalculez les qualifiés ou corrigez le lineup avant de lancer ce heat.`;
+  }, []);
+
+  const ensureHeatCanStart = useCallback(async () => {
+    if (!isSupabaseConfigured() || !supabase) {
+      setHeatStartBlockers([]);
+      return true;
+    }
+
+    setHeatStartDependencyChecking(true);
+    try {
+      const dependencyCheck = await validateHeatStartDependencies(heatId);
+      if (!dependencyCheck.ok) {
+        const blockers = dependencyCheck.blockers || [];
+        setHeatStartBlockers(blockers);
+        setSyncError(formatHeatStartDependencyError(blockers));
+        setIsTimerOpen(true);
+        return false;
+      }
+
+      setHeatStartBlockers([]);
+      return true;
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('RPC_UNAVAILABLE:')) {
+        console.warn('Validation des dépendances de heat indisponible, démarrage non bloqué côté interface.', error);
+        setHeatStartBlockers([]);
+        return true;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      setSyncError(`Impossible de valider les qualifiés avant démarrage: ${message}`);
+      setIsTimerOpen(true);
+      return false;
+    } finally {
+      setHeatStartDependencyChecking(false);
+    }
+  }, [formatHeatStartDependencyError, heatId]);
+
   const handleTimerStartImpl = async () => {
     if (!configSaved || heatRejudgeProtected || (isCurrentHeatLocked && !rejudgeOverrideActive)) return;
     if (!judgeAssignmentStatus.isReady) {
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
       return;
     }
+    if (!(await ensureHeatCanStart())) return;
     setIsTimerOpen(false);
     timerAudio.playStartHorn();
     const fullDuration = Math.max(1, plannedTimerDuration || timer.duration || 20);
@@ -2434,7 +2497,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   };
 
-  const handleTimerRestartFull = () => {
+  const handleTimerRestartFull = async () => {
     if (!configSaved) return;
     if (heatRejudgeProtected) {
       setIsTimerOpen(true);
@@ -2445,6 +2508,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
       return;
     }
+    if (!(await ensureHeatCanStart())) return;
     const fullDuration = Math.max(1, plannedTimerDuration || timer.duration || 20);
     const newTimer = {
       ...timer,
@@ -4143,6 +4207,30 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </div>
             </div>
           )}
+          {heatStartBlockers.length > 0 && (
+            <div className="w-full p-4 bg-red-950/50 border border-red-600/60 rounded-xl shadow-[0_0_30px_rgba(220,38,38,0.20)]">
+              <div className="flex items-start">
+                <AlertCircle className="w-5 h-5 text-red-300 mt-0.5 mr-3 flex-shrink-0 animate-pulse" />
+                <div className="min-w-0">
+                  <h4 className="text-sm font-black text-red-200 uppercase tracking-widest">Démarrage bloqué: qualifiés manquants</h4>
+                  <p className="text-xs text-red-100/85 mt-1 leading-relaxed">
+                    Ce heat dépend d’un ou plusieurs heats précédents qui ne sont pas clôturés ou qui n’ont pas de résultat exploitable.
+                    Recalculez les qualifiés ou corrigez le lineup avant de lancer le chronomètre.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {heatStartBlockers.slice(0, 6).map((blocker, index) => (
+                      <span
+                        key={`${blocker.position ?? index}-${blocker.source_round ?? 'x'}-${blocker.source_heat ?? 'x'}-${blocker.source_position ?? 'x'}`}
+                        className="rounded-full border border-red-500/40 bg-red-900/40 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-red-100"
+                      >
+                        Slot {blocker.position ?? '?'} · {blocker.message ?? 'Qualifié indisponible'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <HeatTimer
             key={`timer-${config.competition}-${config.division}-R${config.round}-H${config.heatId}`}
@@ -4152,24 +4240,24 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
             onReset={handleTimerReset}
             onDurationChange={handleTimerDurationChange}
             configSaved={configSaved}
-            disabled={heatRejudgeProtected || !judgeAssignmentStatus.isReady}
+            disabled={heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
           />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={handleTimerResume}
-              disabled={!configSaved || timer.isRunning || heatRejudgeProtected || !judgeAssignmentStatus.isReady}
+              disabled={!configSaved || timer.isRunning || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
               className="py-2.5 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-950/40 disabled:text-emerald-700 disabled:border-emerald-900/20 border border-emerald-500/20 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              Reprendre (temps restant)
+              {heatStartDependencyChecking ? 'Vérification...' : 'Reprendre (temps restant)'}
             </button>
             <button
               type="button"
               onClick={handleTimerRestartFull}
-              disabled={!configSaved || heatRejudgeProtected || !judgeAssignmentStatus.isReady}
+              disabled={!configSaved || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
               className="py-2.5 px-4 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:bg-amber-950/40 disabled:text-amber-700 disabled:border-amber-900/20 border border-amber-500/20 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              Recommencer (durée complète)
+              {heatStartDependencyChecking ? 'Vérification...' : 'Recommencer (durée complète)'}
             </button>
           </div>
         </div>

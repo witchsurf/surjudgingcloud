@@ -89,6 +89,24 @@ export interface HeatEntryOverrideResult {
     config_patch?: unknown;
 }
 
+export interface HeatStartDependencyBlocker {
+    position?: number | null;
+    placeholder?: string | null;
+    source_round?: number | null;
+    source_heat?: number | null;
+    source_position?: number | null;
+    source_heat_id?: string | null;
+    source_status?: string | null;
+    reason?: string | null;
+    message?: string | null;
+}
+
+export interface HeatStartDependencyCheck {
+    ok: boolean;
+    heat_id?: string | null;
+    blockers: HeatStartDependencyBlocker[];
+}
+
 const normalizeJoinedParticipant = (participant: any) => {
     if (Array.isArray(participant)) {
         return participant[0] ?? null;
@@ -1004,6 +1022,29 @@ export async function rebuildDivisionQualifiersFromScores(eventId: number, divis
     }
 
     return Number(data ?? 0);
+}
+
+export async function validateHeatStartDependencies(heatId: string): Promise<HeatStartDependencyCheck> {
+    ensureSupabase();
+
+    const normalizedHeatId = ensureHeatId(heatId);
+    const { data, error } = await supabase!.rpc('validate_heat_start_dependencies', {
+        p_heat_id: normalizedHeatId,
+    });
+
+    if (error) {
+        if (isRpcUnavailableError(error, 'validate_heat_start_dependencies')) {
+            throw new Error('RPC_UNAVAILABLE:validate_heat_start_dependencies');
+        }
+        throw error;
+    }
+
+    const result = (data || {}) as Partial<HeatStartDependencyCheck>;
+    return {
+        ok: Boolean(result.ok),
+        heat_id: result.heat_id ?? normalizedHeatId,
+        blockers: Array.isArray(result.blockers) ? result.blockers : [],
+    };
 }
 
 export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string): Promise<ActiveHeatPointer | null> {
