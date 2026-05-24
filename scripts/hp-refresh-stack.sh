@@ -234,9 +234,10 @@ if [ "\$missing_count" -gt 0 ]; then
 fi
 
 # Explicitly guarantee that the active runtime schema version is correctly stamped in the singleton table
+latest_schema_version="\${latest_base%.sql}"
 docker exec surfjudging_postgres psql -U postgres -d postgres -c "
   INSERT INTO public.app_runtime_schema_version (id, schema_version, updated_at)
-  VALUES (true, '20260523231000_fix_local_score_override_text_ids', now())
+  VALUES (true, '\$latest_schema_version', now())
   ON CONFLICT (id) DO UPDATE
     SET schema_version = excluded.schema_version,
         updated_at = excluded.updated_at;

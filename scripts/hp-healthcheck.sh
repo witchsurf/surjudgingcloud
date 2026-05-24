@@ -13,7 +13,9 @@ HP_USER="${SURF_HP_USER:-admin-surfjudging}"
 DISPLAY_URL="${SURF_HP_DISPLAY_URL:-https://display.surfjudging.cloud/display}"
 LOCAL_DISPLAY_URL="http://${HP_HOST}:8080/display"
 LOCAL_API_URL="http://${HP_HOST}:8000/rest/v1/events?select=id&limit=1"
+SCHEMA_URL="http://${HP_HOST}:8000/rest/v1/app_runtime_schema_version?select=schema_version,updated_at&limit=1"
 LEGACY_HP_IP="${SURF_HP_LEGACY_IP:-$([[ "$HP_HOST" == "192.168.1.2" ]] && echo "10.0.0.14" || echo "192.168.1.2")}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 section() {
   printf '\n== %s ==\n' "$1"
@@ -21,6 +23,16 @@ section() {
 
 extract_bundle() {
   grep -oE '/assets/index-[^"]+\.js' | head -n 1 | sed 's#^/assets/##'
+}
+
+expected_schema_version() {
+  local latest_migration
+  latest_migration="$(find "$ROOT_DIR/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)"
+  basename "$latest_migration" .sql
+}
+
+extract_schema_version() {
+  sed -n 's/.*"schema_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
 }
 
 section "Network"
@@ -49,6 +61,17 @@ section "Local web/API"
 curl -fsSI "http://${HP_HOST}:8080" | sed -n '1,8p'
 echo "---"
 curl -fsS "$LOCAL_API_URL" | head -c 300; echo
+
+section "Runtime schema"
+EXPECTED_SCHEMA="$(expected_schema_version)"
+INSTALLED_SCHEMA="$(curl -fsS "$SCHEMA_URL" | extract_schema_version)"
+echo "Expected schema : $EXPECTED_SCHEMA"
+echo "Installed schema: ${INSTALLED_SCHEMA:-missing}"
+if [[ "$INSTALLED_SCHEMA" != "$EXPECTED_SCHEMA" ]]; then
+  echo "Runtime schema: MISMATCH" >&2
+  exit 1
+fi
+echo "Runtime schema: OK"
 
 section "Bundle alignment"
 LOCAL_BUNDLE="$(curl -fsS "$LOCAL_DISPLAY_URL" | extract_bundle)"

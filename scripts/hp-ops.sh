@@ -191,6 +191,43 @@ wait_for_port() {
   return 1
 }
 
+expected_schema_version() {
+  local latest_migration
+  latest_migration="$(find "$ROOT_DIR/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)"
+  basename "$latest_migration" .sql
+}
+
+read_hp_schema_version() {
+  local response
+  response="$(curl -fsS --connect-timeout 3 "http://$HOST:8000/rest/v1/app_runtime_schema_version?select=schema_version&limit=1" 2>/dev/null || true)"
+  printf '%s' "$response" | sed -n 's/.*"schema_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+verify_hp_schema_version() {
+  section "Verify HP runtime schema"
+  local expected installed
+  expected="$(expected_schema_version)"
+
+  for ((i=1; i<=30; i++)); do
+    installed="$(read_hp_schema_version)"
+    if [[ "$installed" == "$expected" ]]; then
+      echo "HP schema OK: $installed"
+      return 0
+    fi
+    if [[ -n "$installed" ]]; then
+      echo "HP schema not ready yet: installed=$installed expected=$expected"
+    else
+      echo "HP schema not readable yet: expected=$expected"
+    fi
+    sleep 2
+  done
+
+  installed="$(read_hp_schema_version)"
+  echo "HP schema mismatch after refresh. Expected $expected, installed ${installed:-unreadable}" >&2
+  echo "This usually means PostgREST/Kong did not expose the freshly stamped schema version." >&2
+  exit 1
+}
+
 probe_port() {
   local host="$1"
   local port="$2"
@@ -278,6 +315,7 @@ run_refresh() {
     echo "Local API did not come back on $HOST:8000 after stack refresh" >&2
     exit 1
   fi
+  verify_hp_schema_version
 }
 
 run_deploy() {
