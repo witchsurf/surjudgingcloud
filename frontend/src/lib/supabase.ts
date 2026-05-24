@@ -5,6 +5,7 @@ import { createOfflineOperationId, describeLegacyOfflineEntry, recordOfflineOper
 import { legacyGetAll, legacyAdd, legacySetAll, legacyClear } from './idbOfflineStore';
 import { isLocalNetworkHost, isLocalNetworkUrl } from './networkDetection';
 import { createReconnectAfterMs } from './realtimeBackoff';
+import { useOfflineStore } from '../stores/offlineStore';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -245,7 +246,6 @@ export const startConnectionHeartbeat = () => {
     lastConnectionStatus = isConnected;
     logger.info('Supabase', `Browser network status changed: ${isConnected ? 'ONLINE' : 'OFFLINE'}`);
 
-    const { useOfflineStore } = await import('../stores/offlineStore');
     useOfflineStore.getState().setOnline(isConnected);
   };
 

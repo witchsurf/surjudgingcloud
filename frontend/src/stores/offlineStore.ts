@@ -53,8 +53,7 @@ export const useOfflineStore = create<OfflineStore>()(
                 logger.info('OfflineStore', `Starting WAL sync replay of ${mutations.length} mutations...`);
 
                 try {
-                    // Dynamically import scoreRepository to prevent circular dependency
-                    const { scoreRepository } = await import('../repositories/ScoreRepository');
+                    const { replayScoreWalMutation } = await import('./scoreWalExecutor');
 
                     // Clone the current mutations array to process them in strict FIFO order
                     const queue = [...mutations];
@@ -71,41 +70,7 @@ export const useOfflineStore = create<OfflineStore>()(
                             metadata: operation.metadata,
                         });
 
-                        if (mutation.table === 'scores') {
-                            // Map the raw payload to saveScore request format
-                            const payload = mutation.payload;
-                            await scoreRepository.saveScore({
-                                heatId: payload.heat_id,
-                                competition: payload.competition,
-                                division: payload.division,
-                                round: payload.round,
-                                judgeId: payload.judge_id,
-                                judgeName: payload.judge_name,
-                                judgeStation: payload.judge_station,
-                                judgeIdentityId: payload.judge_identity_id,
-                                surfer: payload.surfer,
-                                waveNumber: payload.wave_number,
-                                score: payload.score,
-                                eventId: payload.event_id,
-                            });
-                        } else if (mutation.table === 'score_overrides') {
-                            const payload = mutation.payload;
-                            await scoreRepository.overrideScore({
-                                heatId: payload.heat_id,
-                                competition: payload.competition,
-                                division: payload.division,
-                                round: payload.round,
-                                judgeId: payload.judge_id,
-                                judgeName: payload.judge_name,
-                                judgeStation: payload.judge_station,
-                                judgeIdentityId: payload.judge_identity_id,
-                                surfer: payload.surfer,
-                                waveNumber: payload.wave_number,
-                                newScore: payload.new_score,
-                                reason: payload.reason,
-                                comment: payload.comment,
-                            });
-                        }
+                        await replayScoreWalMutation(mutation);
 
                         // Remove this successfully replayed mutation from store state
                         set((state) => ({

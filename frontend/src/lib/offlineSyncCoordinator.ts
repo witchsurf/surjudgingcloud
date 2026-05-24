@@ -1,6 +1,7 @@
 import { getOffline, syncOffline } from './supabase';
 import { logger } from './logger';
 import { getLocalRuntimeSchemaReplayReadiness, recordOfflineOperation } from './offlineOperations';
+import { useOfflineStore } from '../stores/offlineStore';
 
 let replayInProgress = false;
 let listenersInstalled = false;
@@ -47,7 +48,6 @@ export async function replayOfflineQueues(reason = 'manual'): Promise<void> {
     });
     // Legacy queue first: heats/config/timer must exist before score WAL replay.
     await syncOffline();
-    const { useOfflineStore } = await import('../stores/offlineStore');
     await useOfflineStore.getState().processSyncQueue();
     const legacyPending = (await getOffline()).length;
     const scoreWalState = useOfflineStore.getState();
@@ -84,18 +84,22 @@ export function installOfflineSyncCoordinator(): void {
   listenersInstalled = true;
 
   window.addEventListener('online', () => {
-    void import('../stores/offlineStore').then(({ useOfflineStore }) => {
+    try {
       useOfflineStore.getState().setOnline(true);
-      return replayOfflineQueues('browser-online');
-    }).catch((error) => {
+      void replayOfflineQueues('browser-online').catch((error) => {
+        logger.error('OfflineSync', 'Replay after browser-online failed', error);
+      });
+    } catch (error) {
       logger.error('OfflineSync', 'Replay after browser-online failed', error);
-    });
+    }
   });
 
   window.addEventListener('offline', () => {
-    void import('../stores/offlineStore').then(({ useOfflineStore }) => {
+    try {
       useOfflineStore.getState().setOnline(false);
-    });
+    } catch (error) {
+      logger.error('OfflineSync', 'Failed to mark browser offline', error);
+    }
   });
 
   if (navigator.onLine) {

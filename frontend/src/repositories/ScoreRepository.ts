@@ -19,6 +19,7 @@ import {
 } from '../lib/idbStorage';
 import { canonicalizeScores, recordScoreOverrideSecure, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
 import { fetchHeatMetadata } from '../api/supabaseClient';
+import { useOfflineStore } from '../stores/offlineStore';
 
 export interface SaveScoreRequest {
     heatId: string;
@@ -343,7 +344,6 @@ export class ScoreRepository extends BaseRepository {
             async () => {
                 newScore.synced = false;
                 await saveScoreIDB(newScore);
-                const { useOfflineStore } = await import('../stores/offlineStore');
                 useOfflineStore.getState().registerMutation('scores', 'insert', newScore);
                 window.dispatchEvent(new CustomEvent('localScoresUpdated'));
                 logger.info('ScoreRepository', 'Score saved offline (pending sync)', { scoreId: newScore.id });
@@ -507,7 +507,6 @@ export class ScoreRepository extends BaseRepository {
             async () => {
                 updatedScore.synced = false;
                 await saveScoreIDB(updatedScore);
-                const { useOfflineStore } = await import('../stores/offlineStore');
                 useOfflineStore.getState().registerMutation('scores', 'insert', updatedScore);
                 useOfflineStore.getState().registerMutation('score_overrides', 'insert', overrideLog);
                 this.saveOverrideLogToLocalStorage(overrideLog);

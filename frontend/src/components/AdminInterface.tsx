@@ -18,6 +18,7 @@ import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
 import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
+import { getScoresByHeatIDB } from '../lib/idbStorage';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 const LINEUP_OVERRIDE_COLORS = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const;
@@ -693,8 +694,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     } catch (error) {
       console.warn('⚠️ Base de données inaccessible - chargement des scores locaux de secours', error);
 
-      // Fallback: Read from IndexedDB / localStorage cache!
-      const { getScoresByHeatIDB } = await import('../lib/idbStorage');
+      // Fallback: Read from IndexedDB / localStorage cache.
       const localScores = await getScoresByHeatIDB([heatId]);
 
       // Also read local override logs from localStorage
@@ -5177,84 +5177,6 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         </details>
       )}
 
-      {/* Maintenance terrain */}
-      <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
-        <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
-          <div className="flex items-center space-x-3">
-            <Settings className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">6. MAINTENANCE TERRAIN</h2>
-          </div>
-          <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
-        </summary>
-        <div className="p-6 bg-slate-950/20 space-y-6 flex flex-col">
-          <div className="pt-6 border-t border-slate-850 flex flex-wrap gap-3">
-            <button
-              onClick={onReloadData}
-              className="flex items-center space-x-2 px-4 py-2.5 border border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-lg text-xs font-bold transition-all"
-            >
-              <RotateCcw className="w-4 h-4 text-cyan-400" />
-              <span>Recharger</span>
-            </button>
-
-            <button
-              onClick={handleResetAllData}
-              className="flex items-center space-x-2 px-4 py-2.5 bg-rose-900/60 hover:bg-rose-800/60 border border-rose-800/40 text-rose-305 rounded-lg font-bebas tracking-widest text-base transition-all"
-            >
-              <Trash2 className="w-4 h-4 text-rose-400" />
-              <span>RESET NUCLÉAIRE</span>
-            </button>
-
-            <button
-              onClick={handleRebuildDivisionQualifiers}
-              disabled={rebuildPending || !configSaved}
-              className={`flex items-center space-x-2 px-4 py-2.5 border rounded-lg text-xs font-bold transition-all ${
-                rebuildPending || !configSaved
-                  ? 'bg-amber-950/20 border-amber-900/20 text-amber-650 cursor-not-allowed opacity-50'
-                  : 'bg-amber-900/40 hover:bg-amber-800/40 border-amber-800/40 text-amber-305'
-              }`}
-            >
-              <RotateCcw className="w-4 h-4 text-amber-400" />
-              <span>{rebuildPending ? 'Recalcul en cours…' : 'Recalculer qualifiés (division)'}</span>
-            </button>
-
-            <button
-              onClick={exportData}
-              className="flex items-center space-x-2 px-4 py-2.5 bg-emerald-900/40 hover:bg-emerald-800/40 border border-emerald-800/40 text-emerald-300 rounded-lg text-xs font-bold transition-all"
-            >
-              <Download className="w-4 h-4 text-emerald-400" />
-              <span>Export JSON</span>
-            </button>
-          </div>
-
-          <div className="pt-6 border-t border-slate-850">
-            <div className="space-y-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                Code Admin Hors-ligne (LAN)
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  value={offlineAdminPin}
-                  onChange={(e) => setOfflineAdminPin(e.target.value)}
-                  placeholder="Ex: 7890"
-                  className="w-full md:w-1/2 px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveOfflineAdminPin}
-                  className="px-4 py-2 bg-slate-900 border border-slate-850 hover:bg-slate-800 text-slate-200 text-xs font-bold rounded-lg transition-all"
-                >
-                  Enregistrer
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-550 font-medium mt-1">
-                Permet d’accéder à /admin sans magic link quand Internet est indisponible.
-              </p>
-            </div>
-          </div>
-        </div>
-      </details>
-
       {/* Override Chef Juge */}
       <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40" open={showOverridePanel}>
         <summary
@@ -5266,7 +5188,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         >
           <div className="flex items-center space-x-3">
             <ClipboardCheck className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">7. CORRECTION DE NOTES</h2>
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">6. CORRECTION DE NOTES</h2>
           </div>
           <div className="flex items-center space-x-4">
             {!configSaved && <span className="text-[10px] text-rose-450 border border-rose-900/40 bg-rose-950/20 font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">Non sauvegardé</span>}
@@ -5529,7 +5451,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
             <RotateCcw className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">8. HISTORIQUE DES CORRECTIONS</h2>
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">7. HISTORIQUE DES CORRECTIONS</h2>
           </div>
           <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>

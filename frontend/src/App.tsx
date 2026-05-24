@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
 import * as Sentry from '@sentry/react';
 import { isLocalSupabaseMode } from './lib/supabase';
 
@@ -26,23 +27,20 @@ if (import.meta.env.VITE_SENTRY_DSN && !import.meta.env.DEV && !isLocalSupabaseM
 import { SyncProvider } from './contexts/SyncContext';
 import { AuthGuard } from './components/AuthGuard';
 
-// Layouts
-import AdminLayout from './layouts/AdminLayout';
-import JudgeLayout from './layouts/JudgeLayout';
-import PublicLayout from './layouts/PublicLayout';
-
-// Pages
-import AdminPage from './pages/AdminPage';
-import JudgePage from './pages/JudgePage';
-import PriorityJudgePage from './pages/PriorityJudgePage';
-import DisplayPage from './pages/DisplayPage';
-import MyEventsPage from './pages/MyEvents';
-import LandingPage from './components/LandingPage';
-import CreateEvent from './components/CreateEvent';
-import PaymentPage from './components/PaymentPage';
-import ParticipantsPage from './components/ParticipantsPage';
-import GenerateHeatsPage from './components/GenerateHeatsPage';
-import FixScores from './pages/FixScores';
+const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
+const JudgeLayout = lazy(() => import('./layouts/JudgeLayout'));
+const PublicLayout = lazy(() => import('./layouts/PublicLayout'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const JudgePage = lazy(() => import('./pages/JudgePage'));
+const PriorityJudgePage = lazy(() => import('./pages/PriorityJudgePage'));
+const DisplayPage = lazy(() => import('./pages/DisplayPage'));
+const MyEventsPage = lazy(() => import('./pages/MyEvents'));
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const CreateEvent = lazy(() => import('./components/CreateEvent'));
+const PaymentPage = lazy(() => import('./components/PaymentPage'));
+const ParticipantsPage = lazy(() => import('./components/ParticipantsPage'));
+const GenerateHeatsPage = lazy(() => import('./components/GenerateHeatsPage'));
+const FixScores = lazy(() => import('./pages/FixScores'));
 
 const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 const isPublicDisplayHostname = hostname === 'display.surfjudging.cloud';
@@ -50,58 +48,60 @@ const isPublicDisplayHostname = hostname === 'display.surfjudging.cloud';
 function App() {
     return (
         <SyncProvider>
-            <Router>
-                <Routes>
-                    <Route path="/fix" element={<FixScores />} />
-                    <Route
-                        path="/"
-                        element={isPublicDisplayHostname ? <Navigate to="/display" replace /> : <LandingPage />}
-                    />
-                    <Route path="/create-event" element={<CreateEvent />} />
-                    <Route path="/login" element={<MyEventsPage />} />
-                    <Route path="/my-events" element={<MyEventsPage />} />
-                    <Route path="/payment" element={<PaymentPage />} />
-                    <Route path="/participants" element={<ParticipantsPage />} />
-                    <Route path="/generate-heats" element={<GenerateHeatsPage />} />
+            <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
+                <Router>
+                    <Routes>
+                        <Route path="/fix" element={<FixScores />} />
+                        <Route
+                            path="/"
+                            element={isPublicDisplayHostname ? <Navigate to="/display" replace /> : <LandingPage />}
+                        />
+                        <Route path="/create-event" element={<CreateEvent />} />
+                        <Route path="/login" element={<MyEventsPage />} />
+                        <Route path="/my-events" element={<MyEventsPage />} />
+                        <Route path="/payment" element={<PaymentPage />} />
+                        <Route path="/participants" element={<ParticipantsPage />} />
+                        <Route path="/generate-heats" element={<GenerateHeatsPage />} />
 
-                    {/* Admin Routes - REQUIRE AUTHENTICATION */}
-                    <Route path="/admin" element={
-                        <AuthGuard requireAuth={true}>
-                            <AdminLayout />
-                        </AuthGuard>
-                    }>
-                        <Route index element={<AdminPage />} />
-                    </Route>
+                        {/* Admin Routes - REQUIRE AUTHENTICATION */}
+                        <Route path="/admin" element={
+                            <AuthGuard requireAuth={true}>
+                                <AdminLayout />
+                            </AuthGuard>
+                        }>
+                            <Route index element={<AdminPage />} />
+                        </Route>
 
-                    {/* Legacy route for chief-judge to redirect to admin */}
-                    <Route path="/chief-judge" element={
-                        <AuthGuard requireAuth={true}>
-                            <Navigate to="/admin" replace />
-                        </AuthGuard>
-                    } />
+                        {/* Legacy route for chief-judge to redirect to admin */}
+                        <Route path="/chief-judge" element={
+                            <AuthGuard requireAuth={true}>
+                                <Navigate to="/admin" replace />
+                            </AuthGuard>
+                        } />
 
-                    {/* Judge Routes */}
-                    <Route path="/judge" element={<JudgeLayout />}>
-                        <Route index element={<JudgePage />} />
-                    </Route>
+                        {/* Judge Routes */}
+                        <Route path="/judge" element={<JudgeLayout />}>
+                            <Route index element={<JudgePage />} />
+                        </Route>
 
-                    <Route path="/priority" element={<JudgeLayout />}>
-                        <Route index element={<PriorityJudgePage />} />
-                    </Route>
+                        <Route path="/priority" element={<JudgeLayout />}>
+                            <Route index element={<PriorityJudgePage />} />
+                        </Route>
 
-                    <Route path="/priority-judge" element={<JudgeLayout />}>
-                        <Route index element={<PriorityJudgePage />} />
-                    </Route>
+                        <Route path="/priority-judge" element={<JudgeLayout />}>
+                            <Route index element={<PriorityJudgePage />} />
+                        </Route>
 
-                    {/* Public Display Routes */}
-                    <Route path="/display" element={<PublicLayout />}>
-                        <Route index element={<DisplayPage />} />
-                    </Route>
+                        {/* Public Display Routes */}
+                        <Route path="/display" element={<PublicLayout />}>
+                            <Route index element={<DisplayPage />} />
+                        </Route>
 
-                    {/* Fallback */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-            </Router>
+                        {/* Fallback */}
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                </Router>
+            </Suspense>
         </SyncProvider>
     );
 }
