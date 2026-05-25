@@ -488,7 +488,14 @@ export class HeatRepository extends BaseRepository {
 
     private async ensureHeatEntries(heatId: string, config: any): Promise<void> {
         const existingEntries = await this.fetchHeatEntriesWithParticipantsRaw(heatId);
-        if (existingEntries.length > 0) {
+        
+        // If we have existing entries, let's check if any entry is missing its participant_id mapping.
+        // If so, we bypass the early return to resolve and update the database with active participant IDs.
+        const hasMissingParticipantIds = existingEntries.length > 0 && existingEntries.some(
+            (entry) => !entry.participant_id
+        );
+
+        if (existingEntries.length > 0 && !hasMissingParticipantIds) {
             return;
         }
 
