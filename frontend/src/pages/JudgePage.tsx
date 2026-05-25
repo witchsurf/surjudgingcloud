@@ -153,38 +153,34 @@ export default function JudgePage() {
         if (!targetEventId) return;
 
         return subscribeToEventConfig(targetEventId, (row) => {
-            if (positionFromUrl) {
-                // Kiosk mode: if the heat changed, reload full config from DB.
-                // If same heat, heat_realtime_config polling (below) is sufficient.
-                const currentConfig = latestConfigRef.current;
-                const sameHeat =
-                    Boolean(latestConfigSavedRef.current) &&
-                    (row.division || '').trim().toUpperCase() === (currentConfig.division || '').trim().toUpperCase() &&
-                    Number(row.round ?? currentConfig.round) === Number(currentConfig.round) &&
-                    Number(row.heat_number ?? currentConfig.heatId) === Number(currentConfig.heatId);
-                if (!sameHeat) {
-                    setConfig((prev) => applyHeatScopedConfig(prev, {
-                        competition: resolveEventDisplayName(row.event_name, prev.competition),
-                        division: row.division || prev.division,
-                        round: row.round ?? prev.round,
-                        heatId: row.heat_number ?? prev.heatId
-                    }));
-                    void loadConfigFromDb(targetEventId, {
-                        force: true,
-                        includeCategories: false,
-                        preferActivePointer: false,
-                    });
-                }
-                return;
+            const currentConfig = latestConfigRef.current;
+            const sameHeat =
+                Boolean(latestConfigSavedRef.current) &&
+                (row.division || '').trim().toUpperCase() === (currentConfig.division || '').trim().toUpperCase() &&
+                Number(row.round ?? currentConfig.round) === Number(currentConfig.round) &&
+                Number(row.heat_number ?? currentConfig.heatId) === Number(currentConfig.heatId);
+            
+            if (!sameHeat) {
+                console.log('🔄 JudgePage: Heat change detected via event config, reloading DB config', {
+                    from: `${currentConfig.division} R${currentConfig.round}H${currentConfig.heatId}`,
+                    to: `${row.division} R${row.round}H${row.heat_number}`
+                });
+
+                setConfig((prev) => applyHeatScopedConfig(prev, {
+                    competition: resolveEventDisplayName(row.event_name, prev.competition),
+                    division: row.division || prev.division,
+                    round: row.round ?? prev.round,
+                    heatId: row.heat_number ?? prev.heatId
+                }));
+
+                void loadConfigFromDb(targetEventId, {
+                    force: true,
+                    includeCategories: false,
+                    preferActivePointer: false,
+                });
             }
-            setConfig((prev) => applyHeatScopedConfig(prev, {
-                competition: resolveEventDisplayName(row.event_name, prev.competition),
-                division: row.division || prev.division,
-                round: row.round ?? prev.round,
-                heatId: row.heat_number ?? prev.heatId
-            }));
         }, { initialRefresh: false });
-    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, positionFromUrl, loadConfigFromDb, configSaved]);
+    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, loadConfigFromDb, configSaved]);
 
 
     // Subscribe to realtime timer/config for the current heat
@@ -249,44 +245,32 @@ export default function JudgePage() {
             const parsed = parseActiveHeatId(row.active_heat_id);
             if (!parsed) return;
 
-            if (positionFromUrl) {
-                const currentConfig = latestConfigRef.current;
-                const sameHeat =
-                    Boolean(latestConfigSavedRef.current) &&
-                    (currentConfig.division || '').trim().toUpperCase() === parsed.division.trim().toUpperCase() &&
-                    Number(currentConfig.round) === Number(parsed.round) &&
-                    Number(currentConfig.heatId) === Number(parsed.heatNumber);
-                if (sameHeat) return;
-
-                if (targetEventId) {
-                    void loadConfigFromDb(targetEventId, { force: true, includeCategories: false });
-                    return;
-                }
-
-                void loadKioskConfig();
-                return;
-            }
-
-            setConfig((prev) => {
-                const unchanged =
-                    prev.round === parsed.round &&
-                    prev.heatId === parsed.heatNumber &&
-                    (prev.division || '').toUpperCase() === parsed.division.toUpperCase();
-
-                if (unchanged) return prev;
-
-                console.log('🔄 JudgePage: active_heat_pointer update received', {
-                    from: `${prev.division} R${prev.round}H${prev.heatId}`,
+            const currentConfig = latestConfigRef.current;
+            const sameHeat =
+                Boolean(latestConfigSavedRef.current) &&
+                (currentConfig.division || '').trim().toUpperCase() === parsed.division.trim().toUpperCase() &&
+                Number(currentConfig.round) === Number(parsed.round) &&
+                Number(currentConfig.heatId) === Number(parsed.heatNumber);
+            
+            if (!sameHeat) {
+                console.log('🔄 JudgePage: Heat change detected via active_heat_pointer, reloading DB config', {
+                    from: `${currentConfig.division} R${currentConfig.round}H${currentConfig.heatId}`,
                     to: `${parsed.division} R${parsed.round}H${parsed.heatNumber}`
                 });
 
-                return applyHeatScopedConfig(prev, {
+                setConfig((prev) => applyHeatScopedConfig(prev, {
                     competition: resolveEventDisplayName(eventName, prev.competition),
                     division: parsed.division,
                     round: parsed.round,
                     heatId: parsed.heatNumber
-                });
-            });
+                }));
+
+                if (targetEventId) {
+                    void loadConfigFromDb(targetEventId, { force: true, includeCategories: false });
+                } else if (positionFromUrl) {
+                    void loadKioskConfig();
+                }
+            }
         };
 
         return subscribeToActiveHeatPointer(targetEventId, config.competition, (row) => {

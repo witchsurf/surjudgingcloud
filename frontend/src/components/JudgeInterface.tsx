@@ -148,8 +148,24 @@ function JudgeInterface({
 
   const judgeStation = useMemo(() => {
     if (typeof window === 'undefined') return judgeId;
-    return sessionStorage.getItem('kiosk_position') || sessionStorage.getItem('authenticated_judge_id') || judgeId;
-  }, [judgeId]);
+    
+    // 1. Kiosk position always wins
+    const kioskPos = sessionStorage.getItem('kiosk_position');
+    if (kioskPos) return kioskPos;
+    
+    // 2. Default mode: Resolve the physical position from config.judgeIdentities if matched
+    const authId = sessionStorage.getItem('authenticated_judge_id') || judgeId;
+    if (authId && config?.judgeIdentities) {
+      const matchedStation = Object.entries(config.judgeIdentities).find(
+        ([_, identityId]) => String(identityId).trim().toLowerCase() === authId.trim().toLowerCase()
+      )?.[0];
+      if (matchedStation) {
+        return matchedStation;
+      }
+    }
+    
+    return authId;
+  }, [judgeId, config.judgeIdentities]);
 
   const judgeIdentityId = useMemo(() => {
     if (typeof window === 'undefined') return judgeId;
