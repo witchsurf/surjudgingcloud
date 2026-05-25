@@ -1059,7 +1059,8 @@ export async function fetchActiveHeatPointer(eventId?: number | null, eventName?
     const runQuery = async (filterByEventId: boolean) => {
         let query = supabase!
             .from('active_heat_pointer')
-            .select('*');
+            .select('*')
+            .order('updated_at', { ascending: false });
 
         if (filterByEventId && eventId && Number.isFinite(eventId)) {
             query = query.eq('event_id', eventId);

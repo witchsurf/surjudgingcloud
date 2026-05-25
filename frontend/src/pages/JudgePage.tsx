@@ -143,9 +143,10 @@ export default function JudgePage() {
     }, [eventIdFromUrl, positionFromUrl, loadConfigFromDb, loadKioskConfig, setActiveEventId]);
 
     // Realtime sync for admin config saves (division/round/heat changes).
+    // Kiosk tablets must listen here too: event_last_config is the authoritative
+    // "chef juge selected this heat" signal when active_heat_pointer is delayed/stale.
     useEffect(() => {
         if (!isSupabaseConfigured() || configLoading) return;
-        if (positionFromUrl) return;
 
         const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
         const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
@@ -162,7 +163,17 @@ export default function JudgePage() {
                     Number(row.round ?? currentConfig.round) === Number(currentConfig.round) &&
                     Number(row.heat_number ?? currentConfig.heatId) === Number(currentConfig.heatId);
                 if (!sameHeat) {
-                    void loadConfigFromDb(targetEventId, { force: true, includeCategories: false });
+                    setConfig((prev) => applyHeatScopedConfig(prev, {
+                        competition: resolveEventDisplayName(row.event_name, prev.competition),
+                        division: row.division || prev.division,
+                        round: row.round ?? prev.round,
+                        heatId: row.heat_number ?? prev.heatId
+                    }));
+                    void loadConfigFromDb(targetEventId, {
+                        force: true,
+                        includeCategories: false,
+                        preferActivePointer: false,
+                    });
                 }
                 return;
             }
@@ -278,9 +289,9 @@ export default function JudgePage() {
             });
         };
 
-        return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
+        return subscribeToActiveHeatPointer(targetEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
-        }, { initialRefresh: false, fallbackPolling: !positionFromUrl || isLocalSupabaseMode() });
+        }, { initialRefresh: true, fallbackPolling: !positionFromUrl || isLocalSupabaseMode() });
     }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl, loadConfigFromDb]);
 
     // Purge local scores only when heat changes.

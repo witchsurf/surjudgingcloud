@@ -37,7 +37,7 @@ interface ConfigStore {
 
     // Complex actions
     loadKioskConfig: () => Promise<void>;
-    loadConfigFromDb: (eventId: number, options?: { force?: boolean; includeCategories?: boolean }) => Promise<void>;
+    loadConfigFromDb: (eventId: number, options?: { force?: boolean; includeCategories?: boolean; preferActivePointer?: boolean }) => Promise<void>;
     persistConfig: (config: AppConfig) => void;
     resetConfig: () => void;
     initializeFromUrl: () => Promise<void>;
@@ -228,9 +228,10 @@ export const useConfigStore = create<ConfigStore>()(
             },
 
             // Load config from database
-            loadConfigFromDb: async (eventId: number, options?: { force?: boolean; includeCategories?: boolean }) => {
+            loadConfigFromDb: async (eventId: number, options?: { force?: boolean; includeCategories?: boolean; preferActivePointer?: boolean }) => {
                 const force = options?.force === true;
                 const includeCategories = options?.includeCategories !== false;
+                const preferActivePointer = options?.preferActivePointer !== false;
                 const lastLoadAt = configLastLoadAt.get(eventId) ?? 0;
                 const state = get();
                 if (
@@ -327,8 +328,10 @@ export const useConfigStore = create<ConfigStore>()(
                             }
                         }
 
-                        // If active_heat_pointer is newer/different, prefer it for the active heat
-                        if (snapshot?.event_name) {
+                        // If active_heat_pointer is newer/different, prefer it for the active heat.
+                        // Kiosk tablets can opt out when an event_last_config realtime payload is the
+                        // freshest source; otherwise a stale pointer may pull them back to a previous heat.
+                        if (preferActivePointer && snapshot?.event_name) {
                             try {
                                 const activeHeat = await fetchActiveHeatPointer(eventId, snapshot.event_name);
                                 if (activeHeat) {
