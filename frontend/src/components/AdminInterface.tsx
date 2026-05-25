@@ -2142,13 +2142,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     setRejudgeOverrideError(null);
   }, [currentHeatKey]);
 
-  useEffect(() => {
-    if (isCurrentHeatLocked) {
-        hasBeenLockedRef.current = true;
-    }
-  }, [isCurrentHeatLocked]);
-
-  const stableHeatLocked = hasBeenLockedRef.current;
   const currentHeatScoreCount = React.useMemo(
     () =>
       mergedScores.filter(
@@ -2157,18 +2150,46 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     [heatId, mergedScores]
   );
   const currentHeatHasScores = currentHeatScoreCount > 0;
-  const currentHeatLooksAlreadyJudged = currentHeatHasScores && !timer.isRunning && !timer.startTime;
-  const rejudgeOverrideActive = rejudgeOverrideHeatKey === currentHeatKey;
-  const heatRejudgeProtected = (stableHeatLocked || currentHeatLooksAlreadyJudged) && !rejudgeOverrideActive;
-  const rejudgeProtectionReason = stableHeatLocked
-    ? 'closed'
-    : currentHeatLooksAlreadyJudged
-      ? 'scores'
-      : null;
+
   const floatingTimeLeft = React.useMemo(
     () => getRemainingTimerSeconds(timer, floatingTimerTick),
     [timer, floatingTimerTick, getRemainingTimerSeconds]
   );
+
+  const isCurrentHeatClosed = currentHeatStatus === 'closed';
+  const isCurrentHeatFinished = currentHeatStatus === 'finished';
+
+  // Timer came to zero: started, not running, and remaining seconds is 0
+  const timerHasExpired = Boolean(timer.startTime) && !timer.isRunning && floatingTimeLeft === 0;
+
+  useEffect(() => {
+    if (isCurrentHeatLocked) {
+      hasBeenLockedRef.current = true;
+    } else if (currentHeatStatus === 'open' || currentHeatStatus === 'waiting') {
+      // Explicit reset if status returned to open or waiting (e.g. after manual unlocking)
+      hasBeenLockedRef.current = false;
+    }
+  }, [isCurrentHeatLocked, currentHeatStatus]);
+
+  const stableHeatLocked = hasBeenLockedRef.current || isCurrentHeatClosed;
+
+  // A heat is considered "already run" if closed, finished, timer reached zero, or has scores while timer is inactive
+  const currentHeatAlreadyRan = 
+    stableHeatLocked || 
+    isCurrentHeatFinished || 
+    timerHasExpired || 
+    (currentHeatHasScores && !timer.isRunning && !timer.startTime);
+
+  const rejudgeOverrideActive = rejudgeOverrideHeatKey === currentHeatKey;
+  const heatRejudgeProtected = currentHeatAlreadyRan && !rejudgeOverrideActive;
+
+  const rejudgeProtectionReason = stableHeatLocked
+    ? 'closed'
+    : (isCurrentHeatFinished || timerHasExpired)
+      ? 'finished'
+      : (currentHeatHasScores && !timer.isRunning && !timer.startTime)
+        ? 'scores'
+        : null;
 
   const judgeAssignmentStatus = React.useMemo(() => {
     const configuredJudgeIds = (config.judges || [])
@@ -4041,7 +4062,9 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                               ? 'Le chef juge a déverrouillé exceptionnellement ce heat. Les scores existants restent conservés; toute nouvelle saisie doit correspondre à une vraie correction terrain.'
                               : rejudgeProtectionReason === 'closed'
                                 ? `Ce heat est clôturé et contient ${currentHeatScoreCount} note(s). Le timer et la notation restent bloqués pour éviter de rejuger par accident.`
-                                : `Ce heat contient déjà ${currentHeatScoreCount} note(s), mais il n'est plus en cours. Il peut s'agir d'une fermeture incomplète ou d'un retour arrière accidentel.`}
+                                : rejudgeProtectionReason === 'finished'
+                                  ? `Ce heat est terminé (le chronomètre est arrivé à terme) et contient ${currentHeatScoreCount} note(s). Le timer et la notation restent bloqués pour éviter de rejuger par accident.`
+                                  : `Ce heat contient déjà ${currentHeatScoreCount} note(s), mais il n'est plus en cours. Il peut s'agir d'une fermeture incomplète ou d'un retour arrière accidentel.`}
                           </p>
 
                           {heatRejudgeProtected && (
