@@ -76,9 +76,10 @@ Afin de garantir des signaux de commande robustes (5V) sur de longues distances 
   - **DC+** ──► Bornier **+24V** général.
   - **DC-** ──► Bornier **GND** puissance général.
 
-> [!IMPORTANT]
-> **Modif Hardware (Shunt MOSFET) :**
-> Les LEDs bleues indicatrices (opto-coupleurs L817) sur les cartes MOSFET ANMBEST doivent être **shuntées (court-circuitées par une soudure)**. Cela garantit que la tension logique (5V) soit suffisante pour ouvrir pleinement la grille du MOSFET sans chute de tension résiduelle due à la LED indicatrice.
+> [!NOTE]
+> **Modif Hardware MOSFET (Non nécessaire avec les buffers) :**
+> Grâce à la plaque buffer (`SN74AHCT125N`), le signal de commande arrive sur les entrées des cartes MOSFET en **5.0V** (et non en 3.3V). Par conséquent, **il n'est plus nécessaire de shunter (court-circuiter) les LEDs bleues indicatrices** des opto-coupleurs L817 sur les cartes ANMBEST. Le signal 5V est amplement suffisant pour piloter l'opto-coupleur et ouvrir pleinement la grille du MOSFET sans modification physique de la carte.
+
 
 ### Câblage des Sorties vers les Boxes (Connecteurs 5 fils) :
 * Pour chaque box de priorité, câblez le connecteur de sortie de sa carte MOSFET respective :
