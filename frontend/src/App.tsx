@@ -26,6 +26,7 @@ if (import.meta.env.VITE_SENTRY_DSN && !import.meta.env.DEV && !isLocalSupabaseM
 // Providers - Only SyncProvider needed now (Zustand handles Auth, Config, Judging)
 import { SyncProvider } from './contexts/SyncContext';
 import { AuthGuard } from './components/AuthGuard';
+import OverlayPage from './pages/OverlayPage';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
 const JudgeLayout = lazy(() => import('./layouts/JudgeLayout'));
@@ -51,6 +52,7 @@ function App() {
             <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
                 <Router>
                     <Routes>
+          <Route path="/overlay" element={<OverlayPage />} />
                         <Route path="/fix" element={<FixScores />} />
                         <Route
                             path="/"
