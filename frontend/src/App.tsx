@@ -52,7 +52,7 @@ function App() {
             <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
                 <Router>
                     <Routes>
-          <Route path="/overlay" element={<OverlayPage />} />
+                        <Route path="/overlay" element={<OverlayPage />} />
                         <Route path="/fix" element={<FixScores />} />
                         <Route
                             path="/"
