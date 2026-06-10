@@ -13,6 +13,8 @@ const DEFAULT_CONFIG: AppConfig = {
   surfers: ['ROUGE', 'BLANC', 'JAUNE', 'BLEU'],
   waves: 15,
   judgeNames: {},
+  surferNames: {},
+  surferCountries: {},
   tournamentType: 'elimination',
   totalSurfers: 0,
   surfersPerHeat: 2,
@@ -33,6 +35,8 @@ function normaliseConfigData(data: Partial<AppConfig>): AppConfig {
     judges: data.judges && data.judges.length ? data.judges : DEFAULT_CONFIG.judges,
     surfers: data.surfers && data.surfers.length ? data.surfers : DEFAULT_CONFIG.surfers,
     judgeNames: { ...DEFAULT_CONFIG.judgeNames, ...(data.judgeNames || {}) },
+    surferNames: { ...DEFAULT_CONFIG.surferNames, ...(data.surferNames || {}) },
+    surferCountries: { ...DEFAULT_CONFIG.surferCountries, ...(data.surferCountries || {}) },
   };
 
   return {
@@ -125,14 +129,25 @@ export default function OverlayPage() {
 
     try {
       const decoded = JSON.parse(atob(configParam)) as Partial<AppConfig> & {
+        surfer_names?: Record<string, string>;
+        surfer_countries?: Record<string, string>;
         heatStatus?: 'waiting' | 'running' | 'paused' | 'finished';
         timerSnapshot?: Parameters<typeof normaliseTimerSnapshot>[0];
       };
 
-      const { timerSnapshot, heatStatus: sharedHeatStatus, judgeNames, ...rest } = decoded;
+      const {
+        timerSnapshot,
+        heatStatus: sharedHeatStatus,
+        judgeNames,
+        surfer_names: sharedSurferNames,
+        surfer_countries: sharedSurferCountries,
+        ...rest
+      } = decoded;
       const nextConfig = normaliseConfigData({
         ...rest,
         judgeNames: judgeNames || {},
+        surferNames: decoded.surferNames || sharedSurferNames || {},
+        surferCountries: decoded.surferCountries || sharedSurferCountries || {},
       });
 
       setConfig(nextConfig);

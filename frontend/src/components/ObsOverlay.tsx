@@ -115,6 +115,8 @@ export default function ObsOverlay({
   }
 
   const statusLabel = heatStatus === 'running' ? 'LIVE' : heatStatus.toUpperCase();
+  const surferNames = config.surferNames ?? {};
+  const surferCountries = config.surferCountries ?? {};
 
   return (
     <main className="obs-overlay min-h-screen bg-transparent p-6 font-sans text-white">
@@ -157,6 +159,8 @@ export default function ObsOverlay({
             const jersey = row.surfer.trim().toUpperCase();
             const jerseyColor = SURFER_COLORS[jersey] ?? row.color;
             const textColor = getTextColorForJersey(jersey);
+            const displayName = surferNames[jersey] || surferNames[row.surfer] || row.surfer;
+            const country = surferCountries[jersey] || surferCountries[row.surfer];
 
             return (
               <div
@@ -177,10 +181,10 @@ export default function ObsOverlay({
 
                   <div className="min-w-0">
                     <div className="truncate text-base font-black uppercase leading-5">
-                      {row.surfer}
+                      {displayName}
                     </div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      {row.latestWave ? `Wave ${row.latestWave}` : 'Awaiting score'}
+                      {country ? country.toUpperCase() : row.latestWave ? `Wave ${row.latestWave}` : 'Awaiting score'}
                     </div>
                   </div>
                 </div>
