@@ -6,7 +6,7 @@ import HeatTimer from './HeatTimer';
 import JudgeSyncBadge from './JudgeSyncBadge';
 import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchHeatMetadata, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
+import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, promoteOpeningToOrdered, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
@@ -185,6 +185,7 @@ function JudgeInterface({
   const [isSubmittingName, setIsSubmittingName] = useState(false);
   const canEditPriority = canManagePriority || isChiefJudge;
   const resolvedInterfaceTitle = interfaceTitle || (isChiefJudge ? 'Interface Chef Juge' : 'Interface Juge');
+  const currentSeriesLabel = getHeatSeriesLabel(config.round, config.heatId, config.totalRounds);
   // Check if judge name is set
   useEffect(() => {
     if (priorityOnly) return;
@@ -1112,7 +1113,7 @@ function JudgeInterface({
                   <span className="text-slate-600">•</span>
                   <span className={`font-bold uppercase truncate ${priorityOnly ? 'max-w-[160px] sm:max-w-[220px]' : 'max-w-[100px]'} text-slate-300`}>{config.division || 'Sans categorie'}</span>
                   <span className="text-slate-600">•</span>
-                  <span className="font-extrabold text-indigo-400">R{config.round} H{config.heatId}</span>
+                  <span className="font-extrabold text-indigo-400">{currentSeriesLabel}</span>
                 </div>
               </div>
 

@@ -17,7 +17,7 @@ import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
-import { getHeatIdentifiers } from '../utils/heat';
+import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
 import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { resolveEventDisplayName } from '../utils/eventName';
@@ -1462,6 +1462,7 @@ export default function DisplayPage() {
                             <div className="font-bebas text-xl tracking-wider mb-2">DEBUG REALTIME</div>
                             <div className="grid gap-1 mb-3">
                                 <div>Heat courant: <span className="font-mono">{currentHeatId || 'n/a'}</span></div>
+                                <div>Série courante: <span className="font-mono">{getHeatSeriesLabel(config.round, config.heatId, config.totalRounds)}</span></div>
                                 <div>Dernier refresh scores: <span className="font-mono">{lastScoresRefreshAt?.toISOString() || 'n/a'}</span></div>
                                 <div>Dernier score websocket: <span className="font-mono">{lastRealtimeScoreAt?.toISOString() || 'n/a'}</span></div>
                                 <div>Nb scores en mémoire: <span className="font-mono">{scores.length}</span></div>

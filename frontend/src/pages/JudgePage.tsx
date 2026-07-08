@@ -6,7 +6,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import { useScoreManager } from '../hooks/useScoreManager';
-import { getHeatIdentifiers } from '../utils/heat';
+import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
 import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useHeatManager } from '../hooks/useHeatManager';
@@ -45,6 +45,10 @@ export default function JudgePage() {
                 config.heatId
             ).normalized,
         [config.competition, config.division, config.round, config.heatId]
+    );
+    const currentSeriesLabel = useMemo(
+        () => getHeatSeriesLabel(config.round, config.heatId, config.totalRounds),
+        [config.round, config.heatId, config.totalRounds]
     );
 
     const searchParams = new URLSearchParams(window.location.search);
@@ -377,7 +381,7 @@ export default function JudgePage() {
                         <p>Config Chargée: {configLoading ? 'En cours...' : 'Terminé'}</p>
                         <p>Config Sauvée (Store): {configSaved ? 'OUI' : 'NON'}</p>
                         <p>Compétition: {config.competition || 'Vide'}</p>
-                        <p>Round/Heat: R{config.round} H{config.heatId}</p>
+                        <p>Round/Heat: {currentSeriesLabel}</p>
                         <p>URL API: {import.meta.env.VITE_SUPABASE_URL}</p>
                         <p>Last fetch error: {
                             // On pourrait stocker l'erreur dans un state pour l'afficher ici

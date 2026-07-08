@@ -7,7 +7,7 @@ import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, Ov
 import { sanitizeScoreInput, validateScore } from '../utils/scoring';
 import { buildJudgeDeviationDetails, calculateJudgeAccuracy, calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
-import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
+import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
@@ -2117,6 +2117,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     return dbStatus || liveStatus || 'waiting';
   }, [divisionHeatSequence, config.round, config.heatId, heatStatus]);
+
+  const currentSeriesLabel = React.useMemo(
+    () => getHeatSeriesLabel(config.round, config.heatId, config.totalRounds),
+    [config.round, config.heatId, config.totalRounds]
+  );
 
   const isCurrentHeatLocked = isLockedStatus(currentHeatStatus);
   // Latch: once locked, never un-lock due to DB/realtime race — BUT reset when user switches heat
@@ -4304,7 +4309,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
                   <div className="space-y-1 p-2 bg-slate-900/80 rounded border border-white/5">
                     <p className="font-bold text-slate-400">📊 STATUT GENERAL :</p>
-                    <p>Série : <span className="text-cyan-400">{config.competition} / {config.division} / R{config.round} H{config.heatId}</span></p>
+                    <p>Série : <span className="text-cyan-400">{config.competition} / {config.division} / {currentSeriesLabel}</span></p>
                     <p>Surfeurs : <span className="text-cyan-400">{config.surfers.join(', ')}</span></p>
                     <p>Chargé depuis base : <span className={loadedFromDb ? "text-green-400" : "text-amber-400 font-bold"}>{loadedFromDb ? 'OUI' : 'NON (LOCAL ONLY)'}</span></p>
                   </div>
@@ -4432,7 +4437,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   <div key={heat.heatId} className="rounded-lg border border-white/5 bg-slate-950/40 px-3 py-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-sm font-semibold text-slate-200">
-                        {heat.division} · R{heat.round} H{heat.heatNumber}
+                        {heat.division} · {getHeatSeriesLabel(heat.round, heat.heatNumber, config.totalRounds)}
                       </div>
                       <div className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${heat.missingStations.length > 0 ? 'bg-amber-950/40 border-amber-800/40 text-amber-300' : 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300'}`}>
                         {heat.missingStations.length > 0 ? `Manque: ${heat.missingStations.join(', ')}` : 'Complet'}

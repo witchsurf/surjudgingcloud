@@ -6,7 +6,7 @@ import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/supabaseClient';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { computeEffectiveInterferences } from '../utils/interference';
-import { getHeatIdentifiers } from '../utils/heat';
+import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
 import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
 import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
@@ -342,6 +342,7 @@ export default function ScoreDisplay({
   }));
   const compactLayout = maxWaves >= 12;
   const ultraCompactLayout = maxWaves >= 18;
+  const currentSeriesLabel = getHeatSeriesLabel(config.round, config.heatId, config.totalRounds);
 
   return (
     <div className="score-display w-full max-w-none mx-auto p-2 sm:p-4 lg:p-5 space-y-4 font-sans bg-hud-black min-h-screen text-slate-100">
@@ -359,8 +360,7 @@ export default function ScoreDisplay({
               <Users className="w-3.5 h-3.5 text-cyan-400" />
               {config.division}
             </span>
-            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cyan-400">Round {config.round}</span>
-            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cyan-400">Heat {config.heatId}</span>
+            <span className="px-2 py-1 bg-white/5 rounded border border-white/10 text-cyan-400">{currentSeriesLabel}</span>
           </div>
         </div>
 
@@ -454,7 +454,7 @@ export default function ScoreDisplay({
                       )}
                     </div>
                     <div className="text-xs uppercase tracking-wide text-slate-400">
-                      {entry.division} · R{entry.round} · H{entry.heatNumber} · Vague {entry.waveNumber}
+                      {entry.division} · {getHeatSeriesLabel(entry.round, entry.heatNumber, config.totalRounds)} · Vague {entry.waveNumber}
                     </div>
                     <div className="text-xs text-slate-500">Note panel apres moyenne des juges</div>
                   </div>
