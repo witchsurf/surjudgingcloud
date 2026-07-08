@@ -618,6 +618,15 @@ export function useHeatManager() {
         persistConfig(newConfig);
         setHeatStatus(advanced ? 'waiting' : 'closed');
 
+        if (advanced) {
+            setConfigSaved(true);
+            try {
+                localStorage.setItem('surfJudgingConfigSaved', 'true');
+            } catch (error) {
+                console.warn('Impossible de persister l\'état configSaved après transition locale', error);
+            }
+        }
+
         // Keep kiosk/tablets aligned with the newly selected heat.
         if (advanced && isSupabaseConfigured() && supabase && newConfig.competition) {
             try {
@@ -708,12 +717,6 @@ export function useHeatManager() {
                 await saveTimerState(nextHeatKey, { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION });
                 await publishConfigUpdate(nextHeatKey, newConfig);
                 await publishTimerReset(nextHeatKey, DEFAULT_TIMER_DURATION);
-                setConfigSaved(true);
-                try {
-                    localStorage.setItem('surfJudgingConfigSaved', 'true');
-                } catch (error) {
-                    console.warn('Impossible de persister l\'état configSaved après fermeture', error);
-                }
             } catch (error) {
                 console.error('❌ Synchronisation du nouveau heat échouée:', error);
                 setConfigSaved(false);
