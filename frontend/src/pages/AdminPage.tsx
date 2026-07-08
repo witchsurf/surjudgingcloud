@@ -11,12 +11,11 @@ import { useScoreManager } from '../hooks/useScoreManager';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers } from '../utils/heat';
+import { resolveEventIdForHeat } from '../utils/heatWorkflow';
 import {
     updateEventConfiguration,
     saveEventConfigSnapshot,
     fetchOrderedHeatSequence,
-    fetchEventIdByName,
-    fetchHeatMetadata,
     upsertActiveHeatPointer
 } from '../api/supabaseClient';
 import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
@@ -101,38 +100,14 @@ export default function AdminPage() {
 
     const eventIdFromUrl = Number(searchParams.get('eventId'));
 
-    const resolveEventIdForCurrentHeat = useCallback(async (): Promise<number | null> => {
-        if (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0) {
-            return eventIdFromUrl;
-        }
-
-        if (activeEventId) {
-            return activeEventId;
-        }
-
-        try {
-            const persistedEventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
-            const persistedEventId = persistedEventIdRaw ? Number(persistedEventIdRaw) : NaN;
-            if (Number.isFinite(persistedEventId) && persistedEventId > 0) {
-                return persistedEventId;
-            }
-        } catch {
-            // Ignore storage access failures.
-        }
-
-        if (currentHeatId) {
-            const heatMetadata = await fetchHeatMetadata(currentHeatId);
-            if (heatMetadata?.event_id) {
-                return heatMetadata.event_id;
-            }
-        }
-
-        if (config.competition) {
-            return await fetchEventIdByName(config.competition);
-        }
-
-        return null;
-    }, [activeEventId, config.competition, currentHeatId, eventIdFromUrl]);
+    const resolveEventIdForCurrentHeat = useCallback(
+        async (): Promise<number | null> => resolveEventIdForHeat({
+            activeEventId: activeEventId ?? (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null),
+            competition: config.competition,
+            heatId: currentHeatId,
+        }),
+        [activeEventId, config.competition, currentHeatId, eventIdFromUrl]
+    );
 
     // Load participant names for current heat
     const { participants: heatParticipants } = useHeatParticipants(currentHeatId);

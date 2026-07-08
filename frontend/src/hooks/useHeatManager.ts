@@ -19,7 +19,7 @@ import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
 import { eventRepository } from '../repositories';
 import { HEAT_COLOR_CACHE_KEY, DEFAULT_TIMER_DURATION } from '../utils/constants';
-import { getNextHeatSyncTarget } from '../utils/heatWorkflow';
+import { getNextHeatSyncTarget, resolveEventIdForHeat } from '../utils/heatWorkflow';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 import type { AppConfig } from '../types';
 
@@ -51,7 +51,7 @@ const getFallbackColorForPosition = (position: number): string | null => {
 };
 
 export function useHeatManager() {
-    const { config, setConfig, setConfigSaved, persistConfig, activeEventId } = useConfigStore();
+    const { config, setConfig, setConfigSaved, persistConfig, activeEventId, setActiveEventId } = useConfigStore();
     const {
         scores,
         timer,
@@ -87,10 +87,31 @@ export function useHeatManager() {
         let sequence: any[] = [];
         let currentSequenceHeat: any = null;
         let currentDbHeatId = currentHeatId;
+        let resolvedEventId = activeEventId ?? null;
 
-        if (activeEventId && isSupabaseConfigured()) {
+        try {
+            resolvedEventId = await resolveEventIdForHeat({
+                activeEventId,
+                competition: config.competition,
+                heatId: currentDbHeatId,
+            });
+        } catch (error) {
+            console.warn('Impossible de résoudre l\'event courant pour la fermeture du heat', error);
+        }
+
+        if (resolvedEventId && resolvedEventId !== activeEventId) {
+            setActiveEventId(resolvedEventId);
             try {
-                sequence = await fetchOrderedHeatSequence(activeEventId, config.division);
+                localStorage.setItem('surfJudgingActiveEventId', String(resolvedEventId));
+                localStorage.setItem('eventId', String(resolvedEventId));
+            } catch (error) {
+                console.warn('Impossible de persister l\'event actif résolu', error);
+            }
+        }
+
+        if (resolvedEventId && isSupabaseConfigured()) {
+            try {
+                sequence = await fetchOrderedHeatSequence(resolvedEventId, config.division);
                 currentSequenceHeat = sequence.find((item: any) =>
                     Number(item.round) === Number(config.round)
                     && Number(item.heat_number) === Number(config.heatId)
@@ -168,7 +189,7 @@ export function useHeatManager() {
         const hasCurrentHeatResults = currentHeatScores.length > 0;
         let qualifiersHandledByDatabase = false;
 
-        if (hasCurrentHeatResults && activeEventId && isSupabaseConfigured()) {
+        if (hasCurrentHeatResults && resolvedEventId && isSupabaseConfigured()) {
             try {
                 const updatedSlots = await propagateQualifiersForSourceHeat(currentDbHeatId);
                 qualifiersHandledByDatabase = true;
@@ -181,7 +202,7 @@ export function useHeatManager() {
             }
         }
 
-        if (activeEventId && isSupabaseConfigured() && !qualifiersHandledByDatabase) {
+        if (resolvedEventId && isSupabaseConfigured() && !qualifiersHandledByDatabase) {
             // Logic to advance qualifiers (complex logic from App.tsx)
             if (hasCurrentHeatResults) {
                 try {
@@ -217,12 +238,12 @@ export function useHeatManager() {
                     );
 
                     let participantByName = new Map<string, { id: number; seed: number | null; country?: string | null }>();
-                    if (activeEventId && supabase) {
+                    if (resolvedEventId && supabase) {
                         try {
                             const { data: participantRows, error: participantError } = await supabase
                                 .from('participants')
                                 .select('id, seed, name, country')
-                                .eq('event_id', activeEventId)
+                                .eq('event_id', resolvedEventId)
                                 .ilike('category', String(config.division ?? ''));
 
                             if (participantError) {
@@ -412,12 +433,12 @@ export function useHeatManager() {
             }
         }
 
-        if (activeEventId && isSupabaseConfigured() && supabase) {
+        if (resolvedEventId && isSupabaseConfigured() && supabase) {
             try {
                 const { data: eventHeats, error: eventHeatsError } = await supabase
                     .from('heats')
                     .select('id, status')
-                    .eq('event_id', activeEventId);
+                    .eq('event_id', resolvedEventId);
 
                 if (eventHeatsError) {
                     throw eventHeatsError;
@@ -434,12 +455,12 @@ export function useHeatManager() {
             }
         }
 
-        if (!nextCandidate && activeEventId && isSupabaseConfigured() && supabase) {
+        if (!nextCandidate && resolvedEventId && isSupabaseConfigured() && supabase) {
             try {
                 const { data: fallbackHeats, error: fallbackError } = await supabase
                     .from('heats')
                     .select('id, division, round, heat_number, heat_size, color_order, status')
-                    .eq('event_id', activeEventId)
+                    .eq('event_id', resolvedEventId)
                     .neq('id', currentDbHeatId)
                     .order('round', { ascending: true })
                     .order('division', { ascending: true })
@@ -608,7 +629,7 @@ export function useHeatManager() {
                 ).normalized;
 
                 await upsertActiveHeatPointer({
-                    eventId: activeEventId ?? null,
+                    eventId: resolvedEventId ?? activeEventId ?? null,
                     eventName: newConfig.competition,
                     activeHeatId: nextHeatPointer,
                 });
@@ -620,10 +641,10 @@ export function useHeatManager() {
         }
 
         // Save config to database for realtime sync to Display/Judge
-        if (activeEventId) {
+        if (resolvedEventId) {
             try {
                 await eventRepository.saveEventConfigSnapshot({
-                    eventId: Number(activeEventId),
+                    eventId: Number(resolvedEventId),
                     eventName: newConfig.competition,
                     division: newConfig.division,
                     round: newConfig.round,
@@ -682,15 +703,25 @@ export function useHeatManager() {
 
                 await saveHeatConfig(nextHeatKey, {
                     ...newConfig,
-                    event_id: activeEventId ?? undefined,
+                    event_id: resolvedEventId ?? activeEventId ?? undefined,
                 });
                 await saveTimerState(nextHeatKey, { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION });
                 await publishConfigUpdate(nextHeatKey, newConfig);
                 await publishTimerReset(nextHeatKey, DEFAULT_TIMER_DURATION);
                 setConfigSaved(true);
+                try {
+                    localStorage.setItem('surfJudgingConfigSaved', 'true');
+                } catch (error) {
+                    console.warn('Impossible de persister l\'état configSaved après fermeture', error);
+                }
             } catch (error) {
                 console.error('❌ Synchronisation du nouveau heat échouée:', error);
                 setConfigSaved(false);
+                try {
+                    localStorage.setItem('surfJudgingConfigSaved', 'false');
+                } catch (storageError) {
+                    console.warn('Impossible de persister l\'état configSaved en échec', storageError);
+                }
                 const detail = error instanceof Error ? error.message : 'Erreur réseau';
                 setTimeout(() => {
                     alert(
@@ -716,6 +747,7 @@ export function useHeatManager() {
         setJudgeWorkCount,
         setConfig,
         setConfigSaved,
+        setActiveEventId,
         persistConfig,
         setScores,
         timer,
