@@ -38,8 +38,8 @@ const intentLabel: Record<string, string> = {
   legacy_mutation: 'Mutation legacy',
 };
 
-const formatTrace = (operation: { trace?: Record<string, unknown>; target?: string }) => {
-  const trace = operation.trace || {};
+const formatTrace = (operation: { trace?: object; target?: string }) => {
+  const trace = (operation.trace || {}) as Record<string, unknown>;
   const parts = [
     trace.heatId || operation.target,
     trace.surfer && trace.waveNumber ? `${trace.surfer} V${trace.waveNumber}` : trace.surfer,

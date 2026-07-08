@@ -80,8 +80,6 @@ export interface RuntimeDiagnostics {
   realtime: RealtimeDiagnosticEntry[];
 }
 
-const LEGACY_QUEUE_KEY = 'surfapp_offline_queue';
-const SCORE_WAL_KEY = 'surfJudgingOfflineWAL';
 const OPERATION_LOG_KEY = 'surfJudgingOfflineOperationLog';
 const RUNTIME_DIAGNOSTICS_KEY = 'surfJudgingRuntimeDiagnostics';
 const OPERATION_EVENT = 'surfjudging:offline-diagnostics-updated';

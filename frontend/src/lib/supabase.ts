@@ -1,4 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseDatabase } from '../types/supabaseDatabase';
 import { getColorSet } from '../utils/colorUtils';
 import { logger } from './logger';
 import { createOfflineOperationId, describeLegacyOfflineEntry, recordOfflineOperation } from './offlineOperations';
@@ -13,8 +14,6 @@ const SUPABASE_MODE_STORAGE_KEY = 'supabase_mode';
 const SUPABASE_URL_OVERRIDE_KEY = 'supabase_url_override';
 const SUPABASE_ANON_OVERRIDE_KEY = 'supabase_anon_override';
 const SUPABASE_CLOUD_LOCK_KEY = 'supabase_cloud_lock';
-const overrideUrl = typeof window !== 'undefined' ? window.localStorage.getItem(SUPABASE_URL_OVERRIDE_KEY) : null;
-const overrideAnon = typeof window !== 'undefined' ? window.localStorage.getItem(SUPABASE_ANON_OVERRIDE_KEY) : null;
 
 const resolveEnv = (key: string): string | undefined => {
   return (import.meta as { env?: Record<string, string> }).env?.[key];
@@ -28,6 +27,9 @@ const readStored = (key: string): string | null => {
     return null;
   }
 };
+
+const overrideUrl = readStored(SUPABASE_URL_OVERRIDE_KEY);
+const overrideAnon = readStored(SUPABASE_ANON_OVERRIDE_KEY);
 
 export const getSupabaseMode = (): SupabaseMode => {
   const stored = readStored(SUPABASE_MODE_STORAGE_KEY);
@@ -169,7 +171,9 @@ export const canUseSupabaseConnection = (): boolean => {
 };
 
 // Dynamic client instantiation holder
-let currentClient: any = null;
+type SurfSupabaseClient = SupabaseClient<SupabaseDatabase>;
+
+let currentClient: SurfSupabaseClient | null = null;
 
 export const rebuildSupabaseClient = (url?: string, anonKey?: string) => {
   const config = getSupabaseConfig();
@@ -179,7 +183,7 @@ export const rebuildSupabaseClient = (url?: string, anonKey?: string) => {
   if (activeUrl && activeAnonKey && activeUrl !== 'undefined' && activeAnonKey !== 'undefined') {
     logger.info('Supabase', `Rebuilding Supabase Client. Endpoint: ${activeUrl}, Mode: ${config.mode}`);
     
-    currentClient = createClient(activeUrl, activeAnonKey, {
+    currentClient = createClient<SupabaseDatabase>(activeUrl, activeAnonKey, {
       auth: {
         storageKey: config.mode === 'local'
           ? 'surfjudging-local-auth-token'
@@ -223,7 +227,7 @@ rebuildSupabaseClient();
 
 // Dynamic client proxy
 export const supabase = new Proxy({}, {
-  get(target, prop) {
+  get(_target, prop) {
     if (!currentClient) return null;
     const value = Reflect.get(currentClient, prop);
     if (typeof value === 'function') {
@@ -231,7 +235,7 @@ export const supabase = new Proxy({}, {
     }
     return value;
   }
-}) as unknown as ReturnType<typeof createClient>;
+}) as unknown as SurfSupabaseClient;
 
 // Export constants for legacy references (first evaluation)
 export const { supabaseUrl, supabaseAnonKey, mode } = getSupabaseConfig();
@@ -483,7 +487,6 @@ interface OfflineEntry {
   timestamp: number
 }
 
-const OFFLINE_KEY = 'surfapp_offline_queue'
 const HEAT_CONFIG_REPAIR_TABLE = '__heat_config_repair__'
 let offlineSyncInProgress = false
 

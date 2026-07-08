@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Settings, Clock, Users, Download, RotateCcw, Trash2, Database, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText, PlusCircle, Trophy, Image as ImageIcon } from 'lucide-react';
+import { Settings, Clock, Users, RotateCcw, Trash2, Database, CheckCircle, ArrowRight, ClipboardCheck, AlertCircle, Info as InfoIcon, Eye, FileText, PlusCircle, Trophy, Image as ImageIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-// @ts-ignore - Ignore missing types for qrcode if not installed in environment
+// @ts-expect-error - Ignore missing types for qrcode if not installed in environment
 import QRCode from 'qrcode';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
 import { sanitizeScoreInput, validateScore } from '../utils/scoring';
@@ -185,7 +185,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   });
   const [rebuildPending, setRebuildPending] = useState(false);
-  const [offlineAdminPin, setOfflineAdminPin] = useState(() => {
+  const [offlineAdminPin] = useState(() => {
     try {
       return localStorage.getItem('admin_offline_pin') || '';
     } catch {
@@ -2366,6 +2366,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       alert('Erreur: impossible de sauvegarder le code admin hors-ligne.');
     }
   };
+  void handleSaveOfflineAdminPin;
 
 
 
@@ -2600,6 +2601,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       window.dispatchEvent(new CustomEvent('timerSync', { detail: newTimer }));
     }
   };
+  void handleTimerStartImpl;
 
   const handleTimerRestartFull = async () => {
     if (!configSaved) return;
@@ -3246,6 +3248,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
     console.log('🗑️ RESET COMPLET DEPUIS ADMIN...');
     onResetAllData();
   };
+  void handleResetAllData;
 
   const handleAddJudge = () => {
     const nextJudgeNumber = config.judges.length + 1;
@@ -3578,6 +3581,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+  void exportData;
 
   const handleExportEventPdf = async () => {
     if (!isSupabaseConfigured()) {
@@ -4376,7 +4380,10 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               value={config.judges.length}
               onChange={(e) => {
                 const numJudges = parseInt(e.target.value);
-                const judgeIds = Array.from({ length: numJudges }, (_, i) => `J{i + 1}`);
+                const judgeIds = Array.from({ length: numJudges }, (unused, index) => {
+                  void unused;
+                  return `J${index + 1}`;
+                });
                 const judgeNames = judgeIds.reduce((acc, id) => ({ ...acc, [id]: id }), {} as Record<string, string>);
                 const judgeIdentities = judgeIds.reduce((acc, id) => {
                   const existingIdentity = config.judgeIdentities?.[id];

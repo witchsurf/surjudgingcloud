@@ -18,6 +18,7 @@ export interface AppConfig {
   totalHeats: number;
   totalRounds: number;
   priorityState?: PriorityState;
+  event_id?: number;
 }
 
 export interface PriorityState {

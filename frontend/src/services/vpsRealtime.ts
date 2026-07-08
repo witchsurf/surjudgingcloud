@@ -8,7 +8,9 @@ type HeatUpdateListener = (timer: HeatTimer, config: AppConfig | null, status: u
 
 let connected = false;
 
-export function initializeVpsSync(_url: string, _apiKey: string) {
+export function initializeVpsSync(url: string, apiKey: string) {
+  void url;
+  void apiKey;
   connected = false;
 }
 
@@ -16,7 +18,8 @@ export function isVpsConnected() {
   return connected;
 }
 
-export function subscribeToVpsEvents(_heatId: string, _onUpdate: HeatUpdateListener) {
+export function subscribeToVpsEvents(heatId: string, onUpdate: HeatUpdateListener) {
+  void heatId;
+  void onUpdate;
   return () => {};
 }
-

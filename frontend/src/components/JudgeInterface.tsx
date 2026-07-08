@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef, type CSSProperties } from 'react';
-import { User, Waves, Lock, Unlock, CreditCard as Edit3, Maximize, Minimize, Check, Delete, Trash2, AlertCircle } from 'lucide-react';
+import { User, Waves, Lock, Maximize, Minimize, Check, Delete, AlertCircle } from 'lucide-react';
 import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
@@ -92,7 +92,7 @@ function JudgeInterface({
   const [isPriorityOrdering, setIsPriorityOrdering] = useState(false);
   const [priorityDraft, setPriorityDraft] = useState<string[]>([]);
   const [interactionWarning, setInteractionWarning] = useState<{ title: string; message: string } | null>(null);
-  const [lastSubmitted, setLastSubmitted] = useState<{ surfer: string; wave: number; score: number; ts: number } | null>(null);
+  const [, setLastSubmitted] = useState<{ surfer: string; wave: number; score: number; ts: number } | null>(null);
   const [scoreFeedback, setScoreFeedback] = useState<{ score: number; ts: number } | null>(null);
   const [judgeTimerTick, setJudgeTimerTick] = useState(Date.now());
   const [elapsedBadgeLatched, setElapsedBadgeLatched] = useState(false);
@@ -157,7 +157,10 @@ function JudgeInterface({
     const authId = sessionStorage.getItem('authenticated_judge_id') || judgeId;
     if (authId && config?.judgeIdentities) {
       const matchedStation = Object.entries(config.judgeIdentities).find(
-        ([_, identityId]) => String(identityId).trim().toLowerCase() === authId.trim().toLowerCase()
+        ([judgeKey, identityId]) => {
+          void judgeKey;
+          return String(identityId).trim().toLowerCase() === authId.trim().toLowerCase();
+        }
       )?.[0];
       if (matchedStation) {
         return matchedStation;
@@ -182,9 +185,6 @@ function JudgeInterface({
   const [isSubmittingName, setIsSubmittingName] = useState(false);
   const canEditPriority = canManagePriority || isChiefJudge;
   const resolvedInterfaceTitle = interfaceTitle || (isChiefJudge ? 'Interface Chef Juge' : 'Interface Juge');
-  const compactGrid = config.waves >= 12;
-  const ultraCompactGrid = config.waves >= 15;
-
   // Check if judge name is set
   useEffect(() => {
     if (priorityOnly) return;
@@ -383,6 +383,7 @@ function JudgeInterface({
         .filter(score => (score.judge_station || score.judge_id) === judgeStation)
     ));
   }, [currentHeatId, judgeId, judgeStation, persistScoresToStorage, readAllScoresFromStorage]);
+  void mergeRealtimeScore;
 
   const refreshInterferenceCalls = useCallback(async () => {
     if (!currentHeatId || !isSupabaseConfigured()) return;
@@ -582,7 +583,7 @@ function JudgeInterface({
     if (activeInput && activeInput.surfer === surfer && activeInput.wave === wave) {
       setActiveInput(null);
       setInputValue('');
-      try { navigator?.vibrate?.(10); } catch {}
+      try { navigator?.vibrate?.(10); } catch { void 0; }
       return;
     }
 
@@ -595,7 +596,7 @@ function JudgeInterface({
         lastTapRef.current = null; // reset
         setActiveInput({ surfer, wave, value: existingScore.score.toString() });
         setInputValue(existingScore.score.toString());
-        try { navigator?.vibrate?.(30); } catch {}
+        try { navigator?.vibrate?.(30); } catch { void 0; }
       } else {
         lastTapRef.current = { surfer, wave, time: now };
         setInteractionWarning({
@@ -611,7 +612,7 @@ function JudgeInterface({
 
     setActiveInput({ surfer, wave, value: '' });
     setInputValue('');
-    try { navigator?.vibrate?.(10); } catch {}
+    try { navigator?.vibrate?.(10); } catch { void 0; }
   };
 
   const handleInterferenceCall = async (surfer: string, wave: number) => {
@@ -736,6 +737,7 @@ function JudgeInterface({
       setInputValue('');
     }
   };
+  void handleKeyPress;
 
   const getSurferColor = (surfer: string) => {
     return SURFER_COLORS[normalizeSurferKey(surfer)] || '#6B7280';
@@ -923,6 +925,7 @@ function JudgeInterface({
     if (normalized.includes('NOIR') || normalized === 'BLACK') return 'neon-glow-NOIR';
     return 'border-slate-800';
   }, [normalizeSurferKey]);
+  void getSurferColorClass;
 
   // Keyboard suppression - virtual keypress programmatical mapping handler
   const handleVirtualKeyPress = useCallback((key: string) => {
@@ -1029,7 +1032,7 @@ function JudgeInterface({
                 key={key}
                 type="button"
                 onClick={() => {
-                  try { navigator?.vibrate?.(15); } catch {}
+                  try { navigator?.vibrate?.(15); } catch { void 0; }
                   handleVirtualKeyPress(key);
                 }}
                 className={btnClass}
@@ -1043,7 +1046,7 @@ function JudgeInterface({
           <button
             type="button"
             onClick={() => {
-              try { navigator?.vibrate?.(15); } catch {}
+              try { navigator?.vibrate?.(15); } catch { void 0; }
               handleVirtualKeyPress('DEL');
             }}
             className="judge-key bg-amber-900/20 text-amber-400 border border-amber-900/30 font-bold rounded-md text-sm flex items-center justify-center gap-1 active:scale-95 touch-manipulation"
@@ -1053,7 +1056,7 @@ function JudgeInterface({
           <button
             type="button"
             onClick={() => {
-              try { navigator?.vibrate?.(40); } catch {}
+              try { navigator?.vibrate?.(40); } catch { void 0; }
               handleVirtualKeyPress('ENTR');
             }}
             disabled={isSubmittingScore || !inputValue.trim()}

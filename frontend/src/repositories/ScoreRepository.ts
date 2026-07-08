@@ -58,7 +58,6 @@ export interface OverrideResult {
     log: ScoreOverrideLog;
 }
 
-const SCORES_STORAGE_KEY = 'surfJudgingScores';
 const OVERRIDE_LOGS_KEY = 'surfJudgingOverrideLogs';
 
 /**
@@ -625,7 +624,9 @@ export class ScoreRepository extends BaseRepository {
             }
 
             // Mark all as synced in IndexedDB
-            const syncedIds = dedupedScores.map(s => s.id);
+            const syncedIds = dedupedScores
+                .map(s => s.id)
+                .filter((id): id is string => Boolean(id));
             await markScoresSyncedIDB(syncedIds);
 
             window.dispatchEvent(new CustomEvent('localScoresUpdated'));

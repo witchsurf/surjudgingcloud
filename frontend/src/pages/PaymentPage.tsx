@@ -21,17 +21,42 @@ const STORAGE_KEYS = {
 
 const FIXED_EVENT_PRICE = 50000;
 
+type PaymentEvent = {
+  id: number | string;
+  name?: string | null;
+  organizer?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  currency?: string | null;
+};
+
+const errorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return fallback;
+};
+
+const formatEventDate = (value?: string | null) => {
+  if (!value) return 'Non renseignée';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Non renseignée';
+  return date.toLocaleDateString('fr-FR');
+};
+
 export default function PaymentPage() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const [event, setEvent] = useState(null);
+  const [event, setEvent] = useState<PaymentEvent | null>(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('stripe');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [message, setMessage] = useState(null);
-  const [error, setError] = useState(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const queryStatus = useMemo(() => new URLSearchParams(location.search).get('status'), [location.search]);
 
@@ -111,10 +136,9 @@ export default function PaymentPage() {
           return;
         }
 
-        setEvent(data);
+        setEvent(data as PaymentEvent);
       } catch (err) {
-        const message = err?.message ?? 'Impossible de charger cet événement pour le moment.';
-        setError(message);
+        setError(errorMessage(err, 'Impossible de charger cet événement pour le moment.'));
       } finally {
         setLoadingEvent(false);
       }
@@ -175,8 +199,7 @@ export default function PaymentPage() {
         setMessage('Paiement initié. Veuillez confirmer la transaction sur votre appareil.');
       }
     } catch (err) {
-      const description = err?.message ?? 'Impossible de démarrer le paiement.';
-      setError(description);
+      setError(errorMessage(err, 'Impossible de démarrer le paiement.'));
     } finally {
       setLoadingPayment(false);
     }
@@ -206,11 +229,11 @@ export default function PaymentPage() {
               <div className="mt-4 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
                 <div>
                   <p className="text-xs uppercase text-slate-400">Date de début</p>
-                  <p>{new Date(event.start_date).toLocaleDateString('fr-FR')}</p>
+                  <p>{formatEventDate(event.start_date)}</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase text-slate-400">Date de fin</p>
-                  <p>{new Date(event.end_date).toLocaleDateString('fr-FR')}</p>
+                  <p>{formatEventDate(event.end_date)}</p>
                 </div>
               </div>
               <div className="mt-6 flex items-center justify-between rounded-xl bg-blue-500/10 px-4 py-3">
@@ -301,7 +324,7 @@ export default function PaymentPage() {
                   seedCompetitionState();
                   setTimeout(() => navigate(`/events/participants?eventId=${event.id}`), 1000);
                 } catch (err) {
-                  setError("Erreur lors de l'activation du mode test: " + (err?.message || 'Erreur inconnue'));
+                  setError("Erreur lors de l'activation du mode test: " + errorMessage(err, 'Erreur inconnue'));
                 } finally {
                   setLoadingPayment(false);
                 }

@@ -191,7 +191,7 @@ const GenerateHeatsPage = () => {
     () => participants.reduce<Record<string, ParticipantRecord[]>>((acc, participant) => {
       const rawCategory =
         (participant.category ||
-          (participant as ParticipantRecord).division ||
+          (participant as ParticipantRecord & { division?: string }).division ||
           'OPEN') as string;
       const category = rawCategory?.trim() || 'OPEN';
       if (!acc[category]) acc[category] = [];

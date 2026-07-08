@@ -151,9 +151,9 @@ export function useHeatParticipantDetails({ heatId, surfers, enabled = true, wat
         if (!cancelled && pendingRef.current) {
           pendingRef.current = false;
           void load(requestedHeatId);
-          return;
+        } else if (!cancelled) {
+          setLoading(false);
         }
-        if (!cancelled) setLoading(false);
       }
     };
 

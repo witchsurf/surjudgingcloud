@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Play, Pause, RotateCcw, Clock, Settings } from 'lucide-react';
 import { TimerAudio } from '../utils/audioUtils';
 import type { HeatTimer as HeatTimerType } from '../types';
