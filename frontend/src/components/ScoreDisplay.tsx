@@ -26,6 +26,7 @@ interface ScoreDisplayProps {
   scores: Score[];
   timer: HeatTimerType;
   configSaved: boolean;
+  heatSeriesLabel?: string;
   heatStatus?: 'waiting' | 'running' | 'paused' | 'finished' | 'closed';
   eventTopScores?: EventTopScoreEntry[];
   eventTopScoresOpen?: boolean;
@@ -175,6 +176,7 @@ export default function ScoreDisplay({
   scores,
   timer,
   configSaved,
+  heatSeriesLabel,
   heatStatus = 'waiting',
   eventTopScores = [],
   eventTopScoresOpen = false,
@@ -342,7 +344,8 @@ export default function ScoreDisplay({
   }));
   const compactLayout = maxWaves >= 12;
   const ultraCompactLayout = maxWaves >= 18;
-  const currentSeriesLabel = getHeatSeriesLabel(config.round, config.heatId, config.totalRounds);
+  const currentSeriesLabel =
+    heatSeriesLabel ?? getHeatSeriesLabel(config.round, config.heatId, config.totalRounds);
 
   return (
     <div className="score-display w-full max-w-none mx-auto p-2 sm:p-4 lg:p-5 space-y-4 font-sans bg-hud-black min-h-screen text-slate-100">
@@ -454,7 +457,7 @@ export default function ScoreDisplay({
                       )}
                     </div>
                     <div className="text-xs uppercase tracking-wide text-slate-400">
-                      {entry.division} · {getHeatSeriesLabel(entry.round, entry.heatNumber, config.totalRounds)} · Vague {entry.waveNumber}
+                      {entry.division} · {currentSeriesLabel} · Vague {entry.waveNumber}
                     </div>
                     <div className="text-xs text-slate-500">Note panel apres moyenne des juges</div>
                   </div>

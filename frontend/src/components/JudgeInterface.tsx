@@ -19,6 +19,7 @@ interface JudgeInterfaceProps {
   judgeName?: string;
   onScoreSubmit?: (scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp'>) => Promise<Score | void>;
   configSaved?: boolean;
+  heatSeriesLabel?: string;
   timer?: HeatTimerType;
   isChiefJudge?: boolean;
   scores?: Score[];
@@ -62,6 +63,7 @@ function JudgeInterface({
   judgeName,
   onScoreSubmit = async () => { },
   configSaved = false,
+  heatSeriesLabel,
   timer = { startTime: null, duration: 20, isRunning: false },
   isChiefJudge = false,
   heatStatus = 'waiting',
@@ -185,7 +187,8 @@ function JudgeInterface({
   const [isSubmittingName, setIsSubmittingName] = useState(false);
   const canEditPriority = canManagePriority || isChiefJudge;
   const resolvedInterfaceTitle = interfaceTitle || (isChiefJudge ? 'Interface Chef Juge' : 'Interface Juge');
-  const currentSeriesLabel = getHeatSeriesLabel(config.round, config.heatId, config.totalRounds);
+  const currentSeriesLabel =
+    heatSeriesLabel ?? getHeatSeriesLabel(config.round, config.heatId, config.totalRounds);
   // Check if judge name is set
   useEffect(() => {
     if (priorityOnly) return;

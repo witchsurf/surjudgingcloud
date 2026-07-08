@@ -1097,6 +1097,31 @@ export default function DisplayPage() {
             ).normalized,
         [config.competition, config.division, config.round, config.heatId]
     );
+    const liveFinalRoundNumber = useMemo(() => {
+        const divisionKey = Object.keys(historyHeats).find(
+            (key) => key.trim().toUpperCase() === config.division.trim().toUpperCase()
+        );
+        const divisionRounds = divisionKey ? historyHeats[divisionKey] : [];
+        if (divisionRounds.length > 0) {
+            return Math.max(...divisionRounds.map((round) => Number(round.roundNumber) || 0));
+        }
+        return Number(config.totalRounds) || 0;
+    }, [historyHeats, config.division, config.totalRounds]);
+    const liveSeriesLabel = useMemo(
+        () => getHeatSeriesLabel(config.round, config.heatId, liveFinalRoundNumber),
+        [config.round, config.heatId, liveFinalRoundNumber]
+    );
+    const historySeriesLabel = useMemo(() => {
+        if (!historyConfig) return '';
+        const divisionKey = Object.keys(historyHeats).find(
+            (key) => key.trim().toUpperCase() === historyConfig.division.trim().toUpperCase()
+        );
+        const divisionRounds = divisionKey ? historyHeats[divisionKey] : [];
+        const finalRoundNumber = divisionRounds.length > 0
+            ? Math.max(...divisionRounds.map((round) => Number(round.roundNumber) || 0))
+            : Number(historyConfig.totalRounds) || 0;
+        return getHeatSeriesLabel(historyConfig.round, historyConfig.heatId, finalRoundNumber);
+    }, [historyConfig, historyHeats]);
 
     useEffect(() => {
         liveHeatIdRef.current = currentHeatId;
@@ -1462,7 +1487,7 @@ export default function DisplayPage() {
                             <div className="font-bebas text-xl tracking-wider mb-2">DEBUG REALTIME</div>
                             <div className="grid gap-1 mb-3">
                                 <div>Heat courant: <span className="font-mono">{currentHeatId || 'n/a'}</span></div>
-                                <div>Série courante: <span className="font-mono">{getHeatSeriesLabel(config.round, config.heatId, config.totalRounds)}</span></div>
+                                <div>Série courante: <span className="font-mono">{liveSeriesLabel}</span></div>
                                 <div>Dernier refresh scores: <span className="font-mono">{lastScoresRefreshAt?.toISOString() || 'n/a'}</span></div>
                                 <div>Dernier score websocket: <span className="font-mono">{lastRealtimeScoreAt?.toISOString() || 'n/a'}</span></div>
                                 <div>Nb scores en mémoire: <span className="font-mono">{scores.length}</span></div>
@@ -1478,6 +1503,7 @@ export default function DisplayPage() {
                             scores={scores}
                             timer={timer}
                             configSaved={configSaved}
+                            heatSeriesLabel={liveSeriesLabel}
                             heatStatus={heatStatus}
                             eventTopScores={eventTopScores}
                             eventTopScoresOpen={eventTopScoresOpen}
@@ -1501,6 +1527,7 @@ export default function DisplayPage() {
                                         scores={historyScores}
                                         timer={{ isRunning: false, startTime: null, duration: 0 }}
                                         configSaved={true}
+                                        heatSeriesLabel={historySeriesLabel}
                                         heatStatus="finished"
                                     />
                                 </div>

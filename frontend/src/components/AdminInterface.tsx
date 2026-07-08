@@ -2118,9 +2118,19 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return dbStatus || liveStatus || 'waiting';
   }, [divisionHeatSequence, config.round, config.heatId, heatStatus]);
 
+  const finalRoundNumber = React.useMemo(() => {
+    if (divisionHeatSequence.length > 0) {
+      return Math.max(...divisionHeatSequence.map((row) => Number(row.round) || 0));
+    }
+    if (allEventHeatsMeta.length > 0) {
+      return Math.max(...allEventHeatsMeta.map((row) => Number(row.round) || 0));
+    }
+    return Number(config.totalRounds) || 0;
+  }, [allEventHeatsMeta, config.totalRounds, divisionHeatSequence]);
+
   const currentSeriesLabel = React.useMemo(
-    () => getHeatSeriesLabel(config.round, config.heatId, config.totalRounds),
-    [config.round, config.heatId, config.totalRounds]
+    () => getHeatSeriesLabel(config.round, config.heatId, finalRoundNumber),
+    [config.round, config.heatId, finalRoundNumber]
   );
 
   const isCurrentHeatLocked = isLockedStatus(currentHeatStatus);
@@ -4437,7 +4447,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   <div key={heat.heatId} className="rounded-lg border border-white/5 bg-slate-950/40 px-3 py-2">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-sm font-semibold text-slate-200">
-                        {heat.division} · {getHeatSeriesLabel(heat.round, heat.heatNumber, config.totalRounds)}
+                        {heat.division} · {getHeatSeriesLabel(heat.round, heat.heatNumber, finalRoundNumber)}
                       </div>
                       <div className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${heat.missingStations.length > 0 ? 'bg-amber-950/40 border-amber-800/40 text-amber-300' : 'bg-emerald-950/40 border-emerald-800/40 text-emerald-300'}`}>
                         {heat.missingStations.length > 0 ? `Manque: ${heat.missingStations.join(', ')}` : 'Complet'}

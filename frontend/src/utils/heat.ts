@@ -41,9 +41,9 @@ export const buildHeatId = (
 
 export const ensureHeatId = (heatId: string): string => normalizeHeatId(heatId);
 
-export const getHeatRoundLabel = (round: number, totalRounds?: number): string => {
-  const parsedTotalRounds = Number(totalRounds);
-  if (Number.isFinite(parsedTotalRounds) && parsedTotalRounds > 1 && round === parsedTotalRounds) {
+export const getHeatRoundLabel = (round: number, finalRoundNumber?: number): string => {
+  const parsedFinalRound = Number(finalRoundNumber);
+  if (Number.isFinite(parsedFinalRound) && parsedFinalRound > 1 && round === parsedFinalRound) {
     return 'Finale';
   }
 
@@ -53,9 +53,9 @@ export const getHeatRoundLabel = (round: number, totalRounds?: number): string =
 export const getHeatSeriesLabel = (
   round: number,
   heatNumber: number,
-  totalRounds?: number
+  finalRoundNumber?: number
 ): string => {
-  const roundLabel = getHeatRoundLabel(round, totalRounds);
+  const roundLabel = getHeatRoundLabel(round, finalRoundNumber);
   return roundLabel === 'Finale' ? roundLabel : `${roundLabel} H${heatNumber}`;
 };
 

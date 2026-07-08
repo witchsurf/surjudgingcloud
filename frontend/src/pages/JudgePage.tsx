@@ -12,7 +12,7 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useHeatManager } from '../hooks/useHeatManager';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isLocalSupabaseMode, isSupabaseConfigured } from '../lib/supabase';
-import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
+import { fetchOrderedHeatSequence, upsertHeatRealtimeConfig } from '../api/supabaseClient';
 import { parseActiveHeatId } from '../api/supabaseClient';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
 import type { AppConfig } from '../types';
@@ -28,6 +28,7 @@ export default function JudgePage() {
     const { subscribeToHeat, markHeatFinished, syncHeatViaWebhook, isConnected } = useRealtimeSync();
     const { closeHeat } = useHeatManager();
     const [configLoading, setConfigLoading] = useState(true);
+    const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number }>>([]);
     const prevHeatIdRef = useRef<string | null>(null);
     const prevConfigSavedRef = useRef<boolean>(configSaved);
     const latestConfigRef = useRef(config);
@@ -47,8 +48,13 @@ export default function JudgePage() {
         [config.competition, config.division, config.round, config.heatId]
     );
     const currentSeriesLabel = useMemo(
-        () => getHeatSeriesLabel(config.round, config.heatId, config.totalRounds),
-        [config.round, config.heatId, config.totalRounds]
+        () => {
+            const finalRoundNumber = divisionHeatSequence.length > 0
+                ? Math.max(...divisionHeatSequence.map((row) => Number(row.round) || 0))
+                : Number(config.totalRounds) || 0;
+            return getHeatSeriesLabel(config.round, config.heatId, finalRoundNumber);
+        },
+        [divisionHeatSequence, config.round, config.heatId, config.totalRounds]
     );
 
     const searchParams = new URLSearchParams(window.location.search);
@@ -185,6 +191,37 @@ export default function JudgePage() {
             }
         }, { initialRefresh: false });
     }, [eventIdFromUrl, activeEventId, configLoading, setConfig, loadConfigFromDb, configSaved]);
+
+    useEffect(() => {
+        if (!isSupabaseConfigured() || configLoading) {
+            return;
+        }
+
+        const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
+        const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
+        if (!targetEventId || !config.division) {
+            setDivisionHeatSequence([]);
+            return;
+        }
+
+        let cancelled = false;
+        void fetchOrderedHeatSequence(targetEventId, config.division)
+            .then((sequence) => {
+                if (!cancelled) {
+                    setDivisionHeatSequence(sequence || []);
+                }
+            })
+            .catch((error) => {
+                if (!cancelled) {
+                    console.warn('Impossible de charger la séquence de heats pour le libellé métier:', error);
+                    setDivisionHeatSequence([]);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [eventIdFromUrl, activeEventId, config.division, configLoading]);
 
 
     // Subscribe to realtime timer/config for the current heat
@@ -467,6 +504,7 @@ export default function JudgePage() {
             judgeName={currentJudge?.name}
             onScoreSubmit={(score) => handleScoreSubmit(score, currentHeatId)}
             configSaved={configSaved}
+            heatSeriesLabel={currentSeriesLabel}
             timer={timer}
             heatStatus={heatStatus}
             isChiefJudge={currentJudge?.id === 'CHIEF' || currentJudge?.name === 'CHIEF'}
