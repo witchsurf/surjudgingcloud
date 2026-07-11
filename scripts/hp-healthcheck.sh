@@ -27,7 +27,7 @@ extract_bundle() {
 
 expected_schema_version() {
   local latest_migration
-  latest_migration="$(find "$ROOT_DIR/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)"
+  latest_migration="$(find "$ROOT_DIR/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "._*" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)"
   basename "$latest_migration" .sql
 }
 

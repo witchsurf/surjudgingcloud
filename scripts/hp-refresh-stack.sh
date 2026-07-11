@@ -42,7 +42,7 @@ rsync -az --delete \
   "$ROOT_DIR/backend/sql/" \
   "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/backend/sql/"
 
-rsync -az --delete \
+rsync -az --delete --delete-excluded --exclude '._*' \
   "$ROOT_DIR/backend/supabase/migrations/" \
   "${HP_USER}@${HP_HOST}:${HP_BASE_DIR}/backend/supabase/migrations/"
 
@@ -87,7 +87,7 @@ mark_sql_applied() {
 
 seed_tracking_if_runtime_is_current() {
   local latest_migration
-  latest_migration=\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)
+  latest_migration=\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "._*" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)
   if [ -z "\$latest_migration" ]; then
     return
   fi
@@ -118,7 +118,7 @@ seed_tracking_if_runtime_is_current() {
     [ -n "\$migration" ] || continue
     mark_sql_applied "\$(basename "\$migration")"
   done <<MIGRATIONS
-\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "TEST_MIGRATIONS.sql" | sort)
+\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "._*" ! -name "TEST_MIGRATIONS.sql" | sort)
 MIGRATIONS
 
   for patch in \
@@ -200,14 +200,14 @@ done
 
 echo "==> Checking and applying migrations alphabetically..."
 # Find all SQL migrations, sort them alphabetically to ensure correct order
-migrations=\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "TEST_MIGRATIONS.sql" | sort)
+migrations=\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "._*" ! -name "TEST_MIGRATIONS.sql" | sort)
 
 for migration in \$migrations; do
   apply_sql_if_needed "\$migration"
 done
 
 echo "==> Verifying migration tracker..."
-latest_migration=\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)
+latest_migration=\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "._*" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)
 latest_base=\$(basename "\$latest_migration")
 tracked_latest=\$(psql_scalar "SELECT max(filename) FROM public._local_applied_migrations WHERE filename ~ '^[0-9]' AND filename <> 'TEST_MIGRATIONS.sql';")
 
@@ -236,10 +236,11 @@ fi
 # Explicitly guarantee that the active runtime schema version is correctly stamped in the singleton table
 latest_schema_version="\${latest_base%.sql}"
 docker exec surfjudging_postgres psql -U postgres -d postgres -c "
-  INSERT INTO public.app_runtime_schema_version (id, schema_version, updated_at)
-  VALUES (true, '\$latest_schema_version', now())
+  INSERT INTO public.app_runtime_schema_version (id, schema_version, schema_label, updated_at)
+  VALUES (true, '\$latest_schema_version', NULL, now())
   ON CONFLICT (id) DO UPDATE
     SET schema_version = excluded.schema_version,
+        schema_label = excluded.schema_label,
         updated_at = excluded.updated_at;
 " >/dev/null
 

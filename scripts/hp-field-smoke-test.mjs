@@ -59,6 +59,7 @@ async function latestMigrationVersion() {
   const entries = await fs.readdir(migrationDir);
   const migrations = entries
     .filter((entry) => entry.endsWith('.sql'))
+    .filter((entry) => !entry.startsWith('._'))
     .filter((entry) => entry !== 'TEST_MIGRATIONS.sql')
     .sort();
   const latest = migrations.at(-1) || '';

@@ -61,6 +61,88 @@ Audit rapide :
 ./scripts/hp-ops.sh healthcheck --home
 ```
 
+## Accès SSH Depuis Un Nouveau Mac
+
+Le HP utilise l’utilisateur SSH :
+
+```text
+admin-surfjudging
+```
+
+Le chemin recommandé est une connexion par clé SSH, sans dépendre du mot de passe Ubuntu.
+
+### Option recommandée : ajouter la clé du nouveau Mac
+
+Sur le nouveau Mac :
+
+```bash
+ssh-keygen -t ed25519 -C "surfjudging-new-mac"
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copier la ligne affichée, puis depuis un Mac qui a déjà accès au HP :
+
+```bash
+ssh admin-surfjudging@10.0.0.20 'mkdir -p ~/.ssh && chmod 700 ~/.ssh'
+echo '<COLLER_LA_CLE_PUBLIQUE_DU_NOUVEAU_MAC>' | ssh admin-surfjudging@10.0.0.20 'cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+```
+
+Tester depuis le nouveau Mac :
+
+```bash
+ssh admin-surfjudging@10.0.0.20
+```
+
+En plage, remplacer l’IP par :
+
+```bash
+ssh admin-surfjudging@192.168.1.2
+```
+
+### Option rapide : transférer la clé existante
+
+Si l’on veut que le nouveau Mac reprenne exactement l’accès actuel, copier depuis l’ancien Mac :
+
+```text
+~/.ssh/id_ed25519
+~/.ssh/id_ed25519.pub
+```
+
+Puis sur le nouveau Mac :
+
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_ed25519
+chmod 644 ~/.ssh/id_ed25519.pub
+ssh admin-surfjudging@10.0.0.20
+```
+
+Ne jamais envoyer la clé privée `id_ed25519` par email ou messagerie. Préférer AirDrop local, clé USB, ou migration macOS.
+
+### Récupération Sudo Si Le Mot De Passe Est Perdu
+
+Si SSH fonctionne encore et que `admin-surfjudging` est membre du groupe `docker`, on peut créer une exception sudo temporaire via Docker pour réinitialiser le mot de passe.
+
+État temporaire installé le 2026-07-11 :
+
+```text
+/etc/sudoers.d/90-admin-surfjudging-temp
+admin-surfjudging ALL=(ALL) NOPASSWD:ALL
+```
+
+Après avoir défini un nouveau mot de passe avec :
+
+```bash
+sudo passwd admin-surfjudging
+```
+
+retirer l’exception temporaire :
+
+```bash
+sudo rm /etc/sudoers.d/90-admin-surfjudging-temp
+sudo visudo -c
+```
+
 ## Workflow Recommandé Prochain Événement
 
 ### 1. Préparer Dans Le Cloud
@@ -130,6 +212,55 @@ Tablettes Juges : http://192.168.1.2:8080
 ```
 
 Pendant l’événement, le HP local est l'unique source de vérité.
+
+### 5. Choisir La Source De Vérité Avant Une Sync
+
+Avant toute sync sur un événement déjà manipulé des deux côtés, décider explicitement quel côté est vrai.
+
+#### Cas normal avant événement : Cloud -> HP
+
+À utiliser quand le cloud contient la préparation officielle et que le HP ne contient pas encore de faits terrain à préserver.
+
+```bash
+./scripts/hp-ops.sh cloud-to-local --home --event-id <EVENT_ID>
+```
+
+Effet important : cette sync est un remplacement local pour l’événement ciblé. Le script supprime les lignes locales concernées puis réinsère les données Cloud pour garder la parité des IDs.
+
+Ne pas utiliser sur un event déjà jugé sur le HP, sauf si l’on accepte d’écraser l’avancement local.
+
+#### Cas normal après événement : HP -> Cloud
+
+À utiliser quand le HP contient les faits terrain les plus vrais : scores, heats fermés, lineups corrigés, active heat, overrides.
+
+```bash
+./scripts/hp-ops.sh local-to-cloud --home --event-id <EVENT_ID>
+```
+
+Effet important : cette sync pousse un diff local vers le Cloud par upsert. Elle ne doit pas relancer la propagation des qualifiés, car les `heat_entries` terrain sont la source de vérité.
+
+Avant d’écrire, faire un dry-run bas niveau si l’historique Cloud/HP est suspect :
+
+```bash
+cd frontend
+node scripts/hp-push-db-to-cloud.mjs --event-id <EVENT_ID> --dry-run
+```
+
+#### Cas ambigu : les deux côtés ont divergé
+
+Ne pas lancer une sync à l’aveugle. Comparer d’abord :
+
+- nombre de scores par côté
+- dernier `active_heat_pointer.updated_at`
+- dernier `event_last_config.updated_at`
+- statuts des heats (`open`, `running`, `closed`)
+- lignes présentes seulement d’un côté (`scores`, `heat_slot_mappings`, `heat_judge_assignments`)
+
+Règle pratique :
+
+- Si le HP a plus de scores, plus de heats fermés, ou un round actif plus avancé : HP -> Cloud.
+- Si le Cloud a la préparation officielle et le HP n’a pas encore servi au jugement : Cloud -> HP.
+- Si le Cloud contient des tests récents mais peu de scores, et que le HP contient l’historique terrain complet : considérer le Cloud comme bruit de test et pousser le HP.
 
 #### B. Installation Hardware (Panneaux Priorité & Horn)
 Le module ESP32 a été rendu **100% autonome et Plug & Play**. 
