@@ -12,7 +12,7 @@ Ce document décrit comment le display public (`surfjudging.cloud/display`) est 
 │  ├── Supabase locale (:8000)     │                      │
 │  ├── Frontend LAN (:8080)        │                      │
 │  └── hp-live-sync.sh ───────────►│                      │
-│        (toutes les 30s)          │                      │
+│        (toutes les 10s par défaut)│                      │
 │                                  │                      │
 │  Tablettes juges                 │                      │
 │  http://192.168.1.2:8080         │                      │
@@ -121,3 +121,19 @@ Si aucun hotspot 4G n'est disponible pendant l'événement :
 1. L'événement se déroule normalement en LAN pur.
 2. Après l'événement, connecter le HP à internet.
 3. Utiliser l'**option 7** du menu (Sync one-shot) pour pousser toutes les données terrain vers le Cloud en une seule fois.
+
+## Lecture Opérationnelle Simple
+
+Pour éviter toute ambiguïté, la répartition recommandée est la suivante :
+
+- **HP local** : admin, juges, timer, clôture de heat, vérité terrain.
+- **Cloud** : display public distant et diffusion pour les spectateurs hors site.
+- **Sync 4G** : transport asynchrone des faits terrain vers le cloud.
+
+Le display public ne doit jamais devenir une source de pilotage pour le terrain. Si le cloud ralentit, on dégrade seulement la diffusion distante, pas le jugement local.
+
+Comportement runtime par défaut :
+
+- sur un host LAN / HP, le display garde un comportement plus direct en realtime;
+- sur le display public distant, les scores passent par défaut en polling pour réduire la charge et stabiliser l’affichage;
+- ces modes restent surchargés par `VITE_DISPLAY_SCORE_MODE` et `VITE_DISPLAY_SCORE_POLL_MS` si l’opérateur veut forcer un autre profil.

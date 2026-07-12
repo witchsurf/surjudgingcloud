@@ -344,7 +344,7 @@ Puis choisir :
 Sync Field Box DB to Cloud
 ```
 
-Le menu demande ensuite l’`event_id` à remonter, par exemple `17`. Le sync est volontairement borné à cet événement; il ne doit pas balayer toute la base HP sauf commande explicite `--all-events`.
+Le menu demande ensuite l'`event_id` à remonter, par exemple `17`. Le sync est volontairement borné à cet événement; il ne doit pas balayer toute la base HP sauf commande explicite `--all-events`.
 
 Ce flux pousse les faits terrain :
 
@@ -357,6 +357,32 @@ Ce flux pousse les faits terrain :
 - active heat pointer
 
 Puis le cloud rejoue les fonctions métier de propagation des qualifiés.
+
+### 7. Matrice De Source Par Écran
+
+Règle simple d'exploitation:
+
+| Écran / usage | Source principale | Fallback | Rôle |
+|---|---|---|---|
+| Admin HP | HP local Supabase | reload local / diagnostics | pilotage terrain, vérité métier |
+| Tablettes juges | HP local Supabase | polling local si Realtime se dégrade | saisie score et timer |
+| Display sur place | HP local Supabase | polling local | retour immédiat pour la salle |
+| Display public distant | Cloud Supabase | polling cloud si Realtime est instable | diffusion pour les gens hors site |
+| Mode offline total | HP local Supabase uniquement | aucun | continuité du jugement sans internet |
+
+Règles d’or:
+
+- Le HP local décide.
+- Le Cloud reflète.
+- Le sync 4G diffuse, il ne pilote pas.
+- Si le réseau bouge, on dégrade l’affichage public, jamais le terrain.
+
+En pratique:
+
+- le terrain continue même sans 4G;
+- le display public garde le dernier état utile si le cloud coupe;
+- dès que le lien revient, la synchro rattrape le cloud;
+- les tablettes et l’admin ne doivent jamais dépendre du display public pour juger.
 
 Commande directe :
 

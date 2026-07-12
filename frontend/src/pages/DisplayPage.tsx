@@ -25,6 +25,7 @@ import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { subscribeToHeatInterference, subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
+import { isLocalNetworkHost } from '../lib/networkDetection';
 import { supabase } from '../lib/supabase';
 import type { AppConfig, EventTopScoreEntry, Score } from '../types';
 import type { RoundSpec } from '../utils/bracket';
@@ -1327,11 +1328,20 @@ export default function DisplayPage() {
             return () => { };
         }
 
-        const displayScoreMode = String(import.meta.env.VITE_DISPLAY_SCORE_MODE || '').trim().toLowerCase();
-        const useScoreRealtime = displayScoreMode !== 'polling' && displayScoreMode !== 'poll';
+        const explicitDisplayScoreMode = String(import.meta.env.VITE_DISPLAY_SCORE_MODE || '').trim().toLowerCase();
+        const isLocalDisplay = isLocalNetworkHost();
+        const displayScoreMode =
+            explicitDisplayScoreMode === 'polling' || explicitDisplayScoreMode === 'poll'
+                ? 'polling'
+                : explicitDisplayScoreMode === 'realtime'
+                    ? 'realtime'
+                    : isLocalDisplay
+                        ? 'realtime'
+                        : 'polling';
+        const useScoreRealtime = displayScoreMode === 'realtime';
         const displayPollIntervalMs = Math.max(
             1000,
-            Number(import.meta.env.VITE_DISPLAY_SCORE_POLL_MS) || 15000
+            Number(import.meta.env.VITE_DISPLAY_SCORE_POLL_MS) || (isLocalDisplay ? 15000 : 5000)
         );
 
         let cancelled = false;
@@ -1375,11 +1385,9 @@ export default function DisplayPage() {
             : window.setInterval(() => {
                 refreshScores(liveHeatIdRef.current || currentHeatId);
             }, displayPollIntervalMs);
-        const unsubscribeInterference = useScoreRealtime
-            ? subscribeToHeatInterference(currentHeatId, () => {
-                refreshScores(liveHeatIdRef.current || currentHeatId);
-            }, { mode: 'realtime' })
-            : () => { };
+        const unsubscribeInterference = subscribeToHeatInterference(currentHeatId, () => {
+            refreshScores(liveHeatIdRef.current || currentHeatId);
+        }, { mode: 'realtime' });
 
         // Écouter les scores en temps réel (INSERT/UPDATE) uniquement si on a activé le stream realtime.
         const handleNewScore = (event: Event) => {
