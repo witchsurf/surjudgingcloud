@@ -76,8 +76,9 @@ export abstract class BaseRepository {
         } catch (error) {
             logger.error(repoName, `${operationName} - Failed`, error);
 
-            // Try fallback on error if provided
-            if (fallback) {
+            // Try fallback on transient/offline errors only. Constraint and
+            // validation failures must stay blocking instead of being queued.
+            if (fallback && this.shouldFallback(error)) {
                 logger.info(repoName, `${operationName} - Using fallback after error`);
                 return await Promise.resolve(fallback());
             }
@@ -117,6 +118,32 @@ export abstract class BaseRepository {
         if (code.startsWith('PGRST') || code === '42501') return false;
 
         return false;
+    }
+
+    protected shouldFallback(error: unknown): boolean {
+        if (!error) return false;
+
+        const maybeError = error as { code?: string; message?: string; status?: number; name?: string };
+        const code = (maybeError.code || '').toString().toUpperCase();
+        const message = (maybeError.message || '').toLowerCase();
+        const status = Number(maybeError.status);
+        const name = (maybeError.name || '').toLowerCase();
+
+        if (code === '23505' || code === '23514' || code === '23503' || code === '22P02') return false;
+        if (code.startsWith('PGRST') || code === '42501') return false;
+        if (Number.isFinite(status) && status >= 400 && status < 500) return false;
+        if (message.includes('violates') || message.includes('constraint')) return false;
+        if (message.includes('permission') || message.includes('row-level security') || message.includes('forbidden')) return false;
+        if (message.includes('session') || message.includes('auth') || message.includes('jwt')) return false;
+
+        return (
+            this.shouldRetry(error) ||
+            name.includes('network') ||
+            message.includes('offline') ||
+            message.includes('failed to fetch') ||
+            message.includes('network') ||
+            message.includes('timeout')
+        );
     }
 
     /**

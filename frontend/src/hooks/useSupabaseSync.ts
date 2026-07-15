@@ -272,6 +272,7 @@ export function useSupabaseSync() {
       });
     } catch (error) {
        console.error('❌ Erreur configuration heat via repository:', error);
+       throw error;
     }
   }, []);
 

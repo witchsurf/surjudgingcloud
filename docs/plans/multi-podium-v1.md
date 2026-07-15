@@ -126,6 +126,11 @@ Chaque tablette juge doit etre liee a :
 
 Les stations peuvent porter le meme nom sur deux podiums (`J1` sur A et `J1` sur B) tant que le `heat_id` differe. Les scores doivent continuer a etre filtres par `heat_id`.
 
+Regle terrain obligatoire :
+- une meme identite officielle de juge ne peut etre active que sur un seul podium a la fois;
+- un juge ne peut pas etre affecte deux fois dans le meme panel;
+- les postes techniques (`J1`, `J2`, etc.) peuvent exister sur chaque podium, mais ils doivent pointer vers des juges officiels differents si les podiums tournent en parallele.
+
 ## Priorite
 
 Chaque podium a son juge priorite dedie.
@@ -246,6 +251,20 @@ Etat initial pose:
   - timers independants;
   - displays independants;
   - cloture et resultats.
+
+### Phase 6: Verrous Juge / Podium
+
+- Bloquer l'affectation d'une meme identite officielle sur deux podiums actifs.
+- Bloquer l'affectation d'une meme identite officielle deux fois dans un meme heat.
+- Remonter l'erreur cote admin avant le demarrage.
+- Garder le verrou cote base pour proteger le cloud, le HP et les sync offline.
+
+Etat initial pose:
+- Migration ajoutee: `20260715103000_lock_judge_to_single_active_podium.sql`.
+- Trigger sur `active_heat_pointer`: impossible d'activer un heat si un juge officiel est deja actif sur un autre podium du meme evenement.
+- Trigger sur `heat_judge_assignments`: impossible de modifier une affectation active qui creerait un conflit podium.
+- Trigger sur `heat_judge_assignments`: impossible de mettre la meme identite officielle deux fois dans le meme panel.
+- L'admin grise les juges deja pris et bloque le demarrage si une collision subsiste.
 
 ## Risques
 

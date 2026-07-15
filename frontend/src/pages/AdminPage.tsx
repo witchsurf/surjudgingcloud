@@ -268,6 +268,12 @@ export default function AdminPage() {
 
                 console.log('✅ Heat créé et config publiée:', currentHeatId);
             } catch (error) {
+                const maybeError = error as { code?: string; message?: string };
+                if (maybeError?.code === '23514' || maybeError?.code === '23505') {
+                    console.error('❌ Configuration refusée par les contraintes terrain:', error);
+                    setConfigSaved(false);
+                    return;
+                }
                 console.log('⚠️ Heat créé en mode local uniquement', error);
             }
 

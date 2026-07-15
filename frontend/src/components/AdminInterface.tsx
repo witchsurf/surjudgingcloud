@@ -36,7 +36,19 @@ type LineupOverrideStatus = {
   message: string;
 };
 
+type ActivePodiumPointerRow = {
+  event_id: number | null;
+  podium_id: string | null;
+  active_heat_id: string | null;
+  updated_at?: string | null;
+};
+
 const generateJudgePersonalCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const isOfficialJudgeIdentityId = (value?: string | null) => {
+  const trimmed = (value || '').trim();
+  return Boolean(trimmed && !/^J\d+$/i.test(trimmed));
+};
 
 const normalizeJudgeProfileKey = (value?: string | null) =>
   (value || '')
@@ -208,7 +220,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [selectedJudgeProfileId, setSelectedJudgeProfileId] = useState<string | null>(null);
   const [showClosedHeats, setShowClosedHeats] = useState(false);
-  const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<Array<{ division: string; round: number; heat_number: number; status: string }>>([]);
+  const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<Array<{ id: string; division: string; round: number; heat_number: number; status: string }>>([]);
   const [rejudgeOverrideHeatKey, setRejudgeOverrideHeatKey] = useState<string | null>(null);
   const [rejudgeConfirmText, setRejudgeConfirmText] = useState('');
   const [rejudgeOverridePending, setRejudgeOverridePending] = useState(false);
@@ -221,6 +233,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [creatingOfficialJudgeFor, setCreatingOfficialJudgeFor] = useState<string | null>(null);
   const [eventJudgeAssignments, setEventJudgeAssignments] = useState<HeatJudgeAssignmentRow[]>([]);
   const [assignmentCoverageRows, setAssignmentCoverageRows] = useState<EventJudgeAssignmentCoverageRow[]>([]);
+  const [activePodiumPointers, setActivePodiumPointers] = useState<ActivePodiumPointerRow[]>([]);
   const [eventJudgeAccuracySummary, setEventJudgeAccuracySummary] = useState<EventJudgeAccuracySummaryRow[]>([]);
   const [lineupRows, setLineupRows] = useState<HeatEntriesWithParticipantRow[]>([]);
   const [lineupParticipantOptions, setLineupParticipantOptions] = useState<ParticipantRecord[]>([]);
@@ -548,7 +561,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const loadMeta = async () => {
       const { data, error } = await supabase!
         .from('heats')
-        .select('division, round, heat_number, status')
+        .select('id, division, round, heat_number, status')
         .eq('event_id', activeEventId)
         .order('division', { ascending: true })
         .order('round', { ascending: true })
@@ -567,6 +580,35 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     loadMeta();
     return () => { cancelled = true; };
   }, [activeEventId, config.division, config.round, config.heatId]);
+
+  useEffect(() => {
+    if (!activeEventId || !supabase) {
+      setActivePodiumPointers([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadActivePodiumPointers = async () => {
+      const { data, error } = await supabase!
+        .from('active_heat_pointer')
+        .select('event_id, podium_id, active_heat_id, updated_at')
+        .eq('event_id', activeEventId)
+        .order('podium_id', { ascending: true });
+
+      if (error) {
+        console.warn('Impossible de charger les podiums actifs:', error);
+        if (!cancelled) setActivePodiumPointers([]);
+        return;
+      }
+
+      if (!cancelled) {
+        setActivePodiumPointers((data ?? []) as ActivePodiumPointerRow[]);
+      }
+    };
+
+    void loadActivePodiumPointers();
+    return () => { cancelled = true; };
+  }, [activeEventId, selectedPodiumId, podiumAssignStatus, config.heatId]);
 
   const { normalized: heatId } = React.useMemo(
     () =>
@@ -2263,6 +2305,41 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         ? 'scores'
         : null;
 
+  const activeOtherPodiumJudgeAssignments = React.useMemo(() => {
+    const selectedPodium = normalizePodiumId(selectedPodiumId);
+    const currentHeatId = ensureHeatId(heatId);
+    const otherActiveHeatIds = new Set(
+      activePodiumPointers
+        .filter((pointer) =>
+          pointer.active_heat_id &&
+          ensureHeatId(pointer.active_heat_id) !== currentHeatId &&
+          normalizePodiumId(pointer.podium_id) !== selectedPodium
+        )
+        .map((pointer) => ensureHeatId(pointer.active_heat_id || ''))
+    );
+
+    if (otherActiveHeatIds.size === 0) return new Map<string, HeatJudgeAssignmentRow & { podiumId: string }>();
+
+    const podiumByHeatId = new Map(
+      activePodiumPointers
+        .filter((pointer) => pointer.active_heat_id)
+        .map((pointer) => [ensureHeatId(pointer.active_heat_id || ''), normalizePodiumId(pointer.podium_id)])
+    );
+
+    return eventJudgeAssignments.reduce<Map<string, HeatJudgeAssignmentRow & { podiumId: string }>>((acc, assignment) => {
+      const assignmentHeatId = ensureHeatId(assignment.heat_id);
+      const judgeIdentityId = (assignment.judge_id || '').trim();
+      if (!otherActiveHeatIds.has(assignmentHeatId) || !isOfficialJudgeIdentityId(judgeIdentityId)) {
+        return acc;
+      }
+      acc.set(judgeIdentityId, {
+        ...assignment,
+        podiumId: podiumByHeatId.get(assignmentHeatId) || DEFAULT_PODIUM_ID,
+      });
+      return acc;
+    }, new Map());
+  }, [activePodiumPointers, eventJudgeAssignments, heatId, selectedPodiumId]);
+
   const judgeAssignmentStatus = React.useMemo(() => {
     const configuredJudgeIds = (config.judges || [])
       .map((judgeId) => (judgeId || '').trim().toUpperCase())
@@ -2282,13 +2359,56 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       return !identityId;
     });
 
+    const stationByIdentity = new Map<string, string>();
+    const duplicateIdentityStations: string[] = [];
+    configuredJudgeIds.forEach((judgeId) => {
+      const identityId = resolveAssignedJudgeIdentity(judgeId);
+      if (!isOfficialJudgeIdentityId(identityId)) return;
+      if (stationByIdentity.has(identityId)) {
+        duplicateIdentityStations.push(`${stationByIdentity.get(identityId)} / ${judgeId}`);
+        return;
+      }
+      stationByIdentity.set(identityId, judgeId);
+    });
+
+    const activePodiumConflicts = configuredJudgeIds
+      .map((judgeId) => {
+        const identityId = resolveAssignedJudgeIdentity(judgeId);
+        if (!isOfficialJudgeIdentityId(identityId)) return null;
+        const conflict = activeOtherPodiumJudgeAssignments.get(identityId);
+        if (!conflict) return null;
+        return {
+          station: judgeId,
+          judgeId: identityId,
+          judgeName: safeJudgeNames[judgeId] || conflict.judge_name || identityId,
+          otherStation: conflict.station,
+          otherPodium: conflict.podiumId,
+          otherHeatId: conflict.heat_id,
+        };
+      })
+      .filter(Boolean) as Array<{
+        station: string;
+        judgeId: string;
+        judgeName: string;
+        otherStation: string;
+        otherPodium: string;
+        otherHeatId: string;
+      }>;
+
     return {
       configuredJudgeIds,
       missingNames,
       missingIdentity,
-      isReady: configuredJudgeIds.length > 0 && missingNames.length === 0 && missingIdentity.length === 0,
+      duplicateIdentityStations,
+      activePodiumConflicts,
+      isReady:
+        configuredJudgeIds.length > 0 &&
+        missingNames.length === 0 &&
+        missingIdentity.length === 0 &&
+        duplicateIdentityStations.length === 0 &&
+        activePodiumConflicts.length === 0,
     };
-  }, [config.judgeNames, config.judges, resolveAssignedJudgeIdentity]);
+  }, [activeOtherPodiumJudgeAssignments, config.judgeNames, config.judges, resolveAssignedJudgeIdentity]);
 
   const judgeAssignmentErrorMessage = React.useMemo(() => {
     const parts: string[] = [];
@@ -2297,6 +2417,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
     if (judgeAssignmentStatus.missingIdentity.length > 0) {
       parts.push(`identités officielles manquantes: ${judgeAssignmentStatus.missingIdentity.join(', ')}`);
+    }
+    if (judgeAssignmentStatus.duplicateIdentityStations.length > 0) {
+      parts.push(`même juge affecté plusieurs fois: ${judgeAssignmentStatus.duplicateIdentityStations.join(', ')}`);
+    }
+    if (judgeAssignmentStatus.activePodiumConflicts.length > 0) {
+      parts.push(
+        `juge déjà actif sur un autre podium: ${judgeAssignmentStatus.activePodiumConflicts
+          .map((conflict) => `${conflict.judgeName} sur podium ${conflict.otherPodium}`)
+          .join(', ')}`
+      );
     }
     return parts.join(' | ');
   }, [judgeAssignmentStatus]);
@@ -3369,8 +3499,31 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       return;
     }
 
+    const duplicateStation = Object.entries(config.judgeIdentities || {}).find(([otherStation, otherIdentityId]) =>
+      otherStation !== stationId &&
+      (otherIdentityId || '').trim() === trimmedIdentityId
+    );
+    if (duplicateStation) {
+      const existingName = (config.judgeNames?.[duplicateStation[0]] || duplicateStation[0]).trim();
+      setOfficialJudgeStatus({
+        type: 'error',
+        message: `Ce juge est déjà affecté à ${duplicateStation[0]} (${existingName}) sur ce heat.`,
+      });
+      return;
+    }
+
+    const activeConflict = activeOtherPodiumJudgeAssignments.get(trimmedIdentityId);
+    if (activeConflict) {
+      setOfficialJudgeStatus({
+        type: 'error',
+        message: `${activeConflict.judge_name || 'Ce juge'} est déjà actif sur le podium ${activeConflict.podiumId} (${activeConflict.station}, heat ${activeConflict.heat_id}). Un juge ne peut servir qu’un seul podium à la fois.`,
+      });
+      return;
+    }
+
     const officialJudge = availableOfficialJudges.find((judge) => judge.id === trimmedIdentityId);
     nextJudgeIdentities[stationId] = trimmedIdentityId;
+    setOfficialJudgeStatus(null);
 
     onConfigChange({
       ...config,
@@ -4091,7 +4244,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                         <div>
                           <h4 className="text-sm font-bold text-amber-300 uppercase tracking-widest">Démarrage bloqué</h4>
                           <p className="text-xs text-slate-400 mt-1">
-                            Le heat ne peut pas démarrer tant que ces postes n’ont pas une identité officielle complète: {judgeAssignmentErrorMessage}.
+                            Le heat ne peut pas démarrer tant que les affectations juges ne sont pas valides: {judgeAssignmentErrorMessage}.
                           </p>
                         </div>
                       </div>
@@ -4566,11 +4719,25 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                             className="w-full px-3 py-2 bg-slate-950 border border-slate-800 text-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-xs"
                           >
                             <option value="" className="bg-slate-950">Sélectionner un juge officiel</option>
-                            {availableOfficialJudges.map((judge) => (
-                              <option key={judge.id} value={judge.id} className="bg-slate-950">
-                                {judge.name}{judge.certification_level ? ` · ${judge.certification_level}` : ''}
-                              </option>
-                            ))}
+                            {availableOfficialJudges.map((judge) => {
+                              const usedOnCurrentStation = Object.entries(config.judgeIdentities || {}).find(([otherStation, otherIdentityId]) =>
+                                otherStation !== judgeId &&
+                                (otherIdentityId || '').trim() === judge.id
+                              );
+                              const activeConflict = activeOtherPodiumJudgeAssignments.get(judge.id);
+                              const disabled = judge.id !== assignedIdentityId && Boolean(usedOnCurrentStation || activeConflict);
+                              const suffix = usedOnCurrentStation
+                                ? ` · déjà sur ${usedOnCurrentStation[0]}`
+                                : activeConflict
+                                  ? ` · actif podium ${activeConflict.podiumId}`
+                                  : '';
+
+                              return (
+                                <option key={judge.id} value={judge.id} disabled={disabled} className="bg-slate-950">
+                                  {judge.name}{judge.certification_level ? ` · ${judge.certification_level}` : ''}{suffix}
+                                </option>
+                              );
+                            })}
                           </select>
                           <input
                             type="text"
