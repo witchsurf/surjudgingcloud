@@ -697,6 +697,7 @@ export function subscribeToHeatUpdates(eventId: number, category: string, callba
 export interface ActiveHeatPointer {
     event_id?: number | null;
     event_name: string;
+    podium_id?: string | null;
     active_heat_id: string;
     updated_at: string;
 }
@@ -735,7 +736,7 @@ const isActiveHeatPointerEventIdSchemaError = (error: unknown) => {
     return (
         (
             text.includes('active_heat_pointer')
-            && text.includes('event_id')
+            && (text.includes('event_id') || text.includes('podium_id'))
             && (
                 text.includes('on_conflict')
                 || text.includes('constraint')
@@ -822,24 +823,38 @@ const writeActiveHeatPointerEventIdSupport = (supported: boolean) => {
 export async function upsertActiveHeatPointer(input: {
     eventId?: number | null;
     eventName: string;
+    podiumId?: string | null;
     activeHeatId: string;
     updatedAt?: string;
 }): Promise<void> {
     ensureSupabase();
+    const podiumId = (input.podiumId || 'A').trim().toUpperCase() || 'A';
 
     const payload = {
         event_id: input.eventId ?? null,
         event_name: input.eventName,
+        podium_id: podiumId,
         active_heat_id: ensureHeatId(input.activeHeatId),
         updated_at: input.updatedAt ?? new Date().toISOString(),
     };
 
-    const { error: rpcError } = await supabase!.rpc('upsert_active_heat_pointer', {
+    let { error: rpcError } = await supabase!.rpc('upsert_active_heat_pointer', {
         p_event_id: payload.event_id,
         p_event_name: payload.event_name,
         p_active_heat_id: payload.active_heat_id,
         p_updated_at: payload.updated_at,
+        p_podium_id: payload.podium_id,
     });
+
+    if (rpcError && isRpcUnavailableError(rpcError, 'upsert_active_heat_pointer')) {
+        const legacyResult = await supabase!.rpc('upsert_active_heat_pointer', {
+            p_event_id: payload.event_id,
+            p_event_name: payload.event_name,
+            p_active_heat_id: payload.active_heat_id,
+            p_updated_at: payload.updated_at,
+        });
+        rpcError = legacyResult.error;
+    }
 
     if (!rpcError) {
         return;
@@ -849,40 +864,61 @@ export async function upsertActiveHeatPointer(input: {
         throw rpcError;
     }
 
-    const eventIdUpsertSupport = readActiveHeatPointerEventIdSupport();
-
-    if (input.eventId && Number.isFinite(input.eventId) && eventIdUpsertSupport !== false) {
-        const { error } = await supabase!
-            .from('active_heat_pointer')
-            .upsert(payload, { onConflict: 'event_id' });
-
-        if (!error) {
-            writeActiveHeatPointerEventIdSupport(true);
-            return;
-        }
-        if (!isActiveHeatPointerEventIdSchemaError(error)) throw error;
-        writeActiveHeatPointerEventIdSupport(false);
-    }
-
     const fallbackPayload = {
         event_name: input.eventName,
+        podium_id: podiumId,
         active_heat_id: ensureHeatId(input.activeHeatId),
         updated_at: payload.updated_at,
     };
 
-    const { data: existingRows, error: selectError } = await supabase!
-        .from('active_heat_pointer')
-        .select('active_heat_id')
-        .eq('event_name', input.eventName)
-        .limit(1);
+    const selectExisting = async (includePodium: boolean) => {
+        let query = supabase!
+            .from('active_heat_pointer')
+            .select('active_heat_id');
+
+        if (input.eventId && Number.isFinite(input.eventId)) {
+            query = query.eq('event_id', input.eventId);
+        } else {
+            query = query.eq('event_name', input.eventName);
+        }
+
+        if (includePodium) {
+            query = query.eq('podium_id', podiumId);
+        }
+
+        return query.limit(1);
+    };
+
+    let includePodiumInFallback = true;
+    let { data: existingRows, error: selectError } = await selectExisting(includePodiumInFallback);
+
+    if (selectError && isActiveHeatPointerEventIdSchemaError(selectError)) {
+        includePodiumInFallback = false;
+        ({ data: existingRows, error: selectError } = await selectExisting(includePodiumInFallback));
+    }
 
     if (selectError) throw selectError;
 
     if ((existingRows ?? []).length > 0) {
-        const { error: updateError } = await supabase!
+        let updateQuery = supabase!
             .from('active_heat_pointer')
-            .update(fallbackPayload)
-            .eq('event_name', input.eventName);
+            .update(includePodiumInFallback ? fallbackPayload : {
+                event_name: fallbackPayload.event_name,
+                active_heat_id: fallbackPayload.active_heat_id,
+                updated_at: fallbackPayload.updated_at,
+            });
+
+        if (input.eventId && Number.isFinite(input.eventId)) {
+            updateQuery = updateQuery.eq('event_id', input.eventId);
+        } else {
+            updateQuery = updateQuery.eq('event_name', input.eventName);
+        }
+
+        if (includePodiumInFallback) {
+            updateQuery = updateQuery.eq('podium_id', podiumId);
+        }
+
+        const { error: updateError } = await updateQuery;
 
         if (updateError) throw updateError;
         return;
@@ -890,7 +926,12 @@ export async function upsertActiveHeatPointer(input: {
 
     const { error: insertError } = await supabase!
         .from('active_heat_pointer')
-        .insert(fallbackPayload);
+        .insert(includePodiumInFallback ? payload : {
+            event_id: payload.event_id,
+            event_name: payload.event_name,
+            active_heat_id: payload.active_heat_id,
+            updated_at: payload.updated_at,
+        });
 
     if (insertError) throw insertError;
 }
@@ -1047,8 +1088,9 @@ export async function validateHeatStartDependencies(heatId: string): Promise<Hea
     };
 }
 
-export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string): Promise<ActiveHeatPointer | null> {
+export async function fetchActiveHeatPointer(eventId?: number | null, eventName?: string, podiumIdInput?: string | null): Promise<ActiveHeatPointer | null> {
     ensureSupabase();
+    const podiumId = (podiumIdInput || 'A').trim().toUpperCase() || 'A';
     const eventIdSupport = readActiveHeatPointerEventIdSupport();
     const canUseEventId = Boolean(
         eventId
@@ -1068,10 +1110,31 @@ export async function fetchActiveHeatPointer(eventId?: number | null, eventName?
             query = query.eq('event_name', eventName);
         }
 
+        query = query.eq('podium_id', podiumId);
+
         return query.limit(1);
     };
 
     let { data, error } = await runQuery(canUseEventId);
+
+    if (error && isActiveHeatPointerEventIdSchemaError(error)) {
+        const runLegacyQuery = async (filterByEventId: boolean) => {
+            let query = supabase!
+                .from('active_heat_pointer')
+                .select('*')
+                .order('updated_at', { ascending: false });
+
+            if (filterByEventId && eventId && Number.isFinite(eventId)) {
+                query = query.eq('event_id', eventId);
+            } else if (eventName) {
+                query = query.eq('event_name', eventName);
+            }
+
+            return query.limit(1);
+        };
+
+        ({ data, error } = await runLegacyQuery(canUseEventId));
+    }
 
     if (!error && canUseEventId) {
         writeActiveHeatPointerEventIdSupport(true);

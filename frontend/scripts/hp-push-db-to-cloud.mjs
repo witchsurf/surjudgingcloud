@@ -276,22 +276,27 @@ async function syncActiveHeatPointers(rows) {
 
   process.stdout.write(`  - Upserting ${rows.length} rows to active_heat_pointer... `);
 
-  try {
-    for (const batch of chunkArray(rows, 200)) {
-      const { error } = await cloud.from('active_heat_pointer').upsert(batch, { onConflict: 'event_id' });
-      if (error) throw error;
-    }
-    console.log('✅ Done');
-    return rows.length;
-  } catch (error) {
-    console.log('⚠️ Fallback');
-    console.error('    event_id upsert fallback:', error.message);
-  }
-
   let synced = 0;
   for (const row of rows) {
+    const podiumId = String(row.podium_id || 'A').trim().toUpperCase() || 'A';
     try {
-      const { error } = await cloud.from('active_heat_pointer').upsert(row, { onConflict: 'event_name' });
+      let { error } = await cloud.rpc('upsert_active_heat_pointer', {
+        p_event_id: row.event_id ?? null,
+        p_event_name: row.event_name ?? null,
+        p_active_heat_id: row.active_heat_id ?? null,
+        p_updated_at: row.updated_at ?? null,
+        p_podium_id: podiumId
+      });
+
+      if (error) {
+        ({ error } = await cloud.rpc('upsert_active_heat_pointer', {
+          p_event_id: row.event_id ?? null,
+          p_event_name: row.event_name ?? null,
+          p_active_heat_id: row.active_heat_id ?? null,
+          p_updated_at: row.updated_at ?? null
+        }));
+      }
+
       if (error) throw error;
       synced += 1;
     } catch (error) {
@@ -456,7 +461,9 @@ async function main() {
       .catch(() => []);
     const changedHeatEntryOverrides = await safeDiff('heat_entry_overrides', heatEntryOverrides, ['id'])
       .catch(() => []);
-    const changedActiveHeatPointers = await safeDiff('active_heat_pointer', activeHeatPointers, ['event_id'])
+    const changedActiveHeatPointers = await safeDiff('active_heat_pointer', activeHeatPointers, ['event_id', 'podium_id'])
+      .catch(async () => safeDiff('active_heat_pointer', activeHeatPointers, ['event_name', 'podium_id']))
+      .catch(async () => safeDiff('active_heat_pointer', activeHeatPointers, ['event_id']))
       .catch(async () => safeDiff('active_heat_pointer', activeHeatPointers, ['event_name']));
 
 

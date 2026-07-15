@@ -640,6 +640,7 @@ export function useHeatManager() {
                 await upsertActiveHeatPointer({
                     eventId: resolvedEventId ?? activeEventId ?? null,
                     eventName: newConfig.competition,
+                    podiumId: 'A',
                     activeHeatId: nextHeatPointer,
                 });
 

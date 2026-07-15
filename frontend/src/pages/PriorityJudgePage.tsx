@@ -12,6 +12,7 @@ import { parseActiveHeatId } from '../api/supabaseClient';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
+import { getPodiumIdFromSearch } from '../utils/podium';
 import type { AppConfig } from '../types';
 import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
 
@@ -36,6 +37,7 @@ export default function PriorityJudgePage() {
 
     const searchParams = new URLSearchParams(window.location.search);
     const eventIdFromUrl = searchParams.get('eventId');
+    const podiumId = getPodiumIdFromSearch(window.location.search);
     const isPriorityJudgeSession = currentJudge?.id === 'priority-judge';
     const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
         const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
@@ -89,12 +91,12 @@ export default function PriorityJudgePage() {
             }
 
             setActiveEventId(numericId);
-            loadConfigFromDb(numericId).finally(() => setConfigLoading(false));
+            loadConfigFromDb(numericId, { podiumId }).finally(() => setConfigLoading(false));
             return;
         }
 
         loadKioskConfig().finally(() => setConfigLoading(false));
-    }, [eventIdFromUrl, loadConfigFromDb, loadKioskConfig, setActiveEventId]);
+    }, [eventIdFromUrl, loadConfigFromDb, loadKioskConfig, setActiveEventId, podiumId]);
 
     useEffect(() => {
         if (!configSaved || !config.competition || configLoading) {
@@ -143,7 +145,7 @@ export default function PriorityJudgePage() {
             if (!heatChanged) return;
 
             if (activeEventId) {
-                void loadConfigFromDb(activeEventId);
+                void loadConfigFromDb(activeEventId, { podiumId });
                 return;
             }
 
@@ -157,8 +159,8 @@ export default function PriorityJudgePage() {
 
         return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
-        });
-    }, [activeEventId, config.competition, config.division, config.round, config.heatId, configLoading, setConfig, loadConfigFromDb]);
+        }, { podiumId });
+    }, [activeEventId, config.competition, config.division, config.round, config.heatId, configLoading, setConfig, loadConfigFromDb, podiumId]);
 
     useEffect(() => {
         if (!configSaved || !config.competition || configLoading) {
@@ -204,7 +206,7 @@ export default function PriorityJudgePage() {
             onPriorityConfigChange={handlePriorityConfigChange}
             canManagePriority={true}
             priorityOnly={true}
-            interfaceTitle="Interface Juge Priorité"
+            interfaceTitle={podiumId === 'A' ? 'Interface Juge Priorité' : `Interface Juge Priorité - Podium ${podiumId}`}
         />
     );
 }

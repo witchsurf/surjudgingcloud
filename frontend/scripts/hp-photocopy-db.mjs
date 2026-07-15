@@ -189,20 +189,39 @@ async function syncActiveHeatPointers(rows) {
   process.stdout.write(`  - Upserting ${rows.length} rows to active_heat_pointer... `);
 
   for (const row of rows) {
+    const podiumId = String(row.podium_id || 'A').trim().toUpperCase() || 'A';
     let { error } = await local.rpc('upsert_active_heat_pointer', {
       p_event_id: row.event_id ?? null,
       p_event_name: row.event_name ?? null,
       p_active_heat_id: row.active_heat_id ?? null,
-      p_updated_at: row.updated_at ?? null
+      p_updated_at: row.updated_at ?? null,
+      p_podium_id: podiumId
     });
+
+    if (error) {
+      ({ error } = await local.rpc('upsert_active_heat_pointer', {
+        p_event_id: row.event_id ?? null,
+        p_event_name: row.event_name ?? null,
+        p_active_heat_id: row.active_heat_id ?? null,
+        p_updated_at: row.updated_at ?? null
+      }));
+    }
 
     if (!error) {
       continue;
     }
 
-    const existingByEventId = row.event_id != null
-      ? await local.from('active_heat_pointer').select('*').eq('event_id', row.event_id).maybeSingle()
+    let includePodiumInFallback = true;
+    let existingByEventId = row.event_id != null
+      ? await local.from('active_heat_pointer').select('*').eq('event_id', row.event_id).eq('podium_id', podiumId).maybeSingle()
       : { data: null, error: null };
+
+    if (existingByEventId.error && /podium_id/i.test(existingByEventId.error.message || '')) {
+      includePodiumInFallback = false;
+      existingByEventId = row.event_id != null
+        ? await local.from('active_heat_pointer').select('*').eq('event_id', row.event_id).maybeSingle()
+        : { data: null, error: null };
+    }
 
     if (existingByEventId.error) {
       console.log('❌ Failed');
@@ -212,18 +231,27 @@ async function syncActiveHeatPointers(rows) {
     }
 
     if (existingByEventId.data) {
-      ({ error } = await local
+      let updateQuery = local
         .from('active_heat_pointer')
         .update({
           event_name: row.event_name,
           active_heat_id: row.active_heat_id,
           updated_at: row.updated_at
         })
-        .eq('event_id', row.event_id));
+        .eq('event_id', row.event_id);
+      if (includePodiumInFallback) updateQuery = updateQuery.eq('podium_id', podiumId);
+      ({ error } = await updateQuery);
     } else {
-      const existingByName = row.event_name
-        ? await local.from('active_heat_pointer').select('*').eq('event_name', row.event_name).maybeSingle()
+      let existingByName = row.event_name
+        ? await local.from('active_heat_pointer').select('*').eq('event_name', row.event_name).eq('podium_id', podiumId).maybeSingle()
         : { data: null, error: null };
+
+      if (existingByName.error && /podium_id/i.test(existingByName.error.message || '')) {
+        includePodiumInFallback = false;
+        existingByName = row.event_name
+          ? await local.from('active_heat_pointer').select('*').eq('event_name', row.event_name).maybeSingle()
+          : { data: null, error: null };
+      }
 
       if (existingByName.error) {
         console.log('❌ Failed');
@@ -233,16 +261,23 @@ async function syncActiveHeatPointers(rows) {
       }
 
       if (existingByName.data) {
-        ({ error } = await local
+        let updateQuery = local
           .from('active_heat_pointer')
           .update({
             event_id: row.event_id,
             active_heat_id: row.active_heat_id,
             updated_at: row.updated_at
           })
-          .eq('event_name', row.event_name));
+          .eq('event_name', row.event_name);
+        if (includePodiumInFallback) updateQuery = updateQuery.eq('podium_id', podiumId);
+        ({ error } = await updateQuery);
       } else {
-        ({ error } = await local.from('active_heat_pointer').insert(row));
+        ({ error } = await local.from('active_heat_pointer').insert(includePodiumInFallback ? row : {
+          event_id: row.event_id,
+          event_name: row.event_name,
+          active_heat_id: row.active_heat_id,
+          updated_at: row.updated_at
+        }));
       }
     }
 

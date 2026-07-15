@@ -23,6 +23,7 @@ import { computeEffectiveInterferences } from '../utils/interference';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
+import { getPodiumIdFromSearch } from '../utils/podium';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { subscribeToHeatInterference, subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 import { isLocalNetworkHost } from '../lib/networkDetection';
@@ -646,6 +647,7 @@ export default function DisplayPage() {
     const { subscribeToHeat } = useRealtimeSync();
     const { loadScoresFromDatabase } = useSupabaseSync();
     const debugRealtimePanel = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debugRealtime') === '1';
+    const podiumId = typeof window !== 'undefined' ? getPodiumIdFromSearch(window.location.search) : 'A';
 
     // -- HISTORY MODE STATE --
     const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
@@ -745,7 +747,7 @@ export default function DisplayPage() {
             if (!heatChanged) return;
 
             if (activeEventId) {
-                void loadConfigFromDb(activeEventId);
+                void loadConfigFromDb(activeEventId, { podiumId });
                 return;
             }
 
@@ -763,8 +765,8 @@ export default function DisplayPage() {
 
         return subscribeToActiveHeatPointer(activeEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
-        });
-    }, [activeEventId, configSaved, config.competition, config.division, config.round, config.heatId, setConfig, loadConfigFromDb]);
+        }, { podiumId });
+    }, [activeEventId, configSaved, config.competition, config.division, config.round, config.heatId, setConfig, loadConfigFromDb, podiumId]);
 
     const handleHeatSelect = async (heatId: string) => {
         if (!heatId || !activeEventId) return;

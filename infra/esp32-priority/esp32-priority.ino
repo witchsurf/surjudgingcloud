@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- *  SURF JUDGING CLOUD — ESP32 PRIORITY LED CONTROLLER v2.0
+ *  SURF JUDGING CLOUD — ESP32 PRIORITY LED CONTROLLER v2.1
  * ============================================================================
  *
  *  Firmware pour ESP32-WROOM-DA
@@ -43,6 +43,9 @@ Preferences prefs;    // Stockage persistant en flash
 // NOTE: Les WiFi pré-configurés (DLINK, Maison, Hotspot) sont définis
 // dans la fonction setup(). Aucun SSID unique requis ici.
 
+// Podium servi par ce boîtier. Flasher un boîtier en "A" et l'autre en "B".
+const char* PODIUM_ID = "A";
+
 // ============================================================================
 //  URL & CLÉS SUPABASE (DYNAMIQUE SELON LE RÉSEAU)
 // ============================================================================
@@ -71,6 +74,13 @@ String getSupabaseKey() {
 unsigned long getPollInterval() {
     if (WiFi.SSID() == "DLINK") return 500;
     return 5000;
+}
+
+String getPodiumId() {
+    String podium = String(PODIUM_ID);
+    podium.trim();
+    podium.toUpperCase();
+    return podium.length() > 0 ? podium : "A";
 }
 
 // ============================================================================
@@ -109,10 +119,10 @@ CobModule modules[4] = {
     { .pinR = 23, .pinG = 25, .pinB = 26, .pinW = 27 },
 
     // Module 2: Position P3 — Carte MOSFET #3
-    { .pinR = 32, .pinG = 33, .pinB = 16, .pinW = 17 },
+    { .pinR = 32, .pinG = 33, .pinB = 16, .pinW = 17 }, // B=RX2, W=TX2
 
     // Module 3: Position P4 — Carte MOSFET #4
-    //   ⚠️ GPIO 5 inutilisable (pull-up permanent), remplacé par GPIO 15
+    //   GPIO 5 réservé au horn, donc canal G déplacé sur GPIO 15
     { .pinR =  4, .pinG = 15, .pinB = 13, .pinW = 14 },
 };
 
@@ -136,7 +146,7 @@ struct RGBW {
 // Couleur du LED = couleur du lycra du surfeur
 const RGBW LYCRA_ROUGE   = { 255,   0,   0,   0 };  // Lycra rouge
 const RGBW LYCRA_BLANC   = {   0,   0,   0, 255 };  // Lycra blanc
-const RGBW LYCRA_JAUNE   = { 255, 200,   0,   0 };  // Lycra jaune
+const RGBW LYCRA_JAUNE   = { 255, 180,   0,   0 };  // Jaune validé: R=255 + G=180
 const RGBW LYCRA_BLEU    = {   0,   0, 255,   0 };  // Lycra bleu
 const RGBW LYCRA_VERT    = {   0, 255,   0,   0 };  // Lycra vert
 const RGBW COLOR_EQUAL   = {   0,   0,   0, 120 };  // Priorité égale (blanc doux)
@@ -189,6 +199,9 @@ volatile long heatRemainingSeconds = -1;  // -1 = pas de timer actif
 // Suivi de l'état précédent du heat (pour détecter les transitions)
 String previousHeatStatus = "";
 
+// Suivi du clignotement pour restaurer les couleurs à la sortie des 30 dernières secondes
+bool endBlinkWasActive = false;
+
 // Prototypes de fonctions (requis pour éviter les erreurs de scope C++ avec arguments par défaut)
 void connectWiFi(bool blocking = false);
 void applyPriorityStateFromRow(JsonObject row);
@@ -196,6 +209,7 @@ void clearActivePriority();
 void runSSEClient();
 void parseAndApplySSEPayload(String payload);
 String getSseHost();
+uint16_t getSsePort();
 
 // ============================================================================
 //  SETUP
@@ -207,7 +221,7 @@ void setup() {
     delay(1000);
 
     Serial.println("================================================");
-    Serial.println("  SURF JUDGING — PRIORITY + HORN CONTROLLER v2.0");
+    Serial.println("  SURF JUDGING — PRIORITY + HORN CONTROLLER v2.1");
     Serial.println("================================================");
     Serial.println();
 
@@ -308,6 +322,15 @@ void setup() {
 
     // Animation de démarrage — balayer toutes les couleurs
     startupAnimation();
+
+    // Synchroniser l'état logiciel avec le blanc doux affiché après l'animation.
+    // Sans cela, le premier fondu partirait de noir alors que les panneaux sont déjà en veille.
+    for (int m = 0; m < NUM_MODULES; m++) {
+        moduleStates[m].priorityRank = 0;
+        moduleStates[m].lycraColor = "";
+        moduleStates[m].color = COLOR_EQUAL;
+        moduleStates[m].currentColor = COLOR_EQUAL;
+    }
 
     // Initialiser le horn
     pinMode(HORN_PIN, OUTPUT);
@@ -421,18 +444,29 @@ void loop() {
 
     // ── CLIGNOTEMENT FIN DE SÉRIE ──
     // Dernières 30s : clignotement lent (500ms). Dernières 10s : rapide (150ms).
-    if (heatRemainingSeconds >= 0 && heatRemainingSeconds <= 30 && lastHeatStatus == "running") {
+    bool endBlinkActive = (
+        heatRemainingSeconds >= 0 &&
+        heatRemainingSeconds <= 30 &&
+        lastHeatStatus == "running"
+    );
+
+    if (endBlinkActive) {
         int blinkInterval = (heatRemainingSeconds <= 10) ? 150 : 500;
         bool ledOn = ((now / blinkInterval) % 2 == 0);
-        
+
         for (int m = 0; m < NUM_MODULES; m++) {
-            if (ledOn) {
-                setModuleColor(m, moduleStates[m].color);
-            } else {
-                setModuleColor(m, COLOR_OFF);
-            }
+            setModuleColor(m, ledOn ? moduleStates[m].color : COLOR_OFF);
+        }
+    } else if (endBlinkWasActive) {
+        // Important : si le clignotement se termine pendant une phase OFF,
+        // réafficher immédiatement les couleurs normales.
+        for (int m = 0; m < NUM_MODULES; m++) {
+            setModuleColor(m, moduleStates[m].color);
+            moduleStates[m].currentColor = moduleStates[m].color;
         }
     }
+
+    endBlinkWasActive = endBlinkActive;
 
     // Contrôle du horn (non-bloquant)
     if (hornTrigger) {
@@ -524,7 +558,7 @@ void pollPriorityState() {
 
     String activeUrl = getSupabaseUrl();
     String activeKey = getSupabaseKey();
-    String url = activeUrl + "/rest/v1/rpc/get_active_priority";
+    String url = activeUrl + "/rest/v1/rpc/get_active_priority?p_podium_id=" + getPodiumId();
 
     if (activeUrl.startsWith("https")) {
         http.begin(secureClient, url);
@@ -696,14 +730,26 @@ void applyPriorityStateFromRow(JsonObject row) {
 // ============================================================================
 
 void clearActivePriority() {
-    if (currentHeatId != "") {
-        Serial.println("⏸️  Veille.");
-        currentHeatId = "";
-        for (int m = 0; m < NUM_MODULES; m++) {
-            moduleStates[m].priorityRank = 0;
-            moduleStates[m].lycraColor = "";
-            moduleStates[m].color = COLOR_EQUAL;
+    bool changed = (currentHeatId != "");
+    currentHeatId = "";
+
+    for (int m = 0; m < NUM_MODULES; m++) {
+        if (moduleStates[m].priorityRank != 0 ||
+            moduleStates[m].lycraColor.length() > 0 ||
+            moduleStates[m].color.r != COLOR_EQUAL.r ||
+            moduleStates[m].color.g != COLOR_EQUAL.g ||
+            moduleStates[m].color.b != COLOR_EQUAL.b ||
+            moduleStates[m].color.w != COLOR_EQUAL.w) {
+            changed = true;
         }
+
+        moduleStates[m].priorityRank = 0;
+        moduleStates[m].lycraColor = "";
+        moduleStates[m].color = COLOR_EQUAL;
+    }
+
+    if (changed) {
+        Serial.println("⏸️  Veille.");
         statesUpdated = true;
     }
 }
@@ -713,17 +759,47 @@ void clearActivePriority() {
 // ============================================================================
 
 String getSseHost() {
-    // SUPABASE_URL_LOCAL is "http://192.168.1.2:8000"
+    // Exemple : SUPABASE_URL_LOCAL = "http://192.168.1.2:8000"
     String url = SUPABASE_URL_LOCAL;
-    int start = url.indexOf("://");
-    if (start != -1) {
-        url = url.substring(start + 3);
+    int schemeEnd = url.indexOf("://");
+    if (schemeEnd != -1) {
+        url = url.substring(schemeEnd + 3);
     }
-    int end = url.indexOf(":");
-    if (end != -1) {
-        url = url.substring(0, end);
+
+    int pathStart = url.indexOf('/');
+    if (pathStart != -1) {
+        url = url.substring(0, pathStart);
     }
+
+    int portSeparator = url.lastIndexOf(':');
+    if (portSeparator != -1) {
+        url = url.substring(0, portSeparator);
+    }
+
     return url;
+}
+
+uint16_t getSsePort() {
+    String url = SUPABASE_URL_LOCAL;
+    int schemeEnd = url.indexOf("://");
+    if (schemeEnd != -1) {
+        url = url.substring(schemeEnd + 3);
+    }
+
+    int pathStart = url.indexOf('/');
+    if (pathStart != -1) {
+        url = url.substring(0, pathStart);
+    }
+
+    int portSeparator = url.lastIndexOf(':');
+    if (portSeparator != -1) {
+        int parsedPort = url.substring(portSeparator + 1).toInt();
+        if (parsedPort > 0 && parsedPort <= 65535) {
+            return static_cast<uint16_t>(parsedPort);
+        }
+    }
+
+    return 80;
 }
 
 void parseAndApplySSEPayload(String payload) {
@@ -752,7 +828,7 @@ void parseAndApplySSEPayload(String payload) {
 void runSSEClient() {
     WiFiClient client;
     String host = getSseHost();
-    int port = 80;
+    uint16_t port = getSsePort();
     
     Serial.printf("📡 SSE: Connexion à %s:%d...\n", host.c_str(), port);
     
@@ -764,7 +840,7 @@ void runSSEClient() {
     
     Serial.println("✅ SSE: Connecté ! Envoi de la requête GET /priority/sse...");
     
-    client.print("GET /priority/sse HTTP/1.1\r\n");
+    client.print("GET /priority/sse?podium=" + getPodiumId() + " HTTP/1.1\r\n");
     client.print("Host: " + host + "\r\n");
     client.print("Accept: text/event-stream\r\n");
     client.print("Connection: keep-alive\r\n");
@@ -818,7 +894,6 @@ void runSSEClient() {
     Serial.println("🔌 SSE: Déconnecté du serveur LAN.");
     client.stop();
     vTaskDelay(pdMS_TO_TICKS(2000));
-}
 }
 
 // ============================================================================
@@ -913,7 +988,7 @@ void setupWebServer() {
     // ── PAGE PRINCIPALE ──
     server.on("/", []() {
         String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
-        html += "<title>Priority Control v2.0</title>";
+        html += "<title>Priority Control v2.1</title>";
         html += "<style>body{font-family:sans-serif;background:#1a1a1a;color:white;padding:20px;max-width:600px;margin:0 auto}";
         html += ".card{background:#333;padding:15px;border-radius:10px;margin-bottom:10px}";
         html += ".status{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:8px}";
@@ -924,12 +999,13 @@ void setupWebServer() {
         html += "@keyframes blink{50%{opacity:0.3}}";
         html += "</style><script>setTimeout(function(){location.reload();},2000);</script></head><body>";
         
-        html += "<h1>🏄 Priority v2.0</h1>";
+        html += "<h1>🏄 Priority v2.1</h1>";
         
         // WiFi
         html += "<div class='card'>";
         html += "<div><span class='status online'></span> " + WiFi.SSID() + " (" + String(WiFi.RSSI()) + " dBm)</div>";
         html += "<div>IP: " + WiFi.localIP().toString() + " | <a href='http://priority.local' style='color:#4fc3f7'>priority.local</a></div>";
+        html += "<div>Podium: " + getPodiumId() + "</div>";
         html += "<div>Polling: " + String(getPollInterval()) + "ms | Mode: " + (WiFi.SSID() == "DLINK" ? "🏖️ LAN" : "☁️ Cloud") + "</div>";
         html += "</div>";
 
@@ -999,7 +1075,7 @@ void setupWebServer() {
         html += "</style></head><body>";
         html += "<h1>📦 OTA Firmware Update</h1>";
         html += "<div class='card'>";
-        html += "<p>Version actuelle: v2.0</p>";
+        html += "<p>Version actuelle: v2.1</p>";
         html += "<p>RAM libre: " + String(ESP.getFreeHeap()) + " bytes</p>";
         html += "<form method='POST' action='/update' enctype='multipart/form-data'>";
         html += "<input type='file' name='firmware' accept='.bin'><br>";
@@ -1094,7 +1170,7 @@ void setupWebServer() {
         }
         
         server.sendHeader("Location", "/wifi");
-        server.send(303);
+        server.send(303, "text/plain", "");
     });
 
     server.begin();

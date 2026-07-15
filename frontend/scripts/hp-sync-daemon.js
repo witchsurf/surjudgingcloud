@@ -110,14 +110,21 @@ pgPool.on('error', (err) => {
 //  SSE STATE & ACTIVE CLIENTS
 // ============================================================================
 const sseClients = new Map();
-let currentPriorityState = null;
+const currentPriorityStateByPodium = new Map();
 let countdownInterval = null;
 
-function broadcastSse(data) {
+function normalizePodiumId(value) {
+  const normalized = String(value || 'A').trim().toUpperCase();
+  return normalized || 'A';
+}
+
+function broadcastSse(data, podiumId = 'A') {
+  const targetPodium = normalizePodiumId(podiumId);
   const payload = `data: ${JSON.stringify(data)}\n\n`;
-  sseClients.forEach((res, clientId) => {
+  sseClients.forEach((client, clientId) => {
+    if (client.podiumId !== targetPodium) return;
     try {
-      res.write(payload);
+      client.res.write(payload);
     } catch (err) {
       console.warn(`⚠️ Failed to write to SSE client ${clientId}, removing...`);
       sseClients.delete(clientId);
@@ -128,30 +135,72 @@ function broadcastSse(data) {
 /**
  * Fetch active priority from database and update local state
  */
-async function fetchAndBroadcastActivePriority() {
+async function resolveActiveEventIdForPodium(podiumId = 'A') {
+  const targetPodium = normalizePodiumId(podiumId);
+  const res = await pgPool.query(
+    `
+      SELECT event_id
+      FROM public.active_heat_pointer
+      WHERE upper(trim(coalesce(podium_id, 'A'))) = $1
+        AND event_id IS NOT NULL
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `,
+    [targetPodium]
+  );
+
+  return res.rows?.[0]?.event_id ?? null;
+}
+
+async function fetchAndBroadcastActivePriority(podiumId = 'A') {
+  const targetPodium = normalizePodiumId(podiumId);
   try {
-    const res = await pgPool.query('SELECT * FROM public.get_active_priority()');
+    const eventId = await resolveActiveEventIdForPodium(targetPodium);
+    const res = eventId
+      ? await pgPool.query('SELECT * FROM public.get_active_priority($1, $2)', [eventId, targetPodium])
+      : await pgPool.query('SELECT * FROM public.get_active_priority($1)', [targetPodium]);
     if (res.rows && res.rows.length > 0) {
       const activeState = res.rows[0];
-      currentPriorityState = activeState;
+      currentPriorityStateByPodium.set(targetPodium, activeState);
       broadcastSse({
         event: 'priority_update',
+        podium: targetPodium,
         timestamp: new Date().toISOString(),
         data: activeState,
-      });
+      }, targetPodium);
       return activeState;
     } else {
-      currentPriorityState = null;
+      currentPriorityStateByPodium.set(targetPodium, null);
       broadcastSse({
         event: 'priority_update',
+        podium: targetPodium,
         timestamp: new Date().toISOString(),
         data: null,
-      });
+      }, targetPodium);
       return null;
     }
   } catch (err) {
-    console.error('❌ Error fetching active priority state:', err.message);
+    console.error(`❌ Error fetching active priority state for podium ${targetPodium}:`, err.message);
   }
+}
+
+async function fetchAndBroadcastAllActivePriorities() {
+  const podiums = new Set(['A']);
+  for (const client of sseClients.values()) {
+    podiums.add(client.podiumId);
+  }
+
+  const res = await pgPool.query(`
+    SELECT DISTINCT upper(trim(coalesce(podium_id, 'A'))) AS podium_id
+    FROM public.active_heat_pointer
+  `).catch(() => ({ rows: [] }));
+
+  for (const row of res.rows || []) {
+    podiums.add(normalizePodiumId(row.podium_id));
+  }
+
+  const states = await Promise.all(Array.from(podiums).map((podiumId) => fetchAndBroadcastActivePriority(podiumId)));
+  return states;
 }
 
 /**
@@ -166,10 +215,10 @@ function startCountdownTicker() {
 
     // Query active priority state once a second
     // This updates timer_remaining_seconds with absolute database precision
-    const active = await fetchAndBroadcastActivePriority();
+    const states = await fetchAndBroadcastAllActivePriorities();
     
     // If no active heat is running, we can pause the 1s ticker to save CPU
-    if (!active || active.status !== 'running') {
+    if (!states.some((active) => active && active.status === 'running')) {
       console.log('⏸️ Active heat not running, sleeping 1s ticker...');
       stopCountdownTicker();
     }
@@ -259,10 +308,10 @@ async function handleNotification(msg) {
       }
 
       // Heat config or status changed -> broadcast priority update instantly
-      await fetchAndBroadcastActivePriority();
+      const states = await fetchAndBroadcastAllActivePriorities();
       
       // If heat status is now running, boot the 1s ticker
-      if (data.status === 'running') {
+      if (states.some((active) => active && active.status === 'running') || data.status === 'running') {
         startCountdownTicker();
       } else {
         stopCountdownTicker();
@@ -448,7 +497,7 @@ async function runDeltaSyncCycle() {
     }
 
     // 8. Sync active heat pointer
-    await syncTableDelta('active_heat_pointer', activePointerQuery.rows, 'event_id');
+    await syncTableDelta('active_heat_pointer', activePointerQuery.rows, 'event_id,podium_id');
 
     console.log('✅ Delta Sync cycle completed.');
   } catch (err) {
@@ -465,6 +514,8 @@ setInterval(runDeltaSyncCycle, 60000);
 //  LIGHTWEIGHT HTTP SSE SERVER (ZERO EXTERNAL DEPS FOR SSE PROXY)
 // ============================================================================
 const sseServer = http.createServer((req, res) => {
+  const url = new URL(req.url || '/', 'http://localhost');
+
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -476,7 +527,9 @@ const sseServer = http.createServer((req, res) => {
     return;
   }
 
-  if (req.url === '/priority/sse' || req.url === '/events') {
+  if (url.pathname === '/priority/sse' || url.pathname === '/events') {
+    const podiumId = normalizePodiumId(url.searchParams.get('podium'));
+
     // SSE Stream Handshake
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -486,24 +539,27 @@ const sseServer = http.createServer((req, res) => {
     });
 
     const clientId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    sseClients.set(clientId, res);
-    console.log(`🔌 SSE Client connected: ${clientId} (Total: ${sseClients.size})`);
+    sseClients.set(clientId, { res, podiumId });
+    console.log(`🔌 SSE Client connected: ${clientId} podium ${podiumId} (Total: ${sseClients.size})`);
 
     // Write initial state immediately
+    const currentPriorityState = currentPriorityStateByPodium.get(podiumId);
     if (currentPriorityState) {
       res.write(`data: ${JSON.stringify({
         event: 'priority_update',
+        podium: podiumId,
         timestamp: new Date().toISOString(),
         data: currentPriorityState
       })}\n\n`);
     } else {
       res.write(`data: ${JSON.stringify({
         event: 'connected',
+        podium: podiumId,
         timestamp: new Date().toISOString(),
         message: 'Successfully connected to Surf Judging SSE Stream.'
       })}\n\n`);
       // Attempt fetch right away
-      fetchAndBroadcastActivePriority();
+      fetchAndBroadcastActivePriority(podiumId);
     }
 
     // If active running heat, boot countdown loop
@@ -513,20 +569,23 @@ const sseServer = http.createServer((req, res) => {
 
     req.on('close', () => {
       sseClients.delete(clientId);
-      console.log(`🔌 SSE Client disconnected: ${clientId} (Total: ${sseClients.size})`);
+      console.log(`🔌 SSE Client disconnected: ${clientId} podium ${podiumId} (Total: ${sseClients.size})`);
       if (sseClients.size === 0) {
         stopCountdownTicker();
       }
     });
   } else {
     // Basic diagnostic JSON endpoint
+    const activeByPodium = Object.fromEntries(currentPriorityStateByPodium.entries());
+    const defaultState = currentPriorityStateByPodium.get('A');
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'online',
       daemon: 'surfjudging-sync-daemon v3.0',
       connectedClients: sseClients.size,
-      activeHeatId: currentPriorityState ? currentPriorityState.heat_id : null,
-      activeHeatStatus: currentPriorityState ? currentPriorityState.status : null,
+      activeHeatId: defaultState ? defaultState.heat_id : null,
+      activeHeatStatus: defaultState ? defaultState.status : null,
+      activeByPodium,
       timestamp: new Date().toISOString(),
     }));
   }
@@ -546,7 +605,7 @@ async function bootstrap() {
   await startPgListener();
 
   // Load initial active state
-  await fetchAndBroadcastActivePriority();
+  await fetchAndBroadcastAllActivePriorities();
 
   // Run initial comprehensive delta sync on startup
   console.log('🔄 Running initial Delta Sync on startup...');

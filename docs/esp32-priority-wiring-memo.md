@@ -11,6 +11,55 @@ Le coffret est divisé en trois zones distinctes :
 2. **Logique (Signal) :** Régulateur de tension DC-DC Step-Down (24V ──► 5.0V), ESP32-WROOM-DA et plaque prototype buffer.
 3. **MOSFET (Commutation) :** 4 cartes MOSFET 4 canaux (repérées de 1 à 4) qui convertissent les signaux logiques 5V en signaux de puissance 24V PWM pour les LED COB.
 
+### Version firmware validée
+
+Le firmware validé pour ce câblage est `infra/esp32-priority/esp32-priority.ino` en **v2.1**.
+
+Corrections validées en v2.1 :
+- Le client SSE LAN utilise maintenant le port déclaré dans `SUPABASE_URL_LOCAL` (`http://192.168.1.2:8000`) au lieu de forcer le port 80. C'est indispensable pour écouter `/priority/sse` sur la box HP locale.
+- Le clignotement des 30 dernières secondes restaure immédiatement les couleurs normales en sortie de phase OFF.
+- L'état logiciel est synchronisé avec le blanc doux affiché après l'animation de démarrage, ce qui évite un premier fondu depuis un état noir fictif.
+- Le jaune lycra est calibré à `R=255, G=180, B=0, W=0`.
+- Le boîtier peut être attaché à un podium via `PODIUM_ID`. Pour deux podiums, flasher un boîtier avec `PODIUM_ID = "A"` et l'autre avec `PODIUM_ID = "B"`.
+- En LAN HP, le firmware écoute `/priority/sse?podium=A/B`. En cloud, il appelle `get_active_priority?p_podium_id=A/B`.
+
+### Configuration podium
+
+Dans `infra/esp32-priority/esp32-priority.ino`, modifier avant compilation :
+
+```cpp
+const char* PODIUM_ID = "A";
+```
+
+Valeurs prévues pour la V1 terrain :
+- `A` pour le podium principal;
+- `B` pour le second podium.
+
+La page debug `http://priority.local` affiche le podium configuré pour confirmer le bon flash.
+
+### Prérequis compilation Arduino
+
+Installer la bibliothèque **ArduinoJson** par **Benoit Blanchon**, en version **7.x** recommandée. Le firmware utilise `#include <ArduinoJson.h>` et `JsonDocument doc;`.
+
+Dans Arduino IDE local :
+1. Ouvrir **Sketch > Include Library > Manage Libraries...**
+2. Chercher `ArduinoJson`
+3. Installer **ArduinoJson by Benoit Blanchon**
+
+Dans Arduino Cloud :
+1. Ouvrir le sketch `_Prioritycode`
+2. Aller dans l'onglet **Libraries**
+3. Chercher et ajouter **ArduinoJson**
+
+### Compilation et flash validés
+
+Compilation/flash Arduino Cloud validés pour la v2.1 sur ESP32-D0WD-V3 :
+- Programme : `1 180 607` octets, soit **90%** de `1 310 720` octets.
+- RAM globale : `52 332` octets, soit **15%**, avec `275 348` octets libres pour les variables locales.
+- Upload série validé sur `/dev/cu.usbserial-0001`, écriture vérifiée par hash, puis reset via RTS.
+
+Cette taille est acceptable, mais proche de la limite. Si de nouvelles fonctions sont ajoutées au firmware, surveiller la taille du croquis avant flash.
+
 ---
 
 ## 2. Plaque Buffer (`SN74AHCT125N`) — Niveau Logique 3.3V ──► 5.0V

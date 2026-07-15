@@ -19,6 +19,7 @@ import type { AppConfig } from '../types';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { PendingJudgeAssignmentPoller } from '../components/PendingJudgeAssignmentPoller';
+import { getPodiumIdFromSearch } from '../utils/podium';
 
 export default function JudgePage() {
     const { currentJudge, login } = useAuthStore();
@@ -62,6 +63,7 @@ export default function JudgePage() {
     const rawPosition = searchParams.get('position');
     const positionFromUrl = rawPosition ? rawPosition.trim() : null; // Kiosk mode
     const eventIdFromUrl = searchParams.get('eventId');
+    const podiumId = getPodiumIdFromSearch(window.location.search);
 
     const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
         const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
@@ -139,7 +141,7 @@ export default function JudgePage() {
 
             console.log('📥 JudgePage: Loading config from DB for eventId:', numericId);
             setActiveEventId(numericId);
-            loadConfigFromDb(numericId, { includeCategories: false }).finally(() => setConfigLoading(false));
+            loadConfigFromDb(numericId, { includeCategories: false, podiumId }).finally(() => setConfigLoading(false));
             return;
         }
 
@@ -150,13 +152,14 @@ export default function JudgePage() {
         }
 
         setConfigLoading(false);
-    }, [eventIdFromUrl, positionFromUrl, loadConfigFromDb, loadKioskConfig, setActiveEventId]);
+    }, [eventIdFromUrl, positionFromUrl, loadConfigFromDb, loadKioskConfig, setActiveEventId, podiumId]);
 
     // Realtime sync for admin config saves (division/round/heat changes).
     // Kiosk tablets must listen here too: event_last_config is the authoritative
     // "chef juge selected this heat" signal when active_heat_pointer is delayed/stale.
     useEffect(() => {
         if (!isSupabaseConfigured() || configLoading) return;
+        if (podiumId !== 'A') return;
 
         const numericEventId = eventIdFromUrl ? parseInt(eventIdFromUrl, 10) : NaN;
         const targetEventId = !Number.isNaN(numericEventId) ? numericEventId : activeEventId;
@@ -190,7 +193,7 @@ export default function JudgePage() {
                 });
             }
         }, { initialRefresh: false });
-    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, loadConfigFromDb, configSaved]);
+    }, [eventIdFromUrl, activeEventId, configLoading, setConfig, loadConfigFromDb, configSaved, podiumId]);
 
     useEffect(() => {
         if (!isSupabaseConfigured() || configLoading) {
@@ -307,7 +310,7 @@ export default function JudgePage() {
                 }));
 
                 if (targetEventId) {
-                    void loadConfigFromDb(targetEventId, { force: true, includeCategories: false });
+                    void loadConfigFromDb(targetEventId, { force: true, includeCategories: false, podiumId });
                 } else if (positionFromUrl) {
                     void loadKioskConfig();
                 }
@@ -316,8 +319,8 @@ export default function JudgePage() {
 
         return subscribeToActiveHeatPointer(targetEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
-        }, { initialRefresh: true, fallbackPolling: !positionFromUrl || isLocalSupabaseMode() });
-    }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl, loadConfigFromDb]);
+        }, { initialRefresh: true, fallbackPolling: !positionFromUrl || isLocalSupabaseMode(), podiumId });
+    }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl, loadConfigFromDb, podiumId]);
 
     // Purge local scores only when heat changes.
     // Do NOT purge on generic config reload, otherwise unsynced tablet scores can disappear.

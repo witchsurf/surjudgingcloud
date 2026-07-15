@@ -11,7 +11,7 @@ import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/h
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, upsertActiveHeatPointer, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
@@ -19,6 +19,7 @@ import { TimerAudio } from '../utils/audioUtils';
 import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 import { getScoresByHeatIDB } from '../lib/idbStorage';
+import { DEFAULT_PODIUM_ID, normalizePodiumId } from '../utils/podium';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 const LINEUP_OVERRIDE_COLORS = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const;
@@ -163,6 +164,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [overrideStatus, setOverrideStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [overridePending, setOverridePending] = useState(false);
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
+  const [selectedPodiumId, setSelectedPodiumId] = useState(DEFAULT_PODIUM_ID);
+  const [podiumAssignStatus, setPodiumAssignStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [eventDivisionOptions, setEventDivisionOptions] = useState<string[]>([]);
   const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number; status?: string }>>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
@@ -1507,6 +1510,24 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return url;
   }, [kioskBaseUrl]);
 
+  const buildPodiumAccessUrl = React.useCallback((pathname: string, extraParams?: Record<string, string | number | null | undefined>) => {
+    const url = buildAccessUrl(pathname);
+    if (!url) return '';
+
+    if (activeEventId) {
+      url.searchParams.set('eventId', activeEventId.toString());
+    }
+
+    url.searchParams.set('podium', normalizePodiumId(selectedPodiumId));
+
+    Object.entries(extraParams || {}).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === '') return;
+      url.searchParams.set(key, String(value));
+    });
+
+    return url.toString();
+  }, [activeEventId, buildAccessUrl, selectedPodiumId]);
+
   const publicDisplayUrl = React.useMemo(() => {
     const url = buildAccessUrl('/display');
     if (!url) return '';
@@ -1514,12 +1535,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     // Use eventId if available (Preferred for cross-device sync)
     if (activeEventId) {
       url.searchParams.set('eventId', activeEventId.toString());
+      url.searchParams.set('podium', normalizePodiumId(selectedPodiumId));
     } else if (encodedDisplayPayload) {
       // Fallback to config payload (Legacy/Offline)
       url.searchParams.set('config', encodedDisplayPayload);
+      url.searchParams.set('podium', normalizePodiumId(selectedPodiumId));
     }
     return url.toString();
-  }, [activeEventId, buildAccessUrl, encodedDisplayPayload]);
+  }, [activeEventId, buildAccessUrl, encodedDisplayPayload, selectedPodiumId]);
 
   const kioskEventId = React.useMemo(() => {
     if (typeof window === 'undefined') return null;
@@ -1535,22 +1558,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   );
 
   const sharedJudgeAccessUrl = React.useMemo(() => {
-    if (!kioskBaseUrl) return '';
-    return kioskEventId
-      ? `${kioskBaseUrl}/judge?eventId=${kioskEventId}`
-      : `${kioskBaseUrl}/judge`;
-  }, [kioskBaseUrl, kioskEventId]);
+    const url = buildAccessUrl('/judge');
+    if (!url) return '';
+    if (kioskEventId) {
+      url.searchParams.set('eventId', kioskEventId.toString());
+    }
+    url.searchParams.set('podium', normalizePodiumId(selectedPodiumId));
+    return url.toString();
+  }, [buildAccessUrl, kioskEventId, selectedPodiumId]);
 
   const priorityJudgeUrl = React.useMemo(() => {
-    const url = buildAccessUrl('/priority');
-    if (!url) return '';
-
-    if (activeEventId) {
-      url.searchParams.set('eventId', activeEventId.toString());
-    }
-
-    return url.toString();
-  }, [activeEventId, buildAccessUrl]);
+    return buildPodiumAccessUrl('/priority');
+  }, [buildPodiumAccessUrl]);
 
   const handleOpenDisplay = () => {
     if (!publicDisplayUrl) return;
@@ -1623,6 +1642,44 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       window.setTimeout(() => setPriorityLinkCopied(false), 2000);
     } catch (error) {
       console.warn('Impossible de copier le lien priorité:', error);
+    }
+  };
+
+  const handleAssignCurrentHeatToPodium = async () => {
+    const podiumId = normalizePodiumId(selectedPodiumId);
+    setPodiumAssignStatus(null);
+
+    if (!isSupabaseConfigured() || !supabase) {
+      setPodiumAssignStatus({ type: 'error', message: 'Supabase indisponible: impossible d’affecter le podium.' });
+      return;
+    }
+
+    if (!configSaved && !loadedFromDb) {
+      setPodiumAssignStatus({ type: 'error', message: 'Sauvegarde d’abord la configuration du heat.' });
+      return;
+    }
+
+    try {
+      const eventId = await resolveEventIdForCurrentHeat();
+      if (!eventId) {
+        setPodiumAssignStatus({ type: 'error', message: 'Événement introuvable pour ce heat.' });
+        return;
+      }
+
+      await upsertActiveHeatPointer({
+        eventId,
+        eventName: config.competition,
+        podiumId,
+        activeHeatId: heatId,
+      });
+
+      setPodiumAssignStatus({
+        type: 'success',
+        message: `Heat ${config.division} R${config.round}H${config.heatId} affecté au podium ${podiumId}.`,
+      });
+    } catch (error) {
+      console.warn('Impossible d’affecter le heat au podium:', error);
+      setPodiumAssignStatus({ type: 'error', message: 'Affectation podium impossible.' });
     }
   };
 
@@ -4859,6 +4916,55 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
 
           {publicDisplayUrl ? (
             <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-white/5 bg-slate-950/50 p-3">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-300">Podium des accès</p>
+                  <p className="text-[11px] text-slate-500">Les liens générés ci-dessous suivent ce podium.</p>
+                </div>
+                <div className="flex flex-col sm:items-end gap-2">
+                  <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-1">
+                    {['A', 'B'].map((podium) => {
+                      const active = normalizePodiumId(selectedPodiumId) === podium;
+                      return (
+                        <button
+                          key={podium}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPodiumId(podium);
+                            setPodiumAssignStatus(null);
+                          }}
+                          className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-md transition-colors ${
+                            active
+                              ? 'bg-cyan-600 text-white'
+                              : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                          }`}
+                        >
+                          Podium {podium}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAssignCurrentHeatToPodium}
+                    className="px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg bg-emerald-700 text-white hover:bg-emerald-600 transition-colors"
+                  >
+                    Affecter le heat courant
+                  </button>
+                </div>
+              </div>
+              {podiumAssignStatus ? (
+                <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                  podiumAssignStatus.type === 'success'
+                    ? 'border-emerald-800 bg-emerald-950/30 text-emerald-300'
+                    : podiumAssignStatus.type === 'info'
+                      ? 'border-cyan-800 bg-cyan-950/30 text-cyan-300'
+                      : 'border-rose-800 bg-rose-950/30 text-rose-300'
+                }`}>
+                  {podiumAssignStatus.message}
+                </div>
+              ) : null}
+
               {/* 3 Columns Grid for Sharing Cards */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -4991,9 +5097,10 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 <p className="text-xs font-bold text-slate-350 uppercase tracking-wider mb-4">Liens directs pour tablettes individuelles (J1 à J5)</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                   {["J1", "J2", "J3", "J4", "J5"].map(position => {
-                    const kioskUrl = kioskEventId
-                      ? `${kioskBaseUrl}/judge?position=${position}&eventId=${kioskEventId}`
-                      : `${kioskBaseUrl}/judge?position=${position}`;
+                    const kioskUrl = buildPodiumAccessUrl('/judge', {
+                      eventId: kioskEventId,
+                      position,
+                    });
                     return (
                       <div key={position} className="flex flex-col justify-between p-3 bg-slate-900/40 rounded-xl border border-white/5 gap-2 shadow-md">
                         <div className="flex items-center gap-2">

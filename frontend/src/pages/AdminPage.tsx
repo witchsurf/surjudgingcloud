@@ -255,6 +255,7 @@ export default function AdminPage() {
                         await upsertActiveHeatPointer({
                             eventId: targetEventId,
                             eventName: config.competition,
+                            podiumId: 'A',
                             activeHeatId: currentHeatId,
                         });
                     } catch (pointerError) {

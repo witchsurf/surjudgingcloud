@@ -19,6 +19,7 @@ Important:
 
 - Les URLs kiosque `/judge?position=J1`, `/judge?position=J2`, etc. sont pour les juges de notes, pas pour le juge priorite.
 - Le chef juge peut encore voir la priorite depuis `/judge`, mais la tablette dediee recommandee est `/priority`.
+- Evolution multi-podium: voir `docs/plans/multi-podium-v1.md`. La V0 conserve `/priority`; la V1 ajoutera un parametre `podium`, par exemple `/priority?eventId=17&podium=A`.
 
 ## Fonctionnement
 

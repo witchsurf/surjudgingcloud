@@ -17,6 +17,7 @@ import { logger } from '../lib/logger';
 import type { EventConfigSnapshot } from '../repositories';
 import { supabase } from '../lib/supabase';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
+import { getPodiumIdFromSearch, normalizePodiumId } from '../utils/podium';
 
 interface ConfigStore {
     // State
@@ -37,7 +38,7 @@ interface ConfigStore {
 
     // Complex actions
     loadKioskConfig: () => Promise<void>;
-    loadConfigFromDb: (eventId: number, options?: { force?: boolean; includeCategories?: boolean; preferActivePointer?: boolean }) => Promise<void>;
+    loadConfigFromDb: (eventId: number, options?: { force?: boolean; includeCategories?: boolean; preferActivePointer?: boolean; podiumId?: string | null }) => Promise<void>;
     persistConfig: (config: AppConfig) => void;
     resetConfig: () => void;
     initializeFromUrl: () => Promise<void>;
@@ -164,6 +165,7 @@ export const useConfigStore = create<ConfigStore>()(
                 try {
                     const urlParams = new URLSearchParams(window.location.search);
                     const urlEventId = urlParams.get('eventId');
+                    const podiumId = getPodiumIdFromSearch(window.location.search);
                     const persistedEventId = get().activeEventId;
                     const eventIdCandidate = Number.isFinite(Number(urlEventId))
                         ? Number(urlEventId)
@@ -171,17 +173,17 @@ export const useConfigStore = create<ConfigStore>()(
 
                     if (eventIdCandidate) {
                         set({ activeEventId: eventIdCandidate });
-                        await get().loadConfigFromDb(eventIdCandidate);
+                        await get().loadConfigFromDb(eventIdCandidate, { podiumId });
                         return;
                     }
 
-                    const activeHeat = await fetchActiveHeatPointer();
+                    const activeHeat = await fetchActiveHeatPointer(null, undefined, podiumId);
 
                     if (activeHeat) {
                         logger.info('ConfigStore', 'Active heat pointer found', activeHeat);
                         if (activeHeat.event_id) {
                             set({ activeEventId: activeHeat.event_id });
-                            await get().loadConfigFromDb(activeHeat.event_id);
+                            await get().loadConfigFromDb(activeHeat.event_id, { podiumId });
                             return;
                         }
 
@@ -200,7 +202,7 @@ export const useConfigStore = create<ConfigStore>()(
                             }
                             if (eventId) {
                                 set({ activeEventId: eventId });
-                                await get().loadConfigFromDb(eventId);
+                                await get().loadConfigFromDb(eventId, { podiumId });
                                 return;
                             }
 
@@ -228,10 +230,11 @@ export const useConfigStore = create<ConfigStore>()(
             },
 
             // Load config from database
-            loadConfigFromDb: async (eventId: number, options?: { force?: boolean; includeCategories?: boolean; preferActivePointer?: boolean }) => {
+            loadConfigFromDb: async (eventId: number, options?: { force?: boolean; includeCategories?: boolean; preferActivePointer?: boolean; podiumId?: string | null }) => {
                 const force = options?.force === true;
                 const includeCategories = options?.includeCategories !== false;
                 const preferActivePointer = options?.preferActivePointer !== false;
+                const podiumId = normalizePodiumId(options?.podiumId ?? (typeof window !== 'undefined' ? getPodiumIdFromSearch(window.location.search) : null));
                 const lastLoadAt = configLastLoadAt.get(eventId) ?? 0;
                 const state = get();
                 if (
@@ -333,7 +336,7 @@ export const useConfigStore = create<ConfigStore>()(
                         // freshest source; otherwise a stale pointer may pull them back to a previous heat.
                         if (preferActivePointer && snapshot?.event_name) {
                             try {
-                                const activeHeat = await fetchActiveHeatPointer(eventId, snapshot.event_name);
+                                const activeHeat = await fetchActiveHeatPointer(eventId, snapshot.event_name, podiumId);
                                 if (activeHeat) {
                                     const parsed = parseActiveHeatId(activeHeat.active_heat_id);
                                     const snapshotUpdatedAt = snapshot.updated_at ? Date.parse(snapshot.updated_at) : NaN;
@@ -444,6 +447,7 @@ export const useConfigStore = create<ConfigStore>()(
                             await upsertActiveHeatPointer({
                                 eventId: eventId,
                                 eventName: config.competition,
+                                podiumId: 'A',
                                 activeHeatId: heatId,
                             });
                             logger.info('ConfigStore', 'active_heat_pointer updated', { heatId });

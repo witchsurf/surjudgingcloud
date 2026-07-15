@@ -23,6 +23,7 @@ export type EventConfigRealtimeRow = {
 export type ActiveHeatPointerRealtimeRow = {
   event_id?: number | null;
   event_name?: string;
+  podium_id?: string | null;
   active_heat_id?: string;
 };
 
@@ -238,12 +239,14 @@ export const subscribeToActiveHeatPointer = (
   eventId: number | null | undefined,
   eventName: string | undefined,
   listener: Listener<ActiveHeatPointerRealtimeRow>,
-  options?: { initialRefresh?: boolean; fallbackPolling?: boolean }
+  options?: { initialRefresh?: boolean; fallbackPolling?: boolean; podiumId?: string | null }
 ) => {
   const normalizedEventName = (eventName || '').trim();
+  const podiumId = (options?.podiumId || 'A').trim().toUpperCase() || 'A';
   const eventNameKey = normalizeEventRealtimeKey(normalizedEventName);
   const eventIdKey = Number.isFinite(Number(eventId)) && Number(eventId) > 0 ? Number(eventId) : null;
-  const key = eventIdKey ?? (eventNameKey || 'global');
+  const baseKey = eventIdKey ?? (eventNameKey || 'global');
+  const key = `${baseKey}:podium:${podiumId}`;
   const allowPollingFallback = options?.fallbackPolling !== false;
   const realtimeFilter = canUseRealtimeEqualityFilter(normalizedEventName)
       ? `event_name=eq.${normalizedEventName}`
@@ -265,14 +268,16 @@ export const subscribeToActiveHeatPointer = (
 
   const matchesEvent = (row: ActiveHeatPointerRealtimeRow | null): row is ActiveHeatPointerRealtimeRow => {
     if (!row?.active_heat_id) return false;
-    if (!key || key === 'global') return true;
+    const rowPodiumId = (row.podium_id || 'A').trim().toUpperCase() || 'A';
+    if (rowPodiumId !== podiumId) return false;
+    if (!baseKey || baseKey === 'global') return true;
     if (eventNameKey) return normalizeEventRealtimeKey(row.event_name) === eventNameKey;
-    return eventIdKey ? Number(row.event_id) === eventIdKey : normalizeEventRealtimeKey(row.event_name) === key;
+    return eventIdKey ? Number(row.event_id) === eventIdKey : normalizeEventRealtimeKey(row.event_name) === baseKey;
   };
 
   const refresh = async () => {
     try {
-      const row = await fetchActiveHeatPointer(eventIdKey, normalizedEventName || undefined);
+      const row = await fetchActiveHeatPointer(eventIdKey, normalizedEventName || undefined, podiumId);
       if (!matchesEvent(row)) return;
       emitToListeners(state, row);
     } catch (error) {
