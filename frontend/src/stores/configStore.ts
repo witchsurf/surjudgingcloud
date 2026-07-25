@@ -17,7 +17,7 @@ import { logger } from '../lib/logger';
 import type { EventConfigSnapshot } from '../repositories';
 import { supabase } from '../lib/supabase';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
-import { getPodiumIdFromSearch, normalizePodiumId } from '../utils/podium';
+import { getPodiumIdFromSearch, normalizePodiumId, shouldPreferActivePointer } from '../utils/podium';
 
 interface ConfigStore {
     // State
@@ -45,8 +45,8 @@ interface ConfigStore {
     saveConfigToDb: (eventId: number, config: AppConfig) => Promise<void>;
 }
 
-const configLoadInFlight = new Map<number, Promise<void>>();
-const configLastLoadAt = new Map<number, number>();
+const configLoadInFlight = new Map<string, Promise<void>>();
+const configLastLoadAt = new Map<string, number>();
 const CONFIG_LOAD_DEDUPE_MS = 12000;
 
 const areConfigsEquivalent = (left: AppConfig, right: AppConfig): boolean => {
@@ -235,7 +235,8 @@ export const useConfigStore = create<ConfigStore>()(
                 const includeCategories = options?.includeCategories !== false;
                 const preferActivePointer = options?.preferActivePointer !== false;
                 const podiumId = normalizePodiumId(options?.podiumId ?? (typeof window !== 'undefined' ? getPodiumIdFromSearch(window.location.search) : null));
-                const lastLoadAt = configLastLoadAt.get(eventId) ?? 0;
+                const loadKey = `${eventId}:${podiumId}`;
+                const lastLoadAt = configLastLoadAt.get(loadKey) ?? 0;
                 const state = get();
                 if (
                     !force &&
@@ -248,7 +249,7 @@ export const useConfigStore = create<ConfigStore>()(
                     return;
                 }
 
-                const existingLoad = configLoadInFlight.get(eventId);
+                const existingLoad = configLoadInFlight.get(loadKey);
                 if (existingLoad) {
                     logger.debug('ConfigStore', 'Reusing in-flight config load', { eventId });
                     return existingLoad;
@@ -260,6 +261,61 @@ export const useConfigStore = create<ConfigStore>()(
                     try {
                         // Use EventRepository instead of supabaseClient
                         let snapshot = await eventRepository.fetchEventConfigSnapshot(eventId);
+
+                        // event_last_config is global legacy state owned by podium A.
+                        // Resolve an explicit podium pointer before enriching the heat,
+                        // otherwise podium B can inherit A's lineup after a reload.
+                        if (preferActivePointer && snapshot?.event_name) {
+                            try {
+                                const activeHeat = await fetchActiveHeatPointer(eventId, snapshot.event_name, podiumId);
+                                if (!activeHeat && podiumId !== 'A') {
+                                    logger.warn('ConfigStore', 'No active heat assigned to requested podium', {
+                                        eventId,
+                                        podiumId,
+                                    });
+                                    set({
+                                        config: INITIAL_CONFIG,
+                                        configSaved: false,
+                                        loadedFromDb: false,
+                                    });
+                                    return;
+                                }
+
+                                if (activeHeat) {
+                                    const parsed = parseActiveHeatId(activeHeat.active_heat_id);
+                                    const pointerWins = shouldPreferActivePointer(
+                                        podiumId,
+                                        snapshot.updated_at,
+                                        activeHeat.updated_at,
+                                    );
+                                    if (parsed && pointerWins) {
+                                        logger.info('ConfigStore', 'Active heat pointer selected for podium', {
+                                            podiumId,
+                                            snapshot: { division: snapshot.division, round: snapshot.round, heat: snapshot.heat_number },
+                                            active: { division: parsed.division, round: parsed.round, heat: parsed.heatNumber },
+                                        });
+                                        snapshot = {
+                                            ...snapshot,
+                                            event_name: resolveEventDisplayName(snapshot.eventDetails?.name, snapshot.event_name),
+                                            division: parsed.division,
+                                            round: parsed.round,
+                                            heat_number: parsed.heatNumber,
+                                            updated_at: activeHeat.updated_at,
+                                        };
+                                    }
+                                }
+                            } catch (err) {
+                                logger.warn('ConfigStore', 'Unable to resolve active_heat_pointer', err);
+                                if (podiumId !== 'A') {
+                                    set({
+                                        config: INITIAL_CONFIG,
+                                        configSaved: false,
+                                        loadedFromDb: false,
+                                    });
+                                    return;
+                                }
+                            }
+                        }
 
                         // Fallback: enrich snapshot with lineup names if missing
                         if (snapshot) {
@@ -331,38 +387,6 @@ export const useConfigStore = create<ConfigStore>()(
                             }
                         }
 
-                        // If active_heat_pointer is newer/different, prefer it for the active heat.
-                        // Kiosk tablets can opt out when an event_last_config realtime payload is the
-                        // freshest source; otherwise a stale pointer may pull them back to a previous heat.
-                        if (preferActivePointer && snapshot?.event_name) {
-                            try {
-                                const activeHeat = await fetchActiveHeatPointer(eventId, snapshot.event_name, podiumId);
-                                if (activeHeat) {
-                                    const parsed = parseActiveHeatId(activeHeat.active_heat_id);
-                                    const snapshotUpdatedAt = snapshot.updated_at ? Date.parse(snapshot.updated_at) : NaN;
-                                    const pointerUpdatedAt = activeHeat.updated_at ? Date.parse(activeHeat.updated_at) : NaN;
-                                    const pointerIsNewer = Number.isFinite(pointerUpdatedAt)
-                                        && (!Number.isFinite(snapshotUpdatedAt) || pointerUpdatedAt >= snapshotUpdatedAt);
-                                    if (parsed && pointerIsNewer && (parsed.round !== snapshot.round || parsed.heatNumber !== snapshot.heat_number || parsed.division !== snapshot.division)) {
-                                        logger.info('ConfigStore', 'Active heat pointer overrides snapshot', {
-                                            snapshot: { division: snapshot.division, round: snapshot.round, heat: snapshot.heat_number },
-                                            active: { division: parsed.division, round: parsed.round, heat: parsed.heatNumber }
-                                        });
-                                        snapshot = {
-                                            ...snapshot,
-                                            event_name: resolveEventDisplayName(snapshot.eventDetails?.name, snapshot.event_name),
-                                            division: parsed.division,
-                                            round: parsed.round,
-                                            heat_number: parsed.heatNumber,
-                                            updated_at: activeHeat.updated_at
-                                        };
-                                    }
-                                }
-                            } catch (err) {
-                                logger.warn('ConfigStore', 'Unable to align snapshot with active_heat_pointer', err);
-                            }
-                        }
-
                         if (includeCategories) {
                             // Populate available divisions from heats (used by Admin dropdown)
                             try {
@@ -387,7 +411,7 @@ export const useConfigStore = create<ConfigStore>()(
                                 loadedFromDb: true,
                                 configSaved: true
                             });
-                            configLastLoadAt.set(eventId, Date.now());
+                            configLastLoadAt.set(loadKey, Date.now());
                             // Note: Zustand persist middleware automatically saves to localStorage
                         } else {
                             logger.warn('ConfigStore', 'No snapshot found');
@@ -398,10 +422,10 @@ export const useConfigStore = create<ConfigStore>()(
                         set({ loadedFromDb: false });
                     }
                 })().finally(() => {
-                    configLoadInFlight.delete(eventId);
+                    configLoadInFlight.delete(loadKey);
                 });
 
-                configLoadInFlight.set(eventId, loadPromise);
+                configLoadInFlight.set(loadKey, loadPromise);
                 return loadPromise;
             },
 

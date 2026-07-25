@@ -1,7 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ObsOverlay from '../components/ObsOverlay';
+import {
+  fetchActiveHeatPointer,
+  fetchHeatEntriesWithParticipants,
+  fetchHeatMetadata,
+  isSupabaseConfigured,
+  parseActiveHeatId,
+} from '../api/supabaseClient';
+import { subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
+import { ensureHeatId } from '../utils/heat';
+import { getPodiumIdFromSearch } from '../utils/podium';
 import type { AppConfig, HeatTimer, Score } from '../types';
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -26,6 +38,26 @@ const DEFAULT_TIMER: HeatTimer = {
   isRunning: false,
   startTime: null,
   duration: DEFAULT_TIMER_DURATION,
+};
+
+type OverlayHeatStatus = 'waiting' | 'running' | 'paused' | 'finished';
+
+const normalizeJersey = (value: string | null | undefined): string => {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  if (normalized === 'RED') return 'ROUGE';
+  if (normalized === 'WHITE') return 'BLANC';
+  if (normalized === 'YELLOW') return 'JAUNE';
+  if (normalized === 'BLUE') return 'BLEU';
+  if (normalized === 'GREEN') return 'VERT';
+  return normalized;
+};
+
+const normalizeHeatStatus = (status: unknown): OverlayHeatStatus => {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (normalized === 'running') return 'running';
+  if (normalized === 'paused') return 'paused';
+  if (normalized === 'finished' || normalized === 'closed') return 'finished';
+  return 'waiting';
 };
 
 function normaliseConfigData(data: Partial<AppConfig>): AppConfig {
@@ -116,12 +148,60 @@ function readStoredScores(): Score[] {
 
 export default function OverlayPage() {
   const [searchParams] = useSearchParams();
+  const { subscribeToHeat } = useRealtimeSync();
+  const { loadScoresFromDatabase } = useSupabaseSync();
   const [config, setConfig] = useState<AppConfig>(() => readStoredConfig());
   const [timer, setTimer] = useState<HeatTimer>(() => readStoredTimer());
   const [scores, setScores] = useState<Score[]>(() => readStoredScores());
-  const [heatStatus, setHeatStatus] = useState<'waiting' | 'running' | 'paused' | 'finished'>(
-    'waiting'
-  );
+  const [heatStatus, setHeatStatus] = useState<OverlayHeatStatus>('waiting');
+  const [activeHeatId, setActiveHeatId] = useState('');
+
+  const podiumId = getPodiumIdFromSearch(searchParams.toString());
+
+  const applyActiveHeat = useCallback(async (heatIdInput: string) => {
+    const heatId = ensureHeatId(heatIdInput);
+    if (!heatId || !isSupabaseConfigured()) return;
+
+    const [metadata, entries, fetchedScores] = await Promise.all([
+      fetchHeatMetadata(heatId),
+      fetchHeatEntriesWithParticipants(heatId),
+      loadScoresFromDatabase(heatId),
+    ]);
+
+    const parsed = parseActiveHeatId(heatId);
+    const surferNames: Record<string, string> = {};
+    const surferCountries: Record<string, string> = {};
+    const entryColors = entries
+      .map((entry) => normalizeJersey(entry.color))
+      .filter(Boolean);
+    const orderedColors = Array.isArray(metadata?.color_order)
+      ? metadata.color_order.map((color) => normalizeJersey(color)).filter(Boolean)
+      : [];
+    const surfers = orderedColors.length > 0 ? orderedColors : entryColors;
+
+    entries.forEach((entry) => {
+      const color = normalizeJersey(entry.color);
+      if (!color) return;
+      if (entry.participant?.name) surferNames[color] = entry.participant.name;
+      if (entry.participant?.country) surferCountries[color] = entry.participant.country;
+    });
+
+    const nextConfig = normaliseConfigData({
+      competition: metadata?.competition || parsed?.competition || '',
+      division: metadata?.division || parsed?.division || DEFAULT_CONFIG.division,
+      round: metadata?.round || parsed?.round || DEFAULT_CONFIG.round,
+      heatId: metadata?.heat_number || parsed?.heatNumber || DEFAULT_CONFIG.heatId,
+      surfers: surfers.length > 0 ? surfers : DEFAULT_CONFIG.surfers,
+      surferNames,
+      surferCountries,
+      event_id: metadata?.event_id,
+    });
+
+    setActiveHeatId(heatId);
+    setConfig(nextConfig);
+    setScores(fetchedScores);
+    setHeatStatus(normalizeHeatStatus(metadata?.status));
+  }, [loadScoresFromDatabase]);
 
   useEffect(() => {
     const configParam = searchParams.get('config');
@@ -174,6 +254,60 @@ export default function OverlayPage() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    let cancelled = false;
+
+    const loadActivePointer = async () => {
+      const pointer = await fetchActiveHeatPointer(null, undefined, podiumId);
+      if (cancelled || !pointer?.active_heat_id) return;
+      await applyActiveHeat(pointer.active_heat_id);
+    };
+
+    loadActivePointer().catch((error) => {
+      console.warn('Overlay: impossible de charger le heat actif:', error);
+    });
+
+    const unsubscribe = subscribeToActiveHeatPointer(null, undefined, (row) => {
+      if (!row.active_heat_id) return;
+      applyActiveHeat(row.active_heat_id).catch((error) => {
+        console.warn('Overlay: impossible de changer de heat actif:', error);
+      });
+    }, { initialRefresh: true, fallbackPolling: true, podiumId });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [applyActiveHeat, podiumId]);
+
+  useEffect(() => {
+    if (!activeHeatId || !isSupabaseConfigured()) return;
+
+    return subscribeToHeat(activeHeatId, (nextTimer, nextConfig, status) => {
+      setTimer(nextTimer);
+      setHeatStatus(normalizeHeatStatus(status));
+
+      if (nextConfig) {
+        setConfig((current) => normaliseConfigData({
+          ...current,
+          ...nextConfig,
+          surferNames: {
+            ...(current.surferNames || {}),
+            ...(nextConfig.surferNames || {}),
+          },
+          surferCountries: {
+            ...(current.surferCountries || {}),
+            ...(nextConfig.surferCountries || {}),
+          },
+        }));
+      }
+    });
+  }, [activeHeatId, subscribeToHeat]);
+
+  useEffect(() => {
+    if (activeHeatId) return;
+
     const syncFromLocalStorage = () => {
       setConfig(readStoredConfig());
       setTimer(readStoredTimer());
@@ -215,7 +349,7 @@ export default function OverlayPage() {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('newScoreRealtime', handleRealtimeScore);
     };
-  }, []);
+  }, [activeHeatId]);
 
   return <ObsOverlay config={config} scores={scores} timer={timer} heatStatus={heatStatus} />;
 }

@@ -7,7 +7,7 @@
  *  Port série: /dev/cu.usbserial-1420
  *
  *  v2.0 — Fonctionnalités:
- *    - Polling ultra-rapide 500ms en LAN (5s Cloud)
+ *    - Polling ultra-rapide 500ms en LAN (1s Cloud)
  *    - OTA (mise à jour sans fil via http://priority.local/update)
  *    - mDNS (http://priority.local)
  *    - Clignotement fin de série (30s lent, 10s rapide)
@@ -40,11 +40,15 @@ Preferences prefs;    // Stockage persistant en flash
 // ============================================================================
 //  CONFIGURATION RÉSEAU (À ADAPTER À TON RÉSEAU LAN)
 // ============================================================================
-// NOTE: Les WiFi pré-configurés (DLINK, Maison, Hotspot) sont définis
+// NOTE: Les WiFi pré-configurés (D-Link, Maison, Hotspot) sont définis
 // dans la fonction setup(). Aucun SSID unique requis ici.
 
 // Podium servi par ce boîtier. Flasher un boîtier en "A" et l'autre en "B".
 const char* PODIUM_ID = "A";
+
+// WiFi terrain/plage. Le SSID doit correspondre exactement au nom du routeur.
+const char* BEACH_SSID = "D-Link";
+const char* BEACH_PASS = "";
 
 // ============================================================================
 //  URL & CLÉS SUPABASE (DYNAMIQUE SELON LE RÉSEAU)
@@ -54,26 +58,26 @@ const char* PODIUM_ID = "A";
 const char* SUPABASE_URL_CLOUD  = "https://xwaymumbkmwxqifihuvn.supabase.co";
 const char* SUPABASE_KEY_CLOUD  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3YXltdW1ia213eHFpZmlodXZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNzY4NzAsImV4cCI6MjA3Nzg1Mjg3MH0.oeFEvXtKxVr006_Y6Sx2-vWYIfmsRKQ-nP9M-awBMU4";
 
-// 2. PLAGE / LAN (via HP Box sur routeur DLINK)
+// 2. PLAGE / LAN (via HP Box sur routeur D-Link)
 const char* SUPABASE_URL_LOCAL  = "http://192.168.1.2:8000";
 const char* SUPABASE_KEY_LOCAL  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjIwODY3NjA0MDV9.R7dF61lzIX8Zj2AQxZVQ2cltHnjQX0t-I1QckuSNLyA";
 
 // Résolution dynamique selon le réseau connecté
 String getSupabaseUrl() {
-    if (WiFi.SSID() == "DLINK") return SUPABASE_URL_LOCAL;
+    if (WiFi.SSID() == BEACH_SSID) return SUPABASE_URL_LOCAL;
     return SUPABASE_URL_CLOUD;
 }
 
 String getSupabaseKey() {
-    if (WiFi.SSID() == "DLINK") return SUPABASE_KEY_LOCAL;
+    if (WiFi.SSID() == BEACH_SSID) return SUPABASE_KEY_LOCAL;
     return SUPABASE_KEY_CLOUD;
 }
 
 // Intervalle de polling dynamique
-// LAN (DLINK) = 500ms pour réactivité max, Cloud (HTTPS) = 5s pour la RAM
+// LAN (D-Link) = 500ms pour réactivité max, Cloud/Hotspot = 1s pour horn réactif
 unsigned long getPollInterval() {
-    if (WiFi.SSID() == "DLINK") return 500;
-    return 5000;
+    if (WiFi.SSID() == BEACH_SSID) return 500;
+    return 1000;
 }
 
 String getPodiumId() {
@@ -88,6 +92,8 @@ String getPodiumId() {
 // ============================================================================
 
 const int HORN_PIN = 5;                     // GPIO 5 → IN du module relais
+const int HORN_RELAY_ON  = LOW;             // Module relais bleu actif à LOW
+const int HORN_RELAY_OFF = HIGH;            // HIGH = relais au repos
 const unsigned long HORN_START_MS = 3000;    // Durée horn début de série (3s)
 const unsigned long HORN_END_MS   = 5000;    // Durée horn fin de série (5s)
 
@@ -119,7 +125,8 @@ CobModule modules[4] = {
     { .pinR = 23, .pinG = 25, .pinB = 26, .pinW = 27 },
 
     // Module 2: Position P3 — Carte MOSFET #3
-    { .pinR = 32, .pinG = 33, .pinB = 16, .pinW = 17 }, // B=RX2, W=TX2
+    //   Canal G déplacé de GPIO 33 vers D2 / GPIO 2
+    { .pinR = 32, .pinG =  2, .pinB = 16, .pinW = 17 }, // B=RX2, W=TX2
 
     // Module 3: Position P4 — Carte MOSFET #4
     //   GPIO 5 réservé au horn, donc canal G déplacé sur GPIO 15
@@ -204,6 +211,9 @@ bool endBlinkWasActive = false;
 
 // Prototypes de fonctions (requis pour éviter les erreurs de scope C++ avec arguments par défaut)
 void connectWiFi(bool blocking = false);
+bool isBeachWiFiVisible();
+bool connectBeachWiFi(unsigned long timeoutMs = 8000);
+void pollPriorityState();
 void applyPriorityStateFromRow(JsonObject row);
 void clearActivePriority();
 void runSSEClient();
@@ -300,11 +310,11 @@ void setup() {
     // Configurer la liste des réseaux WiFi pré-configurés
     // wifiMulti se connectera automatiquement au meilleur réseau disponible.
     
-    // 1. Mode Plage (DLINK) — Note: Mettre le mot de passe s'il y en a un
-    wifiMulti.addAP("DLINK", ""); 
+    // 1. Mode Plage (D-Link) — Note: Mettre le mot de passe s'il y en a un
+    wifiMulti.addAP(BEACH_SSID, BEACH_PASS);
     
     // 2. Réseau Maison (ext-LARAISE Fam)
-    wifiMulti.addAP("ext-LARAISE FAM 2.4ghz", "mekouLar");
+    wifiMulti.addAP("ext-LARAISE FAM 2.4ghZ", "mekouLar");
     
     // 3. Réseau Maison (Variante sans "FAM")
     wifiMulti.addAP("ext-LARAISE 2.4ghz", "mekouLar");
@@ -334,7 +344,7 @@ void setup() {
 
     // Initialiser le horn
     pinMode(HORN_PIN, OUTPUT);
-    digitalWrite(HORN_PIN, LOW);  // Horn éteint au démarrage
+    digitalWrite(HORN_PIN, HORN_RELAY_OFF);  // Horn éteint au démarrage
     Serial.printf("  Horn : GPIO %d (relais)\n", HORN_PIN);
 
     Serial.println();
@@ -366,17 +376,14 @@ void setup() {
 // ============================================================================
 
 void pollingTask(void *parameter) {
-    Serial.println("📡 Polling/SSE démarré sur Core 0");
+    Serial.println("📡 Polling démarré sur Core 0");
     for (;;) {
         if (WiFi.status() == WL_CONNECTED) {
-            if (WiFi.SSID() == "DLINK") {
-                // Sur le LAN de la plage, utiliser le streaming SSE haute-vitesse
-                runSSEClient();
-            } else {
-                // Sur le Cloud (ou autre réseau), utiliser le polling HTTP classique
-                pollPriorityState();
-                vTaskDelay(pdMS_TO_TICKS(getPollInterval()));
-            }
+            // Lecture directe de l'état actif.
+            // En LAN D-Link, l'API locale répond vite et donne un snapshot immédiat;
+            // cela évite de rester en veille si le flux SSE ne pousse pas d'événement initial.
+            pollPriorityState();
+            vTaskDelay(pdMS_TO_TICKS(getPollInterval()));
         } else {
             vTaskDelay(pdMS_TO_TICKS(2000));
         }
@@ -407,6 +414,16 @@ void loop() {
     if (!wifiConnected) {
         wifiConnected = true;
         Serial.printf("✅ WiFi connecté ! IP: %s\n", WiFi.localIP().toString().c_str());
+    }
+
+    // En mode terrain, D-Link doit toujours être prioritaire sur les réseaux maison/hotspot.
+    // WiFiMulti choisit souvent le meilleur RSSI; ce check force le basculement vers D-Link.
+    static unsigned long lastBeachWifiCheck = 0;
+    if (WiFi.SSID() != BEACH_SSID && (now - lastBeachWifiCheck > 15000)) {
+        lastBeachWifiCheck = now;
+        if (connectBeachWiFi(6000)) {
+            return;
+        }
     }
 
     // ── FONDU ANIMÉ des LEDs (crossfade 200ms) ──
@@ -474,13 +491,13 @@ void loop() {
         hornActive = true;
         hornDurationMs = hornRequestedMs;
         hornStartTime = millis();
-        digitalWrite(HORN_PIN, HIGH);
+        digitalWrite(HORN_PIN, HORN_RELAY_ON);
         Serial.printf(">> HORN ON (%d ms)\n", hornDurationMs);
     }
 
     if (hornActive && (millis() - hornStartTime >= hornDurationMs)) {
         hornActive = false;
-        digitalWrite(HORN_PIN, LOW);
+        digitalWrite(HORN_PIN, HORN_RELAY_OFF);
         Serial.println(">> HORN OFF");
     }
 
@@ -492,17 +509,82 @@ void loop() {
 //  CONNEXION WIFI
 // ============================================================================
 
+bool isBeachWiFiVisible() {
+    int networkCount = WiFi.scanNetworks(false, true);
+    bool found = false;
+
+    for (int i = 0; i < networkCount; i++) {
+        if (WiFi.SSID(i) == BEACH_SSID) {
+            found = true;
+            break;
+        }
+    }
+
+    WiFi.scanDelete();
+    return found;
+}
+
+bool connectBeachWiFi(unsigned long timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.SSID() == BEACH_SSID) {
+        return true;
+    }
+
+    bool wasConnected = (WiFi.status() == WL_CONNECTED);
+
+    if (!isBeachWiFiVisible()) {
+        // Ne jamais couper une connexion maison/hotspot fonctionnelle pour
+        // tenter un réseau terrain qui n'est pas visible.
+        Serial.println("🏖️  D-Link non vu au scan : connexion actuelle conservée.");
+        return false;
+    }
+
+    Serial.println("🏖️  D-Link détecté : bascule en mode plage...");
+    WiFi.disconnect(false);
+    delay(300);
+    WiFi.begin(BEACH_SSID, BEACH_PASS);
+
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) {
+        delay(250);
+        Serial.print(".");
+    }
+
+    if (WiFi.status() == WL_CONNECTED && WiFi.SSID() == BEACH_SSID) {
+        Serial.println();
+        Serial.printf("✅ Connecté à D-Link ! IP locale : %s\n", WiFi.localIP().toString().c_str());
+        wifiConnected = true;
+        return true;
+    }
+
+    if (wasConnected) {
+        Serial.println();
+        Serial.println("⚠️  Connexion D-Link impossible, retour WiFiMulti.");
+        wifiMulti.run();
+        return false;
+    }
+
+    Serial.println("\n⚠️  Connexion D-Link impossible, fallback WiFiMulti.");
+    return false;
+}
+
 void connectWiFi(bool blocking) {
     if (WiFi.status() == WL_CONNECTED) {
+        if (WiFi.SSID() != BEACH_SSID && connectBeachWiFi(6000)) {
+            return;
+        }
         wifiConnected = true;
         return;
     }
 
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
+
+    if (connectBeachWiFi(blocking ? 10000 : 5000)) {
+        return;
+    }
     
     if (blocking) {
-        Serial.println("📡 Recherche des réseaux pré-configurés (DLINK, Maison, AndroidAP)...");
+        Serial.println("📡 Recherche des réseaux pré-configurés (D-Link, Maison, AndroidAP)...");
         int attempts = 0;
         // Mode bloquant : attend le réseau au démarrage
         while (wifiMulti.run() != WL_CONNECTED && attempts < 15) {
@@ -694,15 +776,26 @@ void applyPriorityStateFromRow(JsonObject row) {
     JsonArray order = priorityState["order"];
     int orderSize = 0;
     for (JsonVariant v : order) orderSize++;
+    // Pendant l'ouverture, le premier surfeur parti reçoit P4, puis les
+    // priorités remontent au fur et à mesure que les autres partent :
+    // 1 parti  => P4
+    // 2 partis => P3, P4
+    // 3 partis => P2, P3, P4
+    // Une fois les 4 priorités établies, le frontend passe en mode "ordered"
+    // et l'ordre est alors directement mappé sur P1..P4.
+    int openingStartRank = (mode == "opening")
+        ? max(NUM_MODULES - orderSize + 1, 1)
+        : 1;
 
     for (int m = 0; m < NUM_MODULES; m++) {
         RGBW targetColor;
         String lycra = "";
         int rank;
 
-        if (m < orderSize) {
+        int orderIndex = m - (openingStartRank - 1);
+        if (orderIndex >= 0 && orderIndex < orderSize) {
             rank = m + 1;
-            String rawColor = order[m];
+            String rawColor = order[orderIndex];
             lycra = normalizeColor(rawColor);
             targetColor = lycraToColor(lycra);
         } else {
@@ -1006,7 +1099,7 @@ void setupWebServer() {
         html += "<div><span class='status online'></span> " + WiFi.SSID() + " (" + String(WiFi.RSSI()) + " dBm)</div>";
         html += "<div>IP: " + WiFi.localIP().toString() + " | <a href='http://priority.local' style='color:#4fc3f7'>priority.local</a></div>";
         html += "<div>Podium: " + getPodiumId() + "</div>";
-        html += "<div>Polling: " + String(getPollInterval()) + "ms | Mode: " + (WiFi.SSID() == "DLINK" ? "🏖️ LAN" : "☁️ Cloud") + "</div>";
+        html += "<div>Polling: " + String(getPollInterval()) + "ms | Mode: " + (WiFi.SSID() == BEACH_SSID ? "🏖️ LAN" : "☁️ Cloud") + "</div>";
         html += "</div>";
 
         // Heat + Timer
@@ -1138,7 +1231,7 @@ void setupWebServer() {
             }
         }
         prefs.end();
-        html += "<p style='font-size:12px;color:#888'>+ DLINK, ext-LARAISE, AndroidAP (codés en dur)</p></div>";
+        html += "<p style='font-size:12px;color:#888'>+ D-Link, ext-LARAISE, AndroidAP (codés en dur)</p></div>";
 
         html += "<p><a href='/' style='color:#4fc3f7'>← Retour</a></p>";
         html += "</body></html>";

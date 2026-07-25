@@ -106,7 +106,7 @@ Afin de garantir des signaux de commande robustes (5V) sur de longues distances 
 | | B (Bleu) | **GPIO 26** | Entrée B ($U_2$) | Sortie B ($U_2$) ──► **PWM 3** |
 | | W (Blanc) | **GPIO 27** | Entrée W ($U_2$) | Sortie W ($U_2$) ──► **PWM 4** |
 | **Box 3 (P3)** | R (Rouge) | **GPIO 32** | Entrée R ($U_3$) | Sortie R ($U_3$) ──► **PWM 1** |
-| | G (Vert) | **GPIO 33** | Entrée G ($U_3$) | Sortie G ($U_3$) ──► **PWM 2** |
+| | G (Vert) | **D2 / GPIO 2** | Entrée G ($U_3$) | Sortie G ($U_3$) ──► **PWM 2** |
 | | B (Bleu) | **GPIO 16** | Entrée B ($U_3$) | Sortie B ($U_3$) ──► **PWM 3** |
 | | W (Blanc) | **GPIO 17** | Entrée W ($U_3$) | Sortie W ($U_3$) ──► **PWM 4** |
 | **Box 4 (P4)** | R (Rouge) | **GPIO 4** | Entrée R ($U_4$) | Sortie R ($U_4$) ──► **PWM 1** |
