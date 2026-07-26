@@ -18,6 +18,7 @@ import {
     fetchOrderedHeatSequence,
     upsertActiveHeatPointer
 } from '../api/supabaseClient';
+import { normalizePodiumId } from '../utils/podium';
 import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
 import { supabase } from '../lib/supabase';
 import type { AppConfig } from '../types';
@@ -177,7 +178,8 @@ export default function AdminPage() {
         }
     }, [heatParticipants, setConfig]);
 
-    const handleConfigSaved = useCallback(async (saved: boolean) => {
+    const handleConfigSaved = useCallback(async (saved: boolean, podiumIdInput?: string) => {
+        const podiumId = normalizePodiumId(podiumIdInput);
         setConfigSaved(saved);
 
         if (saved) {
@@ -201,22 +203,26 @@ export default function AdminPage() {
 
             if (canUseSupabaseConnection() && isSupabaseConfigured() && targetEventId) {
                 try {
-                    await updateEventConfiguration(targetEventId, {
-                        config,
-                        divisions: divisionsPayload,
-                        judges: judgesPayload,
-                    });
-                    await saveEventConfigSnapshot({
-                        eventId: targetEventId,
-                        eventName: config.competition,
-                        division: config.division,
-                        round: config.round,
-                        heatNumber: config.heatId,
-                        judges: judgesPayload,
-                        surfers: config.surfers || [],
-                        surferNames: config.surferNames || {},
-                        surferCountries: config.surferCountries || {},
-                    });
+                    // event_last_config and the legacy event-level judge panel belong
+                    // to podium A. Podium B persists only heat-scoped configuration.
+                    if (podiumId === 'A') {
+                        await updateEventConfiguration(targetEventId, {
+                            config,
+                            divisions: divisionsPayload,
+                            judges: judgesPayload,
+                        });
+                        await saveEventConfigSnapshot({
+                            eventId: targetEventId,
+                            eventName: config.competition,
+                            division: config.division,
+                            round: config.round,
+                            heatNumber: config.heatId,
+                            judges: judgesPayload,
+                            surfers: config.surfers || [],
+                            surferNames: config.surferNames || {},
+                            surferCountries: config.surferCountries || {},
+                        });
+                    }
                     setLoadState('loaded');
                     setLoadError(null);
                 } catch (error) {
@@ -247,7 +253,7 @@ export default function AdminPage() {
                 });
 
                 // Sauvegarder la config du heat
-                await saveHeatConfig(currentHeatId, config);
+                await saveHeatConfig(currentHeatId, { ...config, podiumId });
 
                 // Keep tablets/kiosks aligned when admin saves a new target heat/category.
                 if (supabase) {
@@ -255,7 +261,7 @@ export default function AdminPage() {
                         await upsertActiveHeatPointer({
                             eventId: targetEventId,
                             eventName: config.competition,
-                            podiumId: 'A',
+                            podiumId,
                             activeHeatId: currentHeatId,
                         });
                     } catch (pointerError) {

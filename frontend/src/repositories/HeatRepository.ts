@@ -230,7 +230,9 @@ export class HeatRepository extends BaseRepository {
                     if (assignmentError) throw assignmentError;
                 }
                 await this.ensureHeatEntries(normalizedHeatId, config);
-                await this.ensureEventLastConfigSnapshot(normalizedHeatId, config, assignmentPayload);
+                if ((config?.podiumId || 'A').toString().trim().toUpperCase() === 'A') {
+                    await this.ensureEventLastConfigSnapshot(normalizedHeatId, config, assignmentPayload);
+                }
                 logger.info('HeatRepository', 'Heat config saved online', { heatId: normalizedHeatId });
             },
             () => {

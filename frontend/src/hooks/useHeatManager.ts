@@ -22,6 +22,7 @@ import { HEAT_COLOR_CACHE_KEY, DEFAULT_TIMER_DURATION } from '../utils/constants
 import { getNextHeatSyncTarget, resolveEventIdForHeat } from '../utils/heatWorkflow';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 import type { AppConfig } from '../types';
+import { normalizePodiumId } from '../utils/podium';
 
 // Helper to normalize heat entries
 const normalizeHeatEntries = (entries: unknown): any[] => {
@@ -83,6 +84,11 @@ export function useHeatManager() {
     ).normalized;
 
     const closeHeat = useCallback(async () => {
+        const podiumId = normalizePodiumId(
+            typeof window !== 'undefined'
+                ? window.localStorage.getItem('surfJudgingSelectedPodiumId')
+                : 'A'
+        );
         const closedAt = new Date().toISOString();
         let sequence: any[] = [];
         let currentSequenceHeat: any = null;
@@ -640,7 +646,7 @@ export function useHeatManager() {
                 await upsertActiveHeatPointer({
                     eventId: resolvedEventId ?? activeEventId ?? null,
                     eventName: newConfig.competition,
-                    podiumId: 'A',
+                    podiumId,
                     activeHeatId: nextHeatPointer,
                 });
 
@@ -651,7 +657,7 @@ export function useHeatManager() {
         }
 
         // Save config to database for realtime sync to Display/Judge
-        if (resolvedEventId) {
+        if (resolvedEventId && podiumId === 'A') {
             try {
                 await eventRepository.saveEventConfigSnapshot({
                     eventId: Number(resolvedEventId),
@@ -714,6 +720,7 @@ export function useHeatManager() {
                 await saveHeatConfig(nextHeatKey, {
                     ...newConfig,
                     event_id: resolvedEventId ?? activeEventId ?? undefined,
+                    podiumId,
                 });
                 await saveTimerState(nextHeatKey, { isRunning: false, startTime: null, duration: DEFAULT_TIMER_DURATION });
                 await publishConfigUpdate(nextHeatKey, newConfig);

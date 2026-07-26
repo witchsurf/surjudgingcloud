@@ -98,7 +98,7 @@ const fetchHeatContext = (heatId: string, score?: Partial<Score>) => {
 interface AdminInterfaceProps {
   config: AppConfig;
   onConfigChange: (config: AppConfig) => void;
-  onConfigSaved: (saved: boolean) => void;
+  onConfigSaved: (saved: boolean, podiumId?: string) => void;
   configSaved: boolean;
   loadError?: string | null;
   timer: HeatTimerType;
@@ -176,8 +176,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [overrideStatus, setOverrideStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [overridePending, setOverridePending] = useState(false);
   const [divisionOptions, setDivisionOptions] = useState<string[]>([]);
-  const [selectedPodiumId, setSelectedPodiumId] = useState(DEFAULT_PODIUM_ID);
+  const [selectedPodiumId, setSelectedPodiumId] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_PODIUM_ID;
+    const urlPodium = new URLSearchParams(window.location.search).get('podium');
+    const storedPodium = window.localStorage.getItem('surfJudgingSelectedPodiumId');
+    return normalizePodiumId(urlPodium || storedPodium || DEFAULT_PODIUM_ID);
+  });
   const [podiumAssignStatus, setPodiumAssignStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('surfJudgingSelectedPodiumId', normalizePodiumId(selectedPodiumId));
+    } catch {
+      // Local storage can be unavailable in restricted kiosk contexts.
+    }
+  }, [selectedPodiumId]);
   const [eventDivisionOptions, setEventDivisionOptions] = useState<string[]>([]);
   const [divisionHeatSequence, setDivisionHeatSequence] = useState<Array<{ round: number; heat_number: number; status?: string }>>([]);
   const [displayLinkCopied, setDisplayLinkCopied] = useState(false);
@@ -2593,7 +2606,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
     }
 
-    onConfigSaved(true);
+    onConfigSaved(true, normalizePodiumId(selectedPodiumId));
     // Sauvegarder immédiatement dans localStorage
     localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
     localStorage.setItem('surfJudgingConfigSaved', 'true');
