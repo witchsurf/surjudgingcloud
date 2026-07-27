@@ -1437,7 +1437,7 @@ export interface FinalRankingExportPayload {
 
 function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly: boolean) {
   const { eventName, organizer, organizerLogoDataUrl, date, heats, scores, interferenceCalls, participants, divisions } = payload;
-  const doc = new jsPDF({ orientation: finalistsOnly ? 'landscape' : 'portrait', unit: 'pt' });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const MARGIN = 32;
@@ -1502,8 +1502,8 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
   const approxSectionHeaderH = (fontSize: number) => fontSize + 8;
   const totalRows = sections.reduce((sum, s) => sum + s.body.length, 0);
 
-  let fontSize = 8;
-  let cellPadding = 3;
+  let fontSize = finalistsOnly ? 6 : 8;
+  let cellPadding = finalistsOnly ? 1 : 3;
   let useTwoColumns = finalistsOnly;
 
   const estimateOneColumnH = (fs: number, pad: number) =>
@@ -1511,27 +1511,29 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
   const estimateTwoColumnH = (fs: number, pad: number) =>
     Math.ceil(sections.length / 2) * approxSectionHeaderH(fs) + Math.ceil(totalRows / 2) * approxRowHeight(fs, pad);
 
-  // Le document finalistes privilégie deux colonnes sur une page paysage.
-  // Le classement complet conserve son adaptation historique portrait.
-  for (const fs of [9, 8, 7, 6, 5]) {
-    const pad = Math.max(2, Math.min(3, fs - 4));
-    if (!finalistsOnly && estimateOneColumnH(fs, pad) <= availableH) {
-      fontSize = fs;
-      cellPadding = pad;
-      useTwoColumns = false;
-      break;
-    }
-    if (estimateTwoColumnH(fs, pad) <= availableH) {
-      fontSize = fs;
-      cellPadding = pad;
-      useTwoColumns = true;
-      break;
+  // Le classement complet conserve son adaptation historique.
+  // Le PDF finalistes reste volontairement verrouillé en mode compact.
+  if (!finalistsOnly) {
+    for (const fs of [9, 8, 7, 6, 5]) {
+      const pad = Math.max(2, Math.min(3, fs - 4));
+      if (estimateOneColumnH(fs, pad) <= availableH) {
+        fontSize = fs;
+        cellPadding = pad;
+        useTwoColumns = false;
+        break;
+      }
+      if (estimateTwoColumnH(fs, pad) <= availableH) {
+        fontSize = fs;
+        cellPadding = pad;
+        useTwoColumns = true;
+        break;
+      }
     }
   }
 
   // If there is room, scale up for a more airy layout.
   const currentEstimate = useTwoColumns ? estimateTwoColumnH(fontSize, cellPadding) : estimateOneColumnH(fontSize, cellPadding);
-  if (currentEstimate > 0 && currentEstimate < availableH * 0.78) {
+  if (!finalistsOnly && currentEstimate > 0 && currentEstimate < availableH * 0.78) {
     for (const fs of [10, 11]) {
       const pad = fs >= 10 ? 4 : 3;
       const estimate = useTwoColumns ? estimateTwoColumnH(fs, pad) : estimateOneColumnH(fs, pad);
@@ -1543,7 +1545,9 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
   }
 
   const finalEstimate = useTwoColumns ? estimateTwoColumnH(fontSize, cellPadding) : estimateOneColumnH(fontSize, cellPadding);
-  const extraGap = Math.max(0, Math.min(18, ((availableH - finalEstimate) / Math.max(1, sections.length)) * 0.6));
+  const extraGap = finalistsOnly
+    ? 2
+    : Math.max(0, Math.min(18, ((availableH - finalEstimate) / Math.max(1, sections.length)) * 0.6));
 
   const baseColStyles = (colW: number) => ({
     0: { halign: 'center' as const, cellWidth: 28 },
