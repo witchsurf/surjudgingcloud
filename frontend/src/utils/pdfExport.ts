@@ -1502,8 +1502,8 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
   const approxSectionHeaderH = (fontSize: number) => fontSize + 8;
   const totalRows = sections.reduce((sum, s) => sum + s.body.length, 0);
 
-  let fontSize = finalistsOnly ? 6 : 8;
-  let cellPadding = finalistsOnly ? 1 : 3;
+  let fontSize = finalistsOnly ? 9 : 8;
+  let cellPadding = finalistsOnly ? 4 : 3;
   let useTwoColumns = finalistsOnly;
 
   const estimateOneColumnH = (fs: number, pad: number) =>
@@ -1546,7 +1546,7 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
 
   const finalEstimate = useTwoColumns ? estimateTwoColumnH(fontSize, cellPadding) : estimateOneColumnH(fontSize, cellPadding);
   const extraGap = finalistsOnly
-    ? 2
+    ? Math.max(10, Math.min(22, ((availableH - finalEstimate) / Math.max(1, Math.ceil(sections.length / 2))) * 0.45))
     : Math.max(0, Math.min(18, ((availableH - finalEstimate) / Math.max(1, sections.length)) * 0.6));
 
   const baseColStyles = (colW: number) => ({
@@ -1563,6 +1563,11 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
     doc.setFontSize(Math.min(11, fontSize + 2));
     doc.setTextColor(...DS.gray900);
     doc.text(divisionName.toUpperCase(), x, y);
+    if (finalistsOnly) {
+      doc.setDrawColor(...DS.gold);
+      doc.setLineWidth(1.2);
+      doc.line(x, y + 3, x + colW, y + 3);
+    }
 
     autoTable(doc, {
       head: [finalistsOnly
@@ -1572,12 +1577,30 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
       startY: y + 6,
       margin: { left: x, right: pageW - (x + colW) },
       theme: 'grid',
-      styles: { fontSize, cellPadding, overflow: 'linebreak' },
-      headStyles: { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' },
+      styles: {
+        fontSize,
+        cellPadding,
+        overflow: 'linebreak',
+        lineColor: finalistsOnly ? DS.gray200 : undefined,
+        lineWidth: finalistsOnly ? 0.25 : undefined,
+      },
+      headStyles: finalistsOnly
+        ? { fillColor: DS.navy, textColor: [255, 255, 255], fontStyle: 'bold' }
+        : { fillColor: [240, 240, 240], textColor: 0, fontStyle: 'bold' },
       columnStyles: baseColStyles(colW),
       tableLineWidth: 0.3,
       tableLineColor: DS.gray200,
       pageBreak: 'avoid',
+      didParseCell: (data) => {
+        if (!finalistsOnly || data.section !== 'body') return;
+        if (data.row.index === 0) {
+          data.cell.styles.fillColor = [255, 248, 220];
+          data.cell.styles.textColor = DS.gray900;
+          data.cell.styles.fontStyle = 'bold';
+        } else if (data.row.index % 2 === 0) {
+          data.cell.styles.fillColor = [247, 249, 252];
+        }
+      },
     });
 
     const finalY = (doc as any).lastAutoTable?.finalY ?? (y + 20);
