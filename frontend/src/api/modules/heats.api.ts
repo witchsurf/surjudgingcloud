@@ -578,6 +578,98 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
     return typedRows;
 }
 
+export async function fetchHeatEntriesWithParticipantsBatch(
+    heatIds: string[]
+): Promise<Map<string, HeatEntriesWithParticipantRow[]>> {
+    ensureSupabase();
+    const normalizedHeatIds = Array.from(new Set(heatIds.map(ensureHeatId).filter(Boolean)));
+    const result = new Map<string, HeatEntriesWithParticipantRow[]>(
+        normalizedHeatIds.map((heatId) => [heatId, []])
+    );
+    if (!normalizedHeatIds.length) return result;
+
+    const [{ data: entries, error: entriesError }, { data: lineups, error: lineupsError }] = await Promise.all([
+        supabase!
+            .from('heat_entries')
+            .select('heat_id, color, position, participant_id, seed, participant:participants(name, country, license)')
+            .in('heat_id', normalizedHeatIds)
+            .order('heat_id', { ascending: true })
+            .order('position', { ascending: true }),
+        supabase!
+            .from('v_heat_lineup')
+            .select('heat_id, jersey_color, position, surfer_name, country, seed')
+            .in('heat_id', normalizedHeatIds)
+            .order('heat_id', { ascending: true })
+            .order('position', { ascending: true }),
+    ]);
+
+    if (entriesError) throw entriesError;
+
+    const fallbackByHeat = new Map<string, HeatEntriesWithParticipantRow[]>();
+    if (!lineupsError) {
+        for (const row of lineups ?? []) {
+            const heatId = ensureHeatId(String((row as any).heat_id || ''));
+            if (!heatId) continue;
+            const rows = fallbackByHeat.get(heatId) ?? [];
+            rows.push({
+                color: (row as any).jersey_color ?? null,
+                position: Number((row as any).position),
+                participant_id: null,
+                seed: (row as any).seed ?? null,
+                participant: (row as any).surfer_name
+                    ? { name: (row as any).surfer_name, country: (row as any).country ?? null, license: null }
+                    : null,
+            });
+            fallbackByHeat.set(heatId, rows);
+        }
+    }
+
+    const entriesByHeat = new Map<string, HeatEntriesWithParticipantRow[]>();
+    for (const row of entries ?? []) {
+        const heatId = ensureHeatId(String((row as any).heat_id || ''));
+        if (!heatId) continue;
+        const rows = entriesByHeat.get(heatId) ?? [];
+        const participant = normalizeJoinedParticipant((row as any).participant);
+        rows.push({
+            color: (row as any).color ?? null,
+            position: Number((row as any).position),
+            participant_id: (row as any).participant_id ?? null,
+            seed: (row as any).seed ?? null,
+            participant: participant
+                ? { name: participant.name, country: participant.country, license: participant.license }
+                : null,
+        });
+        entriesByHeat.set(heatId, rows);
+    }
+
+    normalizedHeatIds.forEach((heatId) => {
+        const typedRows = entriesByHeat.get(heatId) ?? [];
+        const fallbackRows = fallbackByHeat.get(heatId) ?? [];
+        if (!typedRows.length) {
+            result.set(heatId, fallbackRows);
+            return;
+        }
+        if (!fallbackRows.length) {
+            result.set(heatId, typedRows);
+            return;
+        }
+        const fallbackByPosition = new Map(fallbackRows.map((entry) => [Number(entry.position), entry]));
+        result.set(heatId, typedRows.map((entry) => {
+            if (entry.participant?.name) return entry;
+            const fallback = fallbackByPosition.get(Number(entry.position));
+            if (!fallback?.participant?.name) return entry;
+            return {
+                ...entry,
+                color: entry.color ?? fallback.color,
+                seed: entry.seed ?? fallback.seed,
+                participant: fallback.participant,
+            };
+        }));
+    });
+
+    return result;
+}
+
 export async function adminOverrideHeatEntry(input: HeatEntryOverrideInput): Promise<HeatEntryOverrideResult> {
     ensureSupabase();
     const normalizedHeatId = ensureHeatId(input.heatId);
@@ -1295,6 +1387,33 @@ export async function fetchHeatSlotMappings(heatId: string) {
 
     if (error) throw error;
     return data ?? [];
+}
+
+export async function fetchHeatSlotMappingsBatch(
+    heatIds: string[]
+): Promise<Map<string, HeatSlotMappingRow[]>> {
+    ensureSupabase();
+    const normalizedHeatIds = Array.from(new Set(heatIds.map(ensureHeatId).filter(Boolean)));
+    const result = new Map<string, HeatSlotMappingRow[]>(
+        normalizedHeatIds.map((heatId) => [heatId, []])
+    );
+    if (!normalizedHeatIds.length) return result;
+
+    const { data, error } = await supabase!
+        .from('heat_slot_mappings')
+        .select('heat_id, position, placeholder, source_round, source_heat, source_position')
+        .in('heat_id', normalizedHeatIds)
+        .order('heat_id', { ascending: true })
+        .order('position', { ascending: true });
+
+    if (error) throw error;
+    for (const row of (data ?? []) as HeatSlotMappingRow[]) {
+        const heatId = ensureHeatId(row.heat_id);
+        const rows = result.get(heatId) ?? [];
+        rows.push(row);
+        result.set(heatId, rows);
+    }
+    return result;
 }
 
 const prettyRoundName = (roundNumber: number, maxRound: number): string => {

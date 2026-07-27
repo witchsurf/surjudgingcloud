@@ -10,7 +10,9 @@ import {
     fetchHeatMetadata,
     fetchHeatScores,
     fetchHeatEntriesWithParticipants,
+    fetchHeatEntriesWithParticipantsBatch,
     fetchHeatSlotMappings,
+    fetchHeatSlotMappingsBatch,
     parseActiveHeatId
 } from '../api/supabaseClient';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
@@ -959,26 +961,11 @@ export default function DisplayPage() {
                     .map((heatId) => heatId.trim())
                     .filter(Boolean)
             ));
-            const entriesByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>();
-            const slotMappingsByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatSlotMappings>>>();
-            const realtimeLineupsByHeat = await fetchRealtimeLineupsByHeat(uniqueHeatIds);
-
-            await Promise.all(
-                uniqueHeatIds.map(async (heatId) => {
-                    try {
-                        const entries = await fetchHeatEntriesWithParticipants(heatId);
-                        entriesByHeat.set(heatId, entries);
-                    } catch (error) {
-                        console.warn('Impossible de charger les participants du heat pour le top event', heatId, error);
-                    }
-                    try {
-                        const mappings = await fetchHeatSlotMappings(heatId);
-                        slotMappingsByHeat.set(heatId, mappings);
-                    } catch (error) {
-                        console.warn('Impossible de charger les slot mappings du heat pour le top event', heatId, error);
-                    }
-                })
-            );
+            const [entriesByHeat, slotMappingsByHeat, realtimeLineupsByHeat] = await Promise.all([
+                fetchHeatEntriesWithParticipantsBatch(uniqueHeatIds),
+                fetchHeatSlotMappingsBatch(uniqueHeatIds),
+                fetchRealtimeLineupsByHeat(uniqueHeatIds),
+            ]);
 
             const resolvedLineupsByHeat = buildResolvedLineupsByHeat({
                 historyHeats,
@@ -1216,24 +1203,11 @@ export default function DisplayPage() {
                 );
                 if (!uniqueHeatIds.length) return;
 
-                const entriesByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>();
-                const slotMappingsByHeat = new Map<string, Awaited<ReturnType<typeof fetchHeatSlotMappings>>>();
-                const realtimeLineupsByHeat = await fetchRealtimeLineupsByHeat(uniqueHeatIds);
-
-                await Promise.all(
-                    uniqueHeatIds.map(async (heatId) => {
-                        try {
-                            entriesByHeat.set(heatId, await fetchHeatEntriesWithParticipants(heatId));
-                        } catch (error) {
-                            console.warn('Impossible de charger les participants du heat live fallback', heatId, error);
-                        }
-                        try {
-                            slotMappingsByHeat.set(heatId, await fetchHeatSlotMappings(heatId));
-                        } catch (error) {
-                            console.warn('Impossible de charger les mappings du heat live fallback', heatId, error);
-                        }
-                    })
-                );
+                const [entriesByHeat, slotMappingsByHeat, realtimeLineupsByHeat] = await Promise.all([
+                    fetchHeatEntriesWithParticipantsBatch(uniqueHeatIds),
+                    fetchHeatSlotMappingsBatch(uniqueHeatIds),
+                    fetchRealtimeLineupsByHeat(uniqueHeatIds),
+                ]);
 
                 const resolvedLineupsByHeat = buildResolvedLineupsByHeat({
                     historyHeats,

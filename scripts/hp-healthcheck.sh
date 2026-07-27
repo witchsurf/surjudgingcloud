@@ -21,6 +21,16 @@ section() {
   printf '\n== %s ==\n' "$1"
 }
 
+probe_port_quick() {
+  local host="$1"
+  local port="$2"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    nc -z -G 1 "$host" "$port" >/dev/null 2>&1
+  else
+    nc -z -w 1 "$host" "$port" >/dev/null 2>&1
+  fi
+}
+
 extract_bundle() {
   grep -oE '/assets/index-[^"]+\.js' | head -n 1 | sed 's#^/assets/##'
 }
@@ -36,7 +46,11 @@ extract_schema_version() {
 }
 
 section "Network"
-for target in "$HP_HOST" "$LEGACY_HP_IP"; do
+NETWORK_TARGETS=("$HP_HOST")
+if [[ "$HP_PROFILE" == "field" ]]; then
+  NETWORK_TARGETS+=("$LEGACY_HP_IP")
+fi
+for target in "${NETWORK_TARGETS[@]}"; do
   printf '%s: ' "$target"
   if ping -c 1 -W 1000 "$target" >/dev/null 2>&1; then
     echo "ping ok"
@@ -44,6 +58,9 @@ for target in "$HP_HOST" "$LEGACY_HP_IP"; do
     echo "ping fail"
   fi
 done
+if [[ "$HP_PROFILE" == "home" ]]; then
+  echo "192.168.1.2: fixed D-LINK field address (not probed from home)"
+fi
 
 section "Ports"
 for port in 22 8080 8000; do
@@ -88,7 +105,9 @@ else
 fi
 
 section "Legacy IP sanity"
-if nc -zvw2 "$LEGACY_HP_IP" 22 >/dev/null 2>&1 || nc -zvw2 "$LEGACY_HP_IP" 8080 >/dev/null 2>&1 || nc -zvw2 "$LEGACY_HP_IP" 8000 >/dev/null 2>&1; then
+if [[ "$HP_PROFILE" == "home" && "$LEGACY_HP_IP" == "192.168.1.2" ]]; then
+  echo "192.168.1.2 is the fixed D-LINK field address; check skipped in home mode"
+elif probe_port_quick "$LEGACY_HP_IP" 22 || probe_port_quick "$LEGACY_HP_IP" 8080 || probe_port_quick "$LEGACY_HP_IP" 8000; then
   echo "Legacy IP ${LEGACY_HP_IP} still exposes services: review network assumptions"
 else
   echo "Legacy IP ${LEGACY_HP_IP} inactive for SSH/web/API"
