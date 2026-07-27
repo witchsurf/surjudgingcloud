@@ -54,6 +54,27 @@ describe('calculateSurferStats', () => {
     expect(stats[0].waves.find((wave) => wave.wave === 2)?.score).toBe(0);
   });
 
+  it('shows the second best wave at 50% for an INT1 interference', () => {
+    const effectiveInterferences: EffectiveInterference[] = [
+      {
+        surfer: 'BLANC',
+        waveNumber: 2,
+        type: 'INT1',
+        source: 'majority',
+      },
+    ];
+    const scores: Score[] = [
+      ...buildScores().map((score) => ({ ...score, surfer: 'WHITE', score: score.wave_number === 1 ? 8 : 6 })),
+    ];
+
+    const stats = calculateSurferStats(scores, ['WHITE'], 1, 4, false, effectiveInterferences);
+
+    expect(stats[0].bestTwo).toBe(11);
+    expect(stats[0].waves.find((wave) => wave.wave === 1)?.score).toBe(8);
+    expect(stats[0].waves.find((wave) => wave.wave === 2)?.score).toBe(3);
+    expect(stats[0].waves.find((wave) => wave.wave === 2)?.judgeScores).toEqual({ J1: 6 });
+  });
+
   it('keeps an incomplete wave excluded after the heat is closed', () => {
     const scores: Score[] = [
       {

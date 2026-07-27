@@ -198,7 +198,9 @@ export function calculateSurferStats(
     const waveA = sortedWaves[0]?.score ?? 0;
     const waveB = sortedWaves[1]?.score ?? 0;
     let bestTwo = roundScore(waveA + waveB);
-    const penalizedSecondWave = summary?.type === 'INT2' ? sortedWaves[1]?.wave : undefined;
+    const penalizedSecondWave = summary?.type === 'INT1' || summary?.type === 'INT2'
+      ? sortedWaves[1]?.wave
+      : undefined;
 
     if (isDisqualified) {
       bestTwo = 0;
@@ -209,7 +211,13 @@ export function calculateSurferStats(
     }
 
     const displayWaves = waves.map((wave) => {
-      if (penalizedSecondWave && wave.wave === penalizedSecondWave) {
+      if (penalizedSecondWave && wave.wave === penalizedSecondWave && summary?.type === 'INT1') {
+        return {
+          ...wave,
+          score: roundScore(wave.score / 2)
+        };
+      }
+      if (penalizedSecondWave && wave.wave === penalizedSecondWave && summary?.type === 'INT2') {
         return {
           ...wave,
           score: 0
