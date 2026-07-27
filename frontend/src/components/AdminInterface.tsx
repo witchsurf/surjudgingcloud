@@ -2636,6 +2636,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       heatId: ensureHeatId(heatId),
       assignments,
     });
+    const currentPodiumPointer = activePodiumPointers.find(
+      (pointer) => normalizePodiumId(pointer.podium_id) === podiumId
+    );
+    if (
+      currentPodiumPointer
+      && ensureHeatId(currentPodiumPointer.active_heat_id || '') === ensureHeatId(heatId)
+    ) {
+      // Loading or revisiting the admin must remain passive. The automatic
+      // transition is only needed after the operator selects a different heat.
+      autoPodiumSyncFingerprintRef.current = fingerprint;
+      return;
+    }
     if (autoPodiumSyncFingerprintRef.current === fingerprint) return;
 
     const timeout = window.setTimeout(async () => {

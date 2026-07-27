@@ -67,12 +67,14 @@ async function latestMigrationVersion() {
 }
 
 function createRestClient(apiBase, key) {
-  return async function rest(pathname) {
+  return async function rest(pathname, options = {}) {
     const url = `${apiBase}${pathname}`;
     const response = await fetch(url, {
+      ...options,
       headers: {
         apikey: key,
         Authorization: `Bearer ${key}`,
+        ...(options.headers || {}),
       },
     });
     const body = await response.text();
@@ -92,11 +94,24 @@ async function resolveEvent(rest, eventName) {
   return matches[0];
 }
 
-async function resolveHeat(rest, eventId) {
+async function resolveEventById(rest, eventId) {
+  const matches = await rest(`/events?select=id,name&id=eq.${eventId}&limit=1`);
+  if (!Array.isArray(matches) || matches.length === 0) {
+    throw new Error(`Event ${eventId} introuvable dans le Supabase local HP.`);
+  }
+  return matches[0];
+}
+
+async function resolveHeat(rest, eventId, podiumId) {
   const current = await rest(
-    `/active_heat_pointer?select=event_id,heat_id,event_name,competition,division,round,heat&event_id=eq.${eventId}&limit=1`,
+    `/active_heat_pointer?select=event_id,active_heat_id,event_name,podium_id&event_id=eq.${eventId}&podium_id=eq.${podiumId}&limit=1`,
   ).catch(() => []);
-  if (Array.isArray(current) && current[0]?.heat_id) return current[0];
+  if (Array.isArray(current) && current[0]?.active_heat_id) {
+    return {
+      ...current[0],
+      heat_id: current[0].active_heat_id,
+    };
+  }
 
   const heats = await rest(
     `/heats?select=id,event_id,division,round,heat_number,status&event_id=eq.${eventId}&order=id.desc&limit=1`,
@@ -123,6 +138,22 @@ function classifyRequest(url, hpHost) {
   if (parsed.host === `${hpHost}:8000` || parsed.host === `${hpHost}:8080`) return 'local';
   if (parsed.host.endsWith('supabase.co') || parsed.host === 'surfjudging.cloud') return 'cloud';
   return 'other';
+}
+
+function operationalStateFingerprint(health) {
+  const podiums = Array.isArray(health?.podiums) ? health.podiums : [];
+  return JSON.stringify(
+    podiums
+      .map((podium) => ({
+        podium_id: podium?.podium_id ?? null,
+        active_heat_id: podium?.active_heat_id ?? null,
+        heat_status: podium?.heat_status ?? null,
+        realtime_status: podium?.realtime_status ?? null,
+        panel_count: Number(podium?.panel_count ?? 0),
+        heat_assignment_count: Number(podium?.heat_assignment_count ?? 0),
+      }))
+      .sort((left, right) => String(left.podium_id).localeCompare(String(right.podium_id))),
+  );
 }
 
 async function inspectPage(context, pageSpec, hpHost, idleMs, maxIdleFetches) {
@@ -198,8 +229,26 @@ async function inspectPage(context, pageSpec, hpHost, idleMs, maxIdleFetches) {
   };
 }
 
+async function launchBrowser() {
+  const configuredChannel = process.env.SURF_PLAYWRIGHT_CHANNEL || undefined;
+  if (configuredChannel) {
+    return chromium.launch({ headless: true, channel: configuredChannel });
+  }
+
+  try {
+    return await chromium.launch({ headless: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/executable doesn't exist|playwright install/i.test(message)) {
+      throw error;
+    }
+    return chromium.launch({ headless: true, channel: 'chrome' });
+  }
+}
+
 async function main() {
   const hpHost = readArg('host', resolveHpHost());
+  const eventIdArg = readArg('event-id', process.env.SURF_HP_EVENT_ID || '');
   const eventName = readArg('event', process.env.SURF_HP_EVENT_NAME || 'SANDY CUP');
   const judgePosition = readArg('judge', process.env.SURF_HP_JUDGE_POSITION || 'J1');
   const idleMs = Number(readArg('idle-ms', process.env.SURF_HP_SMOKE_IDLE_MS || '12000'));
@@ -209,21 +258,41 @@ async function main() {
   const key = (await readEnvValue('VITE_SUPABASE_ANON_KEY_LAN')) || DEFAULT_LOCAL_KEY;
   const rest = createRestClient(apiBase, key);
 
+  const numericEventId = eventIdArg === '' ? null : Number(eventIdArg);
+  if (numericEventId !== null && (!Number.isInteger(numericEventId) || numericEventId <= 0)) {
+    throw new Error(`event-id invalide: ${eventIdArg}`);
+  }
+
   const [expectedSchema, installedSchemaRows, event] = await Promise.all([
     latestMigrationVersion(),
     rest('/app_runtime_schema_version?select=schema_version,updated_at&limit=1'),
-    resolveEvent(rest, eventName),
+    numericEventId === null
+      ? resolveEvent(rest, eventName)
+      : resolveEventById(rest, numericEventId),
   ]);
   const installedSchema = Array.isArray(installedSchemaRows)
     ? installedSchemaRows[0]?.schema_version || ''
     : '';
-  const heat = await resolveHeat(rest, event.id);
+  const operationsHealth = await rest('/rpc/fn_get_event_operations_health', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_event_id: event.id }),
+  });
+  const healthPodiums = Array.isArray(operationsHealth?.podiums) ? operationsHealth.podiums : [];
+  const podiumAHealth = healthPodiums.find((podium) => podium?.podium_id === 'A');
+  const podiumBHealth = healthPodiums.find((podium) => podium?.podium_id === 'B');
+  const [fallbackHeatA, fallbackHeatB] = await Promise.all([
+    podiumAHealth?.active_heat_id ? null : resolveHeat(rest, event.id, 'A'),
+    podiumBHealth?.active_heat_id ? null : resolveHeat(rest, event.id, 'B'),
+  ]);
+  const heatA = podiumAHealth?.active_heat_id
+    ? { ...podiumAHealth, heat_id: podiumAHealth.active_heat_id }
+    : fallbackHeatA;
+  const heatB = podiumBHealth?.active_heat_id
+    ? { ...podiumBHealth, heat_id: podiumBHealth.active_heat_id }
+    : fallbackHeatB;
 
   const query = new URLSearchParams({ eventId: String(event.id) });
-  const judgeQuery = new URLSearchParams({
-    eventId: String(event.id),
-    position: judgePosition,
-  });
 
   const pageSpecs = [
     {
@@ -232,21 +301,36 @@ async function main() {
       expect: ['Administration', 'Diagnostic', event.name],
     },
     {
-      name: 'display',
-      url: `${webBase}/display?${query.toString()}`,
-      expect: [event.name],
+      name: 'display-A',
+      url: `${webBase}/display?${new URLSearchParams({ eventId: String(event.id), podium: 'A' })}`,
+      expect: [event.name, 'HEAT HISTORY'],
     },
     {
-      name: 'judge',
-      url: `${webBase}/judge?${judgeQuery.toString()}`,
+      name: 'display-B',
+      url: `${webBase}/display?${new URLSearchParams({ eventId: String(event.id), podium: 'B' })}`,
+      expect: [event.name, 'HEAT HISTORY'],
+    },
+    {
+      name: 'judge-A',
+      url: `${webBase}/judge?${new URLSearchParams({
+        eventId: String(event.id),
+        position: judgePosition,
+        podium: 'A',
+      })}`,
+      expect: ['Interface Juge', 'Mode Kiosque', event.name],
+    },
+    {
+      name: 'judge-B',
+      url: `${webBase}/judge?${new URLSearchParams({
+        eventId: String(event.id),
+        position: judgePosition,
+        podium: 'B',
+      })}`,
       expect: ['Interface Juge', 'Mode Kiosque', event.name],
     },
   ];
 
-  const browser = await chromium.launch({
-    headless: true,
-    channel: process.env.SURF_PLAYWRIGHT_CHANNEL || undefined,
-  });
+  const browser = await launchBrowser();
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
@@ -283,13 +367,32 @@ async function main() {
   }
   await browser.close();
 
+  const operationsHealthAfter = await rest('/rpc/fn_get_event_operations_health', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_event_id: event.id }),
+  });
   const schemaOk = expectedSchema === installedSchema;
-  const ok = schemaOk && pages.every((page) => page.ok);
+  const passiveStateOk =
+    operationalStateFingerprint(operationsHealth) ===
+    operationalStateFingerprint(operationsHealthAfter);
+  const podiumIsolationOk = Boolean(
+    heatA?.heat_id &&
+    heatB?.heat_id &&
+    heatA.heat_id !== heatB.heat_id &&
+    podiumAHealth?.panel_count > 0 &&
+    podiumBHealth?.panel_count > 0,
+  );
+  const ok = schemaOk && podiumIsolationOk && passiveStateOk && pages.every((page) => page.ok);
   const summary = {
     ok,
     hpHost,
     event,
-    heat,
+    heats: { A: heatA, B: heatB },
+    operationsHealthBefore: operationsHealth,
+    operationsHealthAfter,
+    podiumIsolationOk,
+    passiveStateOk,
     expectedSchema,
     installedSchema,
     schemaOk,
