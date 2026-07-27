@@ -13,7 +13,7 @@ import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils'
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF, exportFinalistsRankingToPDF } from '../utils/pdfExport';
 import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatCloseReadiness, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, deleteInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, deleteScoreSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
-import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
 import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
@@ -41,6 +41,30 @@ type ActivePodiumPointerRow = {
   podium_id: string | null;
   active_heat_id: string | null;
   updated_at?: string | null;
+};
+
+type OperationsHealthPodium = {
+  podium_id: string;
+  active_heat_id: string | null;
+  pointer_updated_at: string | null;
+  heat_status: string | null;
+  division: string | null;
+  round: number | null;
+  heat_number: number | null;
+  realtime_status: string | null;
+  realtime_updated_at: string | null;
+  panel_count: number;
+  heat_assignment_count: number;
+};
+
+type OperationsHealth = {
+  event_id: number;
+  checked_at: string;
+  database_ok: boolean;
+  last_score_at: string | null;
+  last_score_age_seconds: number | null;
+  last_audit_at: string | null;
+  podiums: OperationsHealthPodium[];
 };
 
 type CompetitionAuditEntry = {
@@ -73,6 +97,13 @@ const auditActionLabels: Record<string, string> = {
 };
 
 const auditValue = (data: Record<string, unknown> | null, key: string) => data?.[key];
+
+const formatHealthAge = (seconds: number | null | undefined) => {
+  if (seconds === null || seconds === undefined) return 'Aucune note';
+  if (seconds < 60) return `il y a ${seconds}s`;
+  if (seconds < 3600) return `il y a ${Math.floor(seconds / 60)}min`;
+  return `il y a ${Math.floor(seconds / 3600)}h`;
+};
 
 const formatAuditLocation = (data: Record<string, unknown> | null) => {
   if (!data) return '';
@@ -204,6 +235,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const navigate = useNavigate();
   const timerAudio = TimerAudio.getInstance();
   const [dbStatus, setDbStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  const [operationsHealth, setOperationsHealth] = useState<OperationsHealth | null>(null);
+  const [operationsHealthError, setOperationsHealthError] = useState<string | null>(null);
+  const [realtimeHealth, setRealtimeHealth] = useState<'connected' | 'fallback' | 'disconnected'>('disconnected');
   const [competitionAuditLogs, setCompetitionAuditLogs] = useState<CompetitionAuditEntry[]>([]);
   const [selectedJudge, setSelectedJudge] = useState('');
   const [selectedSurfer, setSelectedSurfer] = useState('');
@@ -1969,47 +2003,54 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   };
 
-  // Évaluer le statut de la base de données
+  // Operational health uses a real DB roundtrip; navigator.onLine is not
+  // authoritative on the isolated D-LINK LAN.
   React.useEffect(() => {
-    const checkDbStatus = () => {
-      const { supabaseUrl, supabaseAnonKey } = getSupabaseConfig();
-      const supabaseConfigured = Boolean(
-        supabaseUrl && supabaseAnonKey && supabaseUrl !== 'undefined' && supabaseAnonKey !== 'undefined'
-      );
+    let cancelled = false;
+    let intervalId: number | null = null;
 
-      if (!navigator.onLine) {
-        setDbStatus('disconnected');
+    const refreshHealth = async () => {
+      if (!activeEventId || !supabase || !isSupabaseConfigured()) {
+        if (!cancelled) {
+          setDbStatus('disconnected');
+          setOperationsHealth(null);
+          setRealtimeHealth('disconnected');
+        }
         return;
       }
 
-      if (!supabaseConfigured) {
-        setDbStatus('disconnected');
-        return;
-      }
+      try {
+        const { data, error } = await supabase.rpc('fn_get_event_operations_health', {
+          p_event_id: activeEventId,
+        });
+        if (error) throw error;
+        if (cancelled) return;
 
-      // Check if Supabase is actually accessible
-      if (supabaseConfigured) {
+        setOperationsHealth(data as OperationsHealth);
+        setOperationsHealthError(null);
         setDbStatus('connected');
-      } else {
+
+        const channels = supabase.getChannels();
+        const joined = channels.some((channel) =>
+          String((channel as unknown as { state?: string }).state || '').toLowerCase() === 'joined'
+        );
+        setRealtimeHealth(joined ? 'connected' : channels.length > 0 ? 'fallback' : 'disconnected');
+      } catch (error) {
+        if (cancelled) return;
         setDbStatus('disconnected');
+        setRealtimeHealth('disconnected');
+        setOperationsHealthError(error instanceof Error ? error.message : 'Diagnostic indisponible');
       }
     };
 
     setDbStatus('checking');
-    const timeoutId = window.setTimeout(checkDbStatus, 300);
-
-    const handleOnline = () => checkDbStatus();
-    const handleOffline = () => setDbStatus('disconnected');
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
+    void refreshHealth();
+    intervalId = window.setInterval(() => void refreshHealth(), 15000);
     return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      cancelled = true;
+      if (intervalId !== null) window.clearInterval(intervalId);
     };
-  }, [configSaved]);
+  }, [activeEventId, configSaved]);
 
   const syncDivisionsFromParticipants = useCallback(() => {
     try {
@@ -4231,6 +4272,88 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                 </span>
               </span>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className={`rounded-xl border p-3 ${
+              dbStatus === 'connected'
+                ? 'border-emerald-700/40 bg-emerald-950/25'
+                : dbStatus === 'checking'
+                  ? 'border-amber-700/40 bg-amber-950/25'
+                  : 'border-rose-700/40 bg-rose-950/25'
+            }`}>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">API / Base HP</p>
+              <p className={`mt-1 text-sm font-black ${
+                dbStatus === 'connected' ? 'text-emerald-300' : dbStatus === 'checking' ? 'text-amber-300' : 'text-rose-300'
+              }`}>
+                {dbStatus === 'connected' ? '● OPÉRATIONNELLE' : dbStatus === 'checking' ? '● CONTRÔLE…' : '● HORS LIGNE'}
+              </p>
+              <p className="mt-1 truncate text-[9px] text-slate-500">
+                {operationsHealth?.checked_at
+                  ? `Vérifiée ${new Date(operationsHealth.checked_at).toLocaleTimeString('fr-FR')}`
+                  : operationsHealthError || 'En attente'}
+              </p>
+            </div>
+
+            <div className={`rounded-xl border p-3 ${
+              realtimeHealth === 'connected'
+                ? 'border-emerald-700/40 bg-emerald-950/25'
+                : realtimeHealth === 'fallback'
+                  ? 'border-amber-700/40 bg-amber-950/25'
+                  : 'border-rose-700/40 bg-rose-950/25'
+            }`}>
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Realtime tablettes</p>
+              <p className={`mt-1 text-sm font-black ${
+                realtimeHealth === 'connected' ? 'text-emerald-300' : realtimeHealth === 'fallback' ? 'text-amber-300' : 'text-rose-300'
+              }`}>
+                {realtimeHealth === 'connected' ? '● CONNECTÉ' : realtimeHealth === 'fallback' ? '● POLLING SECOURS' : '● DÉCONNECTÉ'}
+              </p>
+              <p className="mt-1 text-[9px] text-slate-500">
+                {supabase?.getChannels().length || 0} canal(aux) observé(s)
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-cyan-700/30 bg-cyan-950/20 p-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Dernière note</p>
+              <p className="mt-1 text-sm font-black text-cyan-300">
+                {formatHealthAge(operationsHealth?.last_score_age_seconds)}
+              </p>
+              <p className="mt-1 text-[9px] text-slate-500">
+                {operationsHealth?.last_score_at
+                  ? new Date(operationsHealth.last_score_at).toLocaleTimeString('fr-FR')
+                  : 'Aucun score sur cet événement'}
+              </p>
+            </div>
+
+            {['A', 'B'].map((podiumId) => {
+              const podium = operationsHealth?.podiums?.find((item) => normalizePodiumId(item.podium_id) === podiumId);
+              const panelReady = Number(podium?.panel_count || 0) >= 3;
+              const activeHeat = Boolean(podium?.active_heat_id);
+              const healthy = panelReady && activeHeat;
+              return (
+                <div key={podiumId} className={`rounded-xl border p-3 ${
+                  healthy
+                    ? 'border-emerald-700/40 bg-emerald-950/25'
+                    : 'border-amber-700/40 bg-amber-950/25'
+                }`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Podium {podiumId}</p>
+                    <span className={`text-[9px] font-black ${healthy ? 'text-emerald-300' : 'text-amber-300'}`}>
+                      {Number(podium?.panel_count || 0)} JUGES
+                    </span>
+                  </div>
+                  <p className={`mt-1 truncate text-sm font-black ${healthy ? 'text-emerald-300' : 'text-amber-300'}`}>
+                    {podium?.division
+                      ? `${podium.division} · R${podium.round}H${podium.heat_number}`
+                      : 'AUCUN HEAT'}
+                  </p>
+                  <p className="mt-1 truncate text-[9px] uppercase text-slate-500">
+                    {podium?.heat_status || podium?.realtime_status || (activeHeat ? 'prêt' : 'en attente')}
+                    {podium?.heat_assignment_count != null ? ` · ${podium.heat_assignment_count} affectation(s)` : ''}
+                  </p>
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-2 mb-6 p-4 rounded-xl border border-white/5 bg-slate-900/40 space-y-4">
