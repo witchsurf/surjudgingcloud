@@ -1437,7 +1437,7 @@ export interface FinalRankingExportPayload {
 
 function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly: boolean) {
   const { eventName, organizer, organizerLogoDataUrl, date, heats, scores, interferenceCalls, participants, divisions } = payload;
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
+  const doc = new jsPDF({ orientation: finalistsOnly ? 'landscape' : 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const MARGIN = 32;
@@ -1504,17 +1504,18 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
 
   let fontSize = 8;
   let cellPadding = 3;
-  let useTwoColumns = false;
+  let useTwoColumns = finalistsOnly;
 
   const estimateOneColumnH = (fs: number, pad: number) =>
     sections.reduce((sum, s) => sum + approxSectionHeaderH(fs) + s.body.length * approxRowHeight(fs, pad), 0);
   const estimateTwoColumnH = (fs: number, pad: number) =>
     Math.ceil(sections.length / 2) * approxSectionHeaderH(fs) + Math.ceil(totalRows / 2) * approxRowHeight(fs, pad);
 
-  // Try to fit in one column first.
+  // Le document finalistes privilégie deux colonnes sur une page paysage.
+  // Le classement complet conserve son adaptation historique portrait.
   for (const fs of [9, 8, 7, 6, 5]) {
     const pad = Math.max(2, Math.min(3, fs - 4));
-    if (estimateOneColumnH(fs, pad) <= availableH) {
+    if (!finalistsOnly && estimateOneColumnH(fs, pad) <= availableH) {
       fontSize = fs;
       cellPadding = pad;
       useTwoColumns = false;
