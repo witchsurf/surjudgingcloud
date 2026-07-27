@@ -5,7 +5,7 @@ import type { AppConfig, InterferenceCall, Score } from '../types';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { colorLabelMap } from './colorUtils';
 import { calculateSurferStats } from './scoring';
-import { calculateFinalRankings } from './ranking';
+import { calculateFinalRankings, selectDivisionFinalists } from './ranking';
 import { computeEffectiveInterferences } from './interference';
 import { inferImplicitMappingsForHeat } from './heatSlotMappingInference';
 import type { ParticipantRecord } from '../api/modules/participants.api';
@@ -1423,7 +1423,7 @@ export function exportFullCompetitionPDF({
   doc.save(`${slugify(eventName)}_competition_complete.pdf`);
 }
 
-export interface FinalRankingExportPayload {
+export interface FinalistsRankingExportPayload {
   eventName: string;
   organizer?: string;
   organizerLogoDataUrl?: string;
@@ -1435,21 +1435,34 @@ export interface FinalRankingExportPayload {
   divisions: string[];
 }
 
-export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
+export function exportFinalistsRankingToPDF(payload: FinalistsRankingExportPayload) {
   const { eventName, organizer, organizerLogoDataUrl, date, heats, scores, interferenceCalls, participants, divisions } = payload;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const MARGIN = 32;
 
-  // Single cover header (one page) with all divisions stacked.
+  // En-tête officiel unique, suivi uniquement des participants du dernier round.
   doc.setFillColor(...DS.navy);
   doc.rect(0, 0, pageW, 92, 'F');
 
   if (organizerLogoDataUrl && organizerLogoDataUrl.startsWith('data:image/')) {
     try {
       const fmt = organizerLogoDataUrl.toLowerCase().includes('png') ? 'PNG' : 'JPEG';
-      doc.addImage(organizerLogoDataUrl, fmt, pageW - MARGIN - 52, 20, 52, 52);
+      const imageProperties = doc.getImageProperties(organizerLogoDataUrl);
+      const maxVisualWidth = 64;
+      const maxVisualHeight = 58;
+      const ratio = imageProperties.width / imageProperties.height;
+      const visualWidth = ratio >= 1 ? maxVisualWidth : Math.min(maxVisualWidth, maxVisualHeight * ratio);
+      const visualHeight = ratio >= 1 ? Math.min(maxVisualHeight, maxVisualWidth / ratio) : maxVisualHeight;
+      doc.addImage(
+        organizerLogoDataUrl,
+        fmt,
+        pageW - MARGIN - visualWidth,
+        17 + (maxVisualHeight - visualHeight) / 2,
+        visualWidth,
+        visualHeight
+      );
     } catch (e) {
       console.warn('Logo error (final rankings):', e);
     }
@@ -1462,7 +1475,7 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
 
   doc.setFontSize(12);
   doc.setTextColor(...DS.gold);
-  doc.text('CLASSEMENTS FINAUX', MARGIN, 64);
+  doc.text('FINALISTES & CLASSEMENTS PAR CATÉGORIE', MARGIN, 64);
 
   doc.setFontSize(9);
   doc.setTextColor(200, 200, 200);
@@ -1476,10 +1489,13 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
     .map((division) => {
       const rankings = calculateFinalRankings(division, heats, scores, interferenceCalls, participants);
       if (!rankings.length) return null;
-      const body = rankings.map((r) => [
+      const finalists = selectDivisionFinalists(rankings);
+      if (!finalists.length) return null;
+      const body = finalists.map((r) => [
         r.rank,
         r.name.toUpperCase(),
         r.country || '',
+        r.heatTotal.toFixed(2),
         r.points,
       ]);
       return { division, body };
@@ -1534,9 +1550,10 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
 
   const baseColStyles = (colW: number) => ({
     0: { halign: 'center' as const, cellWidth: 28 },
-    1: { fontStyle: 'bold' as const, cellWidth: Math.max(150, colW - (28 + 34 + 48)) },
+    1: { fontStyle: 'bold' as const, cellWidth: Math.max(120, colW - (28 + 34 + 52 + 48)) },
     2: { halign: 'center' as const, cellWidth: 34 },
-    3: { halign: 'right' as const, cellWidth: 48, fontStyle: 'bold' as const },
+    3: { halign: 'right' as const, cellWidth: 52, fontStyle: 'bold' as const },
+    4: { halign: 'right' as const, cellWidth: 48, fontStyle: 'bold' as const },
   });
 
   const renderSection = (x: number, y: number, colW: number, divisionName: string, body: Array<(string | number)[]>) => {
@@ -1546,7 +1563,7 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
     doc.text(divisionName.toUpperCase(), x, y);
 
     autoTable(doc, {
-      head: [['#', 'NOM', 'NOC', 'PTS']],
+      head: [['RANG', 'FINALISTE', 'NOC', 'TOTAL', 'PTS']],
       body,
       startY: y + 6,
       margin: { left: x, right: pageW - (x + colW) },
@@ -1592,5 +1609,5 @@ export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
     doc.text(`Généré par SURF JUDGING APP`, pageW / 2, pageH - 20, { align: 'center' });
   }
 
-  doc.save(`${slugify(eventName)}_final_rankings.pdf`);
+  doc.save(`${slugify(eventName)}_finalistes_par_categorie.pdf`);
 }

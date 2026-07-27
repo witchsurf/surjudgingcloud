@@ -10,7 +10,7 @@ import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
-import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
+import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalistsRankingToPDF } from '../utils/pdfExport';
 import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, deleteInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, deleteScoreSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
@@ -4194,7 +4194,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       console.log('✅ Divisions trouvées pour export:', Object.keys(divisionsData));
       console.log('✅ Total séries traitées:', allHeats.length);
 
-      exportFinalRankingToPDF({
+      exportFinalistsRankingToPDF({
         eventName: resolvedEventName,
         organizer,
         organizerLogoDataUrl,
@@ -4206,10 +4206,10 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         divisions: Object.keys(divisionsData)
       });
 
-      console.log('✅ Classement final généré avec succès');
+      console.log('✅ PDF des finalistes généré avec succès');
     } catch (error) {
       console.error('Erreur export ranking:', error);
-      alert('Erreur lors de la génération du classement.');
+      alert('Erreur lors de la génération du PDF des finalistes.');
     } finally {
       setRankingPdfPending(false);
     }
@@ -4724,7 +4724,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                         className="flex items-center justify-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-600/80 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <Trophy className="w-4 h-4" />
-                        <span>{rankingPdfPending ? 'Ranking...' : 'Classement final'}</span>
+                        <span>{rankingPdfPending ? 'Finalistes...' : 'PDF Finalistes'}</span>
                       </button>
                     </div>
                   </div>

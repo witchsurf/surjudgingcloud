@@ -130,6 +130,10 @@ export interface SurferStats {
   isDisqualified?: boolean;
   interferenceCount?: number;
   interferenceType?: 'INT1' | 'INT2' | null;
+  interferenceWaves?: Array<{
+    waveNumber: number;
+    type: 'INT1' | 'INT2';
+  }>;
 }
 
 export type InterferenceType = 'INT1' | 'INT2';

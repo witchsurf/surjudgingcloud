@@ -70,6 +70,7 @@ describe('calculateSurferStats', () => {
     const stats = calculateSurferStats(scores, ['WHITE'], 1, 4, false, effectiveInterferences);
 
     expect(stats[0].bestTwo).toBe(11);
+    expect(stats[0].interferenceWaves).toEqual([{ waveNumber: 2, type: 'INT1' }]);
     expect(stats[0].waves.find((wave) => wave.wave === 1)?.score).toBe(8);
     expect(stats[0].waves.find((wave) => wave.wave === 2)?.score).toBe(3);
     expect(stats[0].waves.find((wave) => wave.wave === 2)?.judgeScores).toEqual({ J1: 6 });

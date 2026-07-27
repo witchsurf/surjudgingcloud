@@ -580,6 +580,9 @@ export default function ScoreDisplay({
                 const priorityKey = normalizePriorityKey(stat.surfer);
                 const priorityBadge = priorityLabels[priorityKey] || (priorityState.mode === 'equal' ? '=' : '');
                 const isInFlight = (priorityState.mode === 'ordered' || priorityState.mode === 'opening') && priorityState.inFlight.includes(priorityKey);
+                const interferenceLabel = (stat.interferenceWaves ?? [])
+                  .map((item) => `${item.type} · V${item.waveNumber}`)
+                  .join(' / ');
 
                 return (
                   <div key={stat.surfer} className="p-3 hover:bg-slate-900/30 transition-colors">
@@ -613,10 +616,17 @@ export default function ScoreDisplay({
                                 {wavesCount} VAGUE{wavesCount > 1 ? 'S' : ''}
                               </span>
                               {stat.isDisqualified ? (
-                                <span className="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded uppercase tracking-tighter">DSQ</span>
+                                <>
+                                  <span className="text-[10px] font-bold bg-red-600 text-white px-2 py-0.5 rounded uppercase tracking-tighter">DSQ</span>
+                                  {interferenceLabel && (
+                                    <span className="text-[10px] font-bold bg-amber-500 text-slate-950 px-2 py-0.5 rounded uppercase tracking-tighter">
+                                      {interferenceLabel}
+                                    </span>
+                                  )}
+                                </>
                               ) : stat.interferenceCount && stat.interferenceCount > 0 ? (
                                 <span className="text-[10px] font-bold bg-amber-500 text-slate-950 px-2 py-0.5 rounded uppercase tracking-tighter">
-                                  INT <span className="opacity-70 text-[9px] ml-0.5">{stat.interferenceCount}</span>
+                                  {interferenceLabel || `INT ${stat.interferenceCount}`}
                                 </span>
                               ) : null}
                             </div>
@@ -717,13 +727,23 @@ export default function ScoreDisplay({
 
                         {Array.from({ length: maxWaves }).map((_, i) => {
                           const wave = stat.waves.find((w) => w.wave === i + 1);
+                          const waveInterference = (stat.interferenceWaves ?? []).find((item) => item.waveNumber === i + 1);
                           return (
-                            <td key={i} className={`${ultraCompactLayout ? 'p-1.5' : compactLayout ? 'p-2' : 'p-4'} text-center`}>
+                            <td
+                              key={i}
+                              className={`${ultraCompactLayout ? 'p-1.5' : compactLayout ? 'p-2' : 'p-4'} text-center ${waveInterference ? 'bg-amber-500/10 ring-1 ring-inset ring-amber-400/60' : ''}`}
+                              title={waveInterference ? `${waveInterference.type} posée sur la vague V${waveInterference.waveNumber}` : undefined}
+                            >
                               {wave && wave.score > 0 ? (
                                 <div className="group relative cursor-help inline-block">
                                   <span className={`${compactLayout ? 'text-sm' : 'text-base'} font-bebas tracking-widest text-slate-100`}>
                                     {wave.score.toFixed(2)}
                                   </span>
+                                  {waveInterference && (
+                                    <span className="ml-1 align-top text-[8px] font-black text-amber-400">
+                                      {waveInterference.type}
+                                    </span>
+                                  )}
                                   {/* Tooltip notes juges - Simplified style */}
                                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:flex flex-col items-center bg-slate-950 text-slate-100 text-[10px] p-2 rounded-xl z-50 shadow-2xl min-w-max border border-white/10">
                                     <div className="flex gap-4">
@@ -749,7 +769,9 @@ export default function ScoreDisplay({
                                   </div>
                                 </div>
                               ) : (
-                                <span className="text-slate-800">—</span>
+                                <span className={waveInterference ? 'text-amber-400 text-[9px] font-black' : 'text-slate-800'}>
+                                  {waveInterference?.type ?? '—'}
+                                </span>
                               )}
                             </td>
                           );

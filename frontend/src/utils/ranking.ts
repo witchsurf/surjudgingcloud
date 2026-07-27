@@ -17,6 +17,14 @@ export interface FinalRankEntry {
   division: string;
 }
 
+export function selectDivisionFinalists(rankings: FinalRankEntry[]): FinalRankEntry[] {
+  if (!rankings.length) return [];
+  const finalRound = Math.max(...rankings.map((ranking) => ranking.exitRound));
+  return rankings
+    .filter((ranking) => ranking.exitRound === finalRound)
+    .sort((a, b) => a.rank - b.rank);
+}
+
 /**
  * Barème "Français" (Option 3 approuvée)
  * Version "sans ex-aequo": points différents à chaque place.

@@ -194,6 +194,10 @@ export function calculateSurferStats(
     const completeWaves = waves.filter(wave => wave.isComplete);
     const sortedWaves = [...completeWaves].sort((a, b) => b.score - a.score);
     const summary = interferenceBySurfer.get(normalizeScoreSurfer(surfer));
+    const interferenceWaves = effectiveInterferences
+      .filter((item) => normalizeScoreSurfer(item.surfer) === normalizeScoreSurfer(surfer))
+      .map((item) => ({ waveNumber: item.waveNumber, type: item.type }))
+      .sort((a, b) => a.waveNumber - b.waveNumber);
     const isDisqualified = Boolean(summary?.isDisqualified);
     const waveA = sortedWaves[0]?.score ?? 0;
     const waveB = sortedWaves[1]?.score ?? 0;
@@ -235,6 +239,7 @@ export function calculateSurferStats(
       isDisqualified,
       interferenceCount: summary?.count ?? 0,
       interferenceType: summary?.type ?? null,
+      interferenceWaves,
     };
   });
 
