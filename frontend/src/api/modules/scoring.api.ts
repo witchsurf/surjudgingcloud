@@ -249,6 +249,15 @@ export interface SecureScoreCorrectionInput {
     override_log?: SecureScoreOverrideInput | null;
 }
 
+export interface SecureScoreDeletionInput {
+    score_id: string;
+    heat_id: string;
+    reason?: string | null;
+    comment?: string | null;
+    deleted_by?: string | null;
+    deleted_by_name?: string | null;
+}
+
 export const normalizeScoreJudgeId = (judgeId?: string) => {
     const upper = (judgeId || '').trim().toUpperCase();
     if (upper === 'KIOSK-J1') return 'J1';
@@ -638,6 +647,39 @@ export async function upsertInterferenceCall(input: {
         throw error;
     }
     interferenceCache.delete(payload.heat_id);
+}
+
+export async function deleteInterferenceCall(input: {
+    heat_id: string;
+    judge_id: string;
+    surfer: string;
+    wave_number: number;
+}): Promise<void> {
+    ensureSupabase();
+    const heatId = ensureHeatId(input.heat_id);
+    const { error } = await supabase!
+        .from('interference_calls')
+        .delete()
+        .eq('heat_id', heatId)
+        .eq('judge_id', input.judge_id)
+        .eq('surfer', input.surfer)
+        .eq('wave_number', input.wave_number);
+    if (error) throw error;
+    interferenceCache.delete(heatId);
+}
+
+export async function deleteScoreSecure(input: SecureScoreDeletionInput): Promise<number> {
+    ensureSupabase();
+    const { data, error } = await supabase!.rpc('delete_score_secure', {
+        p_score_id: input.score_id,
+        p_heat_id: ensureHeatId(input.heat_id),
+        p_reason: input.reason ?? 'correction',
+        p_comment: input.comment ?? null,
+        p_deleted_by: input.deleted_by ?? 'chief_judge',
+        p_deleted_by_name: input.deleted_by_name ?? 'Chef Judge',
+    });
+    if (error) throw mapSecureScoreRpcError(error);
+    return Number((data as { deleted_count?: number } | null)?.deleted_count ?? 0);
 }
 
 export async function recordScoreOverrideSecure(input: SecureScoreOverrideInput): Promise<void> {

@@ -11,7 +11,7 @@ import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/h
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, deleteInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, deleteScoreSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
@@ -1460,6 +1460,39 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   };
 
+  const handleDeleteScore = async () => {
+    if (!currentScore?.id) {
+      setOverrideStatus({ type: 'error', message: 'Aucune note sélectionnée à supprimer.' });
+      return;
+    }
+    const label = `${currentScore.judge_station || selectedJudge} · ${normalizeJerseyLabel(currentScore.surfer)} · V${currentScore.wave_number} · ${currentScore.score.toFixed(2)}`;
+    if (!window.confirm(`Supprimer définitivement la note ${label} ?\n\nCette action est auditée. Pour recaler une vague saisie au mauvais numéro, utilisez plutôt « Déplacer la note ».`)) return;
+
+    setOverridePending(true);
+    try {
+      const deletedCount = await deleteScoreSecure({
+        score_id: currentScore.id,
+        heat_id: heatId,
+        reason: overrideReason,
+        comment: overrideComment.trim() || `Suppression admin de ${label}.`,
+      });
+      setOverrideStatus({
+        type: 'success',
+        message: `${deletedCount || 1} note logique supprimée. La tablette du juge est immédiatement recalée sur la première vague manquante.`,
+      });
+      resetCorrectionForm();
+      await refreshCorrectionPanelData();
+      window.dispatchEvent(new CustomEvent('scoreOverrideApplied', {
+        detail: { heatId, judgeId: currentScore.judge_station || currentScore.judge_id, action: 'delete' }
+      }));
+    } catch (error) {
+      console.error('❌ Suppression note erreur:', error);
+      setOverrideStatus({ type: 'error', message: 'Impossible de supprimer la note. Vérifiez la connexion à la base terrain.' });
+    } finally {
+      setOverridePending(false);
+    }
+  };
+
   const handleInterferenceSubmit = async () => {
     if (!selectedJudge || !selectedSurfer || !selectedWave) {
       setOverrideStatus({ type: 'error', message: 'Veuillez sélectionner juge, surfeur et vague.' });
@@ -1485,6 +1518,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         round: config.round,
         judge_id: selectedJudge,
         judge_name: config.judgeNames[selectedJudge] || selectedJudge,
+        judge_station: selectedJudge,
+        judge_identity_id: config.judgeIdentities?.[selectedJudge] || null,
         surfer: selectedSurferKey,
         wave_number: Number(selectedWave),
         call_type: interferenceType,
@@ -1500,6 +1535,29 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     } catch (error) {
       console.error('❌ Interférence admin erreur:', error);
       setOverrideStatus({ type: 'error', message: 'Impossible d’enregistrer l’interférence.' });
+    } finally {
+      setOverridePending(false);
+    }
+  };
+
+  const handleInterferenceDelete = async () => {
+    if (!selectedJudge || !selectedSurfer || !selectedWave) {
+      setOverrideStatus({ type: 'error', message: 'Veuillez sélectionner juge, surfeur et vague.' });
+      return;
+    }
+    setOverridePending(true);
+    try {
+      await deleteInterferenceCall({
+        heat_id: heatId,
+        judge_id: selectedJudge,
+        surfer: normalizeJerseyLabel(selectedSurfer),
+        wave_number: Number(selectedWave),
+      });
+      setOverrideStatus({ type: 'success', message: `Appel d’interférence retiré pour ${selectedJudge} · ${normalizeJerseyLabel(selectedSurfer)} · V${selectedWave}.` });
+      await refreshCorrectionPanelData();
+    } catch (error) {
+      console.error('❌ Retrait interférence erreur:', error);
+      setOverrideStatus({ type: 'error', message: 'Impossible de retirer l’interférence.' });
     } finally {
       setOverridePending(false);
     }
@@ -5848,7 +5906,21 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   >
                     Déplacer la note sélectionnée
                   </button>
+                  <p className="text-[10px] text-indigo-300/80">
+                    Cas d’une vague décalée : déplacez d’abord la note vers le bon numéro, puis saisissez la note manquante.
+                  </p>
                 </div>
+              )}
+
+              {correctionMode === 'score' && currentScore && (
+                <button
+                  type="button"
+                  onClick={handleDeleteScore}
+                  disabled={overridePending || !configSaved}
+                  className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider border border-rose-800/50 bg-rose-950/30 text-rose-300 hover:bg-rose-900/40 disabled:opacity-50"
+                >
+                  Supprimer la note sélectionnée
+                </button>
               )}
 
               {overrideStatus && (
@@ -5874,18 +5946,26 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   {overridePending ? 'Application…' : 'Appliquer la correction'}
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleInterferenceSubmit}
-                  disabled={overridePending || !configSaved}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all ${
-                    overridePending
-                      ? 'bg-amber-950/20 border-amber-900/20 text-amber-750 cursor-wait'
-                      : 'bg-amber-600 hover:bg-amber-500 border border-amber-500/20 shadow-md shadow-amber-950/30'
-                  } ${!configSaved ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {overridePending ? 'Application…' : 'Poser l’interférence'}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleInterferenceSubmit}
+                    disabled={overridePending || !configSaved}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider text-white transition-all ${
+                      overridePending ? 'bg-amber-950/20 cursor-wait' : 'bg-amber-600 hover:bg-amber-500'
+                    } ${!configSaved ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {overridePending ? 'Application…' : 'Poser / remplacer l’interférence'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleInterferenceDelete}
+                    disabled={overridePending || !configSaved}
+                    className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider border border-rose-800/50 bg-rose-950/30 text-rose-300 hover:bg-rose-900/40 disabled:opacity-50"
+                  >
+                    Retirer l’interférence
+                  </button>
+                </div>
               )}
             </form>
           </div>

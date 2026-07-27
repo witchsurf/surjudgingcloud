@@ -425,6 +425,14 @@ async function main() {
       console.warn('⚠️ score_overrides not available yet, skipping:', error.message);
       return [];
     });
+    const scoreDeletions = await fetchPagedRows(local, 'score_deletions', (query) =>
+      query
+        .select('id, score_id, heat_id, event_id, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, score, score_snapshot, reason, comment, deleted_by, deleted_by_name, deleted_at')
+        .in('heat_id', heatIds)
+    ).catch((error) => {
+      console.warn('⚠️ score_deletions not available yet, skipping:', error.message);
+      return [];
+    });
     const heatEntryOverrides = await fetchPagedRows(local, 'heat_entry_overrides', (query) =>
       query
         .select('id, event_id, heat_id, position, color, previous_participant_id, previous_participant_name, new_participant_id, new_participant_name, new_country, reason, created_by, created_at')
@@ -459,6 +467,8 @@ async function main() {
       .catch(() => []);
     const changedScoreOverrides = await safeDiff('score_overrides', scoreOverrides, ['id'])
       .catch(() => []);
+    const changedScoreDeletions = await safeDiff('score_deletions', scoreDeletions, ['id'])
+      .catch(() => []);
     const changedHeatEntryOverrides = await safeDiff('heat_entry_overrides', heatEntryOverrides, ['id'])
       .catch(() => []);
     const changedActiveHeatPointers = await safeDiff('active_heat_pointer', activeHeatPointers, ['event_id', 'podium_id'])
@@ -477,6 +487,7 @@ async function main() {
     console.log(`  - heat_realtime_config: ${changedRealtimeConfigs.length}/${realtimeConfigs.length} changed`);
     console.log(`  - event_last_config: ${changedEventLastConfigs.length}/${eventLastConfigs.length} changed`);
     console.log(`  - score_overrides: ${changedScoreOverrides.length}/${scoreOverrides.length} changed`);
+    console.log(`  - score_deletions: ${changedScoreDeletions.length}/${scoreDeletions.length} changed`);
     console.log(`  - heat_entry_overrides: ${changedHeatEntryOverrides.length}/${heatEntryOverrides.length} changed`);
     console.log(`  - active_heat_pointer: ${changedActiveHeatPointers.length}/${activeHeatPointers.length} changed`);
 
@@ -490,6 +501,7 @@ async function main() {
     let realtimeCount = 0;
     let eventLastConfigCount = 0;
     let scoreOverrideCount = 0;
+    let scoreDeletionCount = 0;
     let lineupOverrideCount = 0;
     let pointerCount = 0;
 
@@ -516,6 +528,12 @@ async function main() {
 
       scoreCount = await upsertRows(cloud, 'scores', changedScores, 'id');
       scoreOverrideCount = await upsertRows(cloud, 'score_overrides', changedScoreOverrides, 'id');
+      scoreDeletionCount = await upsertRows(cloud, 'score_deletions', changedScoreDeletions, 'id');
+      for (const batch of chunkArray(scoreDeletions.map((row) => row.score_id), 500)) {
+        if (!batch.length) continue;
+        const { error: deletionError } = await cloud.from('scores').delete().in('id', batch);
+        if (deletionError) throw deletionError;
+      }
       interferenceCount = await upsertRows(
         cloud,
         'interference_calls',

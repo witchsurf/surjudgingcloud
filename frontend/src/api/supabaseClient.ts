@@ -82,12 +82,14 @@ export {
     fetchHeatCloseValidation,
     fetchHeatMissingScoreSlots,
     applyScoreCorrectionSecure,
+    deleteScoreSecure,
     fetchInterferenceCalls,
     fetchAllInterferenceCallsForEvent,
     recordScoreOverrideSecure,
-    upsertInterferenceCall
+    upsertInterferenceCall,
+    deleteInterferenceCall
 } from './modules/scoring.api';
-export type { RawScoreRow, SecureScoreCorrectionInput, SecureScoreOverrideInput, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatMissingScoreSlotRow, HeatCloseValidationResult } from './modules/scoring.api';
+export type { RawScoreRow, SecureScoreCorrectionInput, SecureScoreDeletionInput, SecureScoreOverrideInput, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatMissingScoreSlotRow, HeatCloseValidationResult } from './modules/scoring.api';
 
 export {
     fetchActiveJudges,

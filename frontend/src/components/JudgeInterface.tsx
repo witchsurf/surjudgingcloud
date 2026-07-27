@@ -4,7 +4,7 @@ import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
 import JudgeSyncBadge from './JudgeSyncBadge';
-import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchHeatMetadata, fetchInterferenceCalls, upsertInterferenceCall } from '../api/supabaseClient';
+import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchHeatMetadata, fetchInterferenceCalls, upsertInterferenceCall, deleteInterferenceCall } from '../api/supabaseClient';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
@@ -83,7 +83,7 @@ function JudgeInterface({
   const [entryMode, setEntryMode] = useState<'score' | 'interference'>('score');
   const [interferenceType, setInterferenceType] = useState<InterferenceType>('INT1');
   const [headJudgeOverride, setHeadJudgeOverride] = useState(false);
-  const [, setInterferenceCalls] = useState<InterferenceCall[]>([]);
+  const [interferenceCalls, setInterferenceCalls] = useState<InterferenceCall[]>([]);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -627,6 +627,25 @@ function JudgeInterface({
     }
     const judgeName = config.judgeNames[judgeId] || judgeId;
     const normalizedSurfer = normalizeSurferKey(surfer);
+    const existingOwnCall = interferenceCalls.find((call) =>
+      normalizeSurferKey(call.surfer) === normalizedSurfer
+      && call.wave_number === wave
+      && (call.judge_station || call.judge_id) === judgeStation
+    );
+    if (existingOwnCall && existingOwnCall.call_type === interferenceType) {
+      await deleteInterferenceCall({
+        heat_id: currentHeatId,
+        judge_id: existingOwnCall.judge_id,
+        surfer: normalizedSurfer,
+        wave_number: wave,
+      });
+      setInteractionWarning({
+        title: 'Interférence retirée',
+        message: `${judgeStation} · ${normalizedSurfer} · vague ${wave}.`,
+      });
+      await refreshInterferenceCalls();
+      return;
+    }
     await upsertInterferenceCall({
       event_id: eventId,
       heat_id: currentHeatId,
@@ -641,6 +660,10 @@ function JudgeInterface({
       wave_number: wave,
       call_type: interferenceType,
       is_head_judge_override: isChiefJudge && headJudgeOverride,
+    });
+    setInteractionWarning({
+      title: existingOwnCall ? 'Interférence remplacée' : 'Interférence enregistrée',
+      message: `${judgeStation} · ${normalizedSurfer} · vague ${wave} · ${interferenceType}. Touchez de nouveau pour la retirer.`,
     });
     await refreshInterferenceCalls();
   };
