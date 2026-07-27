@@ -67,6 +67,26 @@ Préflight complet d'un événement :
 ./scripts/hp-ops.sh competition-check --home --event-id <EVENT_ID>
 ```
 
+### Smoke test passif des deux podiums
+
+Sur le terrain, la commande utilise par défaut le profil D-LINK et propose
+l'adresse fixe `192.168.1.2` avant de démarrer :
+
+```bash
+./scripts/hp-ops.sh field-smoke --event-id <EVENT_ID>
+```
+
+Appuyer sur Entrée conserve `192.168.1.2`; saisir une autre adresse permet de
+suivre immédiatement le HP si son IP a changé. À la maison, utiliser :
+
+```bash
+./scripts/hp-ops.sh field-smoke --home --host 10.0.0.20 --event-id <EVENT_ID>
+```
+
+Le test ouvre virtuellement l'admin, les displays A/B et les tablettes J1 A/B.
+Il échoue si une page appelle le Cloud, si les deux podiums se mélangent ou si
+la simple ouverture des écrans modifie l'état de la compétition.
+
 Ce contrôle est en lecture seule. Il vérifie notamment l'espace disque, les
 conteneurs critiques, l'application, l'API, le schéma SQL, les heats, les
 participants, les panels des podiums A/B, les conflits de juges, les heats

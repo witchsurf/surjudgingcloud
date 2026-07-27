@@ -16,7 +16,14 @@ if [[ $# -gt 0 ]]; then
   shift
 fi
 
-PROFILE="${SURF_HP_PROFILE:-home}"
+PROFILE="${SURF_HP_PROFILE:-}"
+if [[ -z "$PROFILE" ]]; then
+  if [[ "$COMMAND" == "field-smoke" ]]; then
+    PROFILE="field"
+  else
+    PROFILE="home"
+  fi
+fi
 HOST="${SURF_HP_HOST:-}"
 HOST_FROM_CLI="0"
 EVENT_ID=""
@@ -36,7 +43,7 @@ Commands:
   deploy           Build and deploy frontend only
   healthcheck      Check HP network, containers, local app/API, bundle
   competition-check Full event readiness check (read-only)
-  field-smoke      Browser/API smoke test for podiums A and B (read-only)
+  field-smoke      Browser/API smoke test for podiums A and B (read-only, D-LINK by default)
   backup           Create a verified PostgreSQL snapshot on the HP
   cloud-to-local   Copy Cloud DB to HP local DB before an event
   local-to-cloud   Push one event from HP local DB to Cloud
@@ -50,8 +57,11 @@ Profiles:
   --field          HP on D-LINK / beach LAN, locked host 192.168.1.2
   --host <ip>      Override selected profile host
 
+field-smoke defaults to --field (192.168.1.2) and asks for confirmation
+of the HP address when launched from an interactive terminal.
+
 Common options:
-  --event-id <id>        Required for local-to-cloud/live-start, optional for cloud-to-local
+  --event-id <id>        Required for field-smoke/local-to-cloud/live-start, optional for cloud-to-local
   --interval <seconds>   Live sync interval, default 10
   --skip-refresh         For upgrade
   --skip-deploy          For upgrade
@@ -179,6 +189,24 @@ prompt_for_home_hp_host_if_needed() {
   else
     set_hp_host "$HOST"
   fi
+}
+
+prompt_for_field_smoke_host_if_needed() {
+  local answer
+
+  if [[ "$COMMAND" != "field-smoke" || "$HOST_FROM_CLI" == "1" || ! -t 0 ]]; then
+    return
+  fi
+
+  echo
+  if [[ "$PROFILE" == "field" ]]; then
+    echo "Mode plage D-LINK: confirmez l’adresse IP fixe du HP."
+  else
+    echo "Mode home: confirmez l’adresse IP actuelle du HP."
+  fi
+  read -r -p "HP IP [$HOST]: " answer
+  answer="${answer//[[:space:]]/}"
+  set_hp_host "${answer:-$HOST}"
 }
 
 wait_for_port() {
@@ -336,7 +364,11 @@ run_healthcheck() {
 
 export SURF_HP_PROFILE="$PROFILE"
 set_hp_host "$HOST"
-prompt_for_home_hp_host_if_needed
+if [[ "$COMMAND" == "field-smoke" ]]; then
+  prompt_for_field_smoke_host_if_needed
+else
+  prompt_for_home_hp_host_if_needed
+fi
 print_context
 
 case "$COMMAND" in
