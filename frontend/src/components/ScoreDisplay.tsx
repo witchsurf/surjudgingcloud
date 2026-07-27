@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { Users, Trophy, FileText } from 'lucide-react';
 import HeatTimer from './HeatTimer';
-import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
+import { calculateNeededWaveScore, calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/supabaseClient';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
@@ -111,16 +111,10 @@ function computeNeededScores(stats: SurferStats[]): Record<string, NeededScoreIn
   ) => {
     if (!target) return;
 
-    const completed = surfer.waves.filter((w) => w.isComplete && w.score > 0);
-    const currentBest = completed.length
-      ? Math.max(...completed.map((w) => w.score))
-      : 0;
-
     const targetTotal = target.bestTwo ?? 0;
-    const rawNeeded = targetTotal - currentBest + 0.01;
-    const needed = Math.min(rawNeeded, 10);
+    const needed = calculateNeededWaveScore(surfer, targetTotal);
 
-    if (needed > 0) {
+    if (needed != null && needed > 0) {
       result[surfer.surfer] = {
         needed,
         targetRank,

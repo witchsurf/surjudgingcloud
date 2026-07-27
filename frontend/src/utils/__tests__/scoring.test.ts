@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calculateSurferStats } from '../scoring';
-import type { EffectiveInterference, Score } from '../../types';
+import { calculateNeededWaveScore, calculateSurferStats } from '../scoring';
+import type { EffectiveInterference, Score, SurferStats } from '../../types';
 
 const buildScores = (): Score[] => [
   {
@@ -143,5 +143,31 @@ describe('calculateSurferStats', () => {
 
     const stats = calculateSurferStats(scores, ['ROUGE'], 1, 4, false, [], 'closed');
     expect(stats[0].bestTwo).toBe(9); // correct overridden score
+  });
+});
+
+describe('calculateNeededWaveScore', () => {
+  const buildStats = (interferenceType: 'INT1' | 'INT2' | null): SurferStats => ({
+    surfer: 'WHITE',
+    waves: [
+      { wave: 1, score: 7.95, judgeScores: { J1: 7.9, J2: 8, J3: 7.95 }, isComplete: true },
+      { wave: 2, score: interferenceType === 'INT1' ? 3.88 : 7.75, judgeScores: { J1: 7.7, J2: 7.8, J3: 7.75 }, isComplete: true },
+    ],
+    bestTwo: interferenceType === 'INT1' ? 11.83 : 15.7,
+    rank: 2,
+    color: '#fff',
+    interferenceType,
+  });
+
+  it('raises the requirement when INT1 will halve the second best wave', () => {
+    expect(calculateNeededWaveScore(buildStats('INT1'), 12.9)).toBe(8.94);
+  });
+
+  it('keeps the standard requirement without interference', () => {
+    expect(calculateNeededWaveScore(buildStats(null), 12.9)).toBe(4.96);
+  });
+
+  it('requires a new best wave to beat the target with INT2', () => {
+    expect(calculateNeededWaveScore(buildStats('INT2'), 9)).toBe(9.01);
   });
 });

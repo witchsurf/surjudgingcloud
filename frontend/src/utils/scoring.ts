@@ -281,6 +281,38 @@ export function getEffectiveJudgeCount(scores: Score[], configuredCount?: number
   return Math.max(uniqueJudges, 1);
 }
 
+export function calculateNeededWaveScore(
+  surfer: SurferStats,
+  targetTotal: number
+): number | null {
+  const completed = surfer.waves.filter((wave) => wave.isComplete && wave.score > 0);
+  const currentBest = completed.length
+    ? Math.max(...completed.map((wave) => wave.score))
+    : 0;
+  const targetToBeat = targetTotal + 0.01;
+
+  let rawNeeded: number;
+  if (surfer.interferenceType === 'INT1') {
+    // Scenario 1: the new wave remains second best and is halved.
+    const asSecondBest = 2 * (targetToBeat - currentBest);
+    // Scenario 2: the new wave becomes best; the old best is then halved.
+    const asNewBest = targetToBeat - (currentBest / 2);
+    const validCandidates = [
+      asSecondBest > 0 && asSecondBest <= currentBest ? asSecondBest : Number.POSITIVE_INFINITY,
+      asNewBest > currentBest ? asNewBest : Number.POSITIVE_INFINITY,
+    ];
+    rawNeeded = Math.min(...validCandidates);
+  } else if (surfer.interferenceType === 'INT2') {
+    // With INT2 only the best wave counts.
+    rawNeeded = targetToBeat;
+  } else {
+    rawNeeded = targetToBeat - currentBest;
+  }
+
+  if (!Number.isFinite(rawNeeded) || rawNeeded <= 0) return null;
+  return roundScore(Math.min(rawNeeded, 10));
+}
+
 export interface JudgeAccuracyStats {
   judgeId: string;
   scoredWaves: number;
