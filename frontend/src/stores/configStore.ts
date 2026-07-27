@@ -10,7 +10,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AppConfig } from '../types';
 import { INITIAL_CONFIG } from '../utils/constants';
 import { eventRepository, heatRepository } from '../repositories';
-import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, fetchHeatSlotMappings, parseActiveHeatId, upsertActiveHeatPointer } from '../api/supabaseClient';
+import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, fetchHeatSlotMappings, fetchPodiumJudgePanel, parseActiveHeatId, upsertActiveHeatPointer } from '../api/supabaseClient';
 import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { logger } from '../lib/logger';
@@ -124,6 +124,39 @@ const applyHeatJudgeAssignments = async (config: AppConfig, heatId: string): Pro
         };
     } catch (error) {
         logger.warn('ConfigStore', 'Unable to load heat judge assignments', { heatId, error });
+        return config;
+    }
+};
+
+const applyPodiumJudgePanel = async (
+    config: AppConfig,
+    eventId: number,
+    podiumId: string,
+): Promise<AppConfig> => {
+    try {
+        const panel = await fetchPodiumJudgePanel(eventId, podiumId);
+        if (panel.length === 0) return config;
+
+        const sortedPanel = [...panel].sort((left, right) =>
+            left.station.localeCompare(right.station, undefined, { numeric: true, sensitivity: 'base' })
+        );
+
+        return {
+            ...config,
+            judges: sortedPanel.map((assignment) => assignment.station),
+            judgeNames: Object.fromEntries(
+                sortedPanel.map((assignment) => [assignment.station, assignment.judge_name])
+            ),
+            judgeIdentities: Object.fromEntries(
+                sortedPanel.map((assignment) => [assignment.station, assignment.judge_id])
+            ),
+        };
+    } catch (error) {
+        logger.warn('ConfigStore', 'Unable to load podium judge panel, keeping heat assignments', {
+            eventId,
+            podiumId,
+            error,
+        });
         return config;
     }
 };
@@ -404,7 +437,8 @@ export const useConfigStore = create<ConfigStore>()(
                             const heatKey = ensureHeatId(
                                 `${snapshot.event_name}_${snapshot.division}_R${snapshot.round}_H${snapshot.heat_number}`
                             );
-                            const dbConfig = await applyHeatJudgeAssignments(baseConfig, heatKey);
+                            const heatConfig = await applyHeatJudgeAssignments(baseConfig, heatKey);
+                            const dbConfig = await applyPodiumJudgePanel(heatConfig, eventId, podiumId);
 
                             set({
                                 config: dbConfig,

@@ -1,5 +1,27 @@
 begin;
 
+-- Keep this migration deployable on Cloud environments where the field-only
+-- runtime diagnostics migration was not previously installed.
+create table if not exists public.app_runtime_schema_version (
+  id boolean primary key default true,
+  schema_version text not null,
+  schema_label text,
+  updated_at timestamptz not null default now(),
+  constraint app_runtime_schema_version_singleton check (id)
+);
+
+alter table public.app_runtime_schema_version enable row level security;
+
+drop policy if exists allow_public_read_app_runtime_schema_version
+  on public.app_runtime_schema_version;
+create policy allow_public_read_app_runtime_schema_version
+  on public.app_runtime_schema_version
+  for select
+  to anon, authenticated
+  using (true);
+
+grant select on public.app_runtime_schema_version to anon, authenticated;
+
 -- The former realtime-config trigger performs a global, single-podium transition.
 -- Multi-podium transitions are now exclusively owned by the explicit RPCs below:
 -- this prevents closing podium A from advancing or rewriting podium B.

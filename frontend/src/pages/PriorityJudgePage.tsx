@@ -17,7 +17,7 @@ import type { AppConfig } from '../types';
 import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
 
 export default function PriorityJudgePage() {
-    const { currentJudge, login } = useAuthStore();
+    const { currentJudge, login, logout } = useAuthStore();
     const { config, configSaved, activeEventId, setActiveEventId, setConfig, loadConfigFromDb, loadKioskConfig } = useConfigStore();
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { subscribeToHeat, isConnected } = useRealtimeSync();
@@ -38,7 +38,19 @@ export default function PriorityJudgePage() {
     const searchParams = new URLSearchParams(window.location.search);
     const eventIdFromUrl = searchParams.get('eventId');
     const podiumId = getPodiumIdFromSearch(window.location.search);
+    const numericEventIdFromUrl = eventIdFromUrl ? Number(eventIdFromUrl) : NaN;
+    const prioritySessionEventId = Number.isFinite(numericEventIdFromUrl)
+        ? numericEventIdFromUrl
+        : activeEventId ?? undefined;
     const isPriorityJudgeSession = currentJudge?.id === 'priority-judge';
+
+    useEffect(() => {
+        if (!currentJudge || !prioritySessionEventId) return;
+        const sessionPodium = currentJudge.podiumId?.trim().toUpperCase();
+        if (currentJudge.eventId !== prioritySessionEventId || sessionPodium !== podiumId) {
+            logout();
+        }
+    }, [currentJudge, logout, podiumId, prioritySessionEventId]);
     const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
         const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
         const nextRound = updates.round ?? prev.round;
@@ -180,7 +192,14 @@ export default function PriorityJudgePage() {
     }
 
     if (!isPriorityJudgeSession) {
-        return <PriorityJudgeLogin onSuccess={(judge) => login(judge.id, judge.name)} />;
+        return <PriorityJudgeLogin onSuccess={(judge) => login(
+            judge.id,
+            judge.name,
+            undefined,
+            undefined,
+            prioritySessionEventId,
+            podiumId,
+        )} />;
     }
 
     if (!configSaved) {

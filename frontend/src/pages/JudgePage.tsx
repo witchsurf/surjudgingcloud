@@ -22,7 +22,7 @@ import { PendingJudgeAssignmentPoller } from '../components/PendingJudgeAssignme
 import { getPodiumIdFromSearch } from '../utils/podium';
 
 export default function JudgePage() {
-    const { currentJudge, login } = useAuthStore();
+    const { currentJudge, login, logout } = useAuthStore();
     const { config, configSaved, activeEventId, setActiveEventId, setConfig, loadConfigFromDb, loadKioskConfig } = useConfigStore();
     const { timer, setTimer, heatStatus, setHeatStatus } = useJudgingStore();
     const { handleScoreSubmit, handleScoreSync } = useScoreManager();
@@ -64,6 +64,18 @@ export default function JudgePage() {
     const positionFromUrl = rawPosition ? rawPosition.trim() : null; // Kiosk mode
     const eventIdFromUrl = searchParams.get('eventId');
     const podiumId = getPodiumIdFromSearch(window.location.search);
+    const numericEventIdFromUrl = eventIdFromUrl ? Number(eventIdFromUrl) : NaN;
+    const judgeSessionEventId = Number.isFinite(numericEventIdFromUrl)
+        ? numericEventIdFromUrl
+        : activeEventId ?? undefined;
+
+    useEffect(() => {
+        if (!currentJudge || !judgeSessionEventId) return;
+        const sessionPodium = currentJudge.podiumId?.trim().toUpperCase();
+        if (currentJudge.eventId !== judgeSessionEventId || sessionPodium !== podiumId) {
+            logout();
+        }
+    }, [currentJudge, judgeSessionEventId, logout, podiumId]);
 
     const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
         const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
@@ -382,6 +394,7 @@ export default function JudgePage() {
                         <PendingJudgeAssignmentPoller
                             position={normalizedPosition}
                             eventId={activeEventId}
+                            podiumId={podiumId}
                             onReady={() => window.location.reload()}
                         />
                         <button
@@ -400,7 +413,14 @@ export default function JudgePage() {
                 position={normalizedPosition}
                 assignedName={assignedJudgeName}
                 assignedJudgeId={assignedJudgeIdentity}
-                onSuccess={(judge) => login(judge.id, judge.name, judge.identityId, judge.stationId)}
+                onSuccess={(judge) => login(
+                    judge.id,
+                    judge.name,
+                    judge.identityId,
+                    judge.stationId,
+                    judgeSessionEventId,
+                    podiumId,
+                )}
             />
         );
     }
@@ -442,7 +462,14 @@ export default function JudgePage() {
     // Fast path: always show the judge code screen when judge_id is present, skipping magic-link/user auth.
     // Regular judge login (legacy UUID-based)
     if (!currentJudge && judgeIdFromUrl && !positionFromUrl) {
-        return <JudgeLogin judgeId={judgeIdFromUrl} onSuccess={(judge) => login(judge.id, judge.name, judge.id, judge.id)} />;
+        return <JudgeLogin judgeId={judgeIdFromUrl} onSuccess={(judge) => login(
+            judge.id,
+            judge.name,
+            judge.id,
+            judge.id,
+            judgeSessionEventId,
+            podiumId,
+        )} />;
     }
 
     if (!currentJudge && !judgeIdFromUrl && !positionFromUrl && eventIdFromUrl) {

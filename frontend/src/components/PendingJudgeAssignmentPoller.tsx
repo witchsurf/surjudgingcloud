@@ -11,19 +11,23 @@
 
 import { useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { fetchPodiumJudgePanel } from '../api/supabaseClient';
+import { normalizePodiumId } from '../utils/podium';
 
 interface Props {
   /** The judge position to watch, e.g. "J1" */
   position: string;
   /** Active event id, used to query event_last_config */
   eventId?: number | null;
+  /** Podium whose permanent panel owns this station. */
+  podiumId?: string | null;
   /** Called when the judge assignment is complete */
   onReady: () => void;
 }
 
 const POLL_INTERVAL_MS = 2000;
 
-export function PendingJudgeAssignmentPoller({ position, eventId, onReady }: Props) {
+export function PendingJudgeAssignmentPoller({ position, eventId, podiumId, onReady }: Props) {
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
@@ -31,12 +35,26 @@ export function PendingJudgeAssignmentPoller({ position, eventId, onReady }: Pro
     if (!isSupabaseConfigured() || !supabase) return;
 
     const normalizedPos = position.trim().toUpperCase();
+    const normalizedPodium = normalizePodiumId(podiumId);
     let active = true;
 
     const checkAssignment = async () => {
       try {
         // Prefer event_last_config (config snapshot saved by admin)
         if (eventId) {
+          const panel = await fetchPodiumJudgePanel(eventId, normalizedPodium);
+          const assignment = panel.find(
+            (row) => row.station.trim().toUpperCase() === normalizedPos
+          );
+          if (assignment?.judge_name?.trim() && assignment?.judge_id?.trim()) {
+            if (active) onReadyRef.current();
+            return;
+          }
+
+          // Legacy fallback is only valid for podium A. event_last_config is
+          // global and must never provide podium A judges to podium B.
+          if (normalizedPodium !== 'A') return;
+
           const { data } = await supabase!
             .from('event_last_config')
             .select('config_data')
@@ -78,7 +96,7 @@ export function PendingJudgeAssignmentPoller({ position, eventId, onReady }: Pro
       active = false;
       clearInterval(interval);
     };
-  }, [position, eventId]);
+  }, [position, eventId, podiumId]);
 
   // Renders nothing — it's a side-effect-only component
   return null;

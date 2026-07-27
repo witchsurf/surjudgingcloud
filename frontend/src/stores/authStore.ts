@@ -14,6 +14,8 @@ interface Judge {
     name: string;
     identityId?: string;
     stationId?: string;
+    eventId?: number;
+    podiumId?: string;
 }
 
 interface AuthStore {
@@ -24,7 +26,7 @@ interface AuthStore {
     isAuthenticated: boolean;
 
     // Actions
-    login: (judgeId: string, judgeName: string, judgeIdentityId?: string, stationId?: string) => void;
+    login: (judgeId: string, judgeName: string, judgeIdentityId?: string, stationId?: string, eventId?: number, podiumId?: string) => void;
     logout: () => void;
 }
 
@@ -40,8 +42,8 @@ export const useAuthStore = create<AuthStore>()(
             },
 
             // Actions
-            login: (judgeId: string, judgeName: string, judgeIdentityId?: string, stationId?: string) => {
-                const judge = { id: judgeId, name: judgeName, identityId: judgeIdentityId, stationId };
+            login: (judgeId: string, judgeName: string, judgeIdentityId?: string, stationId?: string, eventId?: number, podiumId?: string) => {
+                const judge = { id: judgeId, name: judgeName, identityId: judgeIdentityId, stationId, eventId, podiumId };
                 set({ currentJudge: judge });
 
                 // Set Sentry user context
