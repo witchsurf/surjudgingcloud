@@ -43,6 +43,46 @@ type ActivePodiumPointerRow = {
   updated_at?: string | null;
 };
 
+type CompetitionAuditEntry = {
+  id: string;
+  event_id: number | null;
+  heat_id: string | null;
+  podium_id: string | null;
+  action_type: string;
+  entity_type: string;
+  entity_id: string | null;
+  actor_id: string | null;
+  actor_name: string | null;
+  actor_role: string | null;
+  before_data: Record<string, unknown> | null;
+  after_data: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+const auditActionLabels: Record<string, string> = {
+  SCORE_CORRECTED: 'Note corrigée',
+  SCORE_MOVED: 'Note déplacée',
+  SCORE_DELETED: 'Note supprimée',
+  INTERFERENCE_ADDED: 'Interférence posée',
+  INTERFERENCE_UPDATED: 'Interférence remplacée',
+  INTERFERENCE_REMOVED: 'Interférence retirée',
+  HEAT_STATUS_CHANGED: 'Statut du heat modifié',
+  ACTIVE_HEAT_CHANGED: 'Heat actif changé',
+};
+
+const auditValue = (data: Record<string, unknown> | null, key: string) => data?.[key];
+
+const formatAuditLocation = (data: Record<string, unknown> | null) => {
+  if (!data) return '';
+  const parts = [
+    auditValue(data, 'judge_station') || auditValue(data, 'judge_name'),
+    auditValue(data, 'surfer'),
+    auditValue(data, 'wave_number') ? `V${auditValue(data, 'wave_number')}` : null,
+  ].filter(Boolean);
+  return parts.join(' · ');
+};
+
 const generateJudgePersonalCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 const isOfficialJudgeIdentityId = (value?: string | null) => {
@@ -163,6 +203,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const navigate = useNavigate();
   const timerAudio = TimerAudio.getInstance();
   const [dbStatus, setDbStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  const [competitionAuditLogs, setCompetitionAuditLogs] = useState<CompetitionAuditEntry[]>([]);
   const [selectedJudge, setSelectedJudge] = useState('');
   const [selectedSurfer, setSelectedSurfer] = useState('');
   const [selectedWave, setSelectedWave] = useState<number | ''>('');
@@ -754,6 +795,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setDbHeatScoreHistory(nextScores);
       setDbHeatScores(canonicalizeScores(nextScores));
       setDbOverrideLogs((overrideRows || []) as ScoreOverrideLog[]);
+
+      const { data: auditRows, error: auditError } = await supabase
+        .from('competition_audit_log')
+        .select('*')
+        .eq('heat_id', heatId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (!auditError) {
+        setCompetitionAuditLogs((auditRows || []) as CompetitionAuditEntry[]);
+      } else {
+        setCompetitionAuditLogs([]);
+      }
     } catch (error) {
       console.warn('⚠️ Base de données inaccessible - chargement des scores locaux de secours', error);
 
@@ -767,6 +820,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setDbHeatScoreHistory(localScores);
       setDbHeatScores(canonicalizeScores(localScores));
       setDbOverrideLogs(localLogs);
+      setCompetitionAuditLogs([]);
     }
   }, [heatId]);
 
@@ -5998,19 +6052,86 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         )}
       </details>
 
-      {/* Historique des corrections */}
+      {/* Journal d'audit métier */}
       <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40">
         <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
           <div className="flex items-center space-x-3">
             <RotateCcw className="w-6 h-6 text-cyan-400" />
-            <h2 className="text-xl font-bebas tracking-wider text-slate-100">7. HISTORIQUE DES CORRECTIONS</h2>
+            <h2 className="text-xl font-bebas tracking-wider text-slate-100">7. JOURNAL D’AUDIT DU HEAT</h2>
           </div>
           <span className="text-slate-400 group-open:rotate-180 transition-transform opacity-70">▼</span>
         </summary>
         <div className="p-6 bg-slate-950/20 flex flex-col space-y-4">
-          {effectiveOverrideLogs.length === 0 ? (
-            <p className="text-xs text-slate-500 font-medium">Aucune correction enregistrée pour ce heat.</p>
+          {competitionAuditLogs.length > 0 ? (
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+              {competitionAuditLogs.map(entry => {
+                const beforeLocation = formatAuditLocation(entry.before_data);
+                const afterLocation = formatAuditLocation(entry.after_data);
+                const beforeScore = auditValue(entry.before_data, 'score');
+                const afterScore = auditValue(entry.after_data, 'score');
+                const beforeStatus = auditValue(entry.before_data, 'status');
+                const afterStatus = auditValue(entry.after_data, 'status');
+                const callType = auditValue(entry.metadata, 'call_type');
+                return (
+                  <div key={entry.id} className="border border-white/5 rounded-2xl px-4 py-3 text-xs bg-slate-900/40 shadow-lg">
+                    <div className="flex flex-wrap justify-between items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black uppercase tracking-wider text-cyan-300">
+                          {auditActionLabels[entry.action_type] || entry.action_type}
+                        </span>
+                        {entry.podium_id && (
+                          <span className="rounded bg-purple-950/70 px-2 py-0.5 text-[10px] font-bold text-purple-200">
+                            PODIUM {entry.podium_id}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                        {new Date(entry.created_at).toLocaleString('fr-FR')}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-slate-300">
+                      Par <strong className="text-slate-100">{entry.actor_name || entry.actor_id || 'Système terrain'}</strong>
+                      {entry.actor_role ? ` · ${entry.actor_role}` : ''}
+                    </div>
+                    {(beforeLocation || afterLocation) && (
+                      <div className="mt-1 font-mono text-slate-300">
+                        {beforeLocation && afterLocation && beforeLocation !== afterLocation
+                          ? `${beforeLocation} → ${afterLocation}`
+                          : afterLocation || beforeLocation}
+                      </div>
+                    )}
+                    {(beforeScore !== undefined || afterScore !== undefined) && (
+                      <div className="mt-1 font-mono font-bold text-emerald-300">
+                        Note: {beforeScore !== undefined ? String(beforeScore) : '—'}
+                        {afterScore !== undefined ? ` → ${String(afterScore)}` : ' → supprimée'}
+                      </div>
+                    )}
+                    {(beforeStatus !== undefined || afterStatus !== undefined) && (
+                      <div className="mt-1 font-mono text-amber-300">
+                        Statut: {String(beforeStatus ?? '—')} → {String(afterStatus ?? '—')}
+                      </div>
+                    )}
+                    {callType && (
+                      <div className="mt-1 font-bold text-amber-300">
+                        {String(callType)} · {String(auditValue(entry.metadata, 'surfer') || '')} · V{String(auditValue(entry.metadata, 'wave_number') || '')}
+                      </div>
+                    )}
+                    {(auditValue(entry.metadata, 'reason') || auditValue(entry.metadata, 'comment')) && (
+                      <div className="mt-2 rounded-lg border border-white/5 bg-black/20 p-2 text-[10px] italic text-slate-400">
+                        {[auditValue(entry.metadata, 'reason'), auditValue(entry.metadata, 'comment')].filter(Boolean).map(String).join(' — ')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : effectiveOverrideLogs.length === 0 ? (
+            <p className="text-xs text-slate-500 font-medium">Aucune opération auditée pour ce heat.</p>
           ) : (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                Historique antérieur à l’activation du journal unifié
+              </p>
             <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
               {effectiveOverrideLogs.map(log => (
                 <div key={log.id} className="border border-white/5 rounded-2xl px-4 py-3 text-xs bg-slate-900/40 shadow-lg flex flex-col justify-between gap-1">
@@ -6030,6 +6151,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                 </div>
               ))}
             </div>
+            </>
           )}
         </div>
       </details>

@@ -461,6 +461,12 @@ async function main() {
       const interferences = heatIds.length
         ? await fetchPagedRows(cloud, 'interference_calls', (query) => query.select('*').in('heat_id', heatIds))
         : [];
+      const competitionAuditLogs = eventIds.length
+        ? await fetchPagedRows(cloud, 'competition_audit_log', (query) => query.select('*').in('event_id', eventIds)).catch((error) => {
+            console.warn('⚠️ competition_audit_log not available yet, skipping:', error.message);
+            return [];
+          })
+        : [];
       const lastConfigs = eventIds.length
         ? await fetchPagedRows(cloud, 'event_last_config', (query) => query.select('*').in('event_id', eventIds))
         : [];
@@ -534,6 +540,8 @@ async function main() {
 
       await syncTable('score_overrides', overrides);
       await syncTable('interference_calls', interferences);
+      await local.from('competition_audit_log').delete().in('event_id', eventIds);
+      await syncTable('competition_audit_log', competitionAuditLogs);
       await syncTable('event_last_config', lastConfigs, 'event_id');
       await syncActiveHeatPointers(activeHeatPointers);
     }
