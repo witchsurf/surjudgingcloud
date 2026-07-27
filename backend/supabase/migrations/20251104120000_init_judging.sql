@@ -188,8 +188,10 @@ ALTER TABLE IF EXISTS public.payments ENABLE ROW LEVEL SECURITY;
 
 -- Drop legacy permissive policies that granted public write access
 DO $$
+DECLARE
+  t text;
 BEGIN
-  FOR t IN ARRAY['heats','scores','heat_timers','heat_configs','heat_realtime_config','score_overrides','events','payments'] LOOP
+  FOREACH t IN ARRAY ARRAY['heats','scores','heat_timers','heat_configs','heat_realtime_config','score_overrides','events','payments'] LOOP
     IF EXISTS (SELECT 1 FROM pg_policies WHERE tablename=t AND policyname='anon_write') THEN
       EXECUTE format('DROP POLICY anon_write ON public.%I;', t);
     END IF;
@@ -206,21 +208,21 @@ DECLARE
   t text;
 BEGIN
   -- Public read access for heats and scores (no anonymous writes)
-  FOR t IN ARRAY['heats','scores'] LOOP
+  FOREACH t IN ARRAY ARRAY['heats','scores'] LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename=t AND policyname='public_read') THEN
       EXECUTE format('CREATE POLICY public_read ON public.%I FOR SELECT TO anon, authenticated USING (true);', t);
     END IF;
   END LOOP;
 
   -- Authenticated-only read for sensitive operational tables
-  FOR t IN ARRAY['heat_timers','heat_configs','heat_realtime_config','score_overrides','events','payments'] LOOP
+  FOREACH t IN ARRAY ARRAY['heat_timers','heat_configs','heat_realtime_config','score_overrides','events','payments'] LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename=t AND policyname='authenticated_read') THEN
       EXECUTE format('CREATE POLICY authenticated_read ON public.%I FOR SELECT TO authenticated USING (true);', t);
     END IF;
   END LOOP;
 
   -- Authenticated users can insert new rows
-  FOR t IN ARRAY['heats','scores','heat_timers','heat_configs','heat_realtime_config','score_overrides','events','payments'] LOOP
+  FOREACH t IN ARRAY ARRAY['heats','scores','heat_timers','heat_configs','heat_realtime_config','score_overrides','events','payments'] LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename=t AND policyname='authenticated_insert') THEN
       EXECUTE format('CREATE POLICY authenticated_insert ON public.%I FOR INSERT TO authenticated WITH CHECK (true);', t);
     END IF;

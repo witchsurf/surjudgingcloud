@@ -1,7 +1,9 @@
 -- Dedupe events by name and enforce uniqueness.
 -- Keeps the lowest event id per normalized name and remaps foreign keys.
 
-with duplicate_events as (
+create temporary table duplicate_events
+on commit drop
+as
   select
     lower(trim(name)) as name_key,
     min(id) as keep_id,
@@ -10,9 +12,11 @@ with duplicate_events as (
   from public.events
   where name is not null
   group by lower(trim(name))
-  having count(*) > 1
-),
-dedupe_target as (
+  having count(*) > 1;
+
+create temporary table dedupe_target
+on commit drop
+as
   select
     elc.event_id,
     d.keep_id,
@@ -26,8 +30,8 @@ dedupe_target as (
     ) as keep_exists
   from public.event_last_config elc
   join public.events e on e.id = elc.event_id
-  join duplicate_events d on lower(trim(e.name)) = d.name_key
-)
+  join duplicate_events d on lower(trim(e.name)) = d.name_key;
+
 update public.participants p
 set event_id = d.keep_id
 from duplicate_events d

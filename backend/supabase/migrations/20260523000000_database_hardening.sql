@@ -60,7 +60,7 @@ BEGIN
     host_header := headers::json->>'host';
   EXCEPTION WHEN OTHERS THEN
     RETURN true; -- Non-JSON or malformed headers means local/test environment
-  END IF;
+  END;
 
   IF host_header LIKE '%.supabase.co' OR host_header LIKE '%.supabase.net' THEN
     RETURN false; -- Definitely running on Supabase Cloud

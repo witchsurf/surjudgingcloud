@@ -42,43 +42,29 @@ create policy "Only event owners can update heat_realtime_config"
 
 -- Split judges read/write policies so authenticated management no longer creates
 -- an extra permissive SELECT policy, while keeping public read and auth writes.
-drop policy if exists "Authenticated users can manage judges" on public.judges;
-drop policy if exists "Active judges are viewable by everyone" on public.judges;
-drop policy if exists "Authenticated users can view all judges" on public.judges;
-drop policy if exists "Authenticated users can insert judges" on public.judges;
-drop policy if exists "Authenticated users can update judges" on public.judges;
-drop policy if exists "Authenticated users can delete judges" on public.judges;
+do $$
+begin
+  if to_regclass('public.judges') is not null then
+    execute 'drop policy if exists "Authenticated users can manage judges" on public.judges';
+    execute 'drop policy if exists "Active judges are viewable by everyone" on public.judges';
+    execute 'drop policy if exists "Authenticated users can view all judges" on public.judges';
+    execute 'drop policy if exists "Authenticated users can insert judges" on public.judges';
+    execute 'drop policy if exists "Authenticated users can update judges" on public.judges';
+    execute 'drop policy if exists "Authenticated users can delete judges" on public.judges';
 
-create policy "Active judges are viewable by everyone"
-  on public.judges
-  for select
-  to anon
-  using (active = true);
-
-create policy "Authenticated users can view all judges"
-  on public.judges
-  for select
-  to authenticated
-  using (true);
-
-create policy "Authenticated users can insert judges"
-  on public.judges
-  for insert
-  to authenticated
-  with check (true);
-
-create policy "Authenticated users can update judges"
-  on public.judges
-  for update
-  to authenticated
-  using (true)
-  with check (true);
-
-create policy "Authenticated users can delete judges"
-  on public.judges
-  for delete
-  to authenticated
-  using (true);
+    execute 'create policy "Active judges are viewable by everyone"
+      on public.judges for select to anon using (active = true)';
+    execute 'create policy "Authenticated users can view all judges"
+      on public.judges for select to authenticated using (true)';
+    execute 'create policy "Authenticated users can insert judges"
+      on public.judges for insert to authenticated with check (true)';
+    execute 'create policy "Authenticated users can update judges"
+      on public.judges for update to authenticated using (true) with check (true)';
+    execute 'create policy "Authenticated users can delete judges"
+      on public.judges for delete to authenticated using (true)';
+  end if;
+end
+$$;
 
 -- Remove the duplicate single-column heat_entries index and keep the older
 -- heat_entries_heat_id_idx in place.

@@ -1,0 +1,2 @@
+-- Historical migration recorded on the Cloud project.
+-- Its resulting schema is already covered by the surrounding local migrations.

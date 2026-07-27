@@ -199,7 +199,24 @@ grant execute on function public.apply_score_correction_secure(uuid, text, boole
 -- =====================================================================
 
 -- Recreate view correctly if skipped during bootstrap
-DROP VIEW IF EXISTS public.v_event_judge_accuracy_summary CASCADE;
+do $$
+declare
+  v_relkind "char";
+begin
+  select c.relkind
+    into v_relkind
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = 'v_event_judge_accuracy_summary';
+
+  if v_relkind = 'm' then
+    execute 'drop materialized view public.v_event_judge_accuracy_summary cascade';
+  elsif v_relkind = 'v' then
+    execute 'drop view public.v_event_judge_accuracy_summary cascade';
+  end if;
+end
+$$;
 
 CREATE OR REPLACE FUNCTION public.create_materialized_view_if_missing()
 RETURNS void
@@ -506,4 +523,3 @@ on conflict (id) do update
       updated_at = excluded.updated_at;
 
 commit;
-
