@@ -4180,31 +4180,49 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   Basculer charge le heat et le panel du podium sans modifier les tablettes.
                 </p>
               </div>
-              <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-1">
-                {['A', 'B'].map((podium) => {
-                  const pointer = activePodiumPointers.find(
-                    (row) => normalizePodiumId(row.podium_id) === podium
-                  );
-                  const active = normalizePodiumId(selectedPodiumId) === podium;
-                  return (
-                    <button
-                      key={podium}
-                      type="button"
-                      disabled={podiumSwitchLoading}
-                      onClick={() => void handlePodiumSwitch(podium)}
-                      className={`min-w-32 rounded-md px-4 py-2 text-left transition-colors disabled:cursor-wait disabled:opacity-60 ${
-                        active
-                          ? 'bg-cyan-600 text-white'
-                          : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="block text-xs font-black uppercase tracking-widest">Podium {podium}</span>
-                      <span className="block max-w-40 truncate text-[9px] opacity-75">
-                        {pointer?.active_heat_id || 'Aucun heat actif'}
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-1">
+                  {['A', 'B'].map((podium) => {
+                    const pointer = activePodiumPointers.find(
+                      (row) => normalizePodiumId(row.podium_id) === podium
+                    );
+                    const active = normalizePodiumId(selectedPodiumId) === podium;
+                    return (
+                      <button
+                        key={podium}
+                        type="button"
+                        disabled={podiumSwitchLoading}
+                        onClick={() => void handlePodiumSwitch(podium)}
+                        className={`min-w-32 rounded-md px-4 py-2 text-left transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                          active
+                            ? 'bg-cyan-600 text-white'
+                            : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                        }`}
+                      >
+                        <span className="block text-xs font-black uppercase tracking-widest">Podium {podium}</span>
+                        <span className="block max-w-40 truncate text-[9px] opacity-75">
+                          {pointer?.active_heat_id || 'Aucun heat actif'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSavePodiumPanel}
+                    className="rounded-lg bg-indigo-700 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-indigo-600"
+                  >
+                    Enregistrer le panel {normalizePodiumId(selectedPodiumId)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAssignCurrentHeatToPodium}
+                    className="rounded-lg bg-emerald-700 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-600"
+                  >
+                    Jouer ce heat sur {normalizePodiumId(selectedPodiumId)}
+                  </button>
+                </div>
               </div>
             </div>
             {podiumAssignStatus ? (
@@ -5213,50 +5231,6 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
 
           {publicDisplayUrl ? (
             <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-white/5 bg-slate-950/50 p-3">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-300">Podium des accès</p>
-                  <p className="text-[11px] text-slate-500">Les liens générés ci-dessous suivent ce podium.</p>
-                </div>
-                <div className="flex flex-col sm:items-end gap-2">
-                  <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-1">
-                    {['A', 'B'].map((podium) => {
-                      const active = normalizePodiumId(selectedPodiumId) === podium;
-                      return (
-                        <button
-                          key={podium}
-                          type="button"
-                          disabled={podiumSwitchLoading}
-                          onClick={() => void handlePodiumSwitch(podium)}
-                          className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-md transition-colors ${
-                            active
-                              ? 'bg-cyan-600 text-white'
-                              : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
-                          }`}
-                        >
-                          Podium {podium}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSavePodiumPanel}
-                      className="px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg bg-indigo-700 text-white hover:bg-indigo-600 transition-colors"
-                    >
-                      Enregistrer le panel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleAssignCurrentHeatToPodium}
-                      className="px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg bg-emerald-700 text-white hover:bg-emerald-600 transition-colors"
-                    >
-                      Jouer ce heat sur {normalizePodiumId(selectedPodiumId)}
-                    </button>
-                  </div>
-                </div>
-              </div>
               {/* 3 Columns Grid for Sharing Cards */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
