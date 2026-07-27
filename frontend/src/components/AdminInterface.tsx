@@ -133,6 +133,7 @@ interface AdminInterfaceProps {
   loadedFromDb?: boolean;
   activeEventId?: number;
   onReconnectToDb?: () => Promise<void>;
+  onPodiumSwitch?: (podiumId: string) => Promise<void>;
 }
 const AdminInterface: React.FC<AdminInterfaceProps> = ({
   config,
@@ -156,7 +157,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   loadState = 'loaded',
   loadedFromDb = false,
   activeEventId,
-  onReconnectToDb
+  onReconnectToDb,
+  onPodiumSwitch
 }) => {
   const navigate = useNavigate();
   const timerAudio = TimerAudio.getInstance();
@@ -182,6 +184,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const storedPodium = window.localStorage.getItem('surfJudgingSelectedPodiumId');
     return normalizePodiumId(urlPodium || storedPodium || DEFAULT_PODIUM_ID);
   });
+  const [podiumSwitchLoading, setPodiumSwitchLoading] = useState(false);
   const [podiumAssignStatus, setPodiumAssignStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   useEffect(() => {
@@ -1735,6 +1738,33 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     } catch (error) {
       console.warn('Impossible d’affecter le heat au podium:', error);
       setPodiumAssignStatus({ type: 'error', message: 'Affectation podium impossible.' });
+    }
+  };
+
+  const handlePodiumSwitch = async (podiumIdInput: string) => {
+    const podiumId = normalizePodiumId(podiumIdInput);
+    const previousPodiumId = normalizePodiumId(selectedPodiumId);
+
+    setSelectedPodiumId(podiumId);
+    setPodiumAssignStatus(null);
+
+    if (!onPodiumSwitch) return;
+
+    setPodiumSwitchLoading(true);
+    try {
+      await onPodiumSwitch(podiumId);
+      setPodiumAssignStatus({
+        type: 'info',
+        message: `Cockpit basculé sur le podium ${podiumId}.`,
+      });
+    } catch (error) {
+      setSelectedPodiumId(previousPodiumId);
+      setPodiumAssignStatus({
+        type: 'error',
+        message: error instanceof Error ? error.message : `Impossible de charger le podium ${podiumId}.`,
+      });
+    } finally {
+      setPodiumSwitchLoading(false);
     }
   };
 
@@ -4143,6 +4173,52 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               </span>
             </div>
 
+            <div className="flex flex-col gap-3 rounded-xl border border-cyan-500/20 bg-cyan-950/15 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-cyan-300">Cockpit podium</p>
+                <p className="text-[11px] text-slate-400">
+                  Basculer charge le heat et le panel du podium sans modifier les tablettes.
+                </p>
+              </div>
+              <div className="inline-flex rounded-lg border border-slate-800 bg-slate-950 p-1">
+                {['A', 'B'].map((podium) => {
+                  const pointer = activePodiumPointers.find(
+                    (row) => normalizePodiumId(row.podium_id) === podium
+                  );
+                  const active = normalizePodiumId(selectedPodiumId) === podium;
+                  return (
+                    <button
+                      key={podium}
+                      type="button"
+                      disabled={podiumSwitchLoading}
+                      onClick={() => void handlePodiumSwitch(podium)}
+                      className={`min-w-32 rounded-md px-4 py-2 text-left transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                        active
+                          ? 'bg-cyan-600 text-white'
+                          : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="block text-xs font-black uppercase tracking-widest">Podium {podium}</span>
+                      <span className="block max-w-40 truncate text-[9px] opacity-75">
+                        {pointer?.active_heat_id || 'Aucun heat actif'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {podiumAssignStatus ? (
+              <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                podiumAssignStatus.type === 'success'
+                  ? 'border-emerald-800 bg-emerald-950/30 text-emerald-300'
+                  : podiumAssignStatus.type === 'info'
+                    ? 'border-cyan-800 bg-cyan-950/30 text-cyan-300'
+                    : 'border-rose-800 bg-rose-950/30 text-rose-300'
+              }`}>
+                {podiumAssignStatus.message}
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Événement</label>
@@ -5150,10 +5226,8 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                         <button
                           key={podium}
                           type="button"
-                          onClick={() => {
-                            setSelectedPodiumId(podium);
-                            setPodiumAssignStatus(null);
-                          }}
+                          disabled={podiumSwitchLoading}
+                          onClick={() => void handlePodiumSwitch(podium)}
                           className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-md transition-colors ${
                             active
                               ? 'bg-cyan-600 text-white'
@@ -5183,18 +5257,6 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                   </div>
                 </div>
               </div>
-              {podiumAssignStatus ? (
-                <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                  podiumAssignStatus.type === 'success'
-                    ? 'border-emerald-800 bg-emerald-950/30 text-emerald-300'
-                    : podiumAssignStatus.type === 'info'
-                      ? 'border-cyan-800 bg-cyan-950/30 text-cyan-300'
-                      : 'border-rose-800 bg-rose-950/30 text-rose-300'
-                }`}>
-                  {podiumAssignStatus.message}
-                </div>
-              ) : null}
-
               {/* 3 Columns Grid for Sharing Cards */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 

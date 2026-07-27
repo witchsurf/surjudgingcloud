@@ -31,6 +31,11 @@ const shallowRecordEqual = (left: Record<string, string> = {}, right: Record<str
     return leftEntries.every(([key, value]) => right[key] === value);
 };
 
+const getPersistedAdminPodium = () => {
+    if (typeof window === 'undefined') return 'A';
+    return normalizePodiumId(window.localStorage.getItem('surfJudgingSelectedPodiumId'));
+};
+
 export default function AdminPage() {
     const [searchParams] = useSearchParams();
     const {
@@ -89,6 +94,7 @@ export default function AdminPage() {
     // Local UI state for loading feedback
     const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'empty' | 'error'>('loaded');
     const [loadError, setLoadError] = useState<string | null>(null);
+    const initialAdminContextRef = React.useRef('');
 
     const currentHeatId = getHeatIdentifiers(
         config.competition,
@@ -124,8 +130,18 @@ export default function AdminPage() {
             setActiveEventId(targetEventId);
         }
 
-        if (!loadedFromDb || activeEventId !== targetEventId) {
-            void loadConfigFromDb(targetEventId);
+        const persistedPodiumId = getPersistedAdminPodium();
+        const contextKey = `${targetEventId}:${persistedPodiumId}`;
+        if (
+            initialAdminContextRef.current !== contextKey
+            || !loadedFromDb
+            || activeEventId !== targetEventId
+        ) {
+            initialAdminContextRef.current = contextKey;
+            void loadConfigFromDb(targetEventId, {
+                force: true,
+                podiumId: persistedPodiumId,
+            });
         }
     }, [eventIdFromUrl, activeEventId, loadedFromDb, loadConfigFromDb, setActiveEventId]);
 
@@ -287,6 +303,30 @@ export default function AdminPage() {
         window.location.reload();
     };
 
+    const handlePodiumSwitch = useCallback(async (podiumIdInput: string) => {
+        const podiumId = normalizePodiumId(podiumIdInput);
+        const targetEventId = await resolveEventIdForCurrentHeat();
+        if (!targetEventId) {
+            throw new Error('Événement introuvable pour charger le podium.');
+        }
+
+        setLoadState('loading');
+        setLoadError(null);
+        try {
+            await loadConfigFromDb(targetEventId, {
+                force: true,
+                includeCategories: false,
+                podiumId,
+            });
+            setLoadState('loaded');
+        } catch (error) {
+            setLoadState('error');
+            const message = error instanceof Error ? error.message : `Chargement du podium ${podiumId} impossible.`;
+            setLoadError(message);
+            throw error;
+        }
+    }, [loadConfigFromDb, resolveEventIdForCurrentHeat]);
+
     const handleResetAllData = () => {
         if (window.confirm('Êtes-vous sûr de vouloir tout réinitialiser ? Cette action est irréversible.')) {
             localStorage.clear();
@@ -413,6 +453,7 @@ export default function AdminPage() {
             loadedFromDb={loadedFromDb}
             activeEventId={activeEventId ?? undefined}
             onReconnectToDb={handleReconnectToDb}
+            onPodiumSwitch={handlePodiumSwitch}
         />
     );
 }
