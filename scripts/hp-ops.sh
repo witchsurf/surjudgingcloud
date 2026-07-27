@@ -35,6 +35,8 @@ Commands:
   refresh          Sync stack files and apply local HP migrations only
   deploy           Build and deploy frontend only
   healthcheck      Check HP network, containers, local app/API, bundle
+  competition-check Full event readiness check (read-only)
+  backup           Create a verified PostgreSQL snapshot on the HP
   cloud-to-local   Copy Cloud DB to HP local DB before an event
   local-to-cloud   Push one event from HP local DB to Cloud
   live-start       Start live HP -> Cloud display sync
@@ -59,6 +61,8 @@ Examples:
   ./scripts/hp-ops.sh upgrade --home
   ./scripts/hp-ops.sh upgrade --field
   ./scripts/hp-ops.sh cloud-to-local --home --event-id 28
+  ./scripts/hp-ops.sh competition-check --field --event-id 28
+  ./scripts/hp-ops.sh backup --home --event-id 28
   ./scripts/hp-ops.sh local-to-cloud --field --event-id 28
   ./scripts/hp-ops.sh live-start --field --event-id 28 --interval 10
 EOF
@@ -143,7 +147,7 @@ set_hp_host() {
 
 command_uses_hp_host() {
   case "$COMMAND" in
-    upgrade|refresh|deploy|healthcheck|cloud-to-local|local-to-cloud|live-start|preflight|urls)
+    upgrade|refresh|deploy|healthcheck|competition-check|backup|cloud-to-local|local-to-cloud|live-start|preflight|urls)
       return 0
       ;;
     *)
@@ -360,6 +364,18 @@ case "$COMMAND" in
     ;;
   healthcheck)
     run_healthcheck
+    ;;
+  competition-check)
+    require_event_id
+    preflight
+    export SURF_HP_EVENT_ID="$EVENT_ID"
+    export SURF_HP_EXPECTED_SCHEMA="$(expected_schema_version)"
+    (cd "$ROOT_DIR" && ./scripts/hp-competition-preflight.sh)
+    ;;
+  backup)
+    preflight
+    export SURF_HP_EVENT_ID="${EVENT_ID:-all}"
+    (cd "$ROOT_DIR" && ./scripts/hp-backup.sh)
     ;;
   cloud-to-local)
     args=("--$PROFILE")

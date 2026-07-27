@@ -61,6 +61,30 @@ Audit rapide :
 ./scripts/hp-ops.sh healthcheck --home
 ```
 
+Préflight complet d'un événement :
+
+```bash
+./scripts/hp-ops.sh competition-check --home --event-id <EVENT_ID>
+```
+
+Ce contrôle est en lecture seule. Il vérifie notamment l'espace disque, les
+conteneurs critiques, l'application, l'API, le schéma SQL, les heats, les
+participants, les panels des podiums A/B, les conflits de juges, les heats
+actifs et la connexion Realtime. Son résumé est vert, orange ou rouge.
+
+Snapshot de sécurité sur le HP :
+
+```bash
+./scripts/hp-ops.sh backup --home --event-id <EVENT_ID>
+```
+
+Le snapshot est un dump complet et vérifié de PostgreSQL. L'`event_id` sert à
+nommer le fichier; le dump reste volontairement complet afin de préserver
+toutes les dépendances métier. Les fichiers sont stockés dans
+`~/surfjudging-backups` sur le HP, avec checksum SHA-256. Les 12 derniers
+snapshots sont conservés par défaut. Cette commande ne restaure et ne modifie
+aucune donnée métier.
+
 ## Accès SSH Depuis Un Nouveau Mac
 
 Le HP utilise l’utilisateur SSH :
@@ -214,6 +238,8 @@ Après la sync :
 
 ```bash
 ./scripts/hp-ops.sh healthcheck --home
+./scripts/hp-ops.sh competition-check --home --event-id <EVENT_ID>
+./scripts/hp-ops.sh backup --home --event-id <EVENT_ID>
 ```
 
 Puis ouvrir :

@@ -46,6 +46,8 @@ while true; do
   echo "7. Sync Field Box DB to Cloud (one-shot)"
   echo "8. 📡 Live Score Sync via 4G (start)"
   echo "9. ⏹  Live Score Sync via 4G (stop)"
+  echo "10. 🟢 Préflight compétition complet"
+  echo "11. 💾 Snapshot de sécurité du HP"
   echo "0. Quit"
   echo
   read -r -p "Choix: " choice
@@ -110,6 +112,26 @@ while true; do
         else
           echo "ℹ️ Aucun live sync en cours."
         fi
+      fi
+      read -r -p "Entrée pour continuer..."
+      ;;
+    10)
+      echo
+      read -r -p "Event ID à contrôler: " check_event_id
+      if [[ -z "${check_event_id// }" ]]; then
+        echo "Préflight annulé: aucun event_id fourni."
+      else
+        ./scripts/hp-ops.sh competition-check "--$PROFILE" --event-id "$check_event_id" || true
+      fi
+      read -r -p "Entrée pour continuer..."
+      ;;
+    11)
+      echo
+      read -r -p "Event ID servant à nommer le snapshot (Entrée = all): " backup_event_id
+      if [[ -z "${backup_event_id// }" ]]; then
+        ./scripts/hp-ops.sh backup "--$PROFILE"
+      else
+        ./scripts/hp-ops.sh backup "--$PROFILE" --event-id "$backup_event_id"
       fi
       read -r -p "Entrée pour continuer..."
       ;;
