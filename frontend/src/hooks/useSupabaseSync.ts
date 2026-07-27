@@ -253,7 +253,10 @@ export function useSupabaseSync() {
   }, []);
 
   // Sauvegarder la configuration du heat
-  const saveHeatConfig = useCallback(async (heatId: string, config: AppConfig) => {
+  const saveHeatConfig = useCallback(async (
+    heatId: string,
+    config: AppConfig & { podiumId?: string },
+  ) => {
     const normalizedHeatId = ensureHeatId(heatId);
     const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
     const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : null;
@@ -268,7 +271,8 @@ export function useSupabaseSync() {
         surfer_names: config.surferNames,
         surfer_countries: config.surferCountries,
         waves: config.waves,
-        tournament_type: config.tournamentType
+        tournament_type: config.tournamentType,
+        podiumId: config.podiumId,
       });
     } catch (error) {
        console.error('❌ Erreur configuration heat via repository:', error);

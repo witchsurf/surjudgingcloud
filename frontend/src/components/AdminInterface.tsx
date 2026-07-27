@@ -11,7 +11,7 @@ import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/h
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, upsertActiveHeatPointer, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
@@ -1721,11 +1721,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         return;
       }
 
-      await upsertActiveHeatPointer({
+      await activateHeatOnPodium({
         eventId,
-        eventName: config.competition,
         podiumId,
-        activeHeatId: heatId,
+        heatId,
+        assignedBy: 'admin-activate-heat',
       });
 
       setPodiumAssignStatus({
@@ -1735,6 +1735,47 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     } catch (error) {
       console.warn('Impossible d’affecter le heat au podium:', error);
       setPodiumAssignStatus({ type: 'error', message: 'Affectation podium impossible.' });
+    }
+  };
+
+  const handleSavePodiumPanel = async () => {
+    const podiumId = normalizePodiumId(selectedPodiumId);
+    setPodiumAssignStatus(null);
+
+    if (!judgeAssignmentStatus.isReady) {
+      setPodiumAssignStatus({
+        type: 'error',
+        message: `Panel incomplet. ${judgeAssignmentErrorMessage}`,
+      });
+      return;
+    }
+
+    try {
+      const eventId = await resolveEventIdForCurrentHeat();
+      if (!eventId) {
+        setPodiumAssignStatus({ type: 'error', message: 'Événement introuvable pour enregistrer le panel.' });
+        return;
+      }
+
+      const count = await setPodiumJudgePanel({
+        eventId,
+        podiumId,
+        assignments: judgeAssignmentStatus.configuredJudgeIds.map((station) => ({
+          station,
+          judgeId: resolveAssignedJudgeIdentity(station),
+          judgeName: config.judgeNames?.[station] || station,
+        })),
+        assignedBy: 'admin-podium-panel',
+      });
+
+      setPodiumAssignStatus({
+        type: 'success',
+        message: `Panel permanent du podium ${podiumId} enregistré (${count} juges).`,
+      });
+    } catch (error) {
+      console.warn('Impossible d’enregistrer le panel du podium:', error);
+      const message = error instanceof Error ? error.message : 'Enregistrement du panel impossible.';
+      setPodiumAssignStatus({ type: 'error', message });
     }
   };
 
@@ -5124,13 +5165,22 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                       );
                     })}
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAssignCurrentHeatToPodium}
-                    className="px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg bg-emerald-700 text-white hover:bg-emerald-600 transition-colors"
-                  >
-                    Affecter le heat courant
-                  </button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSavePodiumPanel}
+                      className="px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg bg-indigo-700 text-white hover:bg-indigo-600 transition-colors"
+                    >
+                      Enregistrer le panel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAssignCurrentHeatToPodium}
+                      className="px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg bg-emerald-700 text-white hover:bg-emerald-600 transition-colors"
+                    >
+                      Jouer ce heat sur {normalizePodiumId(selectedPodiumId)}
+                    </button>
+                  </div>
                 </div>
               </div>
               {podiumAssignStatus ? (

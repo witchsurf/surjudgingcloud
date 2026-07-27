@@ -15,12 +15,10 @@ import { resolveEventIdForHeat } from '../utils/heatWorkflow';
 import {
     updateEventConfiguration,
     saveEventConfigSnapshot,
-    fetchOrderedHeatSequence,
-    upsertActiveHeatPointer
+    fetchOrderedHeatSequence
 } from '../api/supabaseClient';
 import { normalizePodiumId } from '../utils/podium';
 import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
-import { supabase } from '../lib/supabase';
 import type { AppConfig } from '../types';
 
 const shallowArrayEqual = (left: string[] = [], right: string[] = []) =>
@@ -254,20 +252,6 @@ export default function AdminPage() {
 
                 // Sauvegarder la config du heat
                 await saveHeatConfig(currentHeatId, { ...config, podiumId });
-
-                // Keep tablets/kiosks aligned when admin saves a new target heat/category.
-                if (supabase) {
-                    try {
-                        await upsertActiveHeatPointer({
-                            eventId: targetEventId,
-                            eventName: config.competition,
-                            podiumId,
-                            activeHeatId: currentHeatId,
-                        });
-                    } catch (pointerError) {
-                        console.warn('⚠️ Impossible de mettre à jour active_heat_pointer pendant la sauvegarde admin:', pointerError);
-                    }
-                }
 
                 // Publier la config en temps réel
                 await publishConfigUpdate(currentHeatId, config);

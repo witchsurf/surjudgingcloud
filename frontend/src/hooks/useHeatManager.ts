@@ -10,7 +10,8 @@ import {
         fetchInterferenceCalls,
         replaceHeatEntries,
         propagateQualifiersForSourceHeat,
-        upsertActiveHeatPointer,
+        activateHeatOnPodium,
+        closeHeatOnPodium,
 } from '../api/supabaseClient';
 import { canUseSupabaseConnection, isSupabaseConfigured, supabase } from '../lib/supabase';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
@@ -94,6 +95,8 @@ export function useHeatManager() {
         let currentSequenceHeat: any = null;
         let currentDbHeatId = currentHeatId;
         let resolvedEventId = activeEventId ?? null;
+        let atomicCloseSucceeded = false;
+        let atomicQualifierSlots = 0;
 
         try {
             resolvedEventId = await resolveEventIdForHeat({
@@ -139,16 +142,40 @@ export function useHeatManager() {
         }
 
         try {
-            await updateHeatStatus(currentDbHeatId, 'closed', closedAt);
-            console.log('✅ Heat fermé:', currentDbHeatId);
-        } catch (error) {
-            if (canUseSupabaseConnection() && isSupabaseConfigured()) {
-                console.error('❌ Impossible de fermer le heat côté cloud:', error);
-                const detail = error instanceof Error ? error.message : 'Erreur inconnue';
-                alert(`Impossible de fermer le heat en base.\n\n${detail}\n\nApplique les migrations Supabase manquantes avant de relancer la clôture.`);
-                throw error;
+            if (resolvedEventId && isSupabaseConfigured()) {
+                const result = await closeHeatOnPodium({
+                    eventId: resolvedEventId,
+                    podiumId,
+                    heatId: currentDbHeatId,
+                    closedBy: 'admin-close-heat',
+                });
+                atomicCloseSucceeded = true;
+                atomicQualifierSlots =
+                    Number(result.qualifier_slots_updated || 0)
+                    + Number(result.division_slots_rebuilt || 0);
+                console.log('✅ Heat fermé atomiquement:', result);
+            } else {
+                await updateHeatStatus(currentDbHeatId, 'closed', closedAt);
+                console.log('✅ Heat fermé:', currentDbHeatId);
             }
-            console.log('⚠️ Heat fermé en mode local uniquement', error);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : error && typeof error === 'object' && 'message' in error
+              ? String(error.message)
+              : String(error || '');
+            const rpcUnavailable = /close_heat_on_podium|schema cache|function.*not found/i.test(message);
+            if (rpcUnavailable) {
+                await updateHeatStatus(currentDbHeatId, 'closed', closedAt);
+                console.warn('RPC de fermeture podium indisponible, fermeture legacy appliquée.');
+            } else if (canUseSupabaseConnection() && isSupabaseConfigured()) {
+                console.error('❌ Impossible de fermer le heat côté base:', error);
+                alert(`Impossible de fermer le heat sur le podium ${podiumId}.\n\n${message}`);
+                throw error;
+            } else {
+                console.log('⚠️ Heat fermé en mode local uniquement', error);
+            }
         }
 
         // Force local stop immediately so admin UI never keeps counting after close.
@@ -173,6 +200,14 @@ export function useHeatManager() {
         });
         setJudgeWorkCount(newWorkCount);
         localStorage.setItem('surfJudgingJudgeWorkCount', JSON.stringify(newWorkCount));
+
+        // The robust podium workflow deliberately stops here. The operator selects
+        // the next heat and activates it on A or B; the saved podium panel is copied
+        // transactionally by activate_heat_on_podium.
+        if (atomicCloseSucceeded) {
+            console.log(`✅ Qualification base terminée: ${atomicQualifierSlots} slot(s) traités.`);
+            return;
+        }
 
         // 3. Prepare Next Heat Logic
         let colorCacheChanged = false;
@@ -642,12 +677,16 @@ export function useHeatManager() {
                     newConfig.round,
                     newConfig.heatId
                 ).normalized;
+                const targetEventId = resolvedEventId ?? activeEventId;
+                if (!targetEventId) {
+                    throw new Error('Événement introuvable pour activer le prochain heat.');
+                }
 
-                await upsertActiveHeatPointer({
-                    eventId: resolvedEventId ?? activeEventId ?? null,
-                    eventName: newConfig.competition,
+                await activateHeatOnPodium({
+                    eventId: targetEventId,
                     podiumId,
-                    activeHeatId: nextHeatPointer,
+                    heatId: nextHeatPointer,
+                    assignedBy: 'legacy-auto-advance',
                 });
 
                 console.log('✅ active_heat_pointer mis à jour:', nextHeatPointer);

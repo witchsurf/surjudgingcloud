@@ -56,6 +56,29 @@ export interface HeatJudgeAssignmentRow {
     updated_at?: string | null;
 }
 
+export interface PodiumJudgeAssignment {
+    event_id: number;
+    podium_id: string;
+    station: string;
+    judge_id: string;
+    judge_name: string;
+    updated_at?: string | null;
+}
+
+export interface PodiumHeatTransitionResult {
+    event_id: number;
+    podium_id: string;
+    heat_id?: string;
+    closed_heat_id?: string;
+    division?: string;
+    round?: number;
+    heat_number?: number;
+    panel_size?: number;
+    qualifier_slots_updated?: number;
+    division_slots_rebuilt?: number;
+    next?: PodiumHeatTransitionResult | null;
+}
+
 export interface HeatEntriesWithParticipantRow {
     color: string | null;
     position: number;
@@ -934,6 +957,86 @@ export async function upsertActiveHeatPointer(input: {
         });
 
     if (insertError) throw insertError;
+}
+
+export async function fetchPodiumJudgePanel(
+    eventId: number,
+    podiumIdInput?: string | null,
+): Promise<PodiumJudgeAssignment[]> {
+    ensureSupabase();
+    const podiumId = (podiumIdInput || 'A').trim().toUpperCase() || 'A';
+    const { data, error } = await supabase!
+        .from('podium_judge_assignments')
+        .select('event_id,podium_id,station,judge_id,judge_name,updated_at')
+        .eq('event_id', eventId)
+        .eq('podium_id', podiumId)
+        .order('station', { ascending: true });
+
+    if (error) throw error;
+    return (data || []) as PodiumJudgeAssignment[];
+}
+
+export async function setPodiumJudgePanel(input: {
+    eventId: number;
+    podiumId?: string | null;
+    assignments: Array<{ station: string; judgeId: string; judgeName: string }>;
+    assignedBy?: string;
+}): Promise<number> {
+    ensureSupabase();
+    const podiumId = (input.podiumId || 'A').trim().toUpperCase() || 'A';
+    const { data, error } = await supabase!.rpc('set_podium_judge_panel', {
+        p_event_id: input.eventId,
+        p_podium_id: podiumId,
+        p_assignments: input.assignments.map((assignment) => ({
+            station: assignment.station,
+            judge_id: assignment.judgeId,
+            judge_name: assignment.judgeName,
+        })),
+        p_assigned_by: input.assignedBy || 'admin',
+    });
+
+    if (error) throw error;
+    return Number(data || 0);
+}
+
+export async function activateHeatOnPodium(input: {
+    eventId: number;
+    podiumId?: string | null;
+    heatId: string;
+    assignedBy?: string;
+}): Promise<PodiumHeatTransitionResult> {
+    ensureSupabase();
+    const podiumId = (input.podiumId || 'A').trim().toUpperCase() || 'A';
+    const { data, error } = await supabase!.rpc('activate_heat_on_podium', {
+        p_event_id: input.eventId,
+        p_podium_id: podiumId,
+        p_heat_id: ensureHeatId(input.heatId),
+        p_assigned_by: input.assignedBy || 'admin',
+    });
+
+    if (error) throw error;
+    return (data || {}) as PodiumHeatTransitionResult;
+}
+
+export async function closeHeatOnPodium(input: {
+    eventId: number;
+    podiumId?: string | null;
+    heatId: string;
+    nextHeatId?: string | null;
+    closedBy?: string;
+}): Promise<PodiumHeatTransitionResult> {
+    ensureSupabase();
+    const podiumId = (input.podiumId || 'A').trim().toUpperCase() || 'A';
+    const { data, error } = await supabase!.rpc('close_heat_on_podium', {
+        p_event_id: input.eventId,
+        p_podium_id: podiumId,
+        p_heat_id: ensureHeatId(input.heatId),
+        p_next_heat_id: input.nextHeatId ? ensureHeatId(input.nextHeatId) : null,
+        p_closed_by: input.closedBy || 'admin',
+    });
+
+    if (error) throw error;
+    return (data || {}) as PodiumHeatTransitionResult;
 }
 
 const buildHeatRealtimePatch = (input: HeatRealtimeConfigWriteInput) => {

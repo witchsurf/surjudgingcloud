@@ -45,6 +45,10 @@ export {
     fetchAllEventHeats,
     fetchActiveHeatPointer,
     upsertActiveHeatPointer,
+    fetchPodiumJudgePanel,
+    setPodiumJudgePanel,
+    activateHeatOnPodium,
+    closeHeatOnPodium,
     upsertHeatRealtimeConfig,
     propagateQualifiersForSourceHeat,
     rebuildDivisionQualifiersFromScores,
@@ -59,7 +63,7 @@ export {
     replaceHeatEntries,
     adminOverrideHeatEntry
 } from './modules/heats.api';
-export type { ActiveHeatPointer, HeatRealtimeConfigWriteInput, HeatRow, HeatEntryRow, HeatSlotMappingRow, HeatJudgeAssignmentRow, HeatEntriesWithParticipantRow, HeatEntryOverrideInput, HeatEntryOverrideResult, HeatStartDependencyBlocker, HeatStartDependencyCheck, CreateHeatsOptions } from './modules/heats.api';
+export type { ActiveHeatPointer, PodiumJudgeAssignment, PodiumHeatTransitionResult, HeatRealtimeConfigWriteInput, HeatRow, HeatEntryRow, HeatSlotMappingRow, HeatJudgeAssignmentRow, HeatEntriesWithParticipantRow, HeatEntryOverrideInput, HeatEntryOverrideResult, HeatStartDependencyBlocker, HeatStartDependencyCheck, CreateHeatsOptions } from './modules/heats.api';
 
 export {
     normalizeScoreJudgeId,

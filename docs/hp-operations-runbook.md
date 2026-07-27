@@ -145,6 +145,35 @@ sudo visudo -c
 
 ## Workflow Recommandé Prochain Événement
 
+### Workflow Multi-Podium Robuste
+
+Le panel de juges est configuré une fois par podium et reste stable quand les
+catégories changent.
+
+Avant le premier heat :
+
+1. sélectionner `Podium A`;
+2. affecter les juges J1...J5 puis cliquer `Enregistrer le panel`;
+3. sélectionner `Podium B`;
+4. affecter un panel distinct puis cliquer `Enregistrer le panel`.
+
+Pour chaque heat :
+
+1. sélectionner la catégorie, le round et le heat;
+2. choisir le podium;
+3. cliquer `Jouer ce heat sur A/B`;
+4. démarrer le timer;
+5. fermer le heat;
+6. sélectionner explicitement le prochain heat à jouer.
+
+La fermeture est transactionnelle côté Supabase local : elle vérifie que le
+heat appartient au podium, le clôture, propage et reconstruit les qualifiés de
+la division. La sélection d'un prochain heat recopie automatiquement le panel
+permanent du podium dans l'historique `heat_judge_assignments`.
+
+Le bouton général `Sauvegarder` ne déplace plus les tablettes et ne change plus
+le heat actif d'un podium.
+
 ### 1. Préparer Dans Le Cloud
 
 Dans l’app cloud :
