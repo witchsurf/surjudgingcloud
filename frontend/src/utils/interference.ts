@@ -1,4 +1,5 @@
 import type { EffectiveInterference, InterferenceCall } from '../types';
+import { normalizeScoreSurfer } from '../api/modules/scoring.api';
 
 type SurferInterferenceSummary = {
   count: number;
@@ -6,7 +7,8 @@ type SurferInterferenceSummary = {
   isDisqualified: boolean;
 };
 
-const makeTargetKey = (surfer: string, waveNumber: number) => `${(surfer || '').trim().toUpperCase()}::${waveNumber}`;
+const normalizeInterferenceSurfer = (surfer: string) => normalizeScoreSurfer(surfer);
+const makeTargetKey = (surfer: string, waveNumber: number) => `${normalizeInterferenceSurfer(surfer)}::${waveNumber}`;
 
 export function computeEffectiveInterferences(
   calls: InterferenceCall[],
@@ -35,7 +37,7 @@ export function computeEffectiveInterferences(
     const override = sorted.find((c) => c.is_head_judge_override);
     if (override) {
       effective.push({
-        surfer: override.surfer,
+        surfer: normalizeInterferenceSurfer(override.surfer),
         waveNumber: Number(override.wave_number),
         type: override.call_type,
         source: 'head_judge',
@@ -61,7 +63,7 @@ export function computeEffectiveInterferences(
     if (int2 >= threshold) {
       const ref = sorted.find((c) => c.call_type === 'INT2') ?? sorted[0];
       effective.push({
-        surfer: ref.surfer,
+        surfer: normalizeInterferenceSurfer(ref.surfer),
         waveNumber: Number(ref.wave_number),
         type: 'INT2',
         source: 'majority',
@@ -72,7 +74,7 @@ export function computeEffectiveInterferences(
     if (int1 >= threshold) {
       const ref = sorted.find((c) => c.call_type === 'INT1') ?? sorted[0];
       effective.push({
-        surfer: ref.surfer,
+        surfer: normalizeInterferenceSurfer(ref.surfer),
         waveNumber: Number(ref.wave_number),
         type: 'INT1',
         source: 'majority',
@@ -93,7 +95,7 @@ export function summarizeInterferenceBySurfer(
   const bySurfer = new Map<string, SurferInterferenceSummary>();
 
   effective.forEach((item) => {
-    const key = item.surfer.toUpperCase();
+    const key = normalizeInterferenceSurfer(item.surfer);
     const current = bySurfer.get(key) ?? {
       count: 0,
       type: null,
@@ -109,4 +111,3 @@ export function summarizeInterferenceBySurfer(
 
   return bySurfer;
 }
-

@@ -54,7 +54,7 @@ describe('calculateSurferStats', () => {
     expect(stats[0].waves.find((wave) => wave.wave === 2)?.score).toBe(0);
   });
 
-  it('is resilient when heat is closed or finished', () => {
+  it('keeps an incomplete wave excluded after the heat is closed', () => {
     const scores: Score[] = [
       {
         heat_id: 'heat-1',
@@ -86,9 +86,10 @@ describe('calculateSurferStats', () => {
     const strictStats = calculateSurferStats(scores, ['ROUGE'], 3, 4, false, [], 'running');
     expect(strictStats[0].bestTwo).toBe(0); // wave 1 incomplete
 
-    // Case 2: Resilient mode (Status closed/finished) - 2/3 is okay
-    const resilientStats = calculateSurferStats(scores, ['ROUGE'], 3, 4, false, [], 'closed');
-    expect(resilientStats[0].bestTwo).toBe(7); // avg(6, 8) = 7
+    // Closing the heat must not turn a 2/3 wave into an official result.
+    const closedStats = calculateSurferStats(scores, ['ROUGE'], 3, 4, false, [], 'closed');
+    expect(closedStats[0].bestTwo).toBe(0);
+    expect(closedStats[0].waves[0].isComplete).toBe(false);
   });
 
   it('deduplicates scores using timestamp (last-write-wins)', () => {

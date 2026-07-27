@@ -372,7 +372,7 @@ const buildResolvedLineupsByHeat = ({
                                     sourceSurfers,
                                     sourceJudgeCount,
                                     sourceMaxWaves,
-                                    true,
+                                    false,
                                     sourceEffectiveInterferences,
                                     sourceHeat.heat.status
                                 );
@@ -446,7 +446,7 @@ const buildResolvedLineupsByHeat = ({
                         surfers,
                         judgeCount,
                         maxWaves,
-                        true,
+                        false,
                         effectiveInterferences,
                         heat.status
                     );
@@ -1006,7 +1006,7 @@ export default function DisplayPage() {
 
                     const judgeCount = getEffectiveJudgeCount(normalizedHeatScores);
                     const maxWaves = Math.max(1, ...normalizedHeatScores.map((score) => Number(score.wave_number) || 0));
-                    const stats = calculateSurferStats(normalizedHeatScores, surfers, judgeCount, maxWaves, true, []);
+                    const stats = calculateSurferStats(normalizedHeatScores, surfers, judgeCount, maxWaves, false, []);
                     const parsedHeat = parseActiveHeatId(heatId);
                     const resolvedLineup = resolvedLineupsByHeat.get(heatId) || {};
 

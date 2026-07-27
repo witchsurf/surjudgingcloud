@@ -723,7 +723,7 @@ export default function ScoreDisplay({
                           const wave = stat.waves.find((w) => w.wave === i + 1);
                           return (
                             <td key={i} className={`${ultraCompactLayout ? 'p-1.5' : compactLayout ? 'p-2' : 'p-4'} text-center`}>
-                              {wave && wave.score > 0 ? (
+                              {wave && wave.isComplete && wave.score > 0 ? (
                                 <div className="group relative cursor-help inline-block">
                                   <span className={`${compactLayout ? 'text-sm' : 'text-base'} font-bebas tracking-widest text-slate-100`}>
                                     {wave.score.toFixed(2)}
@@ -752,6 +752,13 @@ export default function ScoreDisplay({
                                     <div className="w-2 h-2 bg-slate-950 rotate-45 absolute -bottom-1 border-r border-b border-white/10 shadow-block" />
                                   </div>
                                 </div>
+                              ) : wave && Object.keys(wave.judgeScores).length > 0 ? (
+                                <span
+                                  className="text-red-500 animate-pulse text-xl leading-none"
+                                  title={`${Object.keys(wave.judgeScores).length}/${getEffectiveJudgeCount(scores, config.judges.length)} notes reçues`}
+                                >
+                                  *
+                                </span>
                               ) : (
                                 <span className="text-slate-800">—</span>
                               )}

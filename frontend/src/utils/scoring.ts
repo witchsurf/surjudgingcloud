@@ -91,7 +91,7 @@ export function rankSurfers(surferScores: Array<{ surfer: string; best2: number 
 import type { EffectiveInterference, Score, ScoreOverrideLog, SurferStats, WaveScore } from '../types';
 import { SURFER_COLORS } from './constants';
 import { summarizeInterferenceBySurfer } from './interference';
-import { getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
+import { getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId, normalizeScoreSurfer } from '../api/modules/scoring.api';
 
 function calculateScoreAverage(scores: number[], judgeCount: number): number {
   if (scores.length === 0) return 0;
@@ -122,7 +122,7 @@ export function calculateSurferStats(
   effectiveInterferences: EffectiveInterference[] = [],
   heatStatus?: string
 ): SurferStats[] {
-  const isHeatClosed = heatStatus === 'closed' || heatStatus === 'finished';
+  void heatStatus;
   const interferenceBySurfer = summarizeInterferenceBySurfer(effectiveInterferences);
   const surferStats = surfers.map(surfer => {
     // Grouper les scores par vague
@@ -165,10 +165,9 @@ export function calculateSurferStats(
       const judgeScores = waveScores[waveNumber] ?? {};
       const judgeScoreValues = Object.values(judgeScores);
 
-      // Si allowIncomplete est vrai (ex: heat terminé), on accepte n'importe quel score > 0
-      // Sinon, on exige que tous les juges aient noté.
-      // NOUVEAU : Si la série est close/terminée, on accepte aussi les vagues partielles (comportement DB).
-      const isComplete = (allowIncomplete || isHeatClosed)
+      // Fermer un heat ne transforme jamais une vague partielle en vague valide.
+      // Le mode strict exige toutes les notes du panel configuré.
+      const isComplete = allowIncomplete
         ? judgeScoreValues.length > 0
         : judgeScoreValues.length === judgeCount;
 
@@ -194,7 +193,7 @@ export function calculateSurferStats(
     // Trier par score décroissant et prendre les 2 meilleures (seulement les vagues complètes)
     const completeWaves = waves.filter(wave => wave.isComplete);
     const sortedWaves = [...completeWaves].sort((a, b) => b.score - a.score);
-    const summary = interferenceBySurfer.get(surfer.toUpperCase());
+    const summary = interferenceBySurfer.get(normalizeScoreSurfer(surfer));
     const isDisqualified = Boolean(summary?.isDisqualified);
     const waveA = sortedWaves[0]?.score ?? 0;
     const waveB = sortedWaves[1]?.score ?? 0;
