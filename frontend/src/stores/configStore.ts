@@ -47,6 +47,7 @@ interface ConfigStore {
 
 const configLoadInFlight = new Map<string, Promise<void>>();
 const configLastLoadAt = new Map<string, number>();
+let latestRequestedConfigLoadKey = '';
 const CONFIG_LOAD_DEDUPE_MS = 12000;
 
 const areConfigsEquivalent = (left: AppConfig, right: AppConfig): boolean => {
@@ -269,6 +270,7 @@ export const useConfigStore = create<ConfigStore>()(
                 const preferActivePointer = options?.preferActivePointer !== false;
                 const podiumId = normalizePodiumId(options?.podiumId ?? (typeof window !== 'undefined' ? getPodiumIdFromSearch(window.location.search) : null));
                 const loadKey = `${eventId}:${podiumId}`;
+                latestRequestedConfigLoadKey = loadKey;
                 const lastLoadAt = configLastLoadAt.get(loadKey) ?? 0;
                 const state = get();
                 if (
@@ -306,11 +308,13 @@ export const useConfigStore = create<ConfigStore>()(
                                         eventId,
                                         podiumId,
                                     });
-                                    set({
-                                        config: INITIAL_CONFIG,
-                                        configSaved: false,
-                                        loadedFromDb: false,
-                                    });
+                                    if (latestRequestedConfigLoadKey === loadKey) {
+                                        set({
+                                            config: INITIAL_CONFIG,
+                                            configSaved: false,
+                                            loadedFromDb: false,
+                                        });
+                                    }
                                     return;
                                 }
 
@@ -340,11 +344,13 @@ export const useConfigStore = create<ConfigStore>()(
                             } catch (err) {
                                 logger.warn('ConfigStore', 'Unable to resolve active_heat_pointer', err);
                                 if (podiumId !== 'A') {
-                                    set({
-                                        config: INITIAL_CONFIG,
-                                        configSaved: false,
-                                        loadedFromDb: false,
-                                    });
+                                    if (latestRequestedConfigLoadKey === loadKey) {
+                                        set({
+                                            config: INITIAL_CONFIG,
+                                            configSaved: false,
+                                            loadedFromDb: false,
+                                        });
+                                    }
                                     return;
                                 }
                             }
@@ -440,20 +446,31 @@ export const useConfigStore = create<ConfigStore>()(
                             const heatConfig = await applyHeatJudgeAssignments(baseConfig, heatKey);
                             const dbConfig = await applyPodiumJudgePanel(heatConfig, eventId, podiumId);
 
-                            set({
-                                config: dbConfig,
-                                loadedFromDb: true,
-                                configSaved: true
-                            });
-                            configLastLoadAt.set(loadKey, Date.now());
+                            if (latestRequestedConfigLoadKey === loadKey) {
+                                set({
+                                    config: dbConfig,
+                                    loadedFromDb: true,
+                                    configSaved: true
+                                });
+                                configLastLoadAt.set(loadKey, Date.now());
+                            } else {
+                                logger.info('ConfigStore', 'Ignoring stale podium config response', {
+                                    loadKey,
+                                    latestRequestedConfigLoadKey,
+                                });
+                            }
                             // Note: Zustand persist middleware automatically saves to localStorage
                         } else {
                             logger.warn('ConfigStore', 'No snapshot found');
-                            set({ loadedFromDb: false });
+                            if (latestRequestedConfigLoadKey === loadKey) {
+                                set({ loadedFromDb: false });
+                            }
                         }
                     } catch (error) {
                         logger.error('ConfigStore', 'DB fetch error', error);
-                        set({ loadedFromDb: false });
+                        if (latestRequestedConfigLoadKey === loadKey) {
+                            set({ loadedFromDb: false });
+                        }
                     }
                 })().finally(() => {
                     configLoadInFlight.delete(loadKey);

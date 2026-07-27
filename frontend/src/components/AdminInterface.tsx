@@ -264,6 +264,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const lockedForHeatRef = React.useRef<string>('');
   const configRef = React.useRef(config);
   const lineupLoadRequestRef = React.useRef(0);
+  const autoPodiumSyncFingerprintRef = React.useRef('');
 
   useEffect(() => {
     let cancelled = false;
@@ -1703,44 +1704,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   };
 
-  const handleAssignCurrentHeatToPodium = async () => {
-    const podiumId = normalizePodiumId(selectedPodiumId);
-    setPodiumAssignStatus(null);
-
-    if (!isSupabaseConfigured() || !supabase) {
-      setPodiumAssignStatus({ type: 'error', message: 'Supabase indisponible: impossible d’affecter le podium.' });
-      return;
-    }
-
-    if (!configSaved && !loadedFromDb) {
-      setPodiumAssignStatus({ type: 'error', message: 'Sauvegarde d’abord la configuration du heat.' });
-      return;
-    }
-
-    try {
-      const eventId = await resolveEventIdForCurrentHeat();
-      if (!eventId) {
-        setPodiumAssignStatus({ type: 'error', message: 'Événement introuvable pour ce heat.' });
-        return;
-      }
-
-      await activateHeatOnPodium({
-        eventId,
-        podiumId,
-        heatId,
-        assignedBy: 'admin-activate-heat',
-      });
-
-      setPodiumAssignStatus({
-        type: 'success',
-        message: `Heat ${config.division} R${config.round}H${config.heatId} affecté au podium ${podiumId}.`,
-      });
-    } catch (error) {
-      console.warn('Impossible d’affecter le heat au podium:', error);
-      setPodiumAssignStatus({ type: 'error', message: 'Affectation podium impossible.' });
-    }
-  };
-
   const handlePodiumSwitch = async (podiumIdInput: string) => {
     const podiumId = normalizePodiumId(podiumIdInput);
     const previousPodiumId = normalizePodiumId(selectedPodiumId);
@@ -1765,47 +1728,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       });
     } finally {
       setPodiumSwitchLoading(false);
-    }
-  };
-
-  const handleSavePodiumPanel = async () => {
-    const podiumId = normalizePodiumId(selectedPodiumId);
-    setPodiumAssignStatus(null);
-
-    if (!judgeAssignmentStatus.isReady) {
-      setPodiumAssignStatus({
-        type: 'error',
-        message: `Panel incomplet. ${judgeAssignmentErrorMessage}`,
-      });
-      return;
-    }
-
-    try {
-      const eventId = await resolveEventIdForCurrentHeat();
-      if (!eventId) {
-        setPodiumAssignStatus({ type: 'error', message: 'Événement introuvable pour enregistrer le panel.' });
-        return;
-      }
-
-      const count = await setPodiumJudgePanel({
-        eventId,
-        podiumId,
-        assignments: judgeAssignmentStatus.configuredJudgeIds.map((station) => ({
-          station,
-          judgeId: resolveAssignedJudgeIdentity(station),
-          judgeName: config.judgeNames?.[station] || station,
-        })),
-        assignedBy: 'admin-podium-panel',
-      });
-
-      setPodiumAssignStatus({
-        type: 'success',
-        message: `Panel permanent du podium ${podiumId} enregistré (${count} juges).`,
-      });
-    } catch (error) {
-      console.warn('Impossible d’enregistrer le panel du podium:', error);
-      const message = error instanceof Error ? error.message : 'Enregistrement du panel impossible.';
-      setPodiumAssignStatus({ type: 'error', message });
     }
   };
 
@@ -2514,6 +2436,107 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
     return parts.join(' | ');
   }, [judgeAssignmentStatus]);
+
+  useEffect(() => {
+    if (
+      !activeEventId
+      || !isSupabaseConfigured()
+      || podiumSwitchLoading
+      || !judgeAssignmentStatus.isReady
+      || !heatId
+    ) {
+      return;
+    }
+
+    const selectedHeat = allEventHeatsMeta.find(
+      (row) => ensureHeatId(row.id) === ensureHeatId(heatId)
+    );
+    if (!selectedHeat) return;
+
+    const selectedHeatStatus = (selectedHeat.status || '').trim().toLowerCase();
+    if (selectedHeatStatus === 'closed') return;
+
+    const podiumId = normalizePodiumId(selectedPodiumId);
+    const heatAlreadyUsedElsewhere = activePodiumPointers.some(
+      (pointer) =>
+        normalizePodiumId(pointer.podium_id) !== podiumId
+        && ensureHeatId(pointer.active_heat_id || '') === ensureHeatId(heatId)
+    );
+    if (heatAlreadyUsedElsewhere) {
+      setPodiumAssignStatus({
+        type: 'error',
+        message: `Ce heat est déjà actif sur un autre podium. Choisissez un autre heat pour le podium ${podiumId}.`,
+      });
+      return;
+    }
+
+    const assignments = judgeAssignmentStatus.configuredJudgeIds.map((station) => ({
+      station,
+      judgeId: resolveAssignedJudgeIdentity(station),
+      judgeName: config.judgeNames?.[station] || station,
+    }));
+    const fingerprint = JSON.stringify({
+      eventId: activeEventId,
+      podiumId,
+      heatId: ensureHeatId(heatId),
+      assignments,
+    });
+    if (autoPodiumSyncFingerprintRef.current === fingerprint) return;
+
+    const timeout = window.setTimeout(async () => {
+      autoPodiumSyncFingerprintRef.current = fingerprint;
+      setPodiumAssignStatus({
+        type: 'info',
+        message: `Préparation automatique du podium ${podiumId}…`,
+      });
+
+      try {
+        await setPodiumJudgePanel({
+          eventId: activeEventId,
+          podiumId,
+          assignments,
+          assignedBy: 'admin-auto-podium-panel',
+        });
+        await activateHeatOnPodium({
+          eventId: activeEventId,
+          podiumId,
+          heatId,
+          assignedBy: 'admin-auto-podium-activate',
+        });
+
+        setPodiumAssignStatus({
+          type: 'success',
+          message: `Podium ${podiumId} prêt · panel enregistré · ${config.division} R${config.round}H${config.heatId} diffusé.`,
+        });
+      } catch (error) {
+        autoPodiumSyncFingerprintRef.current = '';
+        const message =
+          error instanceof Error
+            ? error.message
+            : error && typeof error === 'object' && 'message' in error
+              ? String(error.message)
+              : 'Préparation automatique impossible.';
+        setPodiumAssignStatus({ type: 'error', message });
+      }
+    }, 700);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    activeEventId,
+    activePodiumPointers,
+    allEventHeatsMeta,
+    config.division,
+    config.heatId,
+    config.judgeNames,
+    config.round,
+    heatId,
+    judgeAssignmentStatus,
+    podiumSwitchLoading,
+    resolveAssignedJudgeIdentity,
+    selectedPodiumId,
+  ]);
 
   const eventAssignmentCoverage = React.useMemo(() => {
     if (assignmentCoverageRows.length > 0) {
@@ -4177,7 +4200,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
               <div>
                 <p className="text-xs font-black uppercase tracking-widest text-cyan-300">Cockpit podium</p>
                 <p className="text-[11px] text-slate-400">
-                  Basculer charge le heat et le panel du podium sans modifier les tablettes.
+                  Choisissez A ou B, le heat et son panel : l’enregistrement et la diffusion sont automatiques.
                 </p>
               </div>
               <div className="flex flex-col items-stretch gap-2 sm:items-end">
@@ -4207,22 +4230,9 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                     );
                   })}
                 </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSavePodiumPanel}
-                    className="rounded-lg bg-indigo-700 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-indigo-600"
-                  >
-                    Enregistrer le panel {normalizePodiumId(selectedPodiumId)}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAssignCurrentHeatToPodium}
-                    className="rounded-lg bg-emerald-700 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:bg-emerald-600"
-                  >
-                    Jouer ce heat sur {normalizePodiumId(selectedPodiumId)}
-                  </button>
-                </div>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-emerald-400">
+                  Mode automatique
+                </span>
               </div>
             </div>
             {podiumAssignStatus ? (
