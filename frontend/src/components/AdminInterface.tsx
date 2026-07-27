@@ -10,7 +10,7 @@ import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
-import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalistsRankingToPDF } from '../utils/pdfExport';
+import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF, exportFinalistsRankingToPDF } from '../utils/pdfExport';
 import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, deleteInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, deleteScoreSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
@@ -204,6 +204,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [priorityQrCode, setPriorityQrCode] = useState('');
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [rankingPdfPending, setRankingPdfPending] = useState(false);
+  const [finalistsPdfPending, setFinalistsPdfPending] = useState(false);
   const [eventPdfMeta, setEventPdfMeta] = useState<{ organizer: string; startDate: string }>(() => {
     try {
       const data = JSON.parse(localStorage.getItem('eventData') || '{}');
@@ -4093,7 +4094,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
     }
   };
 
-  const handleExportFinalRankingPdf = async () => {
+  const handleExportRankingPdf = async (finalistsOnly: boolean) => {
     const eventIdRaw = localStorage.getItem('activeEventId') || localStorage.getItem('eventId');
     const eventIdFromUrl = Number(new URLSearchParams(window.location.search).get('eventId'));
     const eventId =
@@ -4106,7 +4107,11 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       return;
     }
 
-    setRankingPdfPending(true);
+    if (finalistsOnly) {
+      setFinalistsPdfPending(true);
+    } else {
+      setRankingPdfPending(true);
+    }
     try {
       // 1. Fetch data
       const divisionsData = await fetchAllEventHeats(eventId);
@@ -4194,7 +4199,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       console.log('✅ Divisions trouvées pour export:', Object.keys(divisionsData));
       console.log('✅ Total séries traitées:', allHeats.length);
 
-      exportFinalistsRankingToPDF({
+      const exportPayload = {
         eventName: resolvedEventName,
         organizer,
         organizerLogoDataUrl,
@@ -4203,15 +4208,27 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
         scores: allScores,
         interferenceCalls: allInterferenceCalls,
         participants,
-        divisions: Object.keys(divisionsData)
-      });
+        divisions: Object.keys(divisionsData),
+      };
 
-      console.log('✅ PDF des finalistes généré avec succès');
+      if (finalistsOnly) {
+        exportFinalistsRankingToPDF(exportPayload);
+        console.log('✅ PDF des finalistes généré avec succès');
+      } else {
+        exportFinalRankingToPDF(exportPayload);
+        console.log('✅ Classement final complet généré avec succès');
+      }
     } catch (error) {
       console.error('Erreur export ranking:', error);
-      alert('Erreur lors de la génération du PDF des finalistes.');
+      alert(finalistsOnly
+        ? 'Erreur lors de la génération du PDF des finalistes.'
+        : 'Erreur lors de la génération du classement final.');
     } finally {
-      setRankingPdfPending(false);
+      if (finalistsOnly) {
+        setFinalistsPdfPending(false);
+      } else {
+        setRankingPdfPending(false);
+      }
     }
   };
 
@@ -4719,12 +4736,21 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
                       </button>
                       <button
                         type="button"
-                        onClick={handleExportFinalRankingPdf}
+                        onClick={() => void handleExportRankingPdf(false)}
                         disabled={rankingPdfPending}
                         className="flex items-center justify-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-600/80 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         <Trophy className="w-4 h-4" />
-                        <span>{rankingPdfPending ? 'Finalistes...' : 'PDF Finalistes'}</span>
+                        <span>{rankingPdfPending ? 'Classement...' : 'Classement final'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportRankingPdf(true)}
+                        disabled={finalistsPdfPending}
+                        className="flex items-center justify-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-600/80 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Users className="w-4 h-4" />
+                        <span>{finalistsPdfPending ? 'Finalistes...' : 'PDF Finalistes'}</span>
                       </button>
                     </div>
                   </div>

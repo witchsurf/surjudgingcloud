@@ -1423,7 +1423,7 @@ export function exportFullCompetitionPDF({
   doc.save(`${slugify(eventName)}_competition_complete.pdf`);
 }
 
-export interface FinalistsRankingExportPayload {
+export interface FinalRankingExportPayload {
   eventName: string;
   organizer?: string;
   organizerLogoDataUrl?: string;
@@ -1435,14 +1435,14 @@ export interface FinalistsRankingExportPayload {
   divisions: string[];
 }
 
-export function exportFinalistsRankingToPDF(payload: FinalistsRankingExportPayload) {
+function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly: boolean) {
   const { eventName, organizer, organizerLogoDataUrl, date, heats, scores, interferenceCalls, participants, divisions } = payload;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const MARGIN = 32;
 
-  // En-tête officiel unique, suivi uniquement des participants du dernier round.
+  // En-tête officiel unique, suivi des classements regroupés par catégorie.
   doc.setFillColor(...DS.navy);
   doc.rect(0, 0, pageW, 92, 'F');
 
@@ -1475,7 +1475,7 @@ export function exportFinalistsRankingToPDF(payload: FinalistsRankingExportPaylo
 
   doc.setFontSize(12);
   doc.setTextColor(...DS.gold);
-  doc.text('FINALISTES & CLASSEMENTS PAR CATÉGORIE', MARGIN, 64);
+  doc.text(finalistsOnly ? 'FINALISTES PAR CATÉGORIE' : 'CLASSEMENTS FINAUX', MARGIN, 64);
 
   doc.setFontSize(9);
   doc.setTextColor(200, 200, 200);
@@ -1489,15 +1489,11 @@ export function exportFinalistsRankingToPDF(payload: FinalistsRankingExportPaylo
     .map((division) => {
       const rankings = calculateFinalRankings(division, heats, scores, interferenceCalls, participants);
       if (!rankings.length) return null;
-      const finalists = selectDivisionFinalists(rankings);
-      if (!finalists.length) return null;
-      const body = finalists.map((r) => [
-        r.rank,
-        r.name.toUpperCase(),
-        r.country || '',
-        r.heatTotal.toFixed(2),
-        r.points,
-      ]);
+      const selectedRankings = finalistsOnly ? selectDivisionFinalists(rankings) : rankings;
+      if (!selectedRankings.length) return null;
+      const body = selectedRankings.map((r) => finalistsOnly
+        ? [r.rank, r.name.toUpperCase(), r.country || '']
+        : [r.rank, r.name.toUpperCase(), r.country || '', r.points]);
       return { division, body };
     })
     .filter((s): s is { division: string; body: Array<(string | number)[]> } => Boolean(s));
@@ -1550,10 +1546,11 @@ export function exportFinalistsRankingToPDF(payload: FinalistsRankingExportPaylo
 
   const baseColStyles = (colW: number) => ({
     0: { halign: 'center' as const, cellWidth: 28 },
-    1: { fontStyle: 'bold' as const, cellWidth: Math.max(120, colW - (28 + 34 + 52 + 48)) },
+    1: { fontStyle: 'bold' as const, cellWidth: Math.max(150, colW - (28 + 34 + (finalistsOnly ? 0 : 48))) },
     2: { halign: 'center' as const, cellWidth: 34 },
-    3: { halign: 'right' as const, cellWidth: 52, fontStyle: 'bold' as const },
-    4: { halign: 'right' as const, cellWidth: 48, fontStyle: 'bold' as const },
+    ...(finalistsOnly ? {} : {
+      3: { halign: 'right' as const, cellWidth: 48, fontStyle: 'bold' as const },
+    }),
   });
 
   const renderSection = (x: number, y: number, colW: number, divisionName: string, body: Array<(string | number)[]>) => {
@@ -1563,7 +1560,9 @@ export function exportFinalistsRankingToPDF(payload: FinalistsRankingExportPaylo
     doc.text(divisionName.toUpperCase(), x, y);
 
     autoTable(doc, {
-      head: [['RANG', 'FINALISTE', 'NOC', 'TOTAL', 'PTS']],
+      head: [finalistsOnly
+        ? ['RANG', 'FINALISTE', 'NOC']
+        : ['#', 'NOM', 'NOC', 'PTS']],
       body,
       startY: y + 6,
       margin: { left: x, right: pageW - (x + colW) },
@@ -1609,5 +1608,15 @@ export function exportFinalistsRankingToPDF(payload: FinalistsRankingExportPaylo
     doc.text(`Généré par SURF JUDGING APP`, pageW / 2, pageH - 20, { align: 'center' });
   }
 
-  doc.save(`${slugify(eventName)}_finalistes_par_categorie.pdf`);
+  doc.save(finalistsOnly
+    ? `${slugify(eventName)}_finalistes_par_categorie.pdf`
+    : `${slugify(eventName)}_final_rankings.pdf`);
+}
+
+export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
+  exportRankingDocument(payload, false);
+}
+
+export function exportFinalistsRankingToPDF(payload: FinalRankingExportPayload) {
+  exportRankingDocument(payload, true);
 }
