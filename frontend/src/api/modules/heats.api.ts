@@ -1116,16 +1116,33 @@ export async function closeHeatOnPodium(input: {
     heatId: string;
     nextHeatId?: string | null;
     closedBy?: string;
+    force?: boolean;
+    forceReason?: string | null;
 }): Promise<PodiumHeatTransitionResult> {
     ensureSupabase();
     const podiumId = (input.podiumId || 'A').trim().toUpperCase() || 'A';
-    const { data, error } = await supabase!.rpc('close_heat_on_podium', {
+    let { data, error } = await supabase!.rpc('close_heat_on_podium_strict', {
         p_event_id: input.eventId,
         p_podium_id: podiumId,
         p_heat_id: ensureHeatId(input.heatId),
         p_next_heat_id: input.nextHeatId ? ensureHeatId(input.nextHeatId) : null,
         p_closed_by: input.closedBy || 'admin',
+        p_force: Boolean(input.force),
+        p_force_reason: input.forceReason?.trim() || null,
     });
+
+    const strictRpcUnavailable = Boolean(
+        error && /close_heat_on_podium_strict|schema cache|function.*not found/i.test(String(error.message || ''))
+    );
+    if (strictRpcUnavailable && !input.force) {
+        ({ data, error } = await supabase!.rpc('close_heat_on_podium', {
+            p_event_id: input.eventId,
+            p_podium_id: podiumId,
+            p_heat_id: ensureHeatId(input.heatId),
+            p_next_heat_id: input.nextHeatId ? ensureHeatId(input.nextHeatId) : null,
+            p_closed_by: input.closedBy || 'admin',
+        }));
+    }
 
     if (error) throw error;
     return (data || {}) as PodiumHeatTransitionResult;

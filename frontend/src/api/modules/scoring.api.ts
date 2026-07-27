@@ -220,6 +220,33 @@ export type HeatCloseValidationResult = {
     pending_slots: HeatMissingScoreSlotRow[];
 };
 
+export type HeatCloseBlocker = {
+    code: string;
+    count: number;
+    message: string;
+    details?: HeatMissingScoreSlotRow[];
+};
+
+export type HeatCloseReadinessResult = {
+    heat_id: string;
+    event_id: number;
+    division: string;
+    round: number;
+    heat_number: number;
+    status: string;
+    can_close: boolean;
+    blockers: HeatCloseBlocker[];
+    summary: {
+        score_count: number;
+        missing_score_count: number;
+        missing_lineup_count: number;
+        expected_judges: number;
+        assigned_judges: number;
+        invalid_score_count: number;
+        orphan_score_count: number;
+    };
+};
+
 export interface SecureScoreOverrideInput {
     id: string;
     heat_id: string;
@@ -573,6 +600,22 @@ export async function fetchHeatCloseValidation(heatId: string): Promise<HeatClos
         missing_score_count: Number(row.missing_score_count) || 0,
         pending_slots: Array.isArray(row.pending_slots) ? row.pending_slots : [],
     } as HeatCloseValidationResult;
+}
+
+export async function fetchHeatCloseReadiness(heatId: string): Promise<HeatCloseReadinessResult> {
+    ensureSupabase();
+    const normalizedHeatId = ensureHeatId(heatId);
+    const { data, error } = await supabase!
+        .rpc('fn_get_heat_close_readiness', { p_heat_id: normalizedHeatId });
+
+    if (error) {
+        if (String((error as { message?: string })?.message || '').includes('fn_get_heat_close_readiness')) {
+            throw new Error('FUNCTION_NOT_READY:fn_get_heat_close_readiness');
+        }
+        throw error;
+    }
+
+    return data as HeatCloseReadinessResult;
 }
 
 export async function fetchInterferenceCalls(heatId: string): Promise<InterferenceCall[]> {

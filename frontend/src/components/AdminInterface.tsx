@@ -11,7 +11,7 @@ import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/h
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF, exportFinalistsRankingToPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, deleteInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, deleteScoreSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
+import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatCloseReadiness, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, deleteInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, deleteScoreSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
 import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, getSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
@@ -69,6 +69,7 @@ const auditActionLabels: Record<string, string> = {
   INTERFERENCE_REMOVED: 'Interférence retirée',
   HEAT_STATUS_CHANGED: 'Statut du heat modifié',
   ACTIVE_HEAT_CHANGED: 'Heat actif changé',
+  HEAT_CLOSE_FORCED: 'Fermeture forcée',
 };
 
 const auditValue = (data: Record<string, unknown> | null, key: string) => data?.[key];
@@ -145,7 +146,7 @@ interface AdminInterfaceProps {
   onTimerChange: (timer: HeatTimerType) => void;
   onReloadData: () => void;
   onResetAllData: () => void;
-  onCloseHeat: () => void;
+  onCloseHeat: (options?: { force?: boolean; reason?: string }) => void;
   judgeWorkCount: Record<string, number>;
   scores: Score[];
   overrideLogs: ScoreOverrideLog[];
@@ -3410,166 +3411,81 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleCloseHeat = async () => {
-    // First rely on the database view so close validation uses the same source of truth
-    // regardless of local cache, judge aliasing, or offline replay timing.
-    let pending: string[] = [];
-    let hasAnyScoresFromDb: boolean | null = null;
+    let forceClose = false;
+    let forceReason = '';
+    let strictValidationAvailable = false;
+
     try {
-      const closeValidation = await fetchHeatCloseValidation(heatId);
-      if (closeValidation) {
-        hasAnyScoresFromDb = closeValidation.has_any_scores;
-        pending = closeValidation.pending_slots.map((slot) =>
-          `${(slot.judge_display_name || slot.judge_station).trim()} → ${normalizeJerseyLabel(slot.surfer)} V${Number(slot.wave_number)}`
-        );
-      } else {
-        const missingSlots = await fetchHeatMissingScoreSlots(heatId);
-        pending = missingSlots.map((slot) =>
-          `${(slot.judge_display_name || slot.judge_station).trim()} → ${normalizeJerseyLabel(slot.surfer)} V${Number(slot.wave_number)}`
-        );
-      }
-    } catch (error) {
-      if (!(error instanceof Error) || (!error.message.startsWith('FUNCTION_NOT_READY:') && !error.message.startsWith('VIEW_NOT_READY:'))) {
-        console.warn('Impossible de charger la validation DB de fermeture du heat:', error);
-      }
+      const readiness = await fetchHeatCloseReadiness(heatId);
+      strictValidationAvailable = true;
 
-      try {
-        const missingSlots = await fetchHeatMissingScoreSlots(heatId);
-        pending = missingSlots.map((slot) =>
-        `${(slot.judge_display_name || slot.judge_station).trim()} → ${normalizeJerseyLabel(slot.surfer)} V${Number(slot.wave_number)}`
-        );
-      } catch (viewError) {
-        if (!(viewError instanceof Error) || !viewError.message.startsWith('VIEW_NOT_READY:')) {
-          console.warn('Impossible de charger la vue DB des notes manquantes:', viewError);
-        }
-
-        // Fallback local check if the DB validation is not yet available.
-        let heatScoresForCheck = (mergedScores || []).filter(
-          s => ensureHeatId(s.heat_id) === heatId && Number(s.score) > 0
-        );
-
-        if (heatScoresForCheck.length === 0) {
-          try {
-            const dbScores = await fetchHeatScores(heatId);
-            heatScoresForCheck = dbScores.filter(
-              s => ensureHeatId(s.heat_id) === heatId && Number(s.score) > 0
-            );
-          } catch (scoreError) {
-            console.warn('Impossible de charger les scores DB pour vérifier les notes manquantes:', scoreError);
-          }
-        }
-
-        const safeIdent = Object.fromEntries(
-          Object.entries(config.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), (v || '').trim()])
-        );
-        const configuredJudges = (config.judges || []).map((station) => {
-          const normalizedStation = (station || '').trim().toUpperCase();
-          const identityId = (safeIdent[normalizedStation] || '').trim();
-          const matchKeys = new Set(
-            [normalizedStation, normalizeScoreJudgeId(normalizedStation), identityId, normalizeScoreJudgeId(identityId)]
-              .map((value) => (value || '').trim().toUpperCase())
-              .filter(Boolean)
+      if (!readiness.can_close) {
+        const blockerLines = readiness.blockers.flatMap((blocker) => {
+          const details = (blocker.details || []).slice(0, 8).map((slot) =>
+            `    • ${(slot.judge_display_name || slot.judge_station).trim()} → ${normalizeJerseyLabel(slot.surfer)} V${Number(slot.wave_number)}`
           );
+          return [`• ${blocker.message}`, ...details];
+        });
 
-          return {
-            station,
-            normalizedStation,
-            identityId,
-            matchKeys,
-          };
-        }).filter((judge) => judge.matchKeys.size > 0);
+        const accepted = confirm(
+          `🔴 FERMETURE BLOQUÉE — ${readiness.blockers.length} anomalie(s)\n\n` +
+          blockerLines.slice(0, 18).join('\n') +
+          (blockerLines.length > 18 ? `\n• ... et ${blockerLines.length - 18} autre(s)` : '') +
+          '\n\nUne fermeture forcée restera inscrite dans le journal d’audit.\nContinuer ?'
+        );
+        if (!accepted) return;
 
-        if (configuredJudges.length > 0 && heatScoresForCheck.length > 0) {
-          hasAnyScoresFromDb = true;
-          const startedWaveKeys = new Set<string>();
-          heatScoresForCheck.forEach(s => {
-            const surfer = normalizeJerseyLabel(s.surfer);
-            startedWaveKeys.add(`${surfer}::${Number(s.wave_number)}`);
-          });
-
-          configuredJudges.forEach((judge) => {
-            startedWaveKeys.forEach((key) => {
-              const [surfer, waveRaw] = key.split('::');
-              const waveNumber = Number(waveRaw);
-              const hasScore = heatScoresForCheck.some(
-                (s) => {
-                  if (normalizeJerseyLabel(s.surfer) !== surfer || Number(s.wave_number) !== waveNumber) {
-                    return false;
-                  }
-
-                  const scoreKeys = new Set(
-                    [
-                      getScoreJudgeIdentity(s),
-                      getScoreJudgeStation(s),
-                      normalizeScoreJudgeId(s.judge_id),
-                    ]
-                      .map((value) => (value || '').trim().toUpperCase())
-                      .filter(Boolean)
-                  );
-
-                  return Array.from(scoreKeys).some((scoreKey) => judge.matchKeys.has(scoreKey));
-                }
-              );
-
-              if (hasScore) return;
-
-              const upperJudgeId = (judge.identityId || judge.normalizedStation).trim().toUpperCase();
-              const stationForJudge = judge.station;
-
-              const judgeName = (
-                config.judgeNames?.[stationForJudge] ||
-                config.judgeNames?.[judge.normalizedStation] ||
-                (availableOfficialJudges.find(j => j.id?.trim().toUpperCase() === upperJudgeId)?.name) ||
-                stationForJudge
-              ).trim();
-
-              pending.push(`${judgeName} → ${surfer} V${waveNumber}`);
-            });
-          });
-        } else {
-          hasAnyScoresFromDb = heatScoresForCheck.length > 0;
+        const enteredReason = prompt(
+          'Motif obligatoire de la fermeture forcée :\n\nExemple : décision du chef juge après vérification manuelle.'
+        );
+        forceReason = (enteredReason || '').trim();
+        if (!forceReason) {
+          alert('Fermeture annulée : un motif est obligatoire pour toute dérogation.');
+          return;
         }
-      }
-    }
-
-    if (pending.length > 0) {
-      const missingList = pending.slice(0, 10).join('\n  \u2022 ');
-      const forceClose = confirm(
-        `\u26a0\ufe0f NOTES MANQUANTES \u2014 ${pending.length} note(s) non saisie(s) :\n\n  \u2022 ${missingList}` +
-        (pending.length > 10 ? `\n  \u2022 ... et ${pending.length - 10} autre(s)` : '') +
-        '\n\nFermer quand m\u00eame ce heat ?'
-      );
-      if (!forceClose) return;
-    }
-
-    let canCloseWithoutWarning = hasAnyScoresFromDb ?? canCloseHeat();
-
-    // Safety net: if local/store state is stale, verify directly from DB before showing warning.
-    if (!canCloseWithoutWarning) {
-      try {
-        const dbScores = await fetchHeatScores(heatId);
-        if (dbScores.some((score) => Number(score.score) > 0)) {
-          canCloseWithoutWarning = true;
-        }
-      } catch (error) {
-        console.warn('Impossible de vérifier les scores DB avant fermeture du heat:', error);
-      }
-    }
-
-    // Warning if no scores at all, but allow to proceed with confirmation
-    if (!canCloseWithoutWarning) {
-      const forceClose = confirm(
-        '⚠️ ATTENTION: Aucune note enregistrée pour ce heat!\n\n' +
-        'Ce heat sera fermé SANS RÉSULTATS.\n' +
-        'Voulez-vous quand même fermer ce heat?'
-      );
-      if (!forceClose) {
+        forceClose = true;
+      } else if (!confirm(
+        `✅ HEAT PRÊT À FERMER\n\n` +
+        `${readiness.summary.score_count} notes · ` +
+        `${readiness.summary.assigned_judges}/${readiness.summary.expected_judges} juges\n\n` +
+        `Fermer le Heat ${config.heatId} ?`
+      )) {
         return;
       }
-    } else if (pending.length === 0) {
-      // Normal confirmation (only if no pending warning was already shown)
-      if (!confirm(`✅ Toutes les notes sont complètes.
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith('FUNCTION_NOT_READY:')) {
+        console.warn('Validation stricte de fermeture indisponible:', error);
+      }
+    }
 
-Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
+    // Compatibility fallback used only until the strict migration is installed.
+    if (!strictValidationAvailable) {
+      let pending: string[] = [];
+      let hasAnyScores = false;
+      try {
+        const legacy = await fetchHeatCloseValidation(heatId);
+        if (legacy) {
+          hasAnyScores = legacy.has_any_scores;
+          pending = legacy.pending_slots.map((slot) =>
+            `${(slot.judge_display_name || slot.judge_station).trim()} → ${normalizeJerseyLabel(slot.surfer)} V${Number(slot.wave_number)}`
+          );
+        }
+      } catch (legacyError) {
+        console.warn('Validation legacy de fermeture indisponible:', legacyError);
+        hasAnyScores = canCloseHeat();
+      }
+      if (pending.length > 0 || !hasAnyScores) {
+        const accepted = confirm(
+          `⚠️ Validation legacy : ${pending.length} note(s) manquante(s)` +
+          (!hasAnyScores ? ' et aucun résultat détecté' : '') +
+          '.\n\nForcer la fermeture ?'
+        );
+        if (!accepted) return;
+        const enteredReason = prompt('Motif obligatoire de la fermeture forcée :');
+        forceReason = (enteredReason || '').trim();
+        if (!forceReason) return;
+        forceClose = true;
+      } else if (!confirm(`Fermer le Heat ${config.heatId} ?`)) {
         return;
       }
     }
@@ -3635,7 +3551,7 @@ Fermer le Heat ${config.heatId} et passer au suivant ?`)) {
       alert(message);
     }
 
-    onCloseHeat();
+    onCloseHeat(forceClose ? { force: true, reason: forceReason } : undefined);
   };
 
   const surferScoredWaves = React.useMemo(() => {

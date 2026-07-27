@@ -370,11 +370,11 @@ export default function AdminPage() {
     };
 
     // Validate heat progression before closing
-    const handleCloseHeatWithValidation = useCallback(async () => {
+    const handleCloseHeatWithValidation = useCallback(async (closeOptions?: { force?: boolean; reason?: string }) => {
         try {
             const targetEventId = await resolveEventIdForCurrentHeat();
             if (!targetEventId) {
-                await closeHeat();
+                await closeHeat(closeOptions);
                 return;
             }
 
@@ -398,18 +398,18 @@ export default function AdminPage() {
                 console.log('🏁 Fin de l\'événement - Aucun heat suivant trouvé');
                 alert('✅ C\'était le dernier heat de cette division/round!');
                 // Even on the last heat, we must still close the current heat and stop the timer.
-                await closeHeat();
+                await closeHeat(closeOptions);
                 return;
             }
 
             console.log(`✅ Progression validée: R${config.round}H${config.heatId} → R${nextHeat.round}H${nextHeat.heat_number}`);
 
             // Proceed with regular closeHeat
-            await closeHeat();
+            await closeHeat(closeOptions);
         } catch (error) {
             console.error('❌ Erreur validation progression:', error);
             // Fallback to regular closeHeat if validation fails
-            await closeHeat();
+            await closeHeat(closeOptions);
         }
     }, [config, closeHeat, resolveEventIdForCurrentHeat]);
 

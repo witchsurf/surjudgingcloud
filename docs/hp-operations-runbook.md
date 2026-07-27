@@ -195,6 +195,20 @@ heat appartient au podium, le clôture, propage et reconstruit les qualifiés de
 la division. La sélection d'un prochain heat recopie automatiquement le panel
 permanent du podium dans l'historique `heat_judge_assignments`.
 
+Avant la fermeture, PostgreSQL contrôle aussi :
+
+- la présence de résultats;
+- les notes manquantes pour les vagues commencées;
+- les places non résolues dans le lineup;
+- le panel et les affectations des juges;
+- les notes hors de la plage 0 à 10;
+- les notes attachées à un lycra absent du heat.
+
+Une fermeture normale est refusée si l'un de ces contrôles échoue. Le chef juge
+peut appliquer une dérogation depuis l'admin, mais il doit saisir un motif. La
+dérogation, le diagnostic complet, le podium et l'auteur sont alors conservés
+dans `competition_audit_log` sous l'action `HEAT_CLOSE_FORCED`.
+
 Le bouton général `Sauvegarder` ne déplace plus les tablettes et ne change plus
 le heat actif d'un podium.
 

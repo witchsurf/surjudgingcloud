@@ -84,7 +84,7 @@ export function useHeatManager() {
         config.heatId
     ).normalized;
 
-    const closeHeat = useCallback(async () => {
+    const closeHeat = useCallback(async (closeOptions?: { force?: boolean; reason?: string }) => {
         const podiumId = normalizePodiumId(
             typeof window !== 'undefined'
                 ? window.localStorage.getItem('surfJudgingSelectedPodiumId')
@@ -148,6 +148,8 @@ export function useHeatManager() {
                     podiumId,
                     heatId: currentDbHeatId,
                     closedBy: 'admin-close-heat',
+                    force: Boolean(closeOptions?.force),
+                    forceReason: closeOptions?.reason || null,
                 });
                 atomicCloseSucceeded = true;
                 atomicQualifierSlots =
@@ -166,7 +168,7 @@ export function useHeatManager() {
               ? String(error.message)
               : String(error || '');
             const rpcUnavailable = /close_heat_on_podium|schema cache|function.*not found/i.test(message);
-            if (rpcUnavailable) {
+            if (rpcUnavailable && !closeOptions?.force) {
                 await updateHeatStatus(currentDbHeatId, 'closed', closedAt);
                 console.warn('RPC de fermeture podium indisponible, fermeture legacy appliquée.');
             } else if (canUseSupabaseConnection() && isSupabaseConfigured()) {

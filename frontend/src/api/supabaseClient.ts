@@ -82,6 +82,7 @@ export {
     fetchEventJudgeAssignmentCoverage,
     fetchEventJudgeAccuracySummary,
     fetchHeatCloseValidation,
+    fetchHeatCloseReadiness,
     fetchHeatMissingScoreSlots,
     applyScoreCorrectionSecure,
     deleteScoreSecure,
