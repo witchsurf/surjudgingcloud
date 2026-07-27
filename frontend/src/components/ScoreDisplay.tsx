@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { Users, Trophy, FileText } from 'lucide-react';
 import HeatTimer from './HeatTimer';
-import { calculateNeededWaveScore, calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
+import { calculateSurfRequirement, calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/supabaseClient';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
@@ -91,6 +91,7 @@ type NeededScoreInfo = {
   needed: number;
   targetRank: number;
   label: 'to 1st' | 'to ADV';
+  isCombo: boolean;
 };
 
 function computeNeededScores(stats: SurferStats[]): Record<string, NeededScoreInfo> {
@@ -112,13 +113,14 @@ function computeNeededScores(stats: SurferStats[]): Record<string, NeededScoreIn
     if (!target) return;
 
     const targetTotal = target.bestTwo ?? 0;
-    const needed = calculateNeededWaveScore(surfer, targetTotal);
+    const requirement = calculateSurfRequirement(surfer, targetTotal);
 
-    if (needed != null && needed > 0) {
+    if (requirement && requirement.value > 0) {
       result[surfer.surfer] = {
-        needed,
+        needed: requirement.value,
         targetRank,
-        label: targetRank === 1 ? 'to 1st' : 'to ADV'
+        label: targetRank === 1 ? 'to 1st' : 'to ADV',
+        isCombo: requirement.isCombo,
       };
     }
   };
@@ -632,7 +634,7 @@ export default function ScoreDisplay({
                           )}
                           {neededInfo && (
                             <div className="text-[10px] font-bold text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded-full border border-cyan-500/30 uppercase tracking-widest flex items-center gap-1 justify-end">
-                              Need <span className="font-bebas text-sm">{neededInfo.needed.toFixed(2)}</span>
+                              {neededInfo.isCombo ? 'Combo' : 'Need'} <span className="font-bebas text-sm">{neededInfo.needed.toFixed(2)}</span>
                               <span>{neededInfo.label}</span>
                             </div>
                           )}

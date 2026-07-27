@@ -310,7 +310,25 @@ export function calculateNeededWaveScore(
   }
 
   if (!Number.isFinite(rawNeeded) || rawNeeded <= 0) return null;
-  return roundScore(Math.min(rawNeeded, 10));
+  return roundScore(rawNeeded);
+}
+
+export function calculateSurfRequirement(
+  surfer: SurferStats,
+  targetTotal: number
+): { value: number; isCombo: boolean } | null {
+  const singleWaveNeeded = calculateNeededWaveScore(surfer, targetTotal);
+  if (singleWaveNeeded == null) return null;
+  if (singleWaveNeeded > 10) {
+    return {
+      value: roundScore(targetTotal + 0.01),
+      isCombo: true,
+    };
+  }
+  return {
+    value: singleWaveNeeded,
+    isCombo: false,
+  };
 }
 
 export interface JudgeAccuracyStats {

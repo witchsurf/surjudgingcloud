@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateNeededWaveScore, calculateSurferStats } from '../scoring';
+import { calculateNeededWaveScore, calculateSurferStats, calculateSurfRequirement } from '../scoring';
 import type { EffectiveInterference, Score, SurferStats } from '../../types';
 
 const buildScores = (): Score[] => [
@@ -169,5 +169,20 @@ describe('calculateNeededWaveScore', () => {
 
   it('requires a new best wave to beat the target with INT2', () => {
     expect(calculateNeededWaveScore(buildStats('INT2'), 9)).toBe(9.01);
+  });
+
+  it('returns a combo when no single wave can reach the leader', () => {
+    const stats = buildStats(null);
+    stats.waves = [
+      { wave: 1, score: 6.55, judgeScores: { J1: 6.5, J2: 6.6, J3: 6.55 }, isComplete: true },
+      { wave: 2, score: 6.35, judgeScores: { J1: 6.3, J2: 6.4, J3: 6.35 }, isComplete: true },
+    ];
+    stats.bestTwo = 12.9;
+
+    expect(calculateNeededWaveScore(stats, 18.43)).toBe(11.89);
+    expect(calculateSurfRequirement(stats, 18.43)).toEqual({
+      value: 18.44,
+      isCombo: true,
+    });
   });
 });
