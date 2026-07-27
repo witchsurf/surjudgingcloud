@@ -1550,9 +1550,12 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
     : Math.max(0, Math.min(18, ((availableH - finalEstimate) / Math.max(1, sections.length)) * 0.6));
 
   const baseColStyles = (colW: number) => ({
-    0: { halign: 'center' as const, cellWidth: 28 },
-    1: { fontStyle: 'bold' as const, cellWidth: Math.max(150, colW - (28 + 34 + (finalistsOnly ? 0 : 48))) },
-    2: { halign: 'center' as const, cellWidth: 34 },
+    0: { halign: 'center' as const, cellWidth: finalistsOnly ? 38 : 28 },
+    1: {
+      fontStyle: 'bold' as const,
+      cellWidth: Math.max(150, colW - ((finalistsOnly ? 38 : 28) + (finalistsOnly ? 62 : 34) + (finalistsOnly ? 0 : 48))),
+    },
+    2: { halign: 'center' as const, cellWidth: finalistsOnly ? 62 : 34 },
     ...(finalistsOnly ? {} : {
       3: { halign: 'right' as const, cellWidth: 48, fontStyle: 'bold' as const },
     }),
@@ -1571,7 +1574,7 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
 
     autoTable(doc, {
       head: [finalistsOnly
-        ? ['RANG', 'FINALISTE', 'NOC']
+        ? ['RANG', 'FINALISTE', 'CLUB/PAYS']
         : ['#', 'NOM', 'NOC', 'PTS']],
       body,
       startY: y + 6,
