@@ -1,4 +1,5 @@
 import { legacyGetAll, walGetAll } from './idbOfflineStore';
+import { buildFieldNetworkInfo, probeEsp32, type FieldNetworkInfo } from './fieldNetwork';
 import { isLocalNetworkHost } from './networkDetection';
 
 export type OfflineQueueName = 'legacy' | 'score_wal' | 'coordinator';
@@ -75,6 +76,10 @@ export interface RuntimeDiagnostics {
   schemaVersionError: string | null;
   hpReachable: boolean | null;
   localSupabaseReachable: boolean | null;
+  databaseReachable: boolean | null;
+  esp32Reachable: boolean | null;
+  esp32Error: string | null;
+  fieldNetwork: FieldNetworkInfo | null;
   lastHpCheckAt: string | null;
   lastHpError: string | null;
   realtime: RealtimeDiagnosticEntry[];
@@ -290,6 +295,10 @@ const readRuntimeDiagnostics = (): RuntimeDiagnostics =>
     schemaVersionError: null,
     hpReachable: null,
     localSupabaseReachable: null,
+    databaseReachable: null,
+    esp32Reachable: null,
+    esp32Error: null,
+    fieldNetwork: null,
     lastHpCheckAt: null,
     lastHpError: null,
     realtime: [],
@@ -420,6 +429,10 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
       expectedSchemaVersion,
       hpReachable: null,
       localSupabaseReachable: null,
+      databaseReachable: null,
+      esp32Reachable: null,
+      esp32Error: null,
+      fieldNetwork: null,
       schemaVersionMatches: null,
       lastHpCheckAt: nowIso(),
       lastHpError: null,
@@ -437,10 +450,20 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
       authorization: `Bearer ${supabaseAnonKey}`,
     }
     : undefined;
-  const supabaseUrl = `http://${hostname}:8000/rest/v1/events?select=id&limit=1`;
-  const schemaVersionUrl = `http://${hostname}:8000/rest/v1/app_runtime_schema_version?select=schema_version,updated_at&limit=1`;
+  const configuredSupabaseUrl =
+    (import.meta.env.VITE_SUPABASE_URL_LAN as string | undefined)
+    || (import.meta.env.VITE_SUPABASE_URL_LOCAL as string | undefined)
+    || `http://${hostname}:8000`;
+  const localSupabaseBase = /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/i.test(configuredSupabaseUrl)
+    ? configuredSupabaseUrl.replace(/\/$/, '')
+    : `http://${hostname}:8000`;
+  const esp32Url = (import.meta.env.VITE_ESP32_URL as string | undefined) || 'http://priority.local';
+  const fieldNetwork = buildFieldNetworkInfo(window.location, localSupabaseBase, esp32Url);
+  const supabaseUrl = `${localSupabaseBase}/rest/v1/events?select=id&limit=1`;
+  const schemaVersionUrl = `${localSupabaseBase}/rest/v1/app_runtime_schema_version?select=schema_version,updated_at&limit=1`;
   let hpReachable = false;
   let localSupabaseReachable = false;
+  let databaseReachable = false;
   let lastHpError: string | null = null;
   let databaseSchemaVersion: string | null = runtime.databaseSchemaVersion ?? null;
   let schemaVersionMatches: boolean | null = runtime.schemaVersionMatches ?? null;
@@ -460,6 +483,7 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
       headers: supabaseHeaders,
     });
     localSupabaseReachable = response.ok;
+    databaseReachable = response.ok;
     if (!response.ok) {
       lastHpError = `Supabase local HTTP ${response.status}`;
     }
@@ -494,6 +518,10 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
     schemaVersionMatches = null;
   }
 
+  // Optional and deliberately isolated: a missing priority controller never
+  // changes HP/API health and can never block scoring.
+  const esp32 = await probeEsp32(esp32Url);
+
   writeRuntimeDiagnostics({
     ...runtime,
     expectedSchemaVersion,
@@ -503,6 +531,10 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
     schemaVersionError,
     hpReachable,
     localSupabaseReachable,
+    databaseReachable,
+    esp32Reachable: esp32.reachable,
+    esp32Error: esp32.error,
+    fieldNetwork,
     lastHpCheckAt: nowIso(),
     lastHpError,
   });

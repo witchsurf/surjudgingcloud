@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, CheckCircle2, Clock, Database, Radio, RotateCw, Server } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, Cpu, Database, Radio, RotateCw, Server, Wifi } from 'lucide-react';
 import { replayOfflineQueues } from '../lib/offlineSyncCoordinator';
 import { getSupabaseConfig } from '../lib/supabase';
 import { useOfflineDiagnostics } from '../hooks/useOfflineDiagnostics';
@@ -63,6 +63,8 @@ export default function FieldDiagnosticsPanel() {
   const hasError = diagnostics.lastReplayStatus === 'failed' || recentOperations.some((operation) => operation.status === 'failed');
   const realtimeFallback = diagnostics.runtime.realtime.some((entry) => entry.hasPolling || entry.status === 'fallback_polling');
   const schemaMismatch = diagnostics.runtime.schemaVersionMatches === false;
+  const network = diagnostics.runtime.fieldNetwork;
+  const realtimeOk = diagnostics.runtime.realtime.some((entry) => entry.status === 'subscribed');
 
   return (
     <details className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -122,7 +124,7 @@ export default function FieldDiagnosticsPanel() {
                 Supabase {diagnostics.runtime.localSupabaseReachable === null ? 'n/a' : diagnostics.runtime.localSupabaseReachable ? 'OK' : 'KO'}
               </span>
             </div>
-            <div className="mt-1 text-xs text-slate-500">Build {diagnostics.runtime.frontendBuild}</div>
+            <div className="mt-1 text-xs text-slate-500">Frontend {diagnostics.runtime.frontendVersion} · build {diagnostics.runtime.frontendBuild}</div>
           </div>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -145,6 +147,34 @@ export default function FieldDiagnosticsPanel() {
             Rejouer les files
           </button>
         </div>
+
+        {network && (
+          <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
+            <div className="mb-2 flex items-center gap-2 font-bold uppercase tracking-wide text-slate-500">
+              <Wifi className="h-4 w-4" /> Réseau terrain HP
+            </div>
+            <div className="grid gap-2 md:grid-cols-3">
+              <span>IP / hôte: <strong>{network.hostname}</strong></span>
+              <span>Port frontend: <strong>{network.frontendPort}</strong></span>
+              <span>Réseau: <strong>{diagnostics.isBrowserOnline ? 'interface active' : 'interface hors ligne'}</strong></span>
+            </div>
+            <div className="mt-2 grid gap-1 font-mono md:grid-cols-2">
+              <a className="text-blue-700 hover:underline" href={network.chiefUrl}>Chef juge: {network.chiefUrl}</a>
+              <a className="text-blue-700 hover:underline" href={network.chiefLegacyUrl}>Alias historique: {network.chiefLegacyUrl}</a>
+              <a className="text-blue-700 hover:underline" href={network.judgeUrl}>Juges: {network.judgeUrl}</a>
+              <a className="text-blue-700 hover:underline" href={network.priorityUrl}>Priorité: {network.priorityUrl}</a>
+              <a className="text-blue-700 hover:underline" href={network.displayUrl}>Display: {network.displayUrl}</a>
+              <span>Supabase local: {network.supabaseUrl}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 font-bold">
+              <span className={`rounded-full border px-2 py-1 ${diagnostics.runtime.databaseReachable ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>Base {diagnostics.runtime.databaseReachable ? 'OK' : 'KO'}</span>
+              <span className={`rounded-full border px-2 py-1 ${realtimeOk ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>Realtime {realtimeOk ? 'OK' : 'non confirmé / fallback'}</span>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 ${diagnostics.runtime.esp32Reachable ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`} title={diagnostics.runtime.esp32Error || undefined}>
+                <Cpu className="h-3.5 w-3.5" /> ESP32 {diagnostics.runtime.esp32Reachable ? 'connecté' : 'absent / inaccessible (non bloquant)'}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${schemaMismatch ? 'border-red-200 bg-red-50 text-red-700' : diagnostics.runtime.schemaVersionMatches ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
           <div className="font-bold">Version schéma HP</div>
