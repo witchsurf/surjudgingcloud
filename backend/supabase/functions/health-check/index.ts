@@ -1,223 +1,103 @@
-/**
- * Health Check Edge Function
- * 
- * Monitors the health of all system dependencies:
- * - Database connectivity
- * - Realtime service
- * - N8N automation service
- * - Stripe payment service
- * 
- * Returns:
- * - 200 OK if all checks pass
- * - 503 Service Unavailable if any check fails
- * 
- * Usage:
- *   curl https://xwaymumbkmwxqifihuvn.supabase.co/functions/v1/health-check
- */
-
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-interface HealthCheck {
-    status: 'ok' | 'error';
-    latency?: string;
-    error?: string;
+type CheckStatus = 'ok' | 'error' | 'absent' | 'skipped';
+interface HealthCheck { status: CheckStatus; required: boolean; latency?: string; error?: string; }
+
+const localHost = (value: string) => {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local')) return true;
+    const p = host.split('.').map(Number);
+    return p.length === 4 && (p[0] === 10 || (p[0] === 192 && p[1] === 168) || (p[0] === 172 && p[1] >= 16 && p[1] <= 31));
+  } catch { return false; }
+};
+
+async function timedFetch(url: string, required: boolean): Promise<HealthCheck> {
+  const start = Date.now();
+  try {
+    const response = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(1800) });
+    return response.ok || response.status === 404
+      ? { status: 'ok', required, latency: `${Date.now() - start}ms` }
+      : { status: 'error', required, error: `HTTP ${response.status}` };
+  } catch (error) {
+    return { status: required ? 'error' : 'absent', required, error: error instanceof Error ? error.message : 'Inaccessible' };
+  }
 }
 
-interface HealthResponse {
-    status: 'healthy' | 'degraded';
-    checks: {
-        database: HealthCheck;
-        realtime: HealthCheck;
-        n8n: HealthCheck;
-        stripe: HealthCheck;
-    };
-    timestamp: string;
+async function checkDatabase(supabase: ReturnType<typeof createClient>): Promise<HealthCheck> {
+  const start = Date.now();
+  const { error } = await supabase.from('events').select('id').limit(1);
+  return error
+    ? { status: 'error', required: true, error: error.message }
+    : { status: 'ok', required: true, latency: `${Date.now() - start}ms` };
 }
 
-// Check database connectivity
-async function checkDatabase(supabase: any): Promise<HealthCheck> {
-    const start = Date.now();
-
-    try {
-        const { data, error } = await supabase
-            .from('events')
-            .select('id')
-            .limit(1);
-
-        if (error) {
-            return { status: 'error', error: error.message };
+async function checkRealtime(supabase: ReturnType<typeof createClient>): Promise<HealthCheck> {
+  const channel = supabase.channel(`health-${crypto.randomUUID()}`);
+  try {
+    const status = await new Promise<string>((resolve) => {
+      const timeout = setTimeout(() => resolve('TIMED_OUT'), 2500);
+      channel.subscribe((next) => {
+        if (next === 'SUBSCRIBED' || next === 'CHANNEL_ERROR' || next === 'TIMED_OUT' || next === 'CLOSED') {
+          clearTimeout(timeout);
+          resolve(next);
         }
-
-        const latency = Date.now() - start;
-        return {
-            status: 'ok',
-            latency: `${latency}ms`
-        };
-    } catch (err) {
-        return {
-            status: 'error',
-            error: err instanceof Error ? err.message : 'Unknown database error'
-        };
-    }
-}
-
-// Check Realtime service
-async function checkRealtime(supabase: any): Promise<HealthCheck> {
-    try {
-        // Try to get realtime connection info
-        // This is a basic check - just verify the client is initialized
-        if (supabase.realtime) {
-            return { status: 'ok' };
-        } else {
-            return { status: 'error', error: 'Realtime not available' };
-        }
-    } catch (err) {
-        return {
-            status: 'error',
-            error: err instanceof Error ? err.message : 'Unknown realtime error'
-        };
-    }
-}
-
-// Check N8N automation service
-async function checkN8N(): Promise<HealthCheck> {
-    const start = Date.now();
-
-    try {
-        const n8nUrl = Deno.env.get('N8N_URL') || 'https://automation.surfjudging.cloud';
-
-        const response = await fetch(n8nUrl, {
-            method: 'GET',
-            signal: AbortSignal.timeout(5000), // 5 second timeout
-        });
-
-        const latency = Date.now() - start;
-
-        if (response.ok || response.status === 404) {
-            // 404 is ok - means n8n is responding, just no route at root
-            return {
-                status: 'ok',
-                latency: `${latency}ms`
-            };
-        } else {
-            return {
-                status: 'error',
-                error: `HTTP ${response.status}`
-            };
-        }
-    } catch (err) {
-        return {
-            status: 'error',
-            error: err instanceof Error ? err.message : 'N8N unreachable'
-        };
-    }
-}
-
-// Check Stripe service
-async function checkStripe(): Promise<HealthCheck> {
-    try {
-        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-
-        if (!stripeKey) {
-            return { status: 'error', error: 'Stripe key not configured' };
-        }
-
-        const start = Date.now();
-
-        // Simple API call to verify connectivity (list balance transactions with limit 1)
-        const response = await fetch('https://api.stripe.com/v1/balance', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${stripeKey}`,
-            },
-            signal: AbortSignal.timeout(5000), // 5 second timeout
-        });
-
-        const latency = Date.now() - start;
-
-        if (response.ok) {
-            return {
-                status: 'ok',
-                latency: `${latency}ms`
-            };
-        } else {
-            return {
-                status: 'error',
-                error: `HTTP ${response.status}`
-            };
-        }
-    } catch (err) {
-        return {
-            status: 'error',
-            error: err instanceof Error ? err.message : 'Stripe unreachable'
-        };
-    }
+      });
+    });
+    return status === 'SUBSCRIBED'
+      ? { status: 'ok', required: true }
+      : { status: 'error', required: true, error: status };
+  } finally {
+    await supabase.removeChannel(channel);
+  }
 }
 
 Deno.serve(async (req: Request) => {
-    // CORS headers
-    const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    };
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
-    // Handle CORS preflight
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
-    }
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const fieldMode = (Deno.env.get('FIELD_MODE') ?? '').toLowerCase() === 'true' || localHost(supabaseUrl);
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const [database, realtime] = await Promise.all([checkDatabase(supabase), checkRealtime(supabase)]);
 
-    try {
-        // Initialize Supabase client
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-        const supabase = createClient(supabaseUrl, supabaseKey);
+    const frontendUrl = Deno.env.get('FRONTEND_HEALTH_URL');
+    const esp32Url = Deno.env.get('ESP32_HEALTH_URL') || 'http://priority.local';
+    const frontend = frontendUrl && (!fieldMode || localHost(frontendUrl))
+      ? await timedFetch(frontendUrl, true)
+      : { status: 'skipped', required: false, error: frontendUrl ? 'URL non locale refusée en mode terrain' : 'FRONTEND_HEALTH_URL non configurée' } as HealthCheck;
+    const esp32 = fieldMode
+      ? await timedFetch(esp32Url, false)
+      : { status: 'skipped', required: false } as HealthCheck;
 
-        // Run all health checks in parallel
-        const [database, realtime, n8n, stripe] = await Promise.all([
-            checkDatabase(supabase),
-            checkRealtime(supabase),
-            checkN8N(),
-            checkStripe(),
-        ]);
+    // In field mode these checks are intentionally not executed: the health
+    // endpoint must remain useful with no Internet connection.
+    const cloud = fieldMode
+      ? { status: 'skipped', required: false, error: 'désactivé en mode terrain' } as HealthCheck
+      : { status: 'skipped', required: false, error: 'hors périmètre du diagnostic terrain' } as HealthCheck;
+    const checks = { frontend, database, realtime, esp32, n8n: cloud, stripe: cloud };
+    const healthy = Object.values(checks).every((check) => !check.required || check.status === 'ok');
 
-        const checks = { database, realtime, n8n, stripe };
-
-        // Determine overall health status
-        const allHealthy = Object.values(checks).every(check => check.status === 'ok');
-
-        const response: HealthResponse = {
-            status: allHealthy ? 'healthy' : 'degraded',
-            checks,
-            timestamp: new Date().toISOString(),
-        };
-
-        return new Response(
-            JSON.stringify(response, null, 2),
-            {
-                status: allHealthy ? 200 : 503,
-                headers: {
-                    ...corsHeaders,
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
-    } catch (error) {
-        console.error('Health check error:', error);
-
-        return new Response(
-            JSON.stringify({
-                status: 'error',
-                error: error instanceof Error ? error.message : 'Unknown error',
-                timestamp: new Date().toISOString(),
-            }),
-            {
-                status: 500,
-                headers: {
-                    ...corsHeaders,
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
-    }
+    return new Response(JSON.stringify({
+      status: healthy ? 'healthy' : 'degraded',
+      mode: fieldMode ? 'field' : 'cloud',
+      scoringAvailable: database.status === 'ok',
+      checks,
+      timestamp: new Date().toISOString(),
+    }, null, 2), {
+      status: healthy ? 200 : 503,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ status: 'error', error: error instanceof Error ? error.message : 'Unknown error' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 });

@@ -327,9 +327,13 @@ preflight() {
 }
 
 print_urls() {
-  echo "Local app     : http://$HOST:8080"
-  echo "Local display : http://$HOST:8080/display"
-  echo "Local API     : http://$HOST:8000/rest/v1/events?select=id&limit=1"
+  echo "Chef juge     : http://$HOST:8080/admin"
+  echo "Alias chef    : http://$HOST:8080/chief-judge"
+  echo "Juges         : http://$HOST:8080/judge"
+  echo "Priorité      : http://$HOST:8080/priority"
+  echo "Display       : http://$HOST:8080/display"
+  echo "Supabase local: http://$HOST:8000"
+  echo "ESP32         : ${SURF_ESP32_URL:-http://priority.local}"
   echo "Cloud display : https://surfjudging.cloud/display"
   echo "Public display: https://display.surfjudging.cloud/display"
 }

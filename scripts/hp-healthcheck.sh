@@ -11,6 +11,8 @@ else
 fi
 HP_USER="${SURF_HP_USER:-admin-surfjudging}"
 DISPLAY_URL="${SURF_HP_DISPLAY_URL:-https://display.surfjudging.cloud/display}"
+CHECK_CLOUD="${SURF_HP_CHECK_CLOUD:-0}"
+ESP32_URL="${SURF_ESP32_URL:-http://priority.local}"
 LOCAL_DISPLAY_URL="http://${HP_HOST}:8080/display"
 LOCAL_API_URL="http://${HP_HOST}:8000/rest/v1/events?select=id&limit=1"
 SCHEMA_URL="http://${HP_HOST}:8000/rest/v1/app_runtime_schema_version?select=schema_version,updated_at&limit=1"
@@ -79,6 +81,22 @@ curl -fsSI "http://${HP_HOST}:8080" | sed -n '1,8p'
 echo "---"
 curl -fsS "$LOCAL_API_URL" | head -c 300; echo
 
+section "Field URLs"
+echo "Chef juge     : http://${HP_HOST}:8080/admin"
+echo "Alias chef    : http://${HP_HOST}:8080/chief-judge"
+echo "Juges         : http://${HP_HOST}:8080/judge"
+echo "Priorité      : http://${HP_HOST}:8080/priority"
+echo "Display       : ${LOCAL_DISPLAY_URL}"
+echo "Supabase local: http://${HP_HOST}:8000"
+echo "ESP32         : ${ESP32_URL}"
+
+section "ESP32 priority (optional)"
+if curl -fsS --connect-timeout 1 --max-time 2 "$ESP32_URL" >/dev/null 2>&1; then
+  echo "ESP32: connected"
+else
+  echo "ESP32: absent or inaccessible (NON-BLOCKING for scoring)"
+fi
+
 section "Runtime schema"
 EXPECTED_SCHEMA="$(expected_schema_version)"
 INSTALLED_SCHEMA="$(curl -fsS "$SCHEMA_URL" | extract_schema_version)"
@@ -92,12 +110,15 @@ echo "Runtime schema: OK"
 
 section "Bundle alignment"
 LOCAL_BUNDLE="$(curl -fsS "$LOCAL_DISPLAY_URL" | extract_bundle)"
-PUBLIC_BUNDLE="$(curl -fsS --connect-timeout 4 "$DISPLAY_URL" 2>/dev/null | extract_bundle || true)"
+PUBLIC_BUNDLE=""
+if [[ "$CHECK_CLOUD" == "1" ]]; then
+  PUBLIC_BUNDLE="$(curl -fsS --connect-timeout 4 "$DISPLAY_URL" 2>/dev/null | extract_bundle || true)"
+fi
 echo "HP local display bundle : ${LOCAL_BUNDLE:-missing}"
-echo "Public display bundle   : ${PUBLIC_BUNDLE:-Cloud offline / no internet}"
+echo "Public display bundle   : ${PUBLIC_BUNDLE:-SKIPPED (SURF_HP_CHECK_CLOUD=0)}"
 
-if [[ -z "$PUBLIC_BUNDLE" ]]; then
-  echo "Bundle alignment: SKIPPED (Cloud offline / no internet)"
+if [[ "$CHECK_CLOUD" != "1" ]]; then
+  echo "Bundle alignment: SKIPPED (field health-check performs no Internet call)"
 elif [[ -n "$LOCAL_BUNDLE" && "$LOCAL_BUNDLE" == "$PUBLIC_BUNDLE" ]]; then
   echo "Bundle alignment: OK"
 else

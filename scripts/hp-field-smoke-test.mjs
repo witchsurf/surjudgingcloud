@@ -135,9 +135,13 @@ function classifyRequest(url, hpHost) {
   } catch {
     return 'other';
   }
+  const parts = parsed.hostname.split('.').map(Number);
+  const privateIp = parts.length === 4 && (parts[0] === 10 || parts[0] === 127
+    || (parts[0] === 192 && parts[1] === 168)
+    || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31));
+  if (parsed.hostname === 'localhost' || parsed.hostname === 'priority.local' || privateIp) return 'local';
   if (parsed.host === `${hpHost}:8000` || parsed.host === `${hpHost}:8080`) return 'local';
-  if (parsed.host.endsWith('supabase.co') || parsed.host === 'surfjudging.cloud') return 'cloud';
-  return 'other';
+  return 'public';
 }
 
 function operationalStateFingerprint(health) {
@@ -203,7 +207,7 @@ async function inspectPage(context, pageSpec, hpHost, idleMs, maxIdleFetches) {
   await page.waitForTimeout(idleMs);
   idleMode = false;
 
-  const allCloudRequests = requests.filter((entry) => classifyRequest(entry.url, hpHost) === 'cloud');
+  const publicRequests = requests.filter((entry) => classifyRequest(entry.url, hpHost) === 'public');
   const failingResponses = responses.filter((entry) => entry.status >= 400);
   const idleFetches = idleRequests.filter((entry) => entry.resourceType === 'fetch');
   const idleLocalFetches = idleFetches.filter((entry) => classifyRequest(entry.url, hpHost) === 'local');
@@ -214,7 +218,7 @@ async function inspectPage(context, pageSpec, hpHost, idleMs, maxIdleFetches) {
     name: pageSpec.name,
     url: pageSpec.url,
     ok: hasExpectedText &&
-      allCloudRequests.length === 0 &&
+      publicRequests.length === 0 &&
       failingResponses.length === 0 &&
       failures.length === 0 &&
       idleLocalFetches.length <= maxIdleFetches,
@@ -222,7 +226,7 @@ async function inspectPage(context, pageSpec, hpHost, idleMs, maxIdleFetches) {
     totalRequests: requests.length,
     idleFetches: idleFetches.length,
     idleLocalFetches: idleLocalFetches.length,
-    cloudRequests: allCloudRequests.map((entry) => entry.url).slice(0, 8),
+    publicRequests: publicRequests.map((entry) => entry.url).slice(0, 8),
     failingResponses: failingResponses.slice(0, 8),
     requestFailures: failures.slice(0, 8),
     textSample: text.replace(/\s+/g, ' ').trim().slice(0, 240),
@@ -327,6 +331,11 @@ async function main() {
         podium: 'B',
       })}`,
       expect: ['Interface Juge', 'Mode Kiosque', event.name],
+    },
+    {
+      name: 'priority',
+      url: `${webBase}/priority?${query.toString()}`,
+      expect: ['Priorité', event.name],
     },
   ];
 
