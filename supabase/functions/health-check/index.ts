@@ -7,7 +7,7 @@ interface HealthCheck { status: CheckStatus; required: boolean; latency?: string
 const localHost = (value: string) => {
   try {
     const host = new URL(value).hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local')) return true;
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === 'priority.local') return true;
     const p = host.split('.').map(Number);
     return p.length === 4 && (p[0] === 10 || (p[0] === 192 && p[1] === 168) || (p[0] === 172 && p[1] >= 16 && p[1] <= 31));
   } catch { return false; }
@@ -72,8 +72,10 @@ Deno.serve(async (req: Request) => {
     const frontend = frontendUrl && (!fieldMode || localHost(frontendUrl))
       ? await timedFetch(frontendUrl, true)
       : { status: 'skipped', required: false, error: frontendUrl ? 'URL non locale refusée en mode terrain' : 'FRONTEND_HEALTH_URL non configurée' } as HealthCheck;
-    const esp32 = fieldMode
+    const esp32 = fieldMode && localHost(esp32Url)
       ? await timedFetch(esp32Url, false)
+      : fieldMode
+        ? { status: 'skipped', required: false, error: 'URL ESP32 non locale refusée en mode terrain' } as HealthCheck
       : { status: 'skipped', required: false } as HealthCheck;
 
     // In field mode these checks are intentionally not executed: the health
