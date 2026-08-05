@@ -9,7 +9,7 @@ import { EventCard } from './components/EventCard';
 type OrganizerEvent = EventRecord & { payments: PaymentRecord[] };
 
 const heroBackground =
-  'linear-gradient(135deg, rgba(22,101,216,0.95) 0%, rgba(14,165,233,0.95) 100%), url(https://images.unsplash.com/photo-1526402466630-4c777c79bc08?auto=format&fit=crop&w=1400&q=80)';
+  'linear-gradient(135deg, rgba(22,101,216,0.78) 0%, rgba(14,165,233,0.7) 100%), url(/surf-event-local.svg)';
 
 export default function EventsApp() {
   const [session, setSession] = useState<Session | null>(null);

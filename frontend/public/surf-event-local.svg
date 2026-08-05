@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 640" role="img" aria-labelledby="title desc">
+  <title id="title">Vague de compétition</title>
+  <desc id="desc">Illustration locale abstraite d'une vague et d'un horizon marin.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#075985"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e0f2fe"/>
+      <stop offset="0.35" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#0369a1"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="640" fill="url(#sky)"/>
+  <circle cx="1280" cy="135" r="72" fill="#fef3c7" opacity=".9"/>
+  <path d="M0 390c215-95 380-86 540 5 124 70 254 70 390 0 158-82 342-84 670 28v217H0Z" fill="#075985" opacity=".65"/>
+  <path d="M0 474c215-48 389-23 570 73 135 72 253 52 344-24 142-119 256-233 497-174 66 16 126 49 189 92v199H0Z" fill="url(#wave)"/>
+  <path d="M845 514c129-189 279-249 446-162-131-5-213 46-266 151 121-38 229-13 326 75-188-69-357-34-506 62Z" fill="#f0f9ff" opacity=".88"/>
+  <g fill="none" stroke="#bae6fd" stroke-width="10" stroke-linecap="round" opacity=".65">
+    <path d="M72 535c164-36 300-18 421 45"/>
+    <path d="M1035 428c100-55 205-55 317 2"/>
+  </g>
+</svg>

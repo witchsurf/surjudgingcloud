@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 
-const backgroundImage =
-  'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1600&q=80';
+const backgroundImage = '/surf-event-local.svg';
 
 export default function Home() {
   return (
