@@ -35,6 +35,10 @@ services:
       NODE_ENV: production
     ports:
       - "8080:80"  # accès direct réseau local (sans HTTPS / sans domaine)
+    volumes:
+      # Immutable frontend release selected atomically on the host. The image is
+      # runtime-only; deployments must use `docker compose up --no-build`.
+      - "${SURFJUDGING_CURRENT_DIR:-/opt/surfjudging/current}/dist:/usr/share/nginx/html:ro"
     labels:
       traefik.enable: "true"
       # Routeur Cloud (HTTPS + domaine)
