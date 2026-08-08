@@ -79,7 +79,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS --retry 10 --retry-delay 3 --retry-connrefused https://surfjudging.cloud/admin >/dev/null
+          curl -fsS --retry 10 --retry-delay 3 --retry-connrefused --retry-all-errors https://surfjudging.cloud/admin >/dev/null
           test "$(curl -fsS https://surfjudging.cloud/RELEASE_ID | tr -d '\r\n')" = "$RELEASE_ID"
 
       - name: Cleanup SSH key

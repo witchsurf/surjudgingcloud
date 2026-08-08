@@ -78,17 +78,17 @@ rollback() {
     ln -s "$PREVIOUS_TARGET" "$rollback_link"
     python3 -c 'import os, sys; os.replace(sys.argv[1], sys.argv[2])' "$rollback_link" "$CURRENT_LINK"
     cd "$APP_DIR/infra"
-    SURFJUDGING_CURRENT_DIR="$CURRENT_LINK" docker compose up -d --no-build --no-deps surfjudging
+    SURFJUDGING_CURRENT_DIR="$CURRENT_LINK" docker compose up -d --no-build --no-deps --force-recreate surfjudging
   fi
 }
 
 cd "$APP_DIR/infra"
-if ! SURFJUDGING_CURRENT_DIR="$CURRENT_LINK" docker compose up -d --no-build --no-deps surfjudging; then
+if ! SURFJUDGING_CURRENT_DIR="$CURRENT_LINK" docker compose up -d --no-build --no-deps --force-recreate surfjudging; then
   rollback
   exit 5
 fi
 
-if ! curl -fsS --retry 10 --retry-delay 2 --retry-connrefused "$HEALTH_URL" >/dev/null; then
+if ! curl -fsS --retry 10 --retry-delay 2 --retry-connrefused --retry-all-errors "$HEALTH_URL" >/dev/null; then
   rollback
   echo "Frontend health check failed; previous release restored" >&2
   exit 6
