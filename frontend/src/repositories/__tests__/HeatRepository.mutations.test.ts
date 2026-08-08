@@ -10,8 +10,10 @@ const supabaseLib = vi.hoisted(() => ({
   supabase: null, isSupabaseConfigured: vi.fn(() => true), canUseSupabaseConnection: vi.fn(() => true),
   saveOffline: vi.fn(),
 }));
+const runtimeConfigApi = vi.hoisted(() => ({ upsertRuntimeHeatConfig: vi.fn(async () => undefined) }));
 vi.mock('../../api/modules/heats.api', () => api);
 vi.mock('../../lib/supabase', () => supabaseLib);
+vi.mock('../../api/modules/runtimeHeatConfig.api', () => runtimeConfigApi);
 
 import { HeatRepository } from '../HeatRepository';
 
@@ -59,6 +61,7 @@ describe('HeatRepository non-destructive mutation boundary', () => {
         },
       }),
     };
+    runtimeConfigApi.upsertRuntimeHeatConfig.mockImplementationOnce(async () => { order.push('heat_configs'); });
     repository.ensureHeatEntries = vi.fn(async () => { order.push('heat_entries'); });
     repository.ensureEventLastConfigSnapshot = vi.fn(async () => { order.push('event_snapshot'); });
 
@@ -68,6 +71,11 @@ describe('HeatRepository non-destructive mutation boundary', () => {
       judge_identities: { J1: 'one', J2: 'two', J3: 'three' }, podiumId: 'A',
     });
     expect(order).toEqual(['heat_configs', 'heat_judge_assignments', 'heat_entries', 'event_snapshot']);
+    expect(runtimeConfigApi.upsertRuntimeHeatConfig).toHaveBeenCalledWith(repository.supabase, {
+      heat_id: 'heat_1', judges: ['J1', 'J2', 'J3'], surfers: ['ROUGE'],
+      judge_names: { J1: 'One', J2: 'Two', J3: 'Three' }, waves: 15,
+      tournament_type: 'elimination',
+    });
   });
 
   it('keeps the existing offline queue tables, payloads and order', async () => {

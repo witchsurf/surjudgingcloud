@@ -52,7 +52,7 @@ as $$
         where score_override.heat_id = targeted.id
            or exists (
              select 1 from public.scores override_score
-             where override_score.id = score_override.score_id
+             where override_score.id::text = score_override.score_id
                and override_score.heat_id = targeted.id
            )
       ) as override_count,

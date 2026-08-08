@@ -37,6 +37,7 @@ import {
     replaceHeatEntries,
     adminOverrideHeatEntry,
 } from '../api/modules/heats.api';
+import { upsertRuntimeHeatConfig } from '../api/modules/runtimeHeatConfig.api';
 import {
     parseHeatEntryJoinedRow,
     parseLegacyLineupRow,
@@ -420,11 +421,7 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
         return this.execute(
             async () => {
                 this.ensureSupabase();
-                const { error } = await this.supabase!
-                    .from('heat_configs')
-                    .upsert(payload, { onConflict: 'heat_id' });
-
-                if (error) throw error;
+                await upsertRuntimeHeatConfig(this.supabase!, payload);
                 if (assignmentPayload.length > 0) {
                     const { error: assignmentError } = await this.supabase!
                         .from('heat_judge_assignments')

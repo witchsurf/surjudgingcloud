@@ -1608,6 +1608,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      upsert_heat_config_runtime: {
+        Args: {
+          p_heat_id: string
+          p_judge_names: Json
+          p_judges: string[]
+          p_surfers: string[]
+          p_tournament_type: string
+          p_waves: number
+        }
+        Returns: undefined
+      }
       can_display_event: { Args: { p_event_id: number }; Returns: boolean }
       can_display_heat: { Args: { p_heat_id: string }; Returns: boolean }
       check_heat_planning_safety: {

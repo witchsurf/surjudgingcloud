@@ -7,6 +7,7 @@ import { legacyGetAll, legacyAdd, legacySetAll, legacyClear } from './idbOffline
 import { isLocalNetworkHost, isLocalNetworkUrl } from './networkDetection';
 import { createReconnectAfterMs } from './realtimeBackoff';
 import { useOfflineStore } from '../stores/offlineStore';
+import { replayLegacyRuntimeHeatConfig } from '../api/modules/runtimeHeatConfig.api';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -535,6 +536,11 @@ async function replayOfflineEntry(entry: OfflineEntry) {
 
   if (entry.table === HEAT_CONFIG_REPAIR_TABLE) {
     await repairHeatConfigSnapshot(entry.payload)
+    return
+  }
+
+  if (entry.table === 'heat_configs' && entry.action === 'upsert') {
+    await replayLegacyRuntimeHeatConfig(supabase, entry.payload)
     return
   }
 

@@ -8,9 +8,10 @@ import { describe, expect, it, vi } from 'vitest';
 const enabled = process.env.RUN_REAL_HEAT_PLANNING_INTEGRATION === '1';
 const realWorkbookPath = process.env.REAL_COMPETITION_X_XLSX;
 const projectRoot = path.resolve(__dirname, '../../../..');
+const supabaseTestWorkdir = process.env.SUPABASE_TEST_WORKDIR ?? path.join(projectRoot, 'backend');
 
 const localStatus = () => {
-  const output = execFileSync('supabase', ['status', '--workdir', path.join(projectRoot, 'backend'), '-o', 'json'], { encoding: 'utf8' });
+  const output = execFileSync('supabase', ['status', '--workdir', supabaseTestWorkdir, '-o', 'json'], { encoding: 'utf8' });
   return JSON.parse(output.slice(output.indexOf('{'))) as {
     DB_URL: string;
     API_URL: string;

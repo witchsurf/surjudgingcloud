@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { applyScoreCorrectionSecure } from '../api/modules/scoring.api';
+import { upsertRuntimeHeatConfig } from '../api/modules/runtimeHeatConfig.api';
 
 export default function FixScores() {
     const [status, setStatus] = useState('Ready');
@@ -126,7 +127,14 @@ export default function FixScores() {
                 });
 
                 if (updated) {
-                    await supabase!.from('heat_configs').update({ surfers: newSurfers }).eq('heat_id', TARGET_HEAT);
+                    await upsertRuntimeHeatConfig(supabase!, {
+                        heat_id: TARGET_HEAT,
+                        judges: config.judges ?? [],
+                        surfers: newSurfers,
+                        judge_names: config.judge_names && typeof config.judge_names === 'object' ? config.judge_names : {},
+                        waves: Number.isFinite(Number(config.waves)) ? Number(config.waves) : 15,
+                        tournament_type: config.tournament_type ?? 'elimination',
+                    });
                     console.log('Updated heat_configs surfers array.');
                 } else {
                     console.warn('Old surfer not found in config.surfers');
