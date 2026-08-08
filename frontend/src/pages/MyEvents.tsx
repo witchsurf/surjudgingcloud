@@ -6,7 +6,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, isCloudLocked, mode } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
 import type { AppConfig } from '../types';
-import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/supabaseClient';
+import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/modules/events.api';
 import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { OfflineAuthWrapper } from '../components/OfflineAuthWrapper';
@@ -1084,7 +1084,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
                       {continuingId === event.id ? 'Chargement...' : 'Continuer'}
                     </button>
                     <Link
-                      to={`/participants?event=${event.id}`}
+                      to={`/participants?event=${event.id}&eventName=${encodeURIComponent(event.name)}`}
                       className="flex-1 inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-800/50 px-4 py-2.5 text-sm font-medium text-slate-300 ease-out hover:bg-slate-700 hover:text-white transition-all active:scale-95 touch-manipulation"
                     >
                       Participants

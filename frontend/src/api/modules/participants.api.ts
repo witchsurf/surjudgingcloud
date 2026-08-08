@@ -2,12 +2,12 @@ import { supabase } from '../../lib/supabase';
 import { ensureSupabase } from './core.api';
 import type { ParsedParticipant } from '../../utils/csv';
 
-export interface ParticipantRecord extends ParsedParticipant {
+interface ParticipantRow extends ParsedParticipant {
     id: number;
     event_id: number;
 }
 
-export async function fetchParticipants(eventId: number): Promise<ParticipantRecord[]> {
+export async function fetchParticipants(eventId: number): Promise<ParticipantRow[]> {
     ensureSupabase();
     const { data, error } = await supabase!
         .from('participants')
@@ -17,7 +17,7 @@ export async function fetchParticipants(eventId: number): Promise<ParticipantRec
         .order('seed', { ascending: true });
 
     if (error) throw error;
-    return (data ?? []) as ParticipantRecord[];
+    return (data ?? []) as ParticipantRow[];
 }
 
 export async function upsertParticipants(eventId: number, rows: ParsedParticipant[]) {

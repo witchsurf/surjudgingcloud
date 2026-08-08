@@ -11,7 +11,7 @@
 
 import { useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { fetchPodiumJudgePanel } from '../api/supabaseClient';
+import { panelRepository } from '../repositories/PanelRepository';
 import { normalizePodiumId } from '../utils/podium';
 
 interface Props {
@@ -42,11 +42,11 @@ export function PendingJudgeAssignmentPoller({ position, eventId, podiumId, onRe
       try {
         // Prefer event_last_config (config snapshot saved by admin)
         if (eventId) {
-          const panel = await fetchPodiumJudgePanel(eventId, normalizedPodium);
-          const assignment = panel.find(
+          const panel = await panelRepository.getPodiumPanel(eventId, normalizedPodium);
+          const assignment = panel?.assignments.find(
             (row) => row.station.trim().toUpperCase() === normalizedPos
           );
-          if (assignment?.judge_name?.trim() && assignment?.judge_id?.trim()) {
+          if (assignment?.judgeName?.trim() && assignment?.judgeId?.trim()) {
             if (active) onReadyRef.current();
             return;
           }

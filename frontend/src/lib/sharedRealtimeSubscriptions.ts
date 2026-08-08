@@ -1,5 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { fetchActiveHeatPointer, fetchEventConfigSnapshot } from '../api/supabaseClient';
+import { fetchEventConfigSnapshot } from '../api/modules/events.api';
+import { activeHeatPointerRepository } from '../repositories/ActiveHeatPointerRepository';
 import { supabase } from './supabase';
 import { reportRealtimeDiagnostic } from './offlineOperations';
 
@@ -277,7 +278,18 @@ export const subscribeToActiveHeatPointer = (
 
   const refresh = async () => {
     try {
-      const row = await fetchActiveHeatPointer(eventIdKey, normalizedEventName || undefined, podiumId);
+      const pointer = await activeHeatPointerRepository.get({
+        eventId: eventIdKey,
+        eventName: normalizedEventName || undefined,
+        podiumId,
+      });
+      const row: ActiveHeatPointerRealtimeRow | null = pointer ? {
+        event_id: pointer.eventId,
+        event_name: pointer.eventName,
+        podium_id: pointer.podiumId,
+        active_heat_id: pointer.activeHeatId,
+        updated_at: pointer.updatedAt,
+      } : null;
       if (!matchesEvent(row)) return;
       emitToListeners(state, row);
     } catch (error) {

@@ -43,3 +43,12 @@ build/
 out/
 coverage/
 mcp_config.json
+
+# Local validation artifacts (never part of a release)
+/artifacts/
+/Export_PDF_Complet_Event33.pdf
+/Rapport_Event33.pdf
+/frontend/dist-xlsx-spike/
+/frontend/src/spikes/
+/frontend/vite.xlsx-spike.config.ts
+/supabase/.temp/

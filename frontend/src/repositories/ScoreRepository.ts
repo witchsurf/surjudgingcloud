@@ -18,8 +18,23 @@ import {
     getAllScoresIDB
 } from '../lib/idbStorage';
 import { canonicalizeScores, recordScoreOverrideSecure, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
-import { fetchHeatMetadata } from '../api/supabaseClient';
-import { useOfflineStore } from '../stores/offlineStore';
+import { fetchHeatMetadata } from '../api/modules/heats.api';
+import type {
+    OverrideScoreRequest as CanonicalOverrideScoreRequest,
+    OverrideScoreResult as CanonicalOverrideScoreResult,
+    SaveScoreRequest as CanonicalSaveScoreRequest,
+    ScoreOverrideLogRecord,
+    ScoreRecord,
+    ScoreRepositoryContract,
+} from './contracts';
+import {
+    canonicalOverrideRequestToLegacy,
+    canonicalSaveRequestToLegacy,
+    legacyOverrideLogToRecord,
+    legacyOverrideResultToRecord,
+    legacyScoreToRecord,
+} from './internal/scoreRepositoryMappings';
+import { scoreOfflineMutationAdapter } from './internal/scoreOfflineMutationAdapter';
 
 export interface SaveScoreRequest {
     heatId: string;
@@ -63,7 +78,7 @@ const OVERRIDE_LOGS_KEY = 'surfJudgingOverrideLogs';
 /**
  * Repository for managing scores and overrides
  */
-export class ScoreRepository extends BaseRepository {
+export class ScoreRepository extends BaseRepository implements ScoreRepositoryContract {
     constructor() {
         super('scores');
     }
@@ -343,12 +358,78 @@ export class ScoreRepository extends BaseRepository {
             async () => {
                 newScore.synced = false;
                 await saveScoreIDB(newScore);
-                useOfflineStore.getState().registerMutation('scores', 'insert', newScore);
+                scoreOfflineMutationAdapter.registerScore(newScore);
                 window.dispatchEvent(new CustomEvent('localScoresUpdated'));
                 logger.info('ScoreRepository', 'Score saved offline (pending sync)', { scoreId: newScore.id });
                 return newScore;
             },
             'saveScore'
+        );
+    }
+
+    /**
+     * Replays an already-created score fact without changing its identity or chronology.
+     * This technical path is reserved for persisted WAL entries.
+     */
+    async replayPersistedScore(score: Score): Promise<void> {
+        if (!score.id || !score.timestamp || !score.created_at) {
+            throw new Error('Score WAL non rejouable : identité ou chronologie absente.');
+        }
+        const persistedScore: Score = { ...score, heat_id: ensureHeatId(score.heat_id) };
+
+        await this.execute(
+            async () => {
+                this.ensureSupabase();
+                await this.ensureHeatRowsExist([{
+                    heat_id: persistedScore.heat_id,
+                    competition: persistedScore.competition,
+                    division: persistedScore.division,
+                    round: persistedScore.round,
+                    event_id: persistedScore.event_id ?? null,
+                }]);
+                await this.upsertScoreSecure(persistedScore);
+                persistedScore.synced = true;
+                await saveScoreIDB(persistedScore);
+                window.dispatchEvent(new CustomEvent('localScoresUpdated'));
+                logger.info('ScoreRepository', 'Persisted WAL score replayed', { scoreId: persistedScore.id });
+            },
+            undefined,
+            'replayPersistedScore'
+        );
+    }
+
+    /** Replays an already-created override log without creating another score or chronology. */
+    async replayPersistedOverride(log: ScoreOverrideLog): Promise<void> {
+        if (!log.id || !log.score_id || !log.created_at) {
+            throw new Error('Override WAL non rejouable : identité, score_id ou chronologie absente.');
+        }
+        await this.execute(
+            async () => {
+                this.ensureSupabase();
+                await recordScoreOverrideSecure({
+                    id: log.id,
+                    heat_id: log.heat_id,
+                    score_id: log.score_id,
+                    judge_id: log.judge_id,
+                    judge_name: log.judge_name,
+                    judge_station: log.judge_station,
+                    judge_identity_id: log.judge_identity_id,
+                    surfer: log.surfer,
+                    wave_number: log.wave_number,
+                    previous_score: log.previous_score,
+                    new_score: log.new_score,
+                    reason: log.reason,
+                    comment: log.comment,
+                    overridden_by: log.overridden_by,
+                    overridden_by_name: log.overridden_by_name,
+                    created_at: log.created_at,
+                });
+                this.saveOverrideLogToLocalStorage(log);
+                window.dispatchEvent(new CustomEvent('localScoresUpdated'));
+                logger.info('ScoreRepository', 'Persisted WAL override replayed', { overrideId: log.id, scoreId: log.score_id });
+            },
+            undefined,
+            'replayPersistedOverride'
         );
     }
 
@@ -506,8 +587,8 @@ export class ScoreRepository extends BaseRepository {
             async () => {
                 updatedScore.synced = false;
                 await saveScoreIDB(updatedScore);
-                useOfflineStore.getState().registerMutation('scores', 'insert', updatedScore);
-                useOfflineStore.getState().registerMutation('score_overrides', 'insert', overrideLog);
+                scoreOfflineMutationAdapter.registerScore(updatedScore);
+                scoreOfflineMutationAdapter.registerOverride(overrideLog);
                 this.saveOverrideLogToLocalStorage(overrideLog);
                 window.dispatchEvent(new CustomEvent('localScoresUpdated'));
 
@@ -673,6 +754,32 @@ export class ScoreRepository extends BaseRepository {
         }
 
         return { success, failed, heats: pendingHeatIds.length };
+    }
+
+    // ========== Canonical P2.5 contract facade ==========
+
+    async save(request: CanonicalSaveScoreRequest): Promise<ScoreRecord> {
+        return legacyScoreToRecord(await this.saveScore(canonicalSaveRequestToLegacy(request)));
+    }
+
+    async listByHeat(heatId: string, legacyHeatId?: string): Promise<readonly ScoreRecord[]> {
+        return (await this.fetchScores(heatId, legacyHeatId)).map(legacyScoreToRecord);
+    }
+
+    async override(request: CanonicalOverrideScoreRequest): Promise<CanonicalOverrideScoreResult> {
+        return legacyOverrideResultToRecord(await this.overrideScore(canonicalOverrideRequestToLegacy(request)));
+    }
+
+    async listOverrideLogs(heatId: string): Promise<readonly ScoreOverrideLogRecord[]> {
+        return (await this.fetchOverrideLogs(heatId)).map(legacyOverrideLogToRecord);
+    }
+
+    async syncHeat(heatId: string): Promise<{ success: number; failed: number }> {
+        return this.syncScores(heatId);
+    }
+
+    async syncPending(): Promise<{ success: number; failed: number; heats: number }> {
+        return this.syncPendingScores();
     }
 
     // ========== Private Helper Methods ==========

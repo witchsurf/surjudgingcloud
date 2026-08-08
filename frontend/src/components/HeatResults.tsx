@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EffectiveInterference, Score } from '../types';
-import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
-import { fetchInterferenceCalls } from '../api/supabaseClient';
+import { calculateShadowHeatResult } from '../domain/scoring/shadow';
+import { fetchInterferenceCalls } from '../api/modules/scoring.api';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { HEAT_RESULTS_CACHE_KEY } from '../utils/constants';
 import { computeEffectiveInterferences } from '../utils/interference';
@@ -171,12 +171,19 @@ export default function HeatResults({
     };
   }, [visible, heatId, judgeIds.length]);
 
+  const scoringResult = useMemo(() => calculateShadowHeatResult({
+      heatId: heatId || 'unknown-heat',
+      scores: scoresState,
+      surfers,
+      judgeCount: judgeIds.length,
+      judgeStations: judgeIds,
+      maxWaves,
+      effectiveInterferences,
+    }), [scoresState, surfers, judgeIds, maxWaves, effectiveInterferences, heatId]);
+
   const rows = useMemo(() => {
     if (!scoresState.length) return [];
-
-    const judgeCount = getEffectiveJudgeCount(scoresState, judgeIds.length);
-    const stats = calculateSurferStats(scoresState, surfers, judgeCount, maxWaves, false, effectiveInterferences, status);
-    const aggregates = stats.map((stat) => {
+    return scoringResult.stats.map((stat) => {
       const rawKey = (stat.surfer || '').trim().toUpperCase();
       const statKey = colorLabelMap[rawKey as HeatColor] ?? rawKey;
       const entryInfo = entryMap.get(statKey) ?? { jersey: statKey || stat.surfer, name: statKey || stat.surfer };
@@ -190,19 +197,10 @@ export default function HeatResults({
         waves: stat.waves,
         interferenceCount: stat.interferenceCount ?? 0,
         isDisqualified: stat.isDisqualified ?? false,
+        rank: stat.rank,
       };
     });
-
-    return aggregates
-      .sort((a, b) => {
-        if (b.total !== a.total) return b.total - a.total;
-        return a.name.localeCompare(b.name);
-      })
-      .map((item, index) => ({
-        ...item,
-        rank: index + 1,
-      }));
-  }, [scoresState, surfers, judgeIds.length, maxWaves, entryMap, effectiveInterferences, status]);
+  }, [scoresState.length, scoringResult.stats, entryMap]);
 
   const waveNumbers = useMemo(() => {
     const maxWaveCount = Math.max(...rows.map((row) => row.waves.length), 0);
@@ -256,6 +254,11 @@ export default function HeatResults({
         )}
         {loadingEntries && !entriesError && (
           <p className="mt-2 text-[10px] font-bold text-primary-400 uppercase tracking-widest animate-pulse">Chargement des athlètes...</p>
+        )}
+        {scoringResult.message && (
+          <p className="mt-2 rounded border border-amber-400 bg-amber-950/70 px-3 py-2 text-xs font-bold text-amber-200">
+            {scoringResult.message}
+          </p>
         )}
       </div>
 

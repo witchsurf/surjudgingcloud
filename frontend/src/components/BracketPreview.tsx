@@ -6,9 +6,10 @@ interface BracketPreviewProps {
   repechage?: RoundSpec[];
   onExportPdf: () => void;
   onExportCsv: () => void;
+  showExportActions?: boolean;
 }
 
-export default function BracketPreview({ rounds, repechage, onExportPdf, onExportCsv }: BracketPreviewProps) {
+export default function BracketPreview({ rounds, repechage, onExportPdf, onExportCsv, showExportActions = true }: BracketPreviewProps) {
   if (!rounds.length) {
     return null;
   }
@@ -94,7 +95,7 @@ export default function BracketPreview({ rounds, repechage, onExportPdf, onExpor
           <h2 className="text-lg font-semibold text-white">Prévisualisation des heats</h2>
           <p className="text-xs text-slate-400">Structure automatique selon le format sélectionné.</p>
         </div>
-        <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center">
+        {showExportActions && <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center">
           <button
             type="button"
             onClick={onExportPdf}
@@ -109,7 +110,7 @@ export default function BracketPreview({ rounds, repechage, onExportPdf, onExpor
           >
             Exporter CSV
           </button>
-        </div>
+        </div>}
       </div>
 
       <div className="space-y-6 px-4 py-6 sm:px-6">

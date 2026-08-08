@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { applyScoreCorrectionSecure } from '../api/supabaseClient';
+import { applyScoreCorrectionSecure } from '../api/modules/scoring.api';
 
 export default function FixScores() {
     const [status, setStatus] = useState('Ready');

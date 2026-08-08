@@ -4,7 +4,10 @@ import { SURFER_COLORS } from '../utils/constants';
 import type { AppConfig, EffectiveInterference, InterferenceCall, InterferenceType, PriorityState, Score, HeatTimer as HeatTimerType } from '../types';
 import HeatTimer from './HeatTimer';
 import JudgeSyncBadge from './JudgeSyncBadge';
-import { fetchHeatScores, updateJudgeName, fetchEventIdByName, fetchHeatMetadata, fetchInterferenceCalls, upsertInterferenceCall, deleteInterferenceCall } from '../api/supabaseClient';
+import { fetchEventIdByName } from '../api/modules/events.api';
+import { fetchHeatMetadata } from '../api/modules/heats.api';
+import { fetchHeatScores, fetchInterferenceCalls, upsertInterferenceCall, deleteInterferenceCall } from '../api/modules/scoring.api';
+import { judgeRepository } from '../repositories/JudgeRepository';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
@@ -226,7 +229,7 @@ function JudgeInterface({
         return;
       }
 
-      await updateJudgeName(eventId, judgeId, judgeNameInput.trim());
+      await judgeRepository.updateEventDisplayName(eventId, judgeId, judgeNameInput.trim());
       console.log('✅ Judge name updated successfully');
 
       setShowNameModal(false);

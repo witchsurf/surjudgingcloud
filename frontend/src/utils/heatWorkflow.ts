@@ -1,5 +1,5 @@
 import { eventRepository } from '../repositories';
-import { fetchHeatMetadata } from '../api/supabaseClient';
+import { fetchHeatMetadata } from '../api/modules/heats.api';
 import { ensureHeatId } from './heat';
 import { getHeatIdentifiers } from './heat';
 import type { AppConfig } from '../types';

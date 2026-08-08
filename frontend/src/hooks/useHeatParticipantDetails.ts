@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, isSupabaseConfigured } from '../api/supabaseClient';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { heatRepository } from '../repositories/HeatRepository';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { subscribeToHeatParticipants } from '../lib/sharedHeatTableSubscriptions';
 
@@ -80,7 +81,7 @@ export function useHeatParticipantDetails({ heatId, surfers, enabled = true, wat
       setError(null);
 
       try {
-        const entries = await fetchHeatEntriesWithParticipants(requestedHeatId);
+        const entries = await heatRepository.listEntries(requestedHeatId);
         if (isStale(requestedHeatId)) return;
 
         const nextMap = new Map<string, HeatParticipantInfo>();
@@ -111,7 +112,7 @@ export function useHeatParticipantDetails({ heatId, surfers, enabled = true, wat
 
         // If no real entries yet (R2+), fallback to slot mappings placeholders.
         if (!hasRealNames) {
-          const mappings = await fetchHeatSlotMappings(requestedHeatId).catch(() => []);
+          const mappings = await heatRepository.listSlotMappings(requestedHeatId).catch(() => []);
           if (isStale(requestedHeatId)) return;
 
           if (Array.isArray(mappings) && mappings.length > 0) {

@@ -5,14 +5,29 @@ import { useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, OverrideReason, InterferenceType } from '../types';
 import { sanitizeScoreInput, validateScore } from '../utils/scoring';
-import { buildJudgeDeviationDetails, calculateJudgeAccuracy, calculateSurferStats } from '../utils/scoring';
+import { buildJudgeDeviationDetails, calculateJudgeAccuracy } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF, exportFinalistsRankingToPDF } from '../utils/pdfExport';
-import { fetchHeatScores, fetchEventIdByName, fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage, fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatCloseReadiness, fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata, fetchInterferenceCalls, replaceHeatEntries, ensureEventExists, upsertHeatRealtimeConfig, activateHeatOnPodium, setPodiumJudgePanel, upsertInterferenceCall, deleteInterferenceCall, fetchActiveJudges, fetchEventJudgeAssignments, createJudge, applyScoreCorrectionSecure, deleteScoreSecure, rebuildDivisionQualifiersFromScores, validateHeatStartDependencies, fetchParticipants, adminOverrideHeatEntry } from '../api/supabaseClient';
-import type { Judge, HeatRow, HeatJudgeAssignmentRow, EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker, ParticipantRecord } from '../api/supabaseClient';
+import { fetchEventIdByName, ensureEventExists } from '../api/modules/events.api';
+import {
+  fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories,
+  fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata,
+  upsertHeatRealtimeConfig, validateHeatStartDependencies,
+} from '../api/modules/heats.api';
+import type { HeatRow, HeatJudgeAssignmentRow, HeatEntriesWithParticipantRow, HeatStartDependencyBlocker } from '../api/modules/heats.api';
+import {
+  fetchHeatScores, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage,
+  fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatCloseReadiness,
+  fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchInterferenceCalls,
+  upsertInterferenceCall, deleteInterferenceCall, applyScoreCorrectionSecure, deleteScoreSecure,
+} from '../api/modules/scoring.api';
+import type { EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/modules/scoring.api';
+import { participantRepository } from '../repositories/ParticipantRepository';
+import { judgeRepository } from '../repositories/JudgeRepository';
+import type { JudgeRecord, ParticipantRecord } from '../repositories/contracts';
 import { supabase, isSupabaseConfigured, getSupabaseMode } from '../lib/supabase';
 import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
@@ -20,6 +35,15 @@ import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normal
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 import { getScoresByHeatIDB } from '../lib/idbStorage';
 import { DEFAULT_PODIUM_ID, normalizePodiumId } from '../utils/podium';
+import AdminHeatResultSnapshotPanel from './AdminHeatResultSnapshotPanel';
+import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
+import { panelRepository } from '../repositories/PanelRepository';
+import { heatRepository } from '../repositories/HeatRepository';
+import { heatLifecycleRepository } from '../repositories/HeatLifecycleRepository';
+import { qualificationRecoveryRepository } from '../repositories/QualificationRecoveryRepository';
+import type { PanelContext } from '../domain/scoring/panelContext';
+import { resolveConsumerHeatSnapshot } from '../domain/scoring/overlaySnapshot';
+import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 const LINEUP_OVERRIDE_COLORS = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const;
@@ -321,7 +345,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [heatStartBlockers, setHeatStartBlockers] = useState<HeatStartDependencyBlocker[]>([]);
   const [heatStartDependencyChecking, setHeatStartDependencyChecking] = useState(false);
   const [floatingTimerTick, setFloatingTimerTick] = useState(Date.now());
-  const [availableOfficialJudges, setAvailableOfficialJudges] = useState<Judge[]>([]);
+  const [availableOfficialJudges, setAvailableOfficialJudges] = useState<JudgeRecord[]>([]);
   const [officialJudgeStatus, setOfficialJudgeStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [creatingOfficialJudgeFor, setCreatingOfficialJudgeFor] = useState<string | null>(null);
   const [eventJudgeAssignments, setEventJudgeAssignments] = useState<HeatJudgeAssignmentRow[]>([]);
@@ -335,6 +359,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [lineupOverrideLoading, setLineupOverrideLoading] = useState(false);
   const [lineupPendingPosition, setLineupPendingPosition] = useState<number | null>(null);
   const [lineupRefreshToken, setLineupRefreshToken] = useState(0);
+  const [resultPanelContext, setResultPanelContext] = useState<PanelContext>({
+    judgeCount: null,
+    source: 'unknown',
+    issue: 'panel_unknown',
+    message: 'Panel inconnu : résolution admin en attente.',
+  });
+  const [resultInterferenceState, setResultInterferenceState] = useState<{
+    key: string;
+    values: ReturnType<typeof computeEffectiveInterferences>;
+  }>({ key: '', values: [] });
   // Stable latch: once a heat is locked/closed, never flicker back to unlocked within session
   const hasBeenLockedRef = React.useRef(false);
   // Track which heat the latch was set for, so we can reset on heat change
@@ -568,17 +602,17 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const loadOfficialJudges = useCallback(async () => {
     if (!isSupabaseConfigured()) {
       setAvailableOfficialJudges([]);
-      return [] as Judge[];
+      return [] as JudgeRecord[];
     }
 
     try {
-      const judges = await fetchActiveJudges();
+      const judges = await judgeRepository.listActive();
       setAvailableOfficialJudges(judges);
       return judges;
     } catch (error) {
       console.warn('Impossible de charger les juges officiels:', error);
       setAvailableOfficialJudges([]);
-      return [] as Judge[];
+      return [] as JudgeRecord[];
     }
   }, []);
 
@@ -613,7 +647,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       try {
         const [assignments, coverage] = await Promise.all([
-          fetchEventJudgeAssignments(activeEventId),
+          panelRepository.listEventAssignments(activeEventId).then((rows) => rows.map((row) => ({
+            heat_id: row.heatId,
+            event_id: row.eventId,
+            station: row.station,
+            judge_id: row.judgeId,
+            judge_name: row.judgeName,
+            assigned_at: row.assignedAt,
+            updated_at: row.updatedAt,
+          }))),
           fetchEventJudgeAssignmentCoverage(activeEventId).catch((error) => {
             if (error instanceof Error && error.message.startsWith('VIEW_NOT_READY:')) {
               return [];
@@ -782,6 +824,99 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     return Array.from(byLogicalKey.values());
   }, [scores, dbHeatScores]);
+
+  const currentHeatResultScores = React.useMemo(() =>
+    [...(scores || []), ...(dbHeatScores || [])]
+      .filter((score) => ensureHeatId(score.heat_id) === heatId)
+      .map((score) => ({ ...score, surfer: normalizeJerseyLabel(score.surfer) || score.surfer })),
+  [dbHeatScores, heatId, scores]);
+
+  const resultPanelSnapshotKey = config.judges.join('|');
+  useEffect(() => {
+    let cancelled = false;
+    if (!configSaved || !heatId) {
+      setResultPanelContext({
+        judgeCount: null,
+        source: 'unknown',
+        issue: 'panel_unknown',
+        message: 'Panel inconnu : configuration du heat non enregistrée.',
+      });
+      return () => { cancelled = true; };
+    }
+
+    setResultPanelContext({
+      judgeCount: null,
+      source: 'unknown',
+      issue: 'panel_unknown',
+      message: 'Panel inconnu : résolution admin en cours.',
+    });
+    void getCachedPanelContexts([heatId], { [heatId]: config.judges })
+      .then((contexts) => {
+        if (!cancelled) {
+          setResultPanelContext(contexts.get(heatId) || {
+            judgeCount: null,
+            source: 'unknown',
+            issue: 'panel_unknown',
+            message: 'Panel inconnu : aucune configuration 3/5 disponible.',
+          });
+        }
+      })
+      .catch((error) => {
+        console.error('[P2 AdminInterface panel read error]', { heatId, error });
+        if (!cancelled) {
+          setResultPanelContext({
+            judgeCount: null,
+            source: 'unknown',
+            issue: 'network_error',
+            message: `Erreur réseau de lecture du panel : ${error instanceof Error ? error.message : String(error)}`,
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [configSaved, heatId, resultPanelSnapshotKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const interferenceKey = resultPanelContext.judgeCount ? `${heatId}::${resultPanelContext.judgeCount}` : '';
+    if (!heatId || !resultPanelContext.judgeCount || !isSupabaseConfigured()) {
+      setResultInterferenceState({ key: interferenceKey, values: [] });
+      return () => { cancelled = true; };
+    }
+
+    setResultInterferenceState({ key: interferenceKey, values: [] });
+    const refresh = async () => {
+      try {
+        const calls = await fetchInterferenceCalls(heatId);
+        if (!cancelled) {
+          setResultInterferenceState({
+            key: interferenceKey,
+            values: computeEffectiveInterferences(calls, resultPanelContext.judgeCount!),
+          });
+        }
+      } catch (error) {
+        console.warn('Admin: impossible de charger les interférences du résultat canonique', error);
+        if (!cancelled) setResultInterferenceState({ key: interferenceKey, values: [] });
+      }
+    };
+    void refresh();
+    const unsubscribe = subscribeToHeatInterference(heatId, () => { void refresh(); });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [heatId, resultPanelContext.judgeCount]);
+
+  const currentResultInterferenceKey = resultPanelContext.judgeCount ? `${heatId}::${resultPanelContext.judgeCount}` : '';
+  const currentResultInterferences = resultInterferenceState.key === currentResultInterferenceKey
+    ? resultInterferenceState.values
+    : [];
+  const adminHeatResultState = React.useMemo(() => resolveConsumerHeatSnapshot({
+    heatId,
+    config,
+    scores: currentHeatResultScores,
+    panelContext: resultPanelContext,
+    effectiveInterferences: currentResultInterferences,
+  }), [config, currentHeatResultInterferences, currentHeatResultScores, heatId, resultPanelContext]);
 
   const effectiveOverrideLogs = React.useMemo(() => {
     const byId = new Map<string, ScoreOverrideLog>();
@@ -2200,7 +2335,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           fetchHeatSlotMappings(heatId).catch(() => []),
         ]);
         const participants = activeEventId
-          ? await fetchParticipants(activeEventId).catch((error) => {
+          ? await participantRepository.listByEvent(activeEventId).catch((error) => {
               console.warn('Impossible de charger les participants pour l’override lineup:', error);
               return [] as ParticipantRecord[];
             })
@@ -2658,13 +2793,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       });
 
       try {
-        await setPodiumJudgePanel({
+        await panelRepository.setPodiumPanel({
           eventId: activeEventId,
           podiumId,
           assignments,
           assignedBy: 'admin-auto-podium-panel',
         });
-        await activateHeatOnPodium({
+        await heatLifecycleRepository.activate({
           eventId: activeEventId,
           podiumId,
           heatId,
@@ -3196,14 +3331,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const canCloseHeat = () => {
-    const normalizeJudgeId = (raw?: string) => {
-      const upper = (raw || '').trim().toUpperCase();
-      if (upper === 'KIOSK-J1') return 'J1';
-      if (upper === 'KIOSK-J2') return 'J2';
-      if (upper === 'KIOSK-J3') return 'J3';
-      return upper;
-    };
-
     const normalizeText = (value?: string) => (value || '').trim().toUpperCase();
 
     const exactHeatScores = (mergedScores || []).filter(
@@ -3219,59 +3346,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     });
 
     const currentHeatScores = exactHeatScores.length > 0 ? exactHeatScores : fallbackByMetaScores;
-    if (!currentHeatScores.length) return false;
-
-    const configuredJudges = new Set(
-      (config.judges || [])
-        .map((judgeId) => normalizeJudgeId(judgeId))
-        .filter(Boolean)
-    );
-    const scoredJudges = new Set(
-      currentHeatScores
-        .map((score) => normalizeJudgeId(score.judge_id))
-        .filter(Boolean)
-    );
-
-    // Prefer configured judges when available; fallback to observed judges.
-    const judgeCount = configuredJudges.size > 0 ? configuredJudges.size : scoredJudges.size;
-    if (judgeCount === 0) return false;
-
-    // Group scores by surfer and wave (current heat only)
-    const waveScores = new Map<string, Set<string>>();
-
-    currentHeatScores.forEach(score => {
-      const key = `${score.surfer}-W${score.wave_number}`;
-      if (!waveScores.has(key)) {
-        waveScores.set(key, new Set());
-      }
-      waveScores.get(key)!.add(normalizeJudgeId(score.judge_id));
-    });
-
-    // If at least one positive score exists for the current heat,
-    // allow closing without warning (prevents false negatives on synced/offline rows).
-    if (currentHeatScores.length > 0) {
-      return true;
-    }
-
-    // Legacy fallback (kept for debugging visibility)
-    const effectiveMinJudges = judgeCount >= 3 ? Math.ceil(judgeCount / 2) : Math.max(1, judgeCount);
-
-    for (const [waveKey, judges] of waveScores.entries()) {
-      if (judges.size >= effectiveMinJudges) {
-        console.log(`✅ Vague complète trouvée: ${waveKey} (${judges.size}/${judgeCount} juges)`);
-        return true;
-      }
-    }
-
-    // Fallback: if enough distinct judges have scored this heat, avoid false warning
-    // caused by inconsistent wave numbering in legacy synced rows.
-    if (scoredJudges.size >= effectiveMinJudges && currentHeatScores.length >= effectiveMinJudges) {
-      console.log(`✅ Fallback close validation: ${scoredJudges.size} juges actifs sur ce heat`);
-      return true;
-    }
-
-    console.warn(`⚠️ Pas assez de juges sur une même vague (Requis: ${effectiveMinJudges}). Détail:`, Object.fromEntries(waveScores));
-    return false;
+    // Existing behavior: any positive score allows the operator to close the heat.
+    // Panel completeness is handled by the dedicated close-readiness diagnostics.
+    return currentHeatScores.length > 0;
   };
 
   const getFallbackColorForPosition = (position: number): string | null => {
@@ -3307,7 +3384,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       try {
-        const updatedSlots = await rebuildDivisionQualifiersFromScores(eventId, config.division);
+        const updatedSlots = await qualificationRecoveryRepository.rebuildDivision(eventId, config.division);
         setOverrideStatus({
           type: 'success',
           message: `Qualifiés recalculés côté base pour ${config.division}. Slots mis à jour: ${updatedSlots}.`
@@ -3325,6 +3402,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       if (!sequence.length) {
         throw new Error(`Aucun heat trouvé pour la division ${config.division}.`);
       }
+      const sequencePanelContexts = await getCachedPanelContexts(sequence.map((heat) => heat.id));
 
       const parseSourceFromPlaceholder = (placeholder?: string | null) => {
         const normalized = (placeholder || '').toUpperCase().trim();
@@ -3392,7 +3470,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           if (!rankCache.has(sourceHeat.id)) {
             const sourceScoresRaw = await fetchHeatScores(sourceHeat.id);
             const sourceScores = sourceScoresRaw
-              .filter((score) => Number(score.score) > 0)
               .map((score) => ({ ...score, surfer: normalizeJerseyLabel(score.surfer) || score.surfer }));
 
             const sourceEntries = await fetchHeatEntriesWithParticipants(sourceHeat.id);
@@ -3412,19 +3489,36 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
             const entryByRank = new Map<number, { participantId: number | null; seed: number | null; colorCode: string | null }>();
             if (sourceScores.length > 0 && entryByColor.size > 0) {
               const surfers = Array.from(entryByColor.keys());
-              const judgeCount = Math.max(new Set(sourceScores.map((score) => score.judge_id).filter(Boolean)).size, 1);
-              const maxWaves = Math.max(config.waves || 12, 1);
-              const sourceInterferenceCalls = await fetchInterferenceCalls(sourceHeat.id);
-              const effectiveInterferences = computeEffectiveInterferences(sourceInterferenceCalls, judgeCount);
-              const stats = calculateSurferStats(sourceScores, surfers, judgeCount, maxWaves, true, effectiveInterferences, sourceHeat.status)
-                .sort((a, b) => a.rank - b.rank);
+              const sourcePanelContext = sequencePanelContexts.get(sourceHeat.id);
+              const judgeCount = sourcePanelContext?.judgeCount;
+              if (!judgeCount) {
+                console.error('[P2 AdminInterface qualifier panel unavailable]', {
+                  heatId: sourceHeat.id,
+                  panelContext: sourcePanelContext,
+                });
+              } else {
+                const maxWaves = Math.max(config.waves || 12, 1);
+                const sourceInterferenceCalls = await fetchInterferenceCalls(sourceHeat.id);
+                const effectiveInterferences = computeEffectiveInterferences(sourceInterferenceCalls, judgeCount);
+                const sourceResult = resolveConsumerHeatSnapshot({
+                  heatId: sourceHeat.id,
+                  config: {
+                    judges: Array.from({ length: judgeCount }, (_, index) => `J${index + 1}`),
+                    surfers,
+                    waves: maxWaves,
+                  },
+                  scores: sourceScores,
+                  panelContext: sourcePanelContext,
+                  effectiveInterferences,
+                });
 
-              stats.forEach((stat) => {
-                const info = entryByColor.get(stat.surfer.trim().toUpperCase());
-                if (info) {
-                  entryByRank.set(stat.rank, info);
-                }
-              });
+                sourceResult.snapshot?.competitors.forEach((competitor) => {
+                  const info = entryByColor.get(competitor.lycraColor.trim().toUpperCase());
+                  if (info) {
+                    entryByRank.set(competitor.rank, info);
+                  }
+                });
+              }
             }
 
             rankCache.set(sourceHeat.id, entryByRank);
@@ -3444,7 +3538,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         }
 
         if (updates.length) {
-          await replaceHeatEntries(targetHeat.id, updates);
+          await heatRepository.replaceEntries(targetHeat.id, updates.map((row) => ({
+            position: row.position,
+            participantId: row.participant_id,
+            seed: row.seed,
+            color: row.color,
+          })));
           updatedTargetHeats += 1;
         }
       }
@@ -3801,10 +3900,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     try {
       const personalCode = generateJudgePersonalCode();
-      const createdJudge = await createJudge({
+      const createdJudge = await judgeRepository.create({
         name: judgeName,
         email: judgeEmail || undefined,
-        personal_code: personalCode,
+        personalCode,
       });
 
       const refreshedJudges = await loadOfficialJudges();
@@ -3920,7 +4019,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     setLineupOverrideStatus({ type: 'info', message: 'Application de la nouvelle mouture du heat...' });
 
     try {
-      const result = await adminOverrideHeatEntry({
+      const result = await heatRepository.overrideEntry({
         heatId,
         position,
         color,
@@ -3952,7 +4051,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setLineupDrafts((current) => ({
         ...current,
         [position]: {
-          participantId: String(result.participant_id),
+          participantId: String(result.participantId),
           manualName: result.name,
           country: result.country || '',
           reason: '',
@@ -4105,7 +4204,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         divisions: allDivisions,
         scores: allScores,
         interferenceCalls: allInterferenceCalls,
-        configuredJudgeCount: config.judges.length,
       });
 
       console.log('✅ PDF complet généré avec', Object.keys(allDivisions).length, 'catégories');
@@ -4158,7 +4256,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
       const allScores = await fetchPreferredScoresForEvent(eventId);
       const allInterferenceCalls = await fetchAllInterferenceCallsForEvent(eventId);
-      const participants = await fetchParticipants(eventId);
+      const participants = await participantRepository.listByEvent(eventId);
 
       // 2. Resolve metadata
       let organizer: string | undefined;
@@ -4235,10 +4333,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       };
 
       if (finalistsOnly) {
-        exportFinalistsRankingToPDF(exportPayload);
+        await exportFinalistsRankingToPDF(exportPayload);
         console.log('✅ PDF des finalistes généré avec succès');
       } else {
-        exportFinalRankingToPDF(exportPayload);
+        await exportFinalRankingToPDF(exportPayload);
         console.log('✅ Classement final complet généré avec succès');
       }
     } catch (error) {
@@ -4257,7 +4355,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const handleExportPdf = () => {
     try {
-      exportHeatScorecardPdf({ config, scores });
+      exportHeatScorecardPdf({ config, snapshot: adminHeatResultState.snapshot });
     } catch (error) {
       console.error('Impossible de générer le PDF du heat:', error);
     }
@@ -4265,6 +4363,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   return (
     <div className="min-h-screen bg-hud-black text-slate-100 p-4 sm:p-6 font-sans space-y-6">
+      <AdminHeatResultSnapshotPanel
+        snapshot={adminHeatResultState.snapshot}
+        issue={adminHeatResultState.issue}
+        message={adminHeatResultState.message}
+        surferNames={config.surferNames}
+      />
       {/* Statut de la base de données & Contexte - Collapsible */}
       <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40" open>
         <summary className="bg-slate-950/80 hover:bg-slate-900/60 p-4 flex justify-between items-center cursor-pointer list-none select-none border-b border-white/5">
@@ -5081,7 +5185,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
                               return (
                                 <option key={judge.id} value={judge.id} disabled={disabled} className="bg-slate-950">
-                                  {judge.name}{judge.certification_level ? ` · ${judge.certification_level}` : ''}{suffix}
+                                  {judge.name}{judge.certificationLevel ? ` · ${judge.certificationLevel}` : ''}{suffix}
                                 </option>
                               );
                             })}

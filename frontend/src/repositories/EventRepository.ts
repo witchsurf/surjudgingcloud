@@ -9,6 +9,14 @@ import { BaseRepository } from './BaseRepository';
 import type { AppConfig } from '../types';
 import { logger } from '../lib/logger';
 import { heatRepository } from './HeatRepository';
+import { ensureEventExists as ensureEventExistsApi } from '../api/modules/events.api';
+import type {
+    EventConfigurationUpdate as CanonicalEventConfigurationUpdate,
+    EventConfigSnapshot as CanonicalEventConfigSnapshot,
+    EventRepositoryContract,
+    EventSummary as CanonicalEventSummary,
+    SaveEventSnapshotRequest,
+} from './contracts';
 
 export interface EventSummary {
     id: number;
@@ -58,7 +66,7 @@ export interface SaveSnapshotRequest {
 /**
  * Repository for managing events and configurations
  */
-export class EventRepository extends BaseRepository {
+export class EventRepository extends BaseRepository implements EventRepositoryContract {
     constructor() {
         super('events');
     }
@@ -305,6 +313,84 @@ export class EventRepository extends BaseRepository {
             undefined,
             'fetchEventIdByName'
         );
+    }
+
+    // ========== Canonical P2.5 contract facade ==========
+
+    async list(): Promise<readonly CanonicalEventSummary[]> {
+        return (await this.fetchEvents()).map((event) => this.toCanonicalEvent(event));
+    }
+
+    async getById(eventId: number): Promise<CanonicalEventSummary | null> {
+        const event = await this.fetchEvent(eventId);
+        return event ? this.toCanonicalEvent(event) : null;
+    }
+
+    async getIdByName(name: string): Promise<number | null> {
+        return this.fetchEventIdByName(name);
+    }
+
+    async ensureExists(name: string): Promise<number> {
+        return ensureEventExistsApi(name);
+    }
+
+    async listDivisions(eventId?: number): Promise<readonly string[]> {
+        return this.fetchDistinctDivisions(eventId);
+    }
+
+    async getConfigurationSnapshot(eventId: number): Promise<CanonicalEventConfigSnapshot | null> {
+        const snapshot = await this.fetchEventConfigSnapshot(eventId);
+        if (!snapshot) return null;
+        return {
+            eventId: snapshot.event_id,
+            eventName: snapshot.event_name,
+            division: snapshot.division,
+            round: snapshot.round,
+            heatNumber: snapshot.heat_number,
+            judges: snapshot.judges,
+            surfers: snapshot.surfers ?? [],
+            heatSize: snapshot.heat_size,
+            surferNames: snapshot.surferNames ?? {},
+            surferCountries: snapshot.surferCountries ?? {},
+            eventDetails: snapshot.eventDetails,
+            updatedAt: snapshot.updated_at,
+        };
+    }
+
+    async saveConfigurationSnapshot(request: SaveEventSnapshotRequest): Promise<void> {
+        return this.saveEventConfigSnapshot({
+            eventId: request.eventId,
+            eventName: request.eventName,
+            division: request.division,
+            round: request.round,
+            heatNumber: request.heatNumber,
+            judges: request.judges.map((judge) => ({ id: judge.id, name: judge.name, identityId: judge.identityId })),
+            surfers: [...request.surfers],
+            surferNames: { ...request.surferNames },
+            surferCountries: { ...request.surferCountries },
+        });
+    }
+
+    async updateConfiguration(request: CanonicalEventConfigurationUpdate): Promise<void> {
+        return this.updateEventConfiguration({
+            eventId: request.eventId,
+            config: request.config as AppConfig,
+            divisions: [...request.divisions],
+            judges: request.judges.map((judge) => ({ id: judge.id, name: judge.name })),
+        });
+    }
+
+    private toCanonicalEvent(event: EventSummary): CanonicalEventSummary {
+        return {
+            id: event.id,
+            name: event.name,
+            organizer: event.organizer ?? null,
+            startDate: event.start_date ?? null,
+            endDate: event.end_date ?? null,
+            categories: Array.isArray(event.categories)
+                ? event.categories.filter((value): value is string => typeof value === 'string')
+                : [],
+        };
     }
 
     // ========== Private Helper Methods ==========

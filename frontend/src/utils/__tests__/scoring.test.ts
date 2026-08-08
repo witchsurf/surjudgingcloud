@@ -29,7 +29,116 @@ const buildScores = (): Score[] => [
   },
 ];
 
+const score = (
+  judgeId: string,
+  waveNumber: number,
+  value: number,
+  timestamp = `2026-03-23T10:${String(waveNumber).padStart(2, '0')}:00Z`,
+  surfer = 'ROUGE',
+): Score => ({
+  heat_id: 'heat-characterization',
+  competition: 'Test Event',
+  division: 'OPEN',
+  round: 1,
+  judge_id: judgeId,
+  judge_name: `Judge ${judgeId}`,
+  surfer,
+  wave_number: waveNumber,
+  score: value,
+  timestamp,
+});
+
 describe('calculateSurferStats', () => {
+  it('averages the three nominal judge scores', () => {
+    const scores = [score('J1', 1, 6), score('J2', 1, 7), score('J3', 1, 8)];
+
+    const [stats] = calculateSurferStats(scores, ['ROUGE'], 3);
+
+    expect(stats.waves[0]).toMatchObject({ score: 7, isComplete: true });
+    expect(stats.waves[0].judgeScores).toEqual({ J1: 6, J2: 7, J3: 8 });
+    expect(stats.bestTwo).toBe(7);
+  });
+
+  it('drops one minimum and one maximum with five judges', () => {
+    const scores = [
+      score('J1', 1, 2),
+      score('J2', 1, 5),
+      score('J3', 1, 6),
+      score('J4', 1, 7),
+      score('J5', 1, 10),
+    ];
+
+    const [stats] = calculateSurferStats(scores, ['ROUGE'], 5);
+
+    expect(stats.waves[0]).toMatchObject({ score: 6, isComplete: true });
+    expect(stats.bestTwo).toBe(6);
+  });
+
+  it.each([
+    { label: 'minimum', values: [2, 2, 5, 7, 9], expected: 4.67 },
+    { label: 'maximum', values: [2, 5, 8, 9, 9], expected: 7.33 },
+    { label: 'minimum and maximum', values: [2, 2, 5, 9, 9], expected: 5.33 },
+  ])('drops exactly one tied $label value', ({ values, expected }) => {
+    const scores = values.map((value, index) => score(`J${index + 1}`, 1, value));
+
+    const [stats] = calculateSurferStats(scores, ['ROUGE'], 5);
+
+    expect(stats.waves[0].score).toBe(expected);
+  });
+
+  it('rounds wave averages to two decimals and sums only the two best complete waves', () => {
+    const scores = [
+      score('J1', 1, 6.1), score('J2', 1, 6.2), score('J3', 1, 6.2),
+      score('J1', 2, 8.1), score('J2', 2, 8.2), score('J3', 2, 8.2),
+      score('J1', 3, 7.1), score('J2', 3, 7.2), score('J3', 3, 7.2),
+    ];
+
+    const [stats] = calculateSurferStats(scores, ['ROUGE'], 3);
+
+    expect(stats.waves.map((wave) => wave.score)).toEqual([6.17, 8.17, 7.17]);
+    expect(stats.bestTwo).toBe(15.34);
+  });
+
+  it.each([
+    { judgeCount: 3, values: [6, 8] },
+    { judgeCount: 5, values: [4, 5, 6, 7] },
+  ])('excludes an incomplete $judgeCount-judge wave', ({ judgeCount, values }) => {
+    const scores = values.map((value, index) => score(`J${index + 1}`, 1, value));
+
+    const [stats] = calculateSurferStats(scores, ['ROUGE'], judgeCount);
+
+    expect(stats.waves[0].isComplete).toBe(false);
+    expect(stats.bestTwo).toBe(0);
+  });
+
+  it('keeps the latest score per judge even when corrections arrive out of array order', () => {
+    const scores = [
+      score('J1', 1, 9, '2026-03-23T10:02:00Z'),
+      score('J1', 1, 3, '2026-03-23T10:01:00Z'),
+      score('J2', 1, 6, '2026-03-23T10:01:00Z'),
+      score('J3', 1, 6, '2026-03-23T10:01:00Z'),
+    ];
+
+    const [stats] = calculateSurferStats(scores.reverse(), ['ROUGE'], 3);
+
+    expect(stats.waves[0].judgeScores.J1).toBe(9);
+    expect(stats.waves[0].score).toBe(7);
+  });
+
+  it('keeps scores attached to the lycra when the displayed participant name changes', () => {
+    const scores = [score('J1', 1, 8), score('J2', 1, 7), score('J3', 1, 6)];
+    const participantNamesBefore = { ROUGE: 'Surfeur initial' };
+    const participantNamesAfter = { ROUGE: 'Remplaçant chef juge' };
+
+    const before = calculateSurferStats(scores, Object.keys(participantNamesBefore), 3)[0];
+    const after = calculateSurferStats(scores, Object.keys(participantNamesAfter), 3)[0];
+
+    expect(before.surfer).toBe('ROUGE');
+    expect(after.surfer).toBe('ROUGE');
+    expect(after.waves).toEqual(before.waves);
+    expect(after.bestTwo).toBe(before.bestTwo);
+  });
+
   it('shows the second scoring wave as zero for an INT2 interference', () => {
     const effectiveInterferences: EffectiveInterference[] = [
       {

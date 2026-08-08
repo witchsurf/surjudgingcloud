@@ -1,0 +1,564 @@
+{
+  "project": {
+    "name": "SurfJudging Local",
+    "purpose": "Transformer l'application actuelle de jugement de surf en une application Windows locale, robuste, utilisable sans Internet pendant toute une compétition, puis commercialisable auprès des fédérations africaines.",
+    "primary_users": [
+      "Chef juge",
+      "Juges J1 à J5",
+      "Juge de priorité",
+      "Annonceur",
+      "Administrateur de fédération"
+    ],
+    "target_market": "Fédérations nationales de surf, en priorité en Afrique",
+    "operating_principle": "Le fonctionnement critique de la compétition ne doit jamais dépendre d'Internet, de Stripe, de Google Sheets, d'Apps Script, de Supabase distant ou d'un service cloud."
+  },
+  "codex_instructions": {
+    "role": "Agir comme architecte logiciel senior et développeur full-stack chargé de migrer progressivement le projet existant vers une application locale distribuable.",
+    "working_method": [
+      "Commencer par auditer le dépôt existant avant toute réécriture.",
+      "Réutiliser autant que possible les interfaces HTML, CSS et JavaScript existantes.",
+      "Ne pas supprimer une fonctionnalité existante sans documenter son remplacement.",
+      "Procéder par petites étapes testables et conserver une application exécutable à chaque étape.",
+      "Créer un commit logique par étape importante.",
+      "Ne jamais introduire une dépendance Internet pour une fonction critique.",
+      "Demander confirmation avant toute migration destructive de données.",
+      "Documenter les commandes d'installation, de lancement, de test et de build."
+    ],
+    "first_action": {
+      "task": "Auditer le dépôt actuel et produire un rapport de migration sans modifier le comportement.",
+      "deliverables": [
+        "ARCHITECTURE_CURRENT.md",
+        "MIGRATION_PLAN.md",
+        "DEPENDENCIES_AUDIT.md",
+        "DATA_MODEL_CURRENT.md",
+        "RISK_REGISTER.md"
+      ],
+      "audit_questions": [
+        "Quelles fonctions dépendent de Google Sheets ou Apps Script ?",
+        "Quelles fonctions dépendent de Supabase ou d'un backend distant ?",
+        "Où sont calculées les moyennes et les deux meilleures vagues ?",
+        "Comment sont gérés les cas à 3 et 5 juges ?",
+        "Comment sont gérés les surfers, couleurs, vagues, divisions, rounds et heats ?",
+        "Comment fonctionne le chronomètre ?",
+        "Comment fonctionne la priorité et la communication avec l'ESP32 ?",
+        "Comment les juges communiquent-ils avec le chef juge ?",
+        "Comment sont archivés les résultats ?",
+        "Quelles fonctions Stripe ou d'authentification existent déjà ?"
+      ]
+    }
+  },
+  "scope": {
+    "must_have_v1": [
+      "Fonctionnement complet sans Internet",
+      "Application Windows installable",
+      "Serveur local accessible par les tablettes sur le même réseau Wi-Fi",
+      "Interface chef juge",
+      "Interfaces juges J1 à J5",
+      "Interface juge de priorité",
+      "Configuration compétition, division, round et heat",
+      "Gestion de 3 ou 5 juges",
+      "Suppression automatique de la note maximale et minimale avec 5 juges",
+      "Jusqu'à 12 vagues par surfeur",
+      "Notes de 0.1 à 10",
+      "Total basé sur les deux meilleures vagues",
+      "Gestion des couleurs rouge, blanc, jaune, bleu et vert si nécessaire",
+      "Chronomètre centralisé",
+      "Alerte des cinq dernières minutes",
+      "Fin de heat avec alerte",
+      "Archivage local",
+      "Reprise après fermeture ou redémarrage",
+      "Export CSV et JSON",
+      "Sauvegarde sur clé USB",
+      "Journal d'audit des corrections"
+    ],
+    "later_features": [
+      "Live scoring public sur Internet",
+      "Synchronisation cloud",
+      "Sauvegarde cloud",
+      "Licence hors ligne signée",
+      "Mises à jour automatiques contrôlées",
+      "Personnalisation par fédération",
+      "Interface français/anglais",
+      "Export PDF avancé",
+      "Portail commercial et paiement Stripe"
+    ],
+    "explicitly_out_of_scope_for_first_milestone": [
+      "Paiement obligatoire au démarrage",
+      "Vérification Stripe pendant une compétition",
+      "Dépendance obligatoire à un compte utilisateur en ligne",
+      "Support simultané de Windows, macOS et Linux",
+      "Refonte graphique complète"
+    ]
+  },
+  "target_architecture": {
+    "desktop_shell": "Electron",
+    "backend": "Node.js avec Express ou Fastify",
+    "database": "SQLite local",
+    "realtime_transport": "WebSocket, de préférence Socket.IO pour la première version",
+    "frontend": "Réutiliser les interfaces web existantes, puis modulariser progressivement",
+    "packaging": "Electron Forge ou electron-builder pour produire un installateur Windows",
+    "network": {
+      "mode": "Réseau Wi-Fi local dédié, sans Internet obligatoire",
+      "server_host": "0.0.0.0",
+      "default_port": 3000,
+      "recommended_router_ip": "192.168.8.1",
+      "recommended_pc_ip": "192.168.8.10",
+      "judge_url_example": "http://192.168.8.10:3000/judge",
+      "chief_url_example": "http://localhost:3000/chief",
+      "priority_url_example": "http://192.168.8.10:3000/priority",
+      "display_url_example": "http://192.168.8.10:3000/display",
+      "requirements": [
+        "Afficher automatiquement l'adresse IP locale du PC.",
+        "Afficher un QR code pour les tablettes.",
+        "Détecter si le serveur est accessible sur le réseau.",
+        "Ne pas supposer que l'adresse IP est toujours identique.",
+        "Prévoir une configuration IP fixe documentée pour le matériel officiel."
+      ]
+    }
+  },
+  "data_model": {
+    "tables": {
+      "competitions": [
+        "id",
+        "name",
+        "location",
+        "start_date",
+        "end_date",
+        "status",
+        "settings_json",
+        "created_at",
+        "updated_at"
+      ],
+      "divisions": [
+        "id",
+        "competition_id",
+        "name",
+        "created_at"
+      ],
+      "rounds": [
+        "id",
+        "division_id",
+        "name",
+        "sequence_number",
+        "created_at"
+      ],
+      "heats": [
+        "id",
+        "round_id",
+        "heat_number",
+        "status",
+        "duration_seconds",
+        "started_at",
+        "paused_at",
+        "finished_at",
+        "remaining_seconds_snapshot",
+        "judge_count",
+        "surfer_count",
+        "max_waves",
+        "created_at",
+        "updated_at"
+      ],
+      "surfers": [
+        "id",
+        "competition_id",
+        "name",
+        "country",
+        "seed",
+        "created_at"
+      ],
+      "heat_surfer_assignments": [
+        "id",
+        "heat_id",
+        "surfer_id",
+        "color",
+        "position",
+        "priority_position"
+      ],
+      "judges": [
+        "id",
+        "competition_id",
+        "name",
+        "code",
+        "active",
+        "created_at"
+      ],
+      "heat_judge_assignments": [
+        "id",
+        "heat_id",
+        "judge_id",
+        "judge_number"
+      ],
+      "scores": [
+        "id",
+        "heat_id",
+        "surfer_id",
+        "judge_id",
+        "wave_number",
+        "score",
+        "status",
+        "submitted_at",
+        "updated_at",
+        "supersedes_score_id"
+      ],
+      "wave_results": [
+        "id",
+        "heat_id",
+        "surfer_id",
+        "wave_number",
+        "computed_average",
+        "discarded_high",
+        "discarded_low",
+        "judge_count",
+        "computed_at"
+      ],
+      "heat_results": [
+        "id",
+        "heat_id",
+        "surfer_id",
+        "best_wave_1",
+        "best_wave_2",
+        "total",
+        "rank",
+        "needs",
+        "computed_at"
+      ],
+      "priority_events": [
+        "id",
+        "heat_id",
+        "surfer_id",
+        "event_type",
+        "priority_before_json",
+        "priority_after_json",
+        "created_at"
+      ],
+      "timer_events": [
+        "id",
+        "heat_id",
+        "event_type",
+        "event_timestamp",
+        "remaining_seconds",
+        "created_by"
+      ],
+      "audit_log": [
+        "id",
+        "competition_id",
+        "heat_id",
+        "actor_type",
+        "actor_id",
+        "action",
+        "entity_type",
+        "entity_id",
+        "before_json",
+        "after_json",
+        "created_at"
+      ],
+      "app_settings": [
+        "key",
+        "value_json",
+        "updated_at"
+      ]
+    },
+    "principles": [
+      "Chaque note doit être persistée immédiatement.",
+      "Une correction ne doit pas effacer silencieusement l'ancienne note.",
+      "Les calculs doivent être reproductibles à partir des données brutes.",
+      "Les migrations SQLite doivent être versionnées.",
+      "Les contraintes d'intégrité et clés étrangères doivent être activées."
+    ]
+  },
+  "scoring_rules": {
+    "score_range": {
+      "min": 0.1,
+      "max": 10.0,
+      "precision": 1
+    },
+    "max_waves_per_surfer": 12,
+    "judge_modes": {
+      "3_judges": "Moyenne des trois notes disponibles.",
+      "5_judges": "Supprimer la note la plus haute et la plus basse, puis calculer la moyenne des trois restantes."
+    },
+    "heat_total": "Somme des deux meilleures moyennes de vagues du surfeur.",
+    "requirements": [
+      "Implémenter les calculs dans un module pur et indépendant de l'interface.",
+      "Créer des tests unitaires pour 3 juges et 5 juges.",
+      "Définir le comportement lorsque toutes les notes ne sont pas encore reçues.",
+      "Définir le comportement en cas de correction.",
+      "Éviter les erreurs d'arrondi flottant.",
+      "Conserver les notes brutes et les résultats calculés."
+    ]
+  },
+  "timer": {
+    "source_of_truth": "Serveur local du PC",
+    "states": [
+      "READY",
+      "RUNNING",
+      "PAUSED",
+      "FINISHED",
+      "CLOSED"
+    ],
+    "behavior": [
+      "Les tablettes affichent un temps calculé à partir de l'état serveur.",
+      "Une déconnexion de tablette ne modifie pas le chronomètre.",
+      "Après redémarrage du PC, proposer la reprise du heat.",
+      "Déclencher l'alerte des cinq dernières minutes une seule fois.",
+      "Déclencher l'alerte de fin une seule fois.",
+      "Journaliser start, pause, resume, finish et reset."
+    ]
+  },
+  "priority_and_esp32": {
+    "principle": "La priorité doit continuer de fonctionner localement.",
+    "recommended_integration": {
+      "phase_1": "Conserver l'API HTTP locale existante de l'ESP32 et créer un adaptateur serveur configurable.",
+      "phase_2": "Ajouter health check, timeout, retry limité et état déconnecté visible.",
+      "phase_3": "Ajouter un protocole de commande plus structuré avec état confirmé par l'ESP32."
+    },
+    "requirements": [
+      "L'application de jugement ne doit pas planter si l'ESP32 est absent.",
+      "Afficher clairement Connecté, Déconnecté ou Erreur.",
+      "Permettre un mode simulation sans matériel.",
+      "Ne jamais bloquer l'enregistrement des scores à cause de la priorité.",
+      "Journaliser toutes les commandes de priorité."
+    ]
+  },
+  "offline_and_resilience": {
+    "requirements": [
+      "Aucune requête Internet obligatoire pendant un événement.",
+      "Toutes les ressources frontend doivent être embarquées localement.",
+      "Aucune police, bibliothèque ou image critique chargée depuis un CDN.",
+      "SQLite doit utiliser des transactions pour les écritures critiques.",
+      "Créer une sauvegarde automatique régulière.",
+      "Créer une sauvegarde avant fermeture de compétition.",
+      "Prévoir restauration après arrêt brutal.",
+      "Tester la reprise après coupure électrique simulée."
+    ],
+    "backup_strategy": {
+      "automatic": "Sauvegarde locale versionnée toutes les cinq minutes et lors des événements critiques.",
+      "manual": "Bouton Sauvegarder sur clé USB.",
+      "competition_bundle": [
+        "competition.sqlite",
+        "manifest.json",
+        "exports/scores.csv",
+        "exports/results.json",
+        "logs/audit.jsonl"
+      ]
+    }
+  },
+  "migration_phases": [
+    {
+      "id": "P0",
+      "name": "Audit et stabilisation",
+      "goal": "Comprendre le dépôt et figer la version de référence.",
+      "tasks": [
+        "Identifier toutes les dépendances cloud.",
+        "Cartographier les interfaces et flux de données.",
+        "Créer des tests de non-régression pour les calculs actuels.",
+        "Documenter le démarrage actuel.",
+        "Créer une branche de migration."
+      ],
+      "exit_criteria": [
+        "Architecture actuelle documentée.",
+        "Règles de scoring confirmées par tests.",
+        "Liste des dépendances à remplacer.",
+        "Version de référence exécutable."
+      ]
+    },
+    {
+      "id": "P1",
+      "name": "Serveur local minimal",
+      "goal": "Lancer localement l'interface existante sur le PC et l'ouvrir depuis une tablette.",
+      "tasks": [
+        "Créer le serveur Node local.",
+        "Servir les interfaces existantes.",
+        "Afficher l'adresse IP locale.",
+        "Créer GET /api/health.",
+        "Vérifier accès depuis une tablette sur le même Wi-Fi."
+      ],
+      "exit_criteria": [
+        "PC sans Internet.",
+        "Tablette connectée au routeur local.",
+        "Interface juge accessible.",
+        "Aucune dépendance CDN critique."
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "SQLite et scoring",
+      "goal": "Remplacer le stockage critique distant par SQLite.",
+      "tasks": [
+        "Créer le schéma initial.",
+        "Créer les migrations.",
+        "Porter les calculs de scoring dans un package pur.",
+        "Enregistrer les notes localement.",
+        "Calculer les résultats.",
+        "Créer tests unitaires et intégration."
+      ],
+      "exit_criteria": [
+        "Notes persistées après redémarrage.",
+        "Calculs 3 et 5 juges validés.",
+        "Deux meilleures vagues validées.",
+        "Corrections historisées."
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Temps réel multi-tablettes",
+      "goal": "Synchroniser juges et chef juge sur réseau local.",
+      "tasks": [
+        "Ajouter Socket.IO.",
+        "Attribuer les postes J1 à J5.",
+        "Synchroniser notes et résultats.",
+        "Gérer déconnexion et reconnexion.",
+        "Afficher statut des tablettes."
+      ],
+      "exit_criteria": [
+        "Trois puis cinq tablettes testées.",
+        "Reconnexion sans perte de note.",
+        "Pas de doublon lors d'une nouvelle tentative.",
+        "Chef juge voit immédiatement les mises à jour."
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Chronomètre et reprise",
+      "goal": "Rendre le heat résilient aux fermetures et redémarrages.",
+      "tasks": [
+        "Centraliser le chronomètre.",
+        "Persister les événements.",
+        "Ajouter reprise après incident.",
+        "Ajouter alertes cinq minutes et fin.",
+        "Tester arrêt brutal."
+      ],
+      "exit_criteria": [
+        "Temps cohérent sur toutes les tablettes.",
+        "Reprise correcte après redémarrage.",
+        "Alertes déclenchées une seule fois."
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Priorité et ESP32",
+      "goal": "Connecter l'interface priorité au matériel sans coupler le scoring au matériel.",
+      "tasks": [
+        "Créer un module adaptateur ESP32.",
+        "Configurer URL ou IP de l'ESP32.",
+        "Ajouter health check.",
+        "Ajouter mode simulation.",
+        "Journaliser les événements."
+      ],
+      "exit_criteria": [
+        "Priorité utilisable avec ESP32.",
+        "Application utilisable sans ESP32.",
+        "Erreurs matérielles visibles mais non bloquantes."
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "Electron et installateur",
+      "goal": "Démarrage en un clic sur le HP de référence.",
+      "tasks": [
+        "Créer shell Electron.",
+        "Démarrer le serveur automatiquement.",
+        "Créer écran d'accueil.",
+        "Fermer proprement le serveur.",
+        "Créer installateur Windows.",
+        "Tester sur machine propre."
+      ],
+      "exit_criteria": [
+        "Installation par double-clic.",
+        "Démarrage sans terminal.",
+        "Données conservées après mise à jour ou réinstallation.",
+        "Application utilisable hors ligne."
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "Sauvegardes, exports et terrain",
+      "goal": "Préparer les tests en compétition réelle.",
+      "tasks": [
+        "Ajouter sauvegarde automatique.",
+        "Ajouter sauvegarde USB.",
+        "Ajouter exports CSV et JSON.",
+        "Ajouter diagnostic réseau.",
+        "Créer procédure de secours."
+      ],
+      "exit_criteria": [
+        "Compétition exportable.",
+        "Sauvegarde restaurable.",
+        "Procédure de récupération documentée.",
+        "Test complet d'une journée de compétition."
+      ]
+    },
+    {
+      "id": "P8",
+      "name": "Commercialisation",
+      "goal": "Préparer la version fédération sans fragiliser le fonctionnement local.",
+      "tasks": [
+        "Ajouter licence hors ligne signée.",
+        "Ajouter anglais et français.",
+        "Ajouter identité visuelle par fédération.",
+        "Créer documentation installateur et opérateur.",
+        "Créer mode démonstration.",
+        "Préparer module cloud optionnel séparé."
+      ],
+      "exit_criteria": [
+        "Licence vérifiable sans Internet.",
+        "Aucune expiration soudaine pendant un heat.",
+        "Mode grâce ou licence événementielle prévu.",
+        "Version commerciale testée sur plusieurs machines."
+      ]
+    }
+  ],
+  "testing_strategy": {
+    "unit_tests": [
+      "Moyenne avec 3 juges",
+      "Suppression max/min avec 5 juges",
+      "Égalités",
+      "Arrondis",
+      "Deux meilleures vagues",
+      "Correction de note",
+      "Nombre incomplet de notes"
+    ],
+    "integration_tests": [
+      "Création compétition jusqu'à clôture du heat",
+      "Soumission simultanée de plusieurs juges",
+      "Reconnexion tablette",
+      "Redémarrage serveur",
+      "Sauvegarde et restauration",
+      "ESP32 absent ou lent"
+    ],
+    "field_tests": [
+      "Routeur sans Internet",
+      "Trois tablettes",
+      "Cinq tablettes",
+      "Coupure électrique",
+      "Fermeture accidentelle",
+      "Tablette en veille",
+      "Wi-Fi perdu puis retrouvé",
+      "Journée complète avec plusieurs divisions"
+    ]
+  },
+  "commercial_license_later": {
+    "format": "Fichier local signé, par exemple surfjudging.lic",
+    "rules": [
+      "La clé privée ne doit jamais être incluse dans l'application.",
+      "L'application embarque seulement la clé publique.",
+      "Prévoir une période de grâce.",
+      "Ne jamais interrompre un heat en cours à cause d'une licence.",
+      "Stripe sert à la facturation, pas au contrôle temps réel de l'événement."
+    ]
+  },
+  "definition_of_done_v1": [
+    "Le logiciel s'installe sur un PC Windows vierge.",
+    "Le chef juge démarre l'application sans terminal.",
+    "Trois ou cinq tablettes se connectent sur un routeur local.",
+    "Une compétition complète fonctionne sans Internet.",
+    "Chaque note est persistée immédiatement.",
+    "Le chronomètre reste cohérent.",
+    "L'application reprend après un redémarrage.",
+    "Les résultats sont exportables.",
+    "Une sauvegarde peut être copiée sur clé USB et restaurée.",
+    "La panne de l'ESP32 n'empêche pas le jugement.",
+    "Aucun paiement ou service cloud n'est requis pendant l'événement."
+  ],
+  "prompt_for_codex": "Lis entièrement ce fichier avant de modifier le dépôt. Commence par la phase P0 uniquement. Analyse le code existant, produis les documents demandés et propose un plan de migration précis fichier par fichier. Ne commence pas Electron, SQLite ou une réécriture tant que l'audit et les règles actuelles de scoring ne sont pas documentés et testés."
+}

@@ -11,6 +11,37 @@ import { logger } from '../lib/logger';
 import { saveOffline } from '../lib/supabase';
 import { distributeSeedsSnake, expandSeedMap, type ParticipantSeed } from '../utils/seeding';
 import { getColorSet } from '../utils/colorUtils';
+import type {
+    HeatRecord,
+    HeatConfigurationRequest,
+    HeatEntryOverrideRequest,
+    HeatEntryOverrideResult,
+    HeatRepositoryContract,
+    RuntimeHeatCreateRequest,
+    HeatRoundRecord,
+    HeatSequenceEntry,
+    HeatSlotMapping,
+    HeatSlotRecord,
+    ReplaceHeatEntry,
+} from './contracts';
+import type { RoundSpec } from '../utils/bracket';
+import {
+    fetchAllEventHeats as readAllEventHeats,
+    fetchCategoryHeats as readCategoryHeats,
+    fetchHeatEntriesWithParticipants as readHeatEntries,
+    fetchHeatEntriesWithParticipantsBatch as readHeatEntriesBatch,
+    fetchHeatMetadata as readHeatMetadata,
+    fetchHeatSlotMappings as readHeatSlotMappings,
+    fetchHeatSlotMappingsBatch as readHeatSlotMappingsBatch,
+    fetchOrderedHeatSequence as readHeatSequence,
+    replaceHeatEntries,
+    adminOverrideHeatEntry,
+} from '../api/modules/heats.api';
+import {
+    parseHeatEntryJoinedRow,
+    parseLegacyLineupRow,
+    parseRows,
+} from '../api/modules/heatReadParsers';
 
 export interface HeatEntryWithParticipant {
     color: string | null;
@@ -60,6 +91,27 @@ interface HeatMetadataRow {
     color_order: string[] | null;
 }
 
+interface LegacyHeatConfiguration {
+    event_id?: number | null;
+    competition?: string;
+    division?: string;
+    round?: number;
+    judges?: readonly unknown[];
+    surfers?: readonly unknown[];
+    judge_names?: Readonly<Record<string, unknown>>;
+    judgeNames?: Readonly<Record<string, unknown>>;
+    judge_identities?: Readonly<Record<string, unknown>>;
+    judgeIdentities?: Readonly<Record<string, unknown>>;
+    surfer_names?: Readonly<Record<string, unknown>>;
+    surferNames?: Readonly<Record<string, unknown>>;
+    surfer_countries?: Readonly<Record<string, unknown>>;
+    surferCountries?: Readonly<Record<string, unknown>>;
+    waves?: number;
+    tournament_type?: string;
+    tournamentType?: string;
+    podiumId?: string | null;
+}
+
 const isHeatRealtimeClosedSchemaError = (error: unknown) => {
     if (!error || typeof error !== 'object') return false;
     const candidate = error as {
@@ -89,61 +141,212 @@ const isHeatRealtimeClosedSchemaError = (error: unknown) => {
 /**
  * Repository for managing heats
  */
-export class HeatRepository extends BaseRepository {
+type HeatReadRepositoryContract = Pick<HeatRepositoryContract,
+    | 'getById'
+    | 'listSequence'
+    | 'listCategoryRounds'
+    | 'listAllEventRounds'
+    | 'listEntries'
+    | 'listEntriesBatch'
+    | 'listSlotMappings'
+    | 'listSlotMappingsBatch'
+>;
+
+type HeatMutationRepositoryContract = Pick<HeatRepositoryContract,
+    | 'saveConfiguration'
+    | 'replaceEntries'
+    | 'overrideEntry'
+    | 'createRuntime'
+>;
+
+const toHeatRoundRecords = (rounds: readonly RoundSpec[]): HeatRoundRecord[] => rounds.map((round) => ({
+    roundNumber: round.roundNumber,
+    roundName: round.name,
+    heats: round.heats.map((heat) => ({
+        heatId: heat.heatId || '',
+        heatNumber: heat.heatNumber,
+        slots: heat.slots.map((slot, index) => ({
+            position: index + 1,
+            color: slot.color ?? null,
+            seed: slot.seed ?? null,
+            participantId: slot.participantId ?? null,
+            participant: slot.name ? {
+                id: slot.participantId ?? null,
+                name: slot.name,
+                country: slot.country ?? null,
+                license: slot.license ?? null,
+            } : null,
+            placeholder: slot.placeholder ?? null,
+            bye: slot.bye,
+        })),
+    })),
+}));
+
+export class HeatRepository extends BaseRepository implements HeatReadRepositoryContract, HeatMutationRepositoryContract {
     constructor() {
         super('heats');
+    }
+
+    async getById(heatId: string): Promise<HeatRecord | null> {
+        const metadata = await readHeatMetadata(heatId);
+        if (!metadata) return null;
+        const slots = await this.listEntries(metadata.id);
+        return {
+            id: metadata.id,
+            eventId: metadata.event_id,
+            competition: metadata.competition,
+            division: metadata.division,
+            round: metadata.round,
+            heatNumber: metadata.heat_number,
+            heatSize: metadata.heat_size,
+            status: metadata.status,
+            colorOrder: metadata.color_order,
+            slots,
+        };
+    }
+
+    async listSequence(eventId: number, division: string): Promise<HeatSequenceEntry[]> {
+        return (await readHeatSequence(eventId, division)).map((row) => ({
+            id: row.id,
+            round: row.round,
+            heatNumber: row.heat_number,
+            status: row.status,
+            heatSize: row.heat_size,
+            colorOrder: row.color_order,
+        }));
+    }
+
+    async listEntries(heatId: string): Promise<HeatSlotRecord[]> {
+        return (await readHeatEntries(heatId)).map((row) => ({
+            position: row.position,
+            color: row.color,
+            seed: row.seed,
+            participantId: row.participant_id,
+            participant: row.participant ? {
+                id: row.participant_id,
+                name: row.participant.name,
+                country: row.participant.country,
+                license: row.participant.license,
+            } : null,
+        }));
+    }
+
+    async listEntriesBatch(heatIds: readonly string[]): Promise<ReadonlyMap<string, readonly HeatSlotRecord[]>> {
+        const rowsByHeat = await readHeatEntriesBatch([...heatIds]);
+        return new Map(Array.from(rowsByHeat, ([heatId, rows]) => [heatId, rows.map((row) => ({
+            position: row.position,
+            color: row.color,
+            seed: row.seed,
+            participantId: row.participant_id,
+            participant: row.participant ? {
+                id: row.participant_id,
+                name: row.participant.name,
+                country: row.participant.country,
+                license: row.participant.license,
+            } : null,
+        }))]));
+    }
+
+    async listSlotMappings(heatId: string): Promise<HeatSlotMapping[]> {
+        return (await readHeatSlotMappings(heatId)).map((row) => ({
+            heatId: ensureHeatId(row.heat_id),
+            position: row.position,
+            placeholder: row.placeholder,
+            sourceRound: row.source_round,
+            sourceHeat: row.source_heat,
+            sourcePosition: row.source_position,
+        }));
+    }
+
+    async listSlotMappingsBatch(heatIds: readonly string[]): Promise<ReadonlyMap<string, readonly HeatSlotMapping[]>> {
+        const rowsByHeat = await readHeatSlotMappingsBatch([...heatIds]);
+        return new Map(Array.from(rowsByHeat, ([heatId, rows]) => [heatId, rows.map((row) => ({
+            heatId: ensureHeatId(row.heat_id),
+            position: row.position,
+            placeholder: row.placeholder,
+            sourceRound: row.source_round,
+            sourceHeat: row.source_heat,
+            sourcePosition: row.source_position,
+        }))]));
+    }
+
+    async listCategoryRounds(eventId: number, division: string): Promise<HeatRoundRecord[]> {
+        return toHeatRoundRecords(await readCategoryHeats(eventId, division));
+    }
+
+    async listAllEventRounds(eventId: number): Promise<Readonly<Record<string, readonly HeatRoundRecord[]>>> {
+        const roundsByDivision = await readAllEventHeats(eventId);
+        return Object.fromEntries(Object.entries(roundsByDivision).map(([division, rounds]) => [
+            division,
+            toHeatRoundRecords(rounds),
+        ]));
+    }
+
+    async saveConfiguration(heatId: string, request: HeatConfigurationRequest): Promise<void> {
+        await this.saveHeatConfig(heatId, {
+            event_id: request.eventId,
+            judges: [...request.judges],
+            surfers: [...request.surfers],
+            judge_names: request.judgeNames ?? {},
+            judge_identities: request.judgeIdentities ?? {},
+            surfer_names: request.surferNames ?? {},
+            surfer_countries: request.surferCountries ?? {},
+            waves: request.waves,
+            tournament_type: request.tournamentType,
+            podiumId: request.podiumId,
+        });
+    }
+
+    async replaceEntries(heatId: string, rows: readonly ReplaceHeatEntry[]): Promise<void> {
+        await replaceHeatEntries(heatId, rows.map((row) => ({
+            position: row.position,
+            participant_id: row.participantId,
+            seed: row.seed,
+            color: row.color,
+        })));
+    }
+
+    async overrideEntry(request: HeatEntryOverrideRequest): Promise<HeatEntryOverrideResult> {
+        const result = await adminOverrideHeatEntry(request);
+        return {
+            heatId: result.heat_id,
+            position: result.position,
+            color: result.color,
+            participantId: result.participant_id,
+            name: result.name,
+            country: result.country,
+            configPatch: result.config_patch,
+        };
     }
 
     /**
      * Fetch heat entries with participant information
      */
     async fetchHeatEntriesWithParticipants(heatId: string): Promise<HeatEntryWithParticipant[]> {
-        const normalizedHeatId = ensureHeatId(heatId);
-
-        return this.execute(
-            async () => {
-                this.ensureSupabase();
-
-                const { data, error } = await this.supabase!
-                    .from('heat_entries')
-                    .select('color, position, participant_id, seed, participant:participants(name, country, license)')
-                    .eq('heat_id', normalizedHeatId)
-                    .order('position', { ascending: true });
-
-                if (error) throw error;
-
-                logger.info('HeatRepository', 'Heat entries fetched', { heatId: normalizedHeatId, count: data?.length || 0 });
-                return (data || []) as unknown as HeatEntryWithParticipant[];
-            },
-            undefined,
-            'fetchHeatEntriesWithParticipants'
-        );
+        const entries = await readHeatEntries(ensureHeatId(heatId));
+        return entries.map((entry) => ({
+            color: entry.color,
+            position: entry.position,
+            participant_id: entry.participant_id,
+            seed: entry.seed,
+            participant: entry.participant ? {
+                name: entry.participant.name,
+                country: entry.participant.country,
+                license: entry.participant.license,
+            } : null,
+        }));
     }
 
     /**
      * Fetch ordered heat sequence for an event/division
      */
     async fetchOrderedHeatSequence(eventId: number, division: string): Promise<OrderedHeat[]> {
-        return this.execute(
-            async () => {
-                this.ensureSupabase();
-
-                const { data, error } = await this.supabase!
-                    .from('heats')
-                    .select('id, round, heat_number, status')
-                    .eq('event_id', eventId)
-                    .eq('division', division)
-                    .order('round', { ascending: true })
-                    .order('heat_number', { ascending: true });
-
-                if (error) throw error;
-
-                logger.info('HeatRepository', 'Heat sequence fetched', { eventId, division, count: data?.length || 0 });
-                return (data || []) as OrderedHeat[];
-            },
-            undefined,
-            'fetchOrderedHeatSequence'
-        );
+        return (await readHeatSequence(eventId, division)).map((heat) => ({
+            round: heat.round,
+            heat_number: heat.heat_number,
+            status: heat.status,
+            id: heat.id,
+        }));
     }
 
     /**
@@ -201,7 +404,7 @@ export class HeatRepository extends BaseRepository {
     /**
      * Save Heat Configuration (Surfers, Colors, Judges)
      */
-    async saveHeatConfig(heatId: string, config: any): Promise<void> {
+    async saveHeatConfig(heatId: string, config: LegacyHeatConfiguration): Promise<void> {
         const normalizedHeatId = ensureHeatId(heatId);
         const assignmentPayload = this.buildJudgeAssignments(normalizedHeatId, config);
         
@@ -297,7 +500,17 @@ export class HeatRepository extends BaseRepository {
     /**
      * Create Heat with offline resilience
      */
-    async createHeat(heatData: any): Promise<void> {
+    async createRuntime(request: RuntimeHeatCreateRequest): Promise<void> {
+        const heatData = {
+            id: request.id,
+            event_id: request.eventId,
+            competition: request.competition,
+            division: request.division,
+            round: request.round,
+            heat_number: request.heatNumber,
+            status: request.status,
+            created_at: request.createdAt,
+        };
         return this.execute(
             async () => {
                 this.ensureSupabase();
@@ -325,45 +538,6 @@ export class HeatRepository extends BaseRepository {
     }
 
     /**
-     * Delete planned heats for an event/category
-     */
-    async deletePlannedHeats(eventId: number, category: string): Promise<void> {
-        return this.execute(
-            async () => {
-                this.ensureSupabase();
-
-                // Find planned/open heats
-                const { data: planned, error } = await this.supabase!
-                    .from('heats')
-                    .select('id')
-                    .eq('event_id', eventId)
-                    .eq('division', category)
-                    .in('status', ['planned', 'open']);
-
-                if (error) throw error;
-                if (!planned || planned.length === 0) return;
-
-                const heatIds = planned.map((row) => row.id);
-
-                // Delete heat entries first
-                await this.supabase!.from('heat_entries').delete().in('heat_id', heatIds);
-
-                // Delete heats
-                const { error: deleteError } = await this.supabase!
-                    .from('heats')
-                    .delete()
-                    .in('id', heatIds);
-
-                if (deleteError) throw deleteError;
-
-                logger.info('HeatRepository', 'Planned heats deleted', { eventId, category, count: heatIds.length });
-            },
-            undefined,
-            'deletePlannedHeats'
-        );
-    }
-
-    /**
      * Fetch all distinct divisions/categories for an event
      */
     async fetchAllEventCategories(eventId: number): Promise<string[]> {
@@ -378,7 +552,9 @@ export class HeatRepository extends BaseRepository {
 
                 if (error) throw error;
 
-                const divisions = [...new Set((data ?? []).map((h: any) => h.division))];
+                const divisions = [...new Set((data ?? [])
+                    .map((row: { division?: unknown }) => typeof row.division === 'string' ? row.division : '')
+                    .filter(Boolean))];
                 logger.info('HeatRepository', 'Event categories fetched', { eventId, count: divisions.length });
                 return divisions.sort();
             },
@@ -387,7 +563,7 @@ export class HeatRepository extends BaseRepository {
         );
     }
 
-    private buildJudgeAssignments(heatId: string, config: any): HeatJudgeAssignment[] {
+    private buildJudgeAssignments(heatId: string, config: LegacyHeatConfiguration): HeatJudgeAssignment[] {
         const judgeIds = Array.isArray(config?.judges) ? config.judges : [];
         const configJudgeNames = config?.judge_names ?? config?.judgeNames ?? {};
         const configJudgeIdentities = config?.judge_identities ?? config?.judgeIdentities ?? {};
@@ -441,23 +617,13 @@ export class HeatRepository extends BaseRepository {
             .order('position', { ascending: true });
 
         if (error) throw error;
-        return (data ?? []).map((row: any) => ({
+        return parseRows(data, parseHeatEntryJoinedRow).map((row) => ({
             color: row.color ?? null,
             position: row.position,
             participant_id: row.participant_id ?? null,
             seed: row.seed ?? null,
             participant: Array.isArray(row.participant) ? (row.participant[0] ?? null) : (row.participant ?? null),
-        })) as Array<{
-            color: string | null;
-            position: number;
-            participant_id: number | null;
-            seed: number | null;
-            participant: {
-                name: string;
-                country: string | null;
-                license: string | null;
-            } | null;
-        }>;
+        }));
     }
 
     private async fetchHeatLineupFallbackRows(heatId: string): Promise<Array<{
@@ -478,7 +644,7 @@ export class HeatRepository extends BaseRepository {
 
         if (error) return [];
 
-        return (data ?? []).map((row: any) => ({
+        return parseRows(data, parseLegacyLineupRow).map((row) => ({
             color: row.jersey_color ?? null,
             position: row.position,
             seed: row.seed ?? null,
@@ -488,7 +654,7 @@ export class HeatRepository extends BaseRepository {
         }));
     }
 
-    private async ensureHeatEntries(heatId: string, config: any): Promise<void> {
+    private async ensureHeatEntries(heatId: string, config: LegacyHeatConfiguration): Promise<void> {
         const existingEntries = await this.fetchHeatEntriesWithParticipantsRaw(heatId);
         
         // If we have existing entries, let's check if any entry is missing its participant_id mapping.
@@ -509,7 +675,7 @@ export class HeatRepository extends BaseRepository {
         await this.ensureRoundOneHeatEntries(heatId, config);
     }
 
-    private async ensureHeatEntriesFromConfiguredLineup(heatId: string, config: any): Promise<boolean> {
+    private async ensureHeatEntriesFromConfiguredLineup(heatId: string, config: LegacyHeatConfiguration): Promise<boolean> {
         const eventId = Number.isFinite(Number(config?.event_id)) ? Number(config.event_id) : null;
         const division = String(config?.division ?? '').trim();
         const surfers = Array.isArray(config?.surfers) ? config.surfers.map((value: unknown) => String(value ?? '').trim()).filter(Boolean) : [];
@@ -584,7 +750,7 @@ export class HeatRepository extends BaseRepository {
         return true;
     }
 
-    private async ensureRoundOneHeatEntries(heatId: string, config: any): Promise<void> {
+    private async ensureRoundOneHeatEntries(heatId: string, config: LegacyHeatConfiguration): Promise<void> {
         const eventId = Number.isFinite(Number(config?.event_id)) ? Number(config.event_id) : null;
         const division = String(config?.division ?? '').trim();
         const round = Number(config?.round);
@@ -716,7 +882,7 @@ export class HeatRepository extends BaseRepository {
 
     private async ensureEventLastConfigSnapshot(
         heatId: string,
-        config: any,
+        config: LegacyHeatConfiguration,
         assignmentPayload: HeatJudgeAssignment[]
     ): Promise<void> {
         const heatMeta = await this.fetchHeatMetadata(heatId);

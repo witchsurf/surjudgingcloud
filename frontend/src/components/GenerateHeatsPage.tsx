@@ -2,8 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { createHeatsWithEntries, fetchEventIdByName, fetchParticipants } from '../api/supabaseClient';
-import type { ParticipantRecord } from '../api/supabaseClient';
+import { fetchEventIdByName } from '../api/modules/events.api';
+import { heatPlanningRepository } from '../repositories/HeatPlanningRepository';
+import { participantRepository } from '../repositories/ParticipantRepository';
+import type { ParticipantRecord } from '../repositories/contracts';
 import {
   generatePreviewHeats,
   getManOnManRoundOptions,
@@ -105,7 +107,7 @@ const GenerateHeatsPage = () => {
     const loadContext = async () => {
       if (Number.isFinite(numericEventId) && numericEventId > 0) {
         try {
-          const dbParticipants = await fetchParticipants(numericEventId);
+          const dbParticipants = await participantRepository.listByEvent(numericEventId);
           if (dbParticipants.length > 0) {
             setParticipants(dbParticipants);
             localStorage.setItem('participants', JSON.stringify(dbParticipants));
@@ -356,15 +358,15 @@ const GenerateHeatsPage = () => {
           }
         });
 
-        await createHeatsWithEntries(
-          numericId,
-          (() => {
+        await heatPlanningRepository.createWithEntries({
+          eventId: numericId,
+          eventName: (() => {
             if (eventName) return eventName;
             const ev = JSON.parse(localStorage.getItem('eventData') || 'null');
             return ev?.name || 'Competition';
           })(),
-          categoryPreview.category,
-          categoryPreview.rounds.map((r: any) => ({
+          category: categoryPreview.category,
+          rounds: categoryPreview.rounds.map((r: any) => ({
             name: `Round ${r.round}`,
             roundNumber: r.round,
             heats: r.heats.map((h: any) => ({
@@ -379,12 +381,12 @@ const GenerateHeatsPage = () => {
             }))
           })),
           participantsBySeed,
-          {
+          options: {
             overwrite: true,
             defaultJudges: ['J1', 'J2', 'J3'],
             tournamentType: selectedFormat,
-          }
-        );
+          },
+        });
       }
 
       const snapshot = {

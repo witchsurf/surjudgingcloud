@@ -15,8 +15,8 @@ import { resolveEventIdForHeat } from '../utils/heatWorkflow';
 import {
     updateEventConfiguration,
     saveEventConfigSnapshot,
-    fetchOrderedHeatSequence
-} from '../api/supabaseClient';
+} from '../api/modules/events.api';
+import { fetchOrderedHeatSequence } from '../api/modules/heats.api';
 import { normalizePodiumId } from '../utils/podium';
 import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
 import type { AppConfig } from '../types';

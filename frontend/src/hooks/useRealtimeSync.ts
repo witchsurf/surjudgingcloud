@@ -3,8 +3,8 @@ import { supabase, isSupabaseConfigured, getSupabaseConfig, isLocalSupabaseMode 
 import type { AppConfig, HeatTimer, KioskConfig, HeatSyncRequest } from '../types';
 import { ensureHeatId } from '../utils/heat';
 import { DEFAULT_TIMER_DURATION, INITIAL_CONFIG } from '../utils/constants';
-import { parseActiveHeatId } from '../api/supabaseClient';
-import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
+import { parseActiveHeatId } from '../utils/activeHeatId';
+import { upsertHeatRealtimeConfig } from '../api/modules/heats.api';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { reportRealtimeDiagnostic } from '../lib/offlineOperations';
 

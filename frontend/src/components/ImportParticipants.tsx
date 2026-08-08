@@ -46,7 +46,7 @@ export default function ImportParticipants({ onImport, onLogoUpload, disabled, l
         throw new Error(`Erreur HTTP ${response.status}`);
       }
       const text = await response.text();
-      const parsed = parseCSVParticipants(text);
+      const parsed = parseCSVParticipants(text, 'google_sheets');
       if (parsed.errors.length) setErrors(parsed.errors);
       await handleParsed(parsed.rows);
     } catch (error) {

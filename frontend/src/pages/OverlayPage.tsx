@@ -1,20 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ObsOverlay from '../components/ObsOverlay';
 import {
-  fetchActiveHeatPointer,
   fetchHeatEntriesWithParticipants,
   fetchHeatMetadata,
-  isSupabaseConfigured,
-  parseActiveHeatId,
-} from '../api/supabaseClient';
+} from '../api/modules/heats.api';
+import { fetchInterferenceCalls } from '../api/modules/scoring.api';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { activeHeatPointerRepository } from '../repositories/ActiveHeatPointerRepository';
+import { parseActiveHeatId } from '../utils/activeHeatId';
 import { subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
-import { ensureHeatId } from '../utils/heat';
+import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
 import { getPodiumIdFromSearch } from '../utils/podium';
-import type { AppConfig, HeatTimer, Score } from '../types';
+import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
+import type { PanelContext } from '../domain/scoring/panelContext';
+import { resolveOverlaySnapshot } from '../domain/scoring/overlaySnapshot';
+import { computeEffectiveInterferences } from '../utils/interference';
+import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
+import type { AppConfig, EffectiveInterference, HeatTimer, Score } from '../types';
 
 const DEFAULT_CONFIG: AppConfig = {
   competition: '',
@@ -41,6 +47,13 @@ const DEFAULT_TIMER: HeatTimer = {
 };
 
 type OverlayHeatStatus = 'waiting' | 'running' | 'paused' | 'finished';
+
+const pendingPanelContext = (): PanelContext => ({
+  judgeCount: null,
+  source: 'unknown',
+  issue: 'panel_unknown',
+  message: 'Panel inconnu : résolution overlay en cours.',
+});
 
 const normalizeJersey = (value: string | null | undefined): string => {
   const normalized = String(value ?? '').trim().toUpperCase();
@@ -146,6 +159,17 @@ function readStoredScores(): Score[] {
   return [];
 }
 
+function readStoredPanelJudges(): string[] | null {
+  try {
+    const raw = localStorage.getItem('surfJudgingConfig');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<AppConfig>;
+    return Array.isArray(parsed.judges) && parsed.judges.length > 0 ? parsed.judges : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function OverlayPage() {
   const [searchParams] = useSearchParams();
   const { subscribeToHeat } = useRealtimeSync();
@@ -155,8 +179,18 @@ export default function OverlayPage() {
   const [scores, setScores] = useState<Score[]>(() => readStoredScores());
   const [heatStatus, setHeatStatus] = useState<OverlayHeatStatus>('waiting');
   const [activeHeatId, setActiveHeatId] = useState('');
+  const [runtimePanelJudges, setRuntimePanelJudges] = useState<string[] | null>(() => readStoredPanelJudges());
+  const [panelContext, setPanelContext] = useState<PanelContext>(() => pendingPanelContext());
+  const [interferenceState, setInterferenceState] = useState<{ key: string; values: EffectiveInterference[] }>({ key: '', values: [] });
 
   const podiumId = getPodiumIdFromSearch(searchParams.toString());
+  const displayHeatId = useMemo(() => activeHeatId || getHeatIdentifiers(
+    config.competition,
+    config.division,
+    config.round,
+    config.heatId,
+  ).normalized, [activeHeatId, config.competition, config.division, config.round, config.heatId]);
+  const runtimePanelSnapshotKey = runtimePanelJudges?.join('|') || '';
 
   const applyActiveHeat = useCallback(async (heatIdInput: string) => {
     const heatId = ensureHeatId(heatIdInput);
@@ -198,6 +232,7 @@ export default function OverlayPage() {
     });
 
     setActiveHeatId(heatId);
+    setRuntimePanelJudges(null);
     setConfig(nextConfig);
     setScores(fetchedScores);
     setHeatStatus(normalizeHeatStatus(metadata?.status));
@@ -231,6 +266,7 @@ export default function OverlayPage() {
       });
 
       setConfig(nextConfig);
+      setRuntimePanelJudges(Array.isArray(decoded.judges) && decoded.judges.length > 0 ? decoded.judges : null);
       localStorage.setItem('surfJudgingConfig', JSON.stringify(nextConfig));
 
       if (timerSnapshot) {
@@ -259,9 +295,9 @@ export default function OverlayPage() {
     let cancelled = false;
 
     const loadActivePointer = async () => {
-      const pointer = await fetchActiveHeatPointer(null, undefined, podiumId);
-      if (cancelled || !pointer?.active_heat_id) return;
-      await applyActiveHeat(pointer.active_heat_id);
+      const pointer = await activeHeatPointerRepository.get({ eventId: null, podiumId });
+      if (cancelled || !pointer?.activeHeatId) return;
+      await applyActiveHeat(pointer.activeHeatId);
     };
 
     loadActivePointer().catch((error) => {
@@ -289,6 +325,9 @@ export default function OverlayPage() {
       setHeatStatus(normalizeHeatStatus(status));
 
       if (nextConfig) {
+        if (Array.isArray(nextConfig.judges) && nextConfig.judges.length > 0) {
+          setRuntimePanelJudges(nextConfig.judges);
+        }
         setConfig((current) => normaliseConfigData({
           ...current,
           ...nextConfig,
@@ -312,6 +351,7 @@ export default function OverlayPage() {
       setConfig(readStoredConfig());
       setTimer(readStoredTimer());
       setScores(readStoredScores());
+      setRuntimePanelJudges(readStoredPanelJudges());
     };
 
     syncFromLocalStorage();
@@ -351,5 +391,85 @@ export default function OverlayPage() {
     };
   }, [activeHeatId]);
 
-  return <ObsOverlay config={config} scores={scores} timer={timer} heatStatus={heatStatus} />;
+  useEffect(() => {
+    let cancelled = false;
+    if (!displayHeatId) {
+      setPanelContext(pendingPanelContext());
+      return () => { cancelled = true; };
+    }
+
+    setPanelContext(pendingPanelContext());
+    const runtimeSnapshots = runtimePanelJudges ? { [displayHeatId]: runtimePanelJudges } : undefined;
+    void getCachedPanelContexts([displayHeatId], runtimeSnapshots)
+      .then((contexts) => {
+        if (!cancelled) setPanelContext(contexts.get(displayHeatId) || pendingPanelContext());
+      })
+      .catch((error) => {
+        console.error('[P2 OverlayPage panel read error]', { heatId: displayHeatId, error });
+        if (!cancelled) {
+          setPanelContext({
+            judgeCount: null,
+            source: 'unknown',
+            issue: 'network_error',
+            message: `Erreur réseau de lecture du panel : ${error instanceof Error ? error.message : String(error)}`,
+          });
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [displayHeatId, runtimePanelSnapshotKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const interferenceKey = panelContext.judgeCount ? `${displayHeatId}::${panelContext.judgeCount}` : '';
+    if (!displayHeatId || !panelContext.judgeCount || !isSupabaseConfigured()) {
+      setInterferenceState({ key: interferenceKey, values: [] });
+      return () => { cancelled = true; };
+    }
+
+    setInterferenceState({ key: interferenceKey, values: [] });
+    const refresh = async () => {
+      try {
+        const calls = await fetchInterferenceCalls(displayHeatId);
+        if (!cancelled) {
+          setInterferenceState({
+            key: interferenceKey,
+            values: computeEffectiveInterferences(calls, panelContext.judgeCount!),
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('Overlay: impossible de charger les interférences:', error);
+          setInterferenceState({ key: interferenceKey, values: [] });
+        }
+      }
+    };
+    void refresh();
+    const unsubscribe = subscribeToHeatInterference(displayHeatId, () => { void refresh(); });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [displayHeatId, panelContext.judgeCount]);
+
+  const currentInterferenceKey = panelContext.judgeCount ? `${displayHeatId}::${panelContext.judgeCount}` : '';
+  const effectiveInterferences = interferenceState.key === currentInterferenceKey ? interferenceState.values : [];
+  const scoringState = useMemo(() => resolveOverlaySnapshot({
+      heatId: displayHeatId,
+      config,
+      scores,
+      panelContext,
+      effectiveInterferences,
+    }), [config, displayHeatId, effectiveInterferences, panelContext, scores]);
+
+  return (
+    <ObsOverlay
+      config={config}
+      timer={timer}
+      heatStatus={heatStatus}
+      snapshot={scoringState.snapshot}
+      scoringIssue={scoringState.issue}
+      scoringMessage={scoringState.message}
+    />
+  );
 }

@@ -4,6 +4,7 @@ import { useJudgingStore } from '../stores/judgingStore';
 import { scoreRepository } from '../repositories';
 import { ensureHeatId } from '../utils/heat';
 import type { Score, ScoreOverrideLog, OverrideReason } from '../types';
+import { scoreOverrideLogRecordToLegacy, scoreRecordToLegacy } from '../repositories/internal/scoreRepositoryMappings';
 
 interface OverrideRequest {
     judgeId: string;
@@ -27,7 +28,7 @@ export function useScoreManager() {
     ): Promise<Score | undefined> => {
         try {
             // Use ScoreRepository instead of useSupabaseSync
-            const newScore = await scoreRepository.saveScore({
+            const scoreRecord = await scoreRepository.save({
                 heatId,
                 competition: scoreData.competition || '',
                 division: scoreData.division || '',
@@ -37,10 +38,11 @@ export function useScoreManager() {
                 judgeName: scoreData.judge_name,
                 judgeStation: scoreData.judge_station,
                 judgeIdentityId: scoreData.judge_identity_id,
-                surfer: scoreData.surfer,
+                lycraColor: scoreData.surfer,
                 waveNumber: scoreData.wave_number,
                 score: scoreData.score,
             });
+            const newScore = scoreRecordToLegacy(scoreRecord);
 
             // Update local scores
             setScores(prev => [...prev, newScore]);
@@ -61,7 +63,7 @@ export function useScoreManager() {
 
         try {
             // Use ScoreRepository instead of useSupabaseSync
-            const result = await scoreRepository.overrideScore({
+            const result = await scoreRepository.override({
                 heatId: heatId,
                 competition: config.competition,
                 division: config.division,
@@ -70,14 +72,15 @@ export function useScoreManager() {
                 judgeName: request.judgeName,
                 judgeStation: request.judgeStation,
                 judgeIdentityId: request.judgeIdentityId,
-                surfer: request.surfer,
+                lycraColor: request.surfer,
                 waveNumber: request.waveNumber,
                 newScore: request.newScore,
                 reason: request.reason,
                 comment: request.comment
             });
 
-            const { updatedScore, log } = result;
+            const updatedScore = scoreRecordToLegacy(result.updatedScore);
+            const log = scoreOverrideLogRecordToLegacy(result.log);
 
             setScores(prev => {
                 const matchIndex = prev.findIndex(
@@ -131,7 +134,7 @@ export function useScoreManager() {
 
     const handleScoreSync = useCallback(async (heatId: string) => {
         try {
-            return await scoreRepository.syncScores(heatId);
+            return await scoreRepository.syncHeat(heatId);
         } catch (error) {
             console.error('❌ Erreur synchronisation manuelle:', error);
             throw error;

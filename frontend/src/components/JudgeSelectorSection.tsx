@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { fetchActiveJudges } from '../api/supabaseClient';
-import type { Judge } from '../api/supabaseClient';
+import { judgeRepository } from '../repositories/JudgeRepository';
+import type { JudgeRecord } from '../repositories/contracts';
 
 interface JudgeSelectorSectionProps {
     selectedJudgeIds: string[];
@@ -14,7 +14,7 @@ export const JudgeSelectorSection = ({
     onSelectJudges,
     maxJudges = 5
 }: JudgeSelectorSectionProps) => {
-    const [availableJudges, setAvailableJudges] = useState<Judge[]>([]);
+    const [availableJudges, setAvailableJudges] = useState<JudgeRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isExpanded, setIsExpanded] = useState(false); // Collapsed by default
@@ -27,7 +27,7 @@ export const JudgeSelectorSection = ({
         setLoading(true);
         setError('');
         try {
-            const judges = await fetchActiveJudges();
+            const judges = await judgeRepository.listActive();
             setAvailableJudges(judges);
         } catch (err) {
             console.error('Error loading judges:', err);
@@ -94,8 +94,8 @@ export const JudgeSelectorSection = ({
                                             }`}
                                     >
                                         <div className="font-medium">{judge.name}</div>
-                                        {judge.certification_level && (
-                                            <div className="text-xs text-gray-400">{judge.certification_level}</div>
+                                        {judge.certificationLevel && (
+                                            <div className="text-xs text-gray-400">{judge.certificationLevel}</div>
                                         )}
                                     </button>
                                 );

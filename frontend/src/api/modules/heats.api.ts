@@ -3,22 +3,27 @@ import { ensureSupabase } from './core.api';
 import { getColorSet, type HeatColor } from '../../utils/colorUtils';
 import { colorLabelMap } from '../../utils/colorUtils';
 import { ensureHeatId } from '../../utils/heat';
+import { parseActiveHeatId } from '../../utils/activeHeatId';
+import { isStrictHeatCloseRpcUnavailable } from '../../utils/heatCloseErrors';
 import type { RoundSpec, HeatSlotSpec } from '../../utils/bracket';
-import type { ParticipantRecord } from './participants.api';
+import type { ParticipantRecord } from '../../repositories/contracts/participants';
+import type { SafePlanningPersistenceRequest } from '../../repositories/contracts/planningSafety';
+import { persistSafePlanningRpc } from './planningSafety.api';
 import { distributeSeedsSnake, expandSeedMap, type ParticipantSeed } from '../../utils/seeding';
+import {
+    parseHeatEntryJoinedRow,
+    parseHeatRow,
+    parseHeatSequenceRow,
+    parseHeatSlotMapping,
+    parseHeatSlotParticipant,
+    parseHeatWithEntriesRow,
+    parseLegacyLineupRow,
+    parseRows,
+    type HeatRow,
+    type HeatSequenceRow,
+} from './heatReadParsers';
 
-export interface HeatRow {
-    id: string;
-    event_id: number;
-    competition: string;
-    division: string;
-    round: number;
-    heat_number: number;
-    heat_size: number;
-    status: string;
-    color_order: string[];
-    slots?: any[];
-}
+export type { HeatRow, HeatSequenceRow } from './heatReadParsers';
 
 export interface HeatEntryRow {
     heat_id: string;
@@ -37,14 +42,6 @@ export interface HeatSlotMappingRow {
     source_position: number | null;
 }
 
-export interface HeatSequenceRow {
-    id: string;
-    round: number;
-    heat_number: number;
-    status: string;
-    heat_size: number | null;
-    color_order: string[] | null;
-}
 
 export interface HeatJudgeAssignmentRow {
     heat_id: string;
@@ -130,12 +127,7 @@ export interface HeatStartDependencyCheck {
     blockers: HeatStartDependencyBlocker[];
 }
 
-const normalizeJoinedParticipant = (participant: any) => {
-    if (Array.isArray(participant)) {
-        return participant[0] ?? null;
-    }
-    return participant ?? null;
-};
+const normalizeJoinedParticipant = parseHeatSlotParticipant;
 
 async function buildRoundOneEntriesFromParticipants(heatId: string): Promise<HeatEntriesWithParticipantRow[]> {
     const metadata = await fetchHeatMetadata(heatId);
@@ -235,6 +227,7 @@ async function buildRoundOneEntriesFromParticipants(heatId: string): Promise<Hea
     }));
 }
 
+/** @deprecated Destructive legacy/rollback operation. Never use from modern planning workflows. */
 export async function deletePlannedHeats(eventId: number, category: string) {
     ensureSupabase();
     const { data: planned, error } = await supabase!
@@ -266,10 +259,11 @@ export async function createHeatsWithEntries(
     category: string,
     rounds: RoundSpec[],
     participantsBySeed: Map<number, ParticipantRecord>,
-    options: CreateHeatsOptions = {}
+    options: CreateHeatsOptions = {},
+    persistPlanning: (request: SafePlanningPersistenceRequest) => Promise<void> = persistSafePlanningRpc,
 ): Promise<{ heats: HeatRow[]; entries: HeatEntryRow[] }> {
     ensureSupabase();
-    const heatRows: HeatRow[] = [];
+    const heatRows: Array<HeatRow & { is_active: false }> = [];
     const entryRows: HeatEntryRow[] = [];
     const heatConfigRows: Array<{
         heat_id: string;
@@ -351,6 +345,7 @@ export async function createHeatsWithEntries(
                 id: heatId, event_id: eventId, competition: eventName, division: category,
                 round: round.roundNumber, heat_number: heat.heatNumber, heat_size: heat.slots.length,
                 status: 'open', color_order: colorOrder,
+                is_active: false,
             });
             heatConfigRows.push({
                 heat_id: heatId,
@@ -400,26 +395,17 @@ export async function createHeatsWithEntries(
         throw new Error(`Participants manquants: ${missingList}`);
     }
 
-    let deleteHeatIds: string[] = [];
-    if (options.overwrite) {
-        const { data: existing, error: existingError } = await supabase!.from('heats').select('id').eq('event_id', eventId).eq('division', category);
-        if (existingError) throw existingError;
-        if (existing?.length) deleteHeatIds = existing.map((row) => row.id);
-    }
-
-    const { error: rpcError } = await supabase!.rpc('bulk_upsert_heats', {
-        p_heats: heatRows, p_entries: entryRows, p_mappings: slotMappings, p_participants: participantsPayload, p_delete_ids: options.overwrite ? deleteHeatIds : newHeatIds,
-    } as any);
-
-    if (rpcError) throw rpcError;
-
-    if (heatConfigRows.length > 0) {
-        const { error: heatConfigsError } = await supabase!
-            .from('heat_configs')
-            .upsert(heatConfigRows, { onConflict: 'heat_id' });
-
-        if (heatConfigsError) throw heatConfigsError;
-    }
+    await persistPlanning({
+        eventId,
+        category,
+        proposedHeatIds: newHeatIds,
+        overwrite: Boolean(options.overwrite),
+        heats: heatRows,
+        entries: entryRows,
+        mappings: slotMappings,
+        participants: participantsPayload,
+        heatConfigs: heatConfigRows,
+    });
 
     return { heats: heatRows, entries: entryRows };
 }
@@ -435,7 +421,7 @@ export async function fetchOrderedHeatSequence(eventId: number, category: string
         .order('heat_number', { ascending: true });
 
     if (error) throw error;
-    return (data ?? []) as HeatSequenceRow[];
+    return parseRows(data, parseHeatSequenceRow);
 }
 
 export async function fetchHeatMetadata(heatId: string): Promise<HeatRow | null> {
@@ -448,7 +434,7 @@ export async function fetchHeatMetadata(heatId: string): Promise<HeatRow | null>
         .maybeSingle();
 
     if (error && error.code !== 'PGRST116') throw error;
-    return (data as HeatRow) ?? null;
+    return data ? parseHeatRow(data) : null;
 }
 
 export async function fetchHeatJudgeAssignments(heatId: string): Promise<HeatJudgeAssignmentRow[]> {
@@ -512,7 +498,7 @@ export async function replaceHeatEntries(heatId: string, rows: { position: numbe
     if (error) throw error;
 }
 
-export async function fetchHeatEntriesWithParticipants(heatId: string) {
+export async function fetchHeatEntriesWithParticipants(heatId: string): Promise<HeatEntriesWithParticipantRow[]> {
     ensureSupabase();
     const normalizedHeatId = ensureHeatId(heatId);
 
@@ -524,7 +510,7 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
 
     if (error) throw error;
 
-    const rows = (data ?? []) as any[];
+    const rows = parseRows(data, parseHeatEntryJoinedRow);
     const typedRows: HeatEntriesWithParticipantRow[] = rows.map((row) => ({
         color: row.color, position: row.position, participant_id: row.participant_id, seed: row.seed,
         participant: (() => {
@@ -543,7 +529,7 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
 
     if (lineupError) return typedRows;
 
-    const fallbackEntries = (lineup ?? []).map((row: any) => ({
+    const fallbackEntries: HeatEntriesWithParticipantRow[] = parseRows(lineup, parseLegacyLineupRow).map((row) => ({
         color: row.jersey_color ?? null, position: row.position, participant_id: null, seed: row.seed ?? null,
         participant: row.surfer_name ? { name: row.surfer_name, country: row.country ?? null, license: null } : null,
     }));
@@ -562,12 +548,12 @@ export async function fetchHeatEntriesWithParticipants(heatId: string) {
                 seed: entry.seed ?? fallback.seed,
                 participant: fallback.participant,
             };
-        }) as HeatEntriesWithParticipantRow[];
+        });
     }
 
     if (fallbackEntries.length === 0 && rows.length > 0) return typedRows;
     if (fallbackEntries.length > 0) {
-        return fallbackEntries as HeatEntriesWithParticipantRow[];
+        return fallbackEntries;
     }
 
     const reconstructedEntries = await buildRoundOneEntriesFromParticipants(normalizedHeatId);
@@ -607,17 +593,17 @@ export async function fetchHeatEntriesWithParticipantsBatch(
 
     const fallbackByHeat = new Map<string, HeatEntriesWithParticipantRow[]>();
     if (!lineupsError) {
-        for (const row of lineups ?? []) {
-            const heatId = ensureHeatId(String((row as any).heat_id || ''));
+        for (const row of parseRows(lineups, parseLegacyLineupRow)) {
+            const heatId = ensureHeatId(row.heat_id || '');
             if (!heatId) continue;
             const rows = fallbackByHeat.get(heatId) ?? [];
             rows.push({
-                color: (row as any).jersey_color ?? null,
-                position: Number((row as any).position),
+                color: row.jersey_color ?? null,
+                position: row.position,
                 participant_id: null,
-                seed: (row as any).seed ?? null,
-                participant: (row as any).surfer_name
-                    ? { name: (row as any).surfer_name, country: (row as any).country ?? null, license: null }
+                seed: row.seed ?? null,
+                participant: row.surfer_name
+                    ? { name: row.surfer_name, country: row.country ?? null, license: null }
                     : null,
             });
             fallbackByHeat.set(heatId, rows);
@@ -625,16 +611,16 @@ export async function fetchHeatEntriesWithParticipantsBatch(
     }
 
     const entriesByHeat = new Map<string, HeatEntriesWithParticipantRow[]>();
-    for (const row of entries ?? []) {
-        const heatId = ensureHeatId(String((row as any).heat_id || ''));
+    for (const row of parseRows(entries, parseHeatEntryJoinedRow)) {
+        const heatId = ensureHeatId(row.heat_id || '');
         if (!heatId) continue;
         const rows = entriesByHeat.get(heatId) ?? [];
-        const participant = normalizeJoinedParticipant((row as any).participant);
+        const participant = normalizeJoinedParticipant(row.participant);
         rows.push({
-            color: (row as any).color ?? null,
-            position: Number((row as any).position),
-            participant_id: (row as any).participant_id ?? null,
-            seed: (row as any).seed ?? null,
+            color: row.color ?? null,
+            position: row.position,
+            participant_id: row.participant_id ?? null,
+            seed: row.seed ?? null,
             participant: participant
                 ? { name: participant.name, country: participant.country, license: participant.license }
                 : null,
@@ -1131,9 +1117,7 @@ export async function closeHeatOnPodium(input: {
         p_force_reason: input.forceReason?.trim() || null,
     });
 
-    const strictRpcUnavailable = Boolean(
-        error && /close_heat_on_podium_strict|schema cache|function.*not found/i.test(String(error.message || ''))
-    );
+    const strictRpcUnavailable = isStrictHeatCloseRpcUnavailable(error);
     if (strictRpcUnavailable && !input.force) {
         ({ data, error } = await supabase!.rpc('close_heat_on_podium', {
             p_event_id: input.eventId,
@@ -1361,39 +1345,11 @@ export async function fetchActiveHeatPointer(eventId?: number | null, eventName?
     return data && data.length > 0 ? (data[0] as ActiveHeatPointer) : null;
 }
 
-const KNOWN_DIVISION_ID_SUFFIXES = [
-    'ondine_open',
-    'girls_open',
-    'ondine_u16',
-    'benjamin',
-    'minime',
-    'cadet',
-    'junior',
-    'open',
-];
-
-export function parseActiveHeatId(heatId: string): { competition: string; division: string; round: number; heatNumber: number } | null {
-    const match = ensureHeatId(heatId).match(/^(.+)_r(\d+)_h(\d+)$/i);
-    if (!match) return null;
-    const prefix = match[1];
-    const round = parseInt(match[2], 10);
-    const heatNumber = parseInt(match[3], 10);
-    const divisionSuffix = KNOWN_DIVISION_ID_SUFFIXES.find((suffix) =>
-        prefix === suffix || prefix.endsWith(`_${suffix}`)
-    );
-
-    const rawDivision = divisionSuffix ?? prefix.split('_').pop() ?? '';
-    const competitionPrefix = divisionSuffix && prefix.endsWith(`_${divisionSuffix}`)
-        ? prefix.slice(0, -(divisionSuffix.length + 1))
-        : prefix.slice(0, Math.max(0, prefix.length - rawDivision.length)).replace(/_$/, '');
-    const competition = (competitionPrefix || prefix).replace(/_/g, ' ').toUpperCase();
-    const division = rawDivision.replace(/_/g, ' ').toUpperCase();
-    return { competition, division: division.toUpperCase(), round, heatNumber };
-}
+export { parseActiveHeatId };
 
 
 
-export async function fetchHeatSlotMappings(heatId: string) {
+export async function fetchHeatSlotMappings(heatId: string): Promise<HeatSlotMappingRow[]> {
     ensureSupabase();
     const normalizedHeatId = ensureHeatId(heatId);
     const { data, error } = await supabase!
@@ -1403,7 +1359,14 @@ export async function fetchHeatSlotMappings(heatId: string) {
         .order('position', { ascending: true });
 
     if (error) throw error;
-    return data ?? [];
+    return parseRows(data, parseHeatSlotMapping).map((row) => ({
+        heat_id: normalizedHeatId,
+        position: row.position,
+        placeholder: row.placeholder,
+        source_round: row.source_round,
+        source_heat: row.source_heat,
+        source_position: row.source_position,
+    }));
 }
 
 export async function fetchHeatSlotMappingsBatch(
@@ -1424,8 +1387,10 @@ export async function fetchHeatSlotMappingsBatch(
         .order('position', { ascending: true });
 
     if (error) throw error;
-    for (const row of (data ?? []) as HeatSlotMappingRow[]) {
-        const heatId = ensureHeatId(row.heat_id);
+    for (const parsed of parseRows(data, parseHeatSlotMapping)) {
+        const heatId = ensureHeatId(parsed.heat_id || '');
+        if (!heatId) continue;
+        const row: HeatSlotMappingRow = { ...parsed, heat_id: heatId };
         const rows = result.get(heatId) ?? [];
         rows.push(row);
         result.set(heatId, rows);
@@ -1450,7 +1415,7 @@ export async function fetchCategoryHeats(eventId: number, category: string): Pro
         .order('position', { ascending: true, foreignTable: 'heat_entries' });
 
     if (error) throw error;
-    const heats = (data ?? []) as any[];
+    const heats = parseRows(data, parseHeatWithEntriesRow);
     if (!heats.length) return [];
 
     const maxRound = Math.max(...heats.map((heat) => heat.round));
@@ -1475,8 +1440,8 @@ export async function fetchCategoryHeats(eventId: number, category: string): Pro
         });
 
         const slots: HeatSlotSpec[] = colorOrder.map((color, idx) => {
-            const entry = heat.heat_entries.find((row: any) => row.position === idx + 1);
-            const mapping = heat.heat_slot_mappings?.find((row: any) => row.position === idx + 1);
+            const entry = heat.heat_entries.find((row) => row.position === idx + 1);
+            const mapping = heat.heat_slot_mappings.find((row) => row.position === idx + 1);
             const participant = normalizeJoinedParticipant(entry?.participant);
             if (entry && participant) {
                 const entryColor = entry.color ? (entry.color.toUpperCase() as HeatColor) : undefined;

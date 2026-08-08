@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
 
 describe('P1 field route contract', () => {
-  it.each(['/admin', '/chief-judge', '/judge', '/priority', '/display'])(
+  it.each(['/admin', '/chief-judge', '/judge', '/priority', '/display', '/overlay'])(
     'keeps route %s',
     (route) => expect(appSource).toContain(`path="${route}"`),
   );

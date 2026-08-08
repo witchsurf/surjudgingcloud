@@ -13,6 +13,44 @@ export interface Judge {
     created_at: string;
 }
 
+export type LegacyEventJudge =
+    | string
+    | {
+        id: string;
+        name?: string;
+        identity_id?: string;
+    };
+
+export function parseLegacyEventJudges(value: unknown): LegacyEventJudge[] {
+    if (!Array.isArray(value)) return [];
+    return value.filter((entry): entry is LegacyEventJudge => {
+        if (typeof entry === 'string') return true;
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+        const row = entry as Record<string, unknown>;
+        return typeof row.id === 'string'
+            && (row.name === undefined || typeof row.name === 'string')
+            && (row.identity_id === undefined || typeof row.identity_id === 'string');
+    });
+}
+
+export function updateLegacyEventJudgeDisplayName(
+    value: unknown,
+    judgeId: string,
+    name: string,
+): LegacyEventJudge[] {
+    const judges = parseLegacyEventJudges(value);
+    const existingIndex = judges.findIndex((judge) =>
+        (typeof judge === 'string' && judge === judgeId)
+        || (typeof judge === 'object' && judge.id === judgeId)
+    );
+    if (existingIndex < 0) return [...judges, { id: judgeId, name }];
+    const existing = judges[existingIndex];
+    const replacement: LegacyEventJudge = typeof existing === 'string'
+        ? { id: judgeId, name }
+        : { ...existing, name };
+    return judges.map((judge, index) => index === existingIndex ? replacement : judge);
+}
+
 export async function fetchActiveJudges(): Promise<Judge[]> {
     ensureSupabase();
     const { data, error } = await supabase!
@@ -107,23 +145,7 @@ export async function updateJudgeName(eventId: number, judgeId: string, name: st
 
     if (fetchError) throw fetchError;
 
-    let judges = event.judges as any[];
-    if (!Array.isArray(judges)) judges = [];
-
-    const existingIndex = judges.findIndex((j: any) =>
-        (typeof j === 'string' && j === judgeId) ||
-        (typeof j === 'object' && j.id === judgeId)
-    );
-
-    if (existingIndex >= 0) {
-        if (typeof judges[existingIndex] === 'string') {
-            judges[existingIndex] = { id: judgeId, name };
-        } else {
-            judges[existingIndex] = { ...judges[existingIndex], name };
-        }
-    } else {
-        judges.push({ id: judgeId, name });
-    }
+    const judges = updateLegacyEventJudgeDisplayName(event.judges, judgeId, name);
 
     const { error: updateError } = await supabase!
         .from('events')

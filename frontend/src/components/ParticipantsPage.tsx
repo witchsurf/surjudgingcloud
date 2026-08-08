@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { parsePlanningCsv } from '../adapters/planningImport/csvParser';
+import PlanningImportPanel from './PlanningImportPanel';
 
 interface Participant {
   seed: number;
@@ -11,11 +13,16 @@ interface Participant {
 
 const ParticipantsPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const eventIdParam = searchParams.get('event') ?? searchParams.get('eventId');
+  const previewEventId = eventIdParam && /^\d+$/.test(eventIdParam) ? Number(eventIdParam) : null;
+  const previewEventName = searchParams.get('eventName')?.trim() || undefined;
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('Toutes les catégories');
   const [googleSheetUrl, setGoogleSheetUrl] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [showOfflinePreview, setShowOfflinePreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -32,45 +39,18 @@ const ParticipantsPage = () => {
     }
   }, []);
 
-  const normaliseHeader = (header: string) =>
-    header.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
-
-  const splitCsvLine = (line: string) => {
-    const regex = /("([^"]|"")*"|[^,]+)(?=,|$)/g;
-    const matches = line.match(regex) || [];
-    return matches.map((value) => value.replace(/^"(.*)"$/, '$1').replace(/""/g, '"').trim());
-  };
-
-  const parseCsvParticipants = (csv: string): Participant[] => {
-    const rows = csv.split(/\r?\n/).filter((line) => line.trim().length > 0);
-    if (rows.length === 0) return [];
-
-    const headers = splitCsvLine(rows[0]).map(normaliseHeader);
-    const findIndex = (candidates: string[]) => {
-      for (const candidate of candidates) {
-        const idx = headers.findIndex((header) => header === candidate);
-        if (idx !== -1) return idx;
-      }
-      return -1;
-    };
-
-    const seedIdx = findIndex(['seed', 'tete', 'ranking', 'rank']);
-    const nameIdx = findIndex(['name', 'nom', 'surfer', 'surfeur']);
-    const countryIdx = findIndex(['country', 'pays', 'club', 'team']);
-    const licenseIdx = findIndex(['license', 'licence', 'id']);
-    const categoryIdx = findIndex(['category', 'categorie', 'division']);
-
-    return rows.slice(1).map((row, index) => {
-      const values = splitCsvLine(row);
-      const seedValue = seedIdx !== -1 ? Number(values[seedIdx]) : index + 1;
-      return {
-        seed: Number.isFinite(seedValue) ? seedValue : index + 1,
-        name: nameIdx !== -1 ? values[nameIdx] : `Surfeur ${index + 1}`,
-        country: countryIdx !== -1 ? values[countryIdx] : 'SENEGAL',
-        license: licenseIdx !== -1 ? values[licenseIdx] : '',
-        category: categoryIdx !== -1 ? values[categoryIdx] : 'OPEN'
-      };
-    }).filter((participant) => participant.name.trim().length > 0);
+  const toLegacyParticipants = (csv: string, source: 'csv' | 'google_sheets'): Participant[] => {
+    const result = parsePlanningCsv(csv, { source });
+    if (result.errors.length > 0) {
+      throw new Error(result.errors.map((diagnostic) => diagnostic.message).join('\n'));
+    }
+    return result.validRows.map((row) => ({
+      seed: row.seed,
+      name: row.name,
+      country: row.country ?? '',
+      license: row.license ?? '',
+      category: row.category,
+    }));
   };
 
   const persistParticipants = (list: Participant[]) => {
@@ -98,7 +78,7 @@ const ParticipantsPage = () => {
         throw new Error(`Impossible de récupérer les données (code ${response.status}).`);
       }
       const text = await response.text();
-      const parsed = parseCsvParticipants(text);
+      const parsed = toLegacyParticipants(text, 'google_sheets');
       if (parsed.length === 0) {
         throw new Error('Aucun participant détecté dans la feuille (vérifiez l’en-tête et le partage public).');
       }
@@ -119,7 +99,7 @@ const ParticipantsPage = () => {
     setIsImporting(true);
     try {
       const text = await file.text();
-      const parsed = parseCsvParticipants(text);
+      const parsed = toLegacyParticipants(text, 'csv');
       if (parsed.length === 0) {
         throw new Error('Aucun participant détecté dans le fichier CSV.');
       }
@@ -153,7 +133,8 @@ const ParticipantsPage = () => {
 
         {/* Import Section */}
         <div className="bg-gray-800 rounded-lg p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">Importer des participants</h2>
+          <h2 className="text-xl font-semibold mb-1">Import historique</h2>
+          <p className="mb-4 text-sm text-amber-300">Workflow legacy CSV / Google Sheets conservé pour rollback. L’import hors ligne ci-dessous est recommandé sur le terrain.</p>
           
           <div className="flex gap-4 mb-6">
             <button
@@ -202,6 +183,31 @@ const ParticipantsPage = () => {
               <p className="text-sm text-red-400">{importError}</p>
             )}
           </div>
+        </div>
+
+        <div className="mb-8">
+          <button
+            type="button"
+            onClick={() => setShowOfflinePreview((visible) => !visible)}
+            className="rounded-lg border border-cyan-600 px-5 py-2 text-cyan-200 hover:bg-cyan-500/10"
+          >
+            {showOfflinePreview ? 'Fermer l’import hors ligne recommandé' : 'Ouvrir l’import hors ligne recommandé'}
+          </button>
+          {showOfflinePreview && (
+            <div className="mt-4">
+              <PlanningImportPanel
+                eventId={previewEventId}
+                eventName={previewEventName}
+                onPersisted={({ participants: persisted }) => persistParticipants(persisted.map((participant) => ({
+                  seed: participant.seed,
+                  name: participant.name,
+                  country: participant.country ?? '',
+                  license: participant.license ?? '',
+                  category: participant.category,
+                })))}
+              />
+            </div>
+          )}
         </div>
 
         {/* Participants List */}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { ParticipantRecord } from '../api/supabaseClient';
+import type { ParticipantRecord } from '../repositories/contracts';
 
 interface ParticipantsTableProps {
   participants: ParticipantRecord[];

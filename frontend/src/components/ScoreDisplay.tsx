@@ -1,16 +1,18 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { Users, Trophy, FileText } from 'lucide-react';
 import HeatTimer from './HeatTimer';
-import { calculateSurfRequirement, calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
+import { calculateSurfRequirement } from '../utils/scoring';
+import { calculateShadowHeatResult } from '../domain/scoring/shadow';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
-import { fetchInterferenceCalls } from '../api/supabaseClient';
-import { getScoreJudgeStation } from '../api/modules/scoring.api';
+import { fetchInterferenceCalls } from '../api/modules/scoring.api';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
 import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
 import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { useHeatParticipantDetails } from '../hooks/useHeatParticipantDetails';
+import type { PanelContext } from '../domain/scoring/panelContext';
+import type { HeatResultSnapshot } from '../domain/scoring/contracts';
 
 import type {
   AppConfig,
@@ -32,6 +34,7 @@ interface ScoreDisplayProps {
   eventTopScoresOpen?: boolean;
   eventTopScoresLoading?: boolean;
   onToggleEventTopScores?: () => void;
+  panelContext: PanelContext;
 }
 
 // Couleurs officielles
@@ -178,9 +181,12 @@ export default function ScoreDisplay({
   eventTopScoresOpen = false,
   eventTopScoresLoading = false,
   onToggleEventTopScores,
+  panelContext,
 }: ScoreDisplayProps) {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [surferStats, setSurferStats] = useState<SurferStats[]>([]);
+  const [scoringIssue, setScoringIssue] = useState<string | null>(null);
+  const [heatResultSnapshot, setHeatResultSnapshot] = useState<HeatResultSnapshot | null>(null);
   const [eventData, setEventData] = useState<Record<string, any> | null>(null);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
   const { normalized: heatId } = getHeatIdentifiers(
@@ -249,13 +255,10 @@ export default function ScoreDisplay({
       try {
         const calls = await fetchInterferenceCalls(heatId);
         if (cancelled) return;
-        const observedJudgeCount = new Set(
-          scores
-            .map((score) => getScoreJudgeStation(score))
-            .filter(Boolean)
-        ).size;
-        const effectiveJudgeCount = observedJudgeCount > 0 ? observedJudgeCount : Math.max(config.judges.length, 1);
-        const computed = computeEffectiveInterferences(calls, effectiveJudgeCount);
+        const configuredJudgeCount = panelContext.judgeCount;
+        const computed = configuredJudgeCount
+          ? computeEffectiveInterferences(calls, configuredJudgeCount)
+          : [];
         setEffectiveInterferences(computed);
       } catch (error) {
         if (!cancelled) {
@@ -283,25 +286,32 @@ export default function ScoreDisplay({
       }
       unsubscribe();
     };
-  }, [configSaved, heatId, config.judges.length, scores]);
+  }, [configSaved, heatId, panelContext.judgeCount, scores]);
 
   // Calcul des stats
   useEffect(() => {
     if (!configSaved) return;
     if (!config || !config.surfers) return;
+    if (panelContext.judgeCount === null) {
+      setSurferStats([]);
+      setHeatResultSnapshot(null);
+      setScoringIssue(panelContext.message || 'Panel inconnu : calcul P2 désactivé.');
+      return;
+    }
 
-    const judgeCount = getEffectiveJudgeCount(scores, config.judges.length);
-    const stats = calculateSurferStats(
+    const result = calculateShadowHeatResult({
+      heatId,
       scores,
-      config.surfers,
-      judgeCount,
-      config.waves,
-      false,
+      surfers: config.surfers,
+      judgeCount: panelContext.judgeCount,
+      judgeStations: config.judges.length === panelContext.judgeCount ? config.judges : undefined,
+      maxWaves: config.waves,
       effectiveInterferences,
-      heatStatus
-    );
-    setSurferStats(stats);
-  }, [scores, configSaved, config, heatStatus, effectiveInterferences]);
+    });
+    setSurferStats(result.source === 'p2' && result.parity ? result.stats : []);
+    setHeatResultSnapshot(result.source === 'p2' && result.parity ? result.snapshot : null);
+    setScoringIssue(result.message);
+  }, [scores, configSaved, config, heatId, effectiveInterferences, panelContext]);
 
   if (!config?.competition) {
     return (
@@ -345,6 +355,15 @@ export default function ScoreDisplay({
 
   return (
     <div className="score-display w-full max-w-none mx-auto p-2 sm:p-4 lg:p-5 space-y-4 font-sans bg-hud-black min-h-screen text-slate-100">
+      {scoringIssue && (
+        <div
+          role="alert"
+          data-panel-state={panelContext.judgeCount === null ? (panelContext.issue || 'panel_unknown') : 'shadow_issue'}
+          className="rounded-xl border border-amber-400 bg-amber-950/80 px-4 py-3 text-sm font-bold text-amber-100"
+        >
+          {scoringIssue}
+        </div>
+      )}
       {/* HEADER WITH TIMER */}
       <div className="bg-slate-950/60 backdrop-blur-md border border-white/10 rounded-2xl p-3 sm:p-4 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-3 sticky top-2 z-50">
         <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full -mr-16 -mt-16 blur-3xl" />
@@ -391,8 +410,9 @@ export default function ScoreDisplay({
           </div>
           <button
             type="button"
-            onClick={() => { void exportHeatScorecardPdf({ config, scores, heatStatus, eventData }); }}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg border border-cyan-500/50 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-lg"
+            onClick={() => { exportHeatScorecardPdf({ config, snapshot: heatResultSnapshot, heatStatus, eventData }); }}
+            disabled={!heatResultSnapshot}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg border border-cyan-500/50 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
           >
             <FileText className="w-3.5 h-3.5" />
             PDF Scorecard

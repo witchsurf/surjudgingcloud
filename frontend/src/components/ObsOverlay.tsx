@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { calculateSurferStats } from '../utils/scoring';
 import { SURFER_COLORS } from '../utils/constants';
-import type { AppConfig, HeatTimer, Score, SurferStats } from '../types';
+import type { CompetitorHeatResult, HeatResultSnapshot } from '../domain/scoring/contracts';
+import type { AppConfig, HeatTimer } from '../types';
 
 interface ObsOverlayProps {
   config: AppConfig;
-  scores: Score[];
   timer: HeatTimer;
   heatStatus?: 'waiting' | 'running' | 'paused' | 'finished';
+  snapshot: HeatResultSnapshot | null;
+  scoringIssue?: string | null;
+  scoringMessage?: string | null;
 }
 
-type OverlayRow = SurferStats & {
+type OverlayRow = CompetitorHeatResult & {
   latestWave?: number;
   needsScore: number | null;
   bestScores: string[];
@@ -49,25 +51,26 @@ const getTextColorForJersey = (surfer: string): string => {
   return normalized === 'BLANC' || normalized === 'JAUNE' ? '#07111f' : '#ffffff';
 };
 
-const getNeedsScore = (stat: SurferStats, standings: SurferStats[]): number | null => {
+const getNeedsScore = (stat: CompetitorHeatResult, standings: readonly CompetitorHeatResult[]): number | null => {
   if (stat.rank <= 2) return null;
 
   const secondPlace = standings.find((item) => item.rank === 2);
   if (!secondPlace) return null;
 
-  const bestCurrentWave = stat.waves
-    .filter((wave) => wave.isComplete)
-    .reduce((best, wave) => Math.max(best, wave.score), 0);
+  const bestCurrentWaveNumber = stat.bestWaveNumbers[0];
+  const bestCurrentWave = stat.waves.find((wave) => wave.waveNumber === bestCurrentWaveNumber)?.average || 0;
 
-  const needed = secondPlace.bestTwo - bestCurrentWave + 0.01;
+  const needed = secondPlace.total - bestCurrentWave + 0.01;
   return needed > 0 ? Math.round(needed * 100) / 100 : 0.01;
 };
 
 export default function ObsOverlay({
   config,
-  scores,
   timer,
   heatStatus = 'waiting',
+  snapshot,
+  scoringIssue = null,
+  scoringMessage = null,
 }: ObsOverlayProps) {
   const [remainingSeconds, setRemainingSeconds] = useState(() => getRemainingSeconds(timer));
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -82,24 +85,19 @@ export default function ObsOverlay({
 
   useEffect(() => {
     setLastUpdate(new Date());
-  }, [scores, timer, config]);
+  }, [snapshot, timer, config]);
 
-  const standings = useMemo(
-    () => calculateSurferStats(scores, config.surfers, config.judges.length, config.waves),
-    [config.judges.length, config.surfers, config.waves, scores]
-  );
+  const standings = snapshot?.competitors || [];
 
   const rows: OverlayRow[] = useMemo(
     () =>
       standings.map((stat) => ({
         ...stat,
-        latestWave: stat.waves.filter((wave) => wave.score > 0).slice(-1)[0]?.wave,
+        latestWave: stat.waves.filter((wave) => Object.keys(wave.judgeScores).length > 0).slice(-1)[0]?.waveNumber,
         needsScore: getNeedsScore(stat, standings),
-        bestScores: [...stat.waves]
-          .filter((wave) => wave.isComplete)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 2)
-          .map((wave) => wave.score.toFixed(2)),
+        bestScores: stat.bestWaveNumbers.map((waveNumber) =>
+          stat.waves.find((wave) => wave.waveNumber === waveNumber)?.average.toFixed(2) || '--'
+        ),
       })),
     [standings]
   );
@@ -121,6 +119,15 @@ export default function ObsOverlay({
   return (
     <main className="obs-overlay min-h-screen bg-transparent p-6 font-sans text-white">
       <section className="w-[640px] max-w-[52vw] overflow-hidden rounded-sm bg-slate-950/88 shadow-2xl ring-1 ring-white/15 backdrop-blur-[2px]">
+        {scoringMessage && (
+          <div
+            role="alert"
+            data-overlay-scoring-state={scoringIssue || 'unknown'}
+            className="border-b border-amber-300/40 bg-amber-950/95 px-4 py-2 text-xs font-bold text-amber-100"
+          >
+            {scoringMessage}
+          </div>
+        )}
         <header className="grid grid-cols-[88px_1fr_112px] items-stretch bg-slate-950/95 text-white">
           <div className="flex items-center justify-center bg-white px-3 py-2 text-base font-black tracking-tight text-slate-950">
             SURF
@@ -156,15 +163,17 @@ export default function ObsOverlay({
 
         <div>
           {rows.map((row) => {
-            const jersey = row.surfer.trim().toUpperCase();
-            const jerseyColor = SURFER_COLORS[jersey] ?? row.color;
+            const jersey = row.lycraColor.trim().toUpperCase();
+            const jerseyColor = SURFER_COLORS[jersey] ?? '#6b7280';
             const textColor = getTextColorForJersey(jersey);
-            const displayName = surferNames[jersey] || surferNames[row.surfer] || row.surfer;
-            const country = surferCountries[jersey] || surferCountries[row.surfer];
+            const displayName = surferNames[jersey] || surferNames[row.lycraColor] || row.lycraColor;
+            const country = surferCountries[jersey] || surferCountries[row.lycraColor];
 
             return (
               <div
-                key={row.surfer}
+                key={row.lycraColor}
+                data-overlay-lycra={row.lycraColor}
+                data-overlay-rank={row.rank}
                 className="grid grid-cols-[44px_1fr_82px_122px_94px] items-center border-t border-white/10 bg-slate-900/90 text-sm"
               >
                 <div className="flex h-full items-center justify-center border-r border-white/10 text-lg font-black">
@@ -184,13 +193,15 @@ export default function ObsOverlay({
                       {displayName}
                     </div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      {country ? country.toUpperCase() : row.latestWave ? `Wave ${row.latestWave}` : 'Awaiting score'}
+                      {row.interferenceType
+                        ? `${row.interferenceType} · ${country ? country.toUpperCase() : `Wave ${row.latestWave || '-'}`}`
+                        : country ? country.toUpperCase() : row.latestWave ? `Wave ${row.latestWave}` : 'Awaiting score'}
                     </div>
                   </div>
                 </div>
 
                 <div className="px-2 text-center font-mono text-lg font-black tabular-nums">
-                  {row.bestTwo.toFixed(2)}
+                  {row.total.toFixed(2)}
                 </div>
 
                 <div className="flex justify-center gap-2 px-2 font-mono text-sm font-bold tabular-nums text-slate-200">

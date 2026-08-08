@@ -8,13 +8,13 @@ import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { parseActiveHeatId } from '../api/supabaseClient';
+import { parseActiveHeatId } from '../utils/activeHeatId';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { getPodiumIdFromSearch } from '../utils/podium';
 import type { AppConfig } from '../types';
-import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
+import { upsertHeatRealtimeConfig } from '../api/modules/heats.api';
 
 export default function PriorityJudgePage() {
     const { currentJudge, login, logout } = useAuthStore();

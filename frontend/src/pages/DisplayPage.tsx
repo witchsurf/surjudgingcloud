@@ -5,22 +5,26 @@ import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import {
     fetchAllEventHeats,
-    fetchAllInterferenceCallsForEvent,
-    fetchPreferredScoresForEvent,
     fetchHeatMetadata,
-    fetchHeatScores,
     fetchHeatEntriesWithParticipants,
     fetchHeatEntriesWithParticipantsBatch,
     fetchHeatSlotMappings,
-    fetchHeatSlotMappingsBatch,
-    parseActiveHeatId
-} from '../api/supabaseClient';
+    fetchHeatSlotMappingsBatch
+} from '../api/modules/heats.api';
+import {
+    fetchAllInterferenceCallsForEvent,
+    fetchPreferredScoresForEvent,
+    fetchHeatScores,
+} from '../api/modules/scoring.api';
+import { parseActiveHeatId } from '../utils/activeHeatId';
 import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
-import { calculateSurferStats, getEffectiveJudgeCount } from '../utils/scoring';
+import { calculateShadowHeatResult } from '../domain/scoring/shadow';
+import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
+import type { PanelContext } from '../domain/scoring/panelContext';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { colorLabelMap } from '../utils/colorUtils';
@@ -224,6 +228,7 @@ const buildResolvedLineupsByHeat = ({
     realtimeLineupsByHeat,
     interferenceCallsByHeat,
     groupedScores,
+    panelContexts,
 }: {
     historyHeats: Record<string, RoundSpec[]>;
     entriesByHeat: Map<string, Awaited<ReturnType<typeof fetchHeatEntriesWithParticipants>>>;
@@ -231,6 +236,7 @@ const buildResolvedLineupsByHeat = ({
     realtimeLineupsByHeat: Map<string, Record<string, { name: string; country?: string }>>;
     interferenceCallsByHeat: Awaited<ReturnType<typeof fetchAllInterferenceCallsForEvent>>;
     groupedScores: Record<string, Score[]>;
+    panelContexts: ReadonlyMap<string, PanelContext>;
 }) => {
     const resolvedLineupsByHeat = new Map<string, Record<string, { name: string; country?: string }>>();
     const sourceRanksByHeat = new Map<string, Map<number, { name: string; country?: string }>>();
@@ -363,21 +369,24 @@ const buildResolvedLineupsByHeat = ({
                             const sourceScores = normalizeScores(groupedScores[sourceHeatId] || []);
                             const sourceSurfers = Object.keys(sourceLineup);
                             if (sourceSurfers.length && sourceScores.length) {
-                                const sourceJudgeCount = getEffectiveJudgeCount(sourceScores);
+                                const sourcePanel = panelContexts.get(sourceHeatId);
+                                const sourceJudgeCount = sourcePanel?.judgeCount;
+                                if (!sourceJudgeCount) return;
                                 const sourceMaxWaves = Math.max(1, ...sourceScores.map((score) => Number(score.wave_number) || 0));
                                 const sourceEffectiveInterferences = computeEffectiveInterferences(
                                     interferenceCallsByHeat[sourceHeatId] || [],
                                     Math.max(sourceJudgeCount, 1)
                                 );
-                                const sourceStats = calculateSurferStats(
-                                    sourceScores,
-                                    sourceSurfers,
-                                    sourceJudgeCount,
-                                    sourceMaxWaves,
-                                    false,
-                                    sourceEffectiveInterferences,
-                                    sourceHeat.heat.status
-                                );
+                                const sourceShadow = calculateShadowHeatResult({
+                                    heatId: sourceHeatId,
+                                    scores: sourceScores,
+                                    surfers: sourceSurfers,
+                                    judgeCount: sourceJudgeCount,
+                                    maxWaves: sourceMaxWaves,
+                                    effectiveInterferences: sourceEffectiveInterferences,
+                                });
+                                if (sourceShadow.source !== 'p2' || !sourceShadow.parity) return;
+                                const sourceStats = sourceShadow.stats;
                                 const rankMap = new Map<number, { name: string; country?: string }>();
                                 sourceStats
                                     .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
@@ -437,21 +446,24 @@ const buildResolvedLineupsByHeat = ({
                     if (!surfers.length) return;
 
                     const normalizedScores = normalizeScores(heatScores);
-                    const judgeCount = getEffectiveJudgeCount(normalizedScores);
+                    const panel = panelContexts.get(heat.heatId);
+                    const judgeCount = panel?.judgeCount;
+                    if (!judgeCount) return;
                     const maxWaves = Math.max(1, ...normalizedScores.map((score) => Number(score.wave_number) || 0));
                     const effectiveInterferences = computeEffectiveInterferences(
                         interferenceCallsByHeat[heat.heatId] || [],
                         Math.max(judgeCount, 1)
                     );
-                    const stats = calculateSurferStats(
-                        normalizedScores,
+                    const shadow = calculateShadowHeatResult({
+                        heatId: heat.heatId,
+                        scores: normalizedScores,
                         surfers,
                         judgeCount,
                         maxWaves,
-                        false,
                         effectiveInterferences,
-                        heat.status
-                    );
+                    });
+                    if (shadow.source !== 'p2' || !shadow.parity) return;
+                    const stats = shadow.stats;
 
                     stats
                         .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
@@ -643,6 +655,20 @@ const normalizeConfig = (appConfig: AppConfig) => {
     };
 };
 
+const unknownPanelContext = (message = 'Panel inconnu : résolution en attente.'): PanelContext => ({
+    judgeCount: null,
+    source: 'unknown',
+    issue: 'panel_unknown',
+    message,
+});
+
+const networkPanelContext = (error: unknown): PanelContext => ({
+    judgeCount: null,
+    source: 'unknown',
+    issue: 'network_error',
+    message: `Erreur réseau de lecture du panel : ${error instanceof Error ? error.message : String(error)}`,
+});
+
 export default function DisplayPage() {
     const { config, configSaved, activeEventId, setConfig, initializeFromUrl, loadKioskConfig, loadConfigFromDb } = useConfigStore();
     const { scores, timer, setTimer, heatStatus, setHeatStatus, setScores } = useJudgingStore();
@@ -657,6 +683,8 @@ export default function DisplayPage() {
     const [selectedHistoryHeatId, setSelectedHistoryHeatId] = useState<string | null>(null);
     const [historyConfig, setHistoryConfig] = useState<AppConfig | null>(null);
     const [historyScores, setHistoryScores] = useState<Score[]>([]);
+    const [livePanelContext, setLivePanelContext] = useState<PanelContext>(() => unknownPanelContext());
+    const [historyPanelContext, setHistoryPanelContext] = useState<PanelContext>(() => unknownPanelContext());
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [liveHeatCountries, setLiveHeatCountries] = useState<Record<string, string>>({});
     const [eventTopScores, setEventTopScores] = useState<EventTopScoreEntry[]>([]);
@@ -775,8 +803,10 @@ export default function DisplayPage() {
 
         setIsLoadingHistory(true);
         setSelectedHistoryHeatId(heatId);
+        setHistoryPanelContext(unknownPanelContext('Panel inconnu : résolution de l’archive en cours.'));
 
         try {
+            const selectedPanelPromise = getCachedPanelContexts([heatId]);
             // 1. Fetch metadata (round, division, etc.)
             const metadata = await fetchHeatMetadata(heatId);
             if (!metadata) throw new Error("Heat metadata not found");
@@ -807,6 +837,8 @@ export default function DisplayPage() {
                 if (divisionRounds.length > 0) {
                     const rounds = JSON.parse(JSON.stringify(divisionRounds)) as RoundSpec[];
                     const allScores = await fetchPreferredScoresForEvent(activeEventId);
+                    const historicalHeatIds = rounds.flatMap((round) => round.heats.map((heat) => heat.heatId)).filter(Boolean) as string[];
+                    const panelContexts = await getCachedPanelContexts(historicalHeatIds);
                     const qualifierMap = new Map<string, string>();
                     const bestSecondByRound = new Map<number, { name: string; score: number }>();
 
@@ -844,16 +876,17 @@ export default function DisplayPage() {
                                     ...score,
                                     surfer: normalizeColorCode(score.surfer) || score.surfer
                                 }));
-                                const configuredJudgeCount = Math.max(config.judges.length, 1);
-                                const stats = calculateSurferStats(
-                                    normalizedScores,
+                                const historicalPanel = panelContexts.get(heat.heatId);
+                                if (!historicalPanel?.judgeCount) return;
+                                const shadow = calculateShadowHeatResult({
+                                    heatId: heat.heatId,
+                                    scores: normalizedScores,
                                     surfers,
-                                    configuredJudgeCount,
-                                    config.waves,
-                                    false,
-                                    [],
-                                    heat.status
-                                );
+                                    judgeCount: historicalPanel.judgeCount,
+                                    maxWaves: config.waves,
+                                });
+                                if (shadow.source !== 'p2' || !shadow.parity) return;
+                                const stats = shadow.stats;
 
                                 stats
                                     .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
@@ -905,6 +938,8 @@ export default function DisplayPage() {
 
             // 3. Fetch scores
             const rawScores = await fetchHeatScores(heatId);
+            const selectedPanelContexts = await selectedPanelPromise;
+            const selectedPanelContext = selectedPanelContexts.get(heatId) || unknownPanelContext();
 
             // 4. Transform scores to expected format
             // (fetchHeatScores already returns Score[] format compatible with our store)
@@ -939,6 +974,7 @@ export default function DisplayPage() {
 
             setHistoryConfig(normalizeConfig(syntheticConfig));
             setHistoryScores(normalizeScores(rawScores));
+            setHistoryPanelContext(selectedPanelContext);
             setViewMode('history');
 
         } catch (err) {
@@ -961,10 +997,13 @@ export default function DisplayPage() {
                     .map((heatId) => heatId.trim())
                     .filter(Boolean)
             ));
-            const [entriesByHeat, slotMappingsByHeat, realtimeLineupsByHeat] = await Promise.all([
+            const [entriesByHeat, slotMappingsByHeat, realtimeLineupsByHeat, panelContexts] = await Promise.all([
                 fetchHeatEntriesWithParticipantsBatch(uniqueHeatIds),
                 fetchHeatSlotMappingsBatch(uniqueHeatIds),
                 fetchRealtimeLineupsByHeat(uniqueHeatIds),
+                getCachedPanelContexts(uniqueHeatIds, liveHeatIdRef.current
+                    ? { [liveHeatIdRef.current]: configRef.current.judges }
+                    : undefined),
             ]);
 
             const resolvedLineupsByHeat = buildResolvedLineupsByHeat({
@@ -974,6 +1013,7 @@ export default function DisplayPage() {
                 realtimeLineupsByHeat,
                 interferenceCallsByHeat,
                 groupedScores,
+                panelContexts,
             });
 
             const topEntries = Object.entries(groupedScores)
@@ -991,9 +1031,18 @@ export default function DisplayPage() {
                     const surfers = Array.from(new Set([...lineupColors, ...scoreColors]));
                     if (!surfers.length) return [];
 
-                    const judgeCount = getEffectiveJudgeCount(normalizedHeatScores);
+                    const judgeCount = panelContexts.get(heatId)?.judgeCount;
+                    if (!judgeCount) return [];
                     const maxWaves = Math.max(1, ...normalizedHeatScores.map((score) => Number(score.wave_number) || 0));
-                    const stats = calculateSurferStats(normalizedHeatScores, surfers, judgeCount, maxWaves, false, []);
+                    const shadow = calculateShadowHeatResult({
+                        heatId,
+                        scores: normalizedHeatScores,
+                        surfers,
+                        judgeCount,
+                        maxWaves,
+                    });
+                    if (shadow.source !== 'p2' || !shadow.parity) return [];
+                    const stats = shadow.stats;
                     const parsedHeat = parseActiveHeatId(heatId);
                     const resolvedLineup = resolvedLineupsByHeat.get(heatId) || {};
 
@@ -1073,6 +1122,7 @@ export default function DisplayPage() {
         setViewMode('live');
         setSelectedHistoryHeatId(null);
         setHistoryConfig(null);
+        setHistoryPanelContext(unknownPanelContext());
     };
 
 
@@ -1116,6 +1166,29 @@ export default function DisplayPage() {
     useEffect(() => {
         liveHeatIdRef.current = currentHeatId;
     }, [currentHeatId]);
+
+    const liveJudgeSnapshotKey = config.judges.join('|');
+    useEffect(() => {
+        let cancelled = false;
+        if (!configSaved || !currentHeatId) {
+            setLivePanelContext(unknownPanelContext());
+            return () => { cancelled = true; };
+        }
+
+        setLivePanelContext(unknownPanelContext('Panel inconnu : résolution en cours.'));
+        void getCachedPanelContexts([currentHeatId], { [currentHeatId]: config.judges })
+            .then((contexts) => {
+                if (!cancelled) {
+                    setLivePanelContext(contexts.get(currentHeatId) || unknownPanelContext());
+                }
+            })
+            .catch((error) => {
+                console.error('[P2 DisplayPage panel read error]', { heatId: currentHeatId, error });
+                if (!cancelled) setLivePanelContext(networkPanelContext(error));
+            });
+
+        return () => { cancelled = true; };
+    }, [configSaved, currentHeatId, liveJudgeSnapshotKey]);
 
     // Load participant names for current heat
     const { participants: heatParticipants, source: heatParticipantsSource } = useHeatParticipants(currentHeatId);
@@ -1203,10 +1276,11 @@ export default function DisplayPage() {
                 );
                 if (!uniqueHeatIds.length) return;
 
-                const [entriesByHeat, slotMappingsByHeat, realtimeLineupsByHeat] = await Promise.all([
+                const [entriesByHeat, slotMappingsByHeat, realtimeLineupsByHeat, panelContexts] = await Promise.all([
                     fetchHeatEntriesWithParticipantsBatch(uniqueHeatIds),
                     fetchHeatSlotMappingsBatch(uniqueHeatIds),
                     fetchRealtimeLineupsByHeat(uniqueHeatIds),
+                    getCachedPanelContexts(uniqueHeatIds, { [currentHeatId]: configRef.current.judges }),
                 ]);
 
                 const resolvedLineupsByHeat = buildResolvedLineupsByHeat({
@@ -1216,6 +1290,7 @@ export default function DisplayPage() {
                     realtimeLineupsByHeat,
                     interferenceCallsByHeat,
                     groupedScores,
+                    panelContexts,
                 });
 
                 const liveLineup = resolvedLineupsByHeat.get(currentHeatId);
@@ -1493,6 +1568,7 @@ export default function DisplayPage() {
                             eventTopScoresOpen={eventTopScoresOpen}
                             eventTopScoresLoading={eventTopScoresLoading}
                             onToggleEventTopScores={activeEventId ? handleToggleEventTopScores : undefined}
+                            panelContext={livePanelContext}
                         />
                     ) : (
                         <div className="space-y-6">
@@ -1513,6 +1589,7 @@ export default function DisplayPage() {
                                         configSaved={true}
                                         heatSeriesLabel={historySeriesLabel}
                                         heatStatus="finished"
+                                        panelContext={historyPanelContext}
                                     />
                                 </div>
                             )}

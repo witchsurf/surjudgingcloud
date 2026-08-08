@@ -5,11 +5,13 @@ import {
     fetchHeatEntriesWithParticipants,
     fetchHeatSlotMappings,
     fetchHeatMetadata,
+    fetchCategoryHeats,
+} from '../api/modules/heats.api';
+import {
     fetchHeatScores,
     fetchInterferenceCalls,
-    fetchCategoryHeats,
     fetchPreferredScoresForEvent
-} from '../api/supabaseClient';
+} from '../api/modules/scoring.api';
 import { calculateSurferStats } from '../utils/scoring';
 import { colorLabelMap } from '../utils/colorUtils';
 import { computeEffectiveInterferences } from '../utils/interference';

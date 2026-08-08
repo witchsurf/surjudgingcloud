@@ -9,8 +9,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AppConfig } from '../types';
 import { INITIAL_CONFIG } from '../utils/constants';
-import { eventRepository, heatRepository } from '../repositories';
-import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchActiveHeatPointer, fetchHeatMetadata, fetchHeatSlotMappings, fetchPodiumJudgePanel, parseActiveHeatId, upsertActiveHeatPointer } from '../api/supabaseClient';
+import { activeHeatPointerRepository, eventRepository, panelRepository } from '../repositories';
+import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchHeatMetadata, fetchHeatSlotMappings } from '../api/modules/heats.api';
 import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { logger } from '../lib/logger';
@@ -18,6 +18,7 @@ import type { EventConfigSnapshot } from '../repositories';
 import { supabase } from '../lib/supabase';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { getPodiumIdFromSearch, normalizePodiumId, shouldPreferActivePointer } from '../utils/podium';
+import { parseActiveHeatId } from '../utils/activeHeatId';
 
 interface ConfigStore {
     // State
@@ -99,7 +100,7 @@ const buildConfigFromSnapshot = (snapshot: EventConfigSnapshot): AppConfig => {
 
 const applyHeatJudgeAssignments = async (config: AppConfig, heatId: string): Promise<AppConfig> => {
     try {
-        const assignments = await heatRepository.fetchHeatJudgeAssignments(heatId);
+        const assignments = await panelRepository.listHeatAssignments(heatId);
         if (assignments.length === 0) {
             return config;
         }
@@ -109,11 +110,11 @@ const applyHeatJudgeAssignments = async (config: AppConfig, heatId: string): Pro
         );
 
         const judgeNames = sortedAssignments.reduce<Record<string, string>>((acc, assignment) => {
-            acc[assignment.station] = assignment.judge_name;
+            acc[assignment.station] = assignment.judgeName;
             return acc;
         }, {});
         const judgeIdentities = sortedAssignments.reduce<Record<string, string>>((acc, assignment) => {
-            acc[assignment.station] = assignment.judge_id;
+            acc[assignment.station] = assignment.judgeId;
             return acc;
         }, {});
 
@@ -135,10 +136,10 @@ const applyPodiumJudgePanel = async (
     podiumId: string,
 ): Promise<AppConfig> => {
     try {
-        const panel = await fetchPodiumJudgePanel(eventId, podiumId);
-        if (panel.length === 0) return config;
+        const panel = await panelRepository.getPodiumPanel(eventId, podiumId);
+        if (!panel || panel.assignments.length === 0) return config;
 
-        const sortedPanel = [...panel].sort((left, right) =>
+        const sortedPanel = [...panel.assignments].sort((left, right) =>
             left.station.localeCompare(right.station, undefined, { numeric: true, sensitivity: 'base' })
         );
 
@@ -146,10 +147,10 @@ const applyPodiumJudgePanel = async (
             ...config,
             judges: sortedPanel.map((assignment) => assignment.station),
             judgeNames: Object.fromEntries(
-                sortedPanel.map((assignment) => [assignment.station, assignment.judge_name])
+                sortedPanel.map((assignment) => [assignment.station, assignment.judgeName])
             ),
             judgeIdentities: Object.fromEntries(
-                sortedPanel.map((assignment) => [assignment.station, assignment.judge_id])
+                sortedPanel.map((assignment) => [assignment.station, assignment.judgeId])
             ),
         };
     } catch (error) {
@@ -211,24 +212,24 @@ export const useConfigStore = create<ConfigStore>()(
                         return;
                     }
 
-                    const activeHeat = await fetchActiveHeatPointer(null, undefined, podiumId);
+                    const activeHeat = await activeHeatPointerRepository.get({ eventId: null, podiumId });
 
                     if (activeHeat) {
                         logger.info('ConfigStore', 'Active heat pointer found', activeHeat);
-                        if (activeHeat.event_id) {
-                            set({ activeEventId: activeHeat.event_id });
-                            await get().loadConfigFromDb(activeHeat.event_id, { podiumId });
+                        if (activeHeat.eventId) {
+                            set({ activeEventId: activeHeat.eventId });
+                            await get().loadConfigFromDb(activeHeat.eventId, { podiumId });
                             return;
                         }
 
-                        const parsed = parseActiveHeatId(activeHeat.active_heat_id);
+                        const parsed = parseActiveHeatId(activeHeat.activeHeatId);
 
                         if (parsed) {
                             logger.info('ConfigStore', 'Parsed heat config', parsed);
 
-                            let eventId = activeHeat.event_id ?? null;
+                            let eventId = activeHeat.eventId ?? null;
                             if (!eventId) {
-                                const heatMetadata = await fetchHeatMetadata(activeHeat.active_heat_id);
+                                const heatMetadata = await fetchHeatMetadata(activeHeat.activeHeatId);
                                 eventId = heatMetadata?.event_id ?? null;
                             }
                             if (!eventId) {
@@ -302,7 +303,7 @@ export const useConfigStore = create<ConfigStore>()(
                         // otherwise podium B can inherit A's lineup after a reload.
                         if (preferActivePointer && snapshot?.event_name) {
                             try {
-                                const activeHeat = await fetchActiveHeatPointer(eventId, snapshot.event_name, podiumId);
+                                const activeHeat = await activeHeatPointerRepository.get({ eventId, eventName: snapshot.event_name, podiumId });
                                 if (!activeHeat && podiumId !== 'A') {
                                     logger.warn('ConfigStore', 'No active heat assigned to requested podium', {
                                         eventId,
@@ -319,11 +320,11 @@ export const useConfigStore = create<ConfigStore>()(
                                 }
 
                                 if (activeHeat) {
-                                    const parsed = parseActiveHeatId(activeHeat.active_heat_id);
+                                    const parsed = parseActiveHeatId(activeHeat.activeHeatId);
                                     const pointerWins = shouldPreferActivePointer(
                                         podiumId,
                                         snapshot.updated_at,
-                                        activeHeat.updated_at,
+                                        activeHeat.updatedAt,
                                     );
                                     if (parsed && pointerWins) {
                                         logger.info('ConfigStore', 'Active heat pointer selected for podium', {
@@ -519,7 +520,7 @@ export const useConfigStore = create<ConfigStore>()(
 
                     if (supabase) {
                         try {
-                            await upsertActiveHeatPointer({
+                            await activeHeatPointerRepository.upsert({
                                 eventId: eventId,
                                 eventName: config.competition,
                                 podiumId: 'A',
@@ -531,14 +532,14 @@ export const useConfigStore = create<ConfigStore>()(
                         }
                     }
 
-                    await heatRepository.saveHeatConfig(heatId, {
-                        event_id: eventId,
+                    await heatRepository.saveConfiguration(heatId, {
+                        eventId,
                         judges: config.judges,
-                        judge_names: config.judgeNames,
-                        judge_identities: config.judgeIdentities,
+                        judgeNames: config.judgeNames,
+                        judgeIdentities: config.judgeIdentities,
                         surfers: config.surfers || [],
                         waves: config.waves,
-                        tournament_type: config.tournamentType
+                        tournamentType: config.tournamentType
                     });
 
                     logger.info('ConfigStore', 'Config saved to DB successfully');

@@ -7,23 +7,20 @@ import {
         fetchOrderedHeatSequence,
         fetchHeatEntriesWithParticipants,
         fetchHeatSlotMappings,
-        fetchInterferenceCalls,
-        replaceHeatEntries,
-        propagateQualifiersForSourceHeat,
-        activateHeatOnPodium,
-        closeHeatOnPodium,
-} from '../api/supabaseClient';
+} from '../api/modules/heats.api';
+import { fetchInterferenceCalls } from '../api/modules/scoring.api';
 import { canUseSupabaseConnection, isSupabaseConfigured, supabase } from '../lib/supabase';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
-import { eventRepository } from '../repositories';
+import { eventRepository, heatLifecycleRepository, heatRepository, qualificationRecoveryRepository } from '../repositories';
 import { HEAT_COLOR_CACHE_KEY, DEFAULT_TIMER_DURATION } from '../utils/constants';
 import { getNextHeatSyncTarget, resolveEventIdForHeat } from '../utils/heatWorkflow';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 import type { AppConfig } from '../types';
 import { normalizePodiumId } from '../utils/podium';
+import { isAnyHeatCloseRpcUnavailable } from '../utils/heatCloseErrors';
 
 // Helper to normalize heat entries
 const normalizeHeatEntries = (entries: unknown): any[] => {
@@ -143,7 +140,7 @@ export function useHeatManager() {
 
         try {
             if (resolvedEventId && isSupabaseConfigured()) {
-                const result = await closeHeatOnPodium({
+                const result = await heatLifecycleRepository.close({
                     eventId: resolvedEventId,
                     podiumId,
                     heatId: currentDbHeatId,
@@ -153,8 +150,8 @@ export function useHeatManager() {
                 });
                 atomicCloseSucceeded = true;
                 atomicQualifierSlots =
-                    Number(result.qualifier_slots_updated || 0)
-                    + Number(result.division_slots_rebuilt || 0);
+                    result.qualifierSlotsUpdated
+                    + result.divisionSlotsRebuilt;
                 console.log('✅ Heat fermé atomiquement:', result);
             } else {
                 await updateHeatStatus(currentDbHeatId, 'closed', closedAt);
@@ -167,7 +164,7 @@ export function useHeatManager() {
             : error && typeof error === 'object' && 'message' in error
               ? String(error.message)
               : String(error || '');
-            const rpcUnavailable = /close_heat_on_podium|schema cache|function.*not found/i.test(message);
+            const rpcUnavailable = isAnyHeatCloseRpcUnavailable(error);
             if (rpcUnavailable && !closeOptions?.force) {
                 await updateHeatStatus(currentDbHeatId, 'closed', closedAt);
                 console.warn('RPC de fermeture podium indisponible, fermeture legacy appliquée.');
@@ -234,7 +231,7 @@ export function useHeatManager() {
 
         if (hasCurrentHeatResults && resolvedEventId && isSupabaseConfigured()) {
             try {
-                const updatedSlots = await propagateQualifiersForSourceHeat(currentDbHeatId);
+                const updatedSlots = await qualificationRecoveryRepository.propagateSourceHeat(currentDbHeatId);
                 qualifiersHandledByDatabase = true;
                 console.log(`✅ Qualifiés propagés côté base pour ${currentDbHeatId}: ${updatedSlots} slot(s)`);
             } catch (error) {
@@ -433,7 +430,12 @@ export function useHeatManager() {
 
                         if (updates.length) {
                             try {
-                                await replaceHeatEntries(heatMeta.id, updates);
+                                await heatRepository.replaceEntries(heatMeta.id, updates.map((row) => ({
+                                    position: row.position,
+                                    participantId: row.participant_id,
+                                    seed: row.seed,
+                                    color: row.color,
+                                })));
                                 colorCache[heatMeta.id] = {
                                     ...(colorCache[heatMeta.id] ?? {}),
                                     ...cacheEntries,
@@ -684,7 +686,7 @@ export function useHeatManager() {
                     throw new Error('Événement introuvable pour activer le prochain heat.');
                 }
 
-                await activateHeatOnPodium({
+                await heatLifecycleRepository.activate({
                     eventId: targetEventId,
                     podiumId,
                     heatId: nextHeatPointer,

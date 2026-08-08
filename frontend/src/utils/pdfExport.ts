@@ -2,14 +2,14 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { RoundSpec } from './bracket';
 import type { AppConfig, InterferenceCall, Score } from '../types';
-import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { colorLabelMap } from './colorUtils';
-import { calculateSurferStats } from './scoring';
 import { calculateFinalRankings, selectDivisionFinalists } from './ranking';
-import { computeEffectiveInterferences } from './interference';
 import { inferImplicitMappingsForHeat } from './heatSlotMappingInference';
 import type { ParticipantRecord } from '../api/modules/participants.api';
 import type { HeatRow } from '../api/modules/heats.api';
+import type { HeatResultSnapshot } from '../domain/scoring/contracts';
+import { requireCanonicalHeatSnapshots, type CanonicalHeatSnapshotRequest } from '../domain/scoring/canonicalHeatSnapshots';
+import { panelRepository } from '../repositories/PanelRepository';
 
 interface HeatResultHistoryEntry {
   heatKey: string;
@@ -43,7 +43,6 @@ interface FullCompetitionExportPayload {
   divisions: Record<string, RoundSpec[]>;
   scores: Record<string, Score[]>;
   interferenceCalls?: Record<string, InterferenceCall[]>;
-  configuredJudgeCount?: number;
 }
 
 const slugify = (value: string) =>
@@ -402,14 +401,14 @@ const getSeedPriority = (color: string) => {
 // ============================================================
 export function exportHeatScorecardPdf({
   config,
-  scores,
+  snapshot,
   surferNames,
   surferCountries,
   heatStatus,
   eventData,
 }: {
   config: AppConfig;
-  scores: Score[];
+  snapshot: HeatResultSnapshot | null;
   surferNames?: Record<string, string>;
   surferCountries?: Record<string, string>;
   heatStatus?: string;
@@ -417,6 +416,9 @@ export function exportHeatScorecardPdf({
 }) {
   if (!config?.competition) {
     throw new Error('Configuration de heat invalide pour export PDF');
+  }
+  if (!snapshot) {
+    throw new Error('Résultat canonique indisponible : export PDF bloqué.');
   }
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt' });
@@ -494,9 +496,7 @@ export function exportHeatScorecardPdf({
   doc.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, pageW - 20, 72, { align: 'right' });
 
   // ── TABLE ─────────────────────────────────────────────────
-  const stats = calculateSurferStats(scores, config.surfers, config.judges.length, config.waves, false, [], heatStatus);
-
-  if (!stats.length) {
+  if (!snapshot.competitors.length) {
     doc.setTextColor(...DS.gray700);
     doc.setFontSize(13);
     doc.text('Aucune note enregistrée pour ce heat.', pageW / 2, 200, { align: 'center' });
@@ -504,31 +504,33 @@ export function exportHeatScorecardPdf({
     return;
   }
 
-  const ordered = [...stats].sort((a, b) => {
+  const ordered = [...snapshot.competitors].sort((a, b) => {
     const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
     if (rankDiff !== 0) return rankDiff;
-    return getSeedPriority(a.surfer) - getSeedPriority(b.surfer);
+    return getSeedPriority(a.lycraColor) - getSeedPriority(b.lycraColor);
   });
 
-  const maxTaken = Math.max(...stats.map(s => s.waves.filter(w => w.score > 0).length), 0);
+  const maxTaken = Math.max(...snapshot.competitors.map((competitor) => competitor.waves.filter((wave) => Object.keys(wave.judgeScores).length > 0).length), 0);
   const columnsToShow = Math.max(1, Math.min(config.waves, Math.max(maxTaken, 5)));
   const waveKeys = Array.from({ length: columnsToShow }, (_, i) => i + 1);
 
-  const head: string[] = ['#', 'LYCRA', 'SURFEUR', 'PAYS', ...waveKeys.map(w => `V${w}`), 'BEST 2'];
+  const head: string[] = ['#', 'LYCRA', 'SURFEUR', 'PAYS', ...waveKeys.map(w => `V${w}`), 'BEST 2', 'TOTAL', 'INT'];
 
   const body = ordered.map((stat) => {
     const row: (string | number)[] = [];
-    const displayName = namesMap[stat.surfer] ?? stat.surfer;
-    const country = countriesMap[stat.surfer] ?? '';
+    const displayName = namesMap[stat.lycraColor] ?? stat.lycraColor;
+    const country = countriesMap[stat.lycraColor] ?? '';
     row.push(stat.rank ?? '-');
-    row.push(normalizeLycraForPdf(colorLabelMap[stat.surfer as keyof typeof colorLabelMap] ?? stat.surfer));
+    row.push(normalizeLycraForPdf(colorLabelMap[stat.lycraColor as keyof typeof colorLabelMap] ?? stat.lycraColor));
     row.push(displayName);
     row.push(country);
     waveKeys.forEach(wIdx => {
-      const wave = stat.waves.find((w) => w.wave === wIdx);
-      row.push(wave && wave.score > 0 ? wave.score.toFixed(2) : '—');
+      const wave = stat.waves.find((candidate) => candidate.waveNumber === wIdx);
+      row.push(wave && Object.keys(wave.judgeScores).length > 0 ? wave.average.toFixed(2) : '—');
     });
-    row.push((stat.bestTwo ?? 0).toFixed(2));
+    row.push(stat.bestWaveNumbers.map((waveNumber) => stat.waves.find((wave) => wave.waveNumber === waveNumber)?.average.toFixed(2) || '--').join(' + ') || '--');
+    row.push(stat.total.toFixed(2));
+    row.push(stat.disqualified ? 'DSQ' : stat.interferenceType ? `${stat.interferenceType} (${stat.interferenceCount})` : '—');
     return row;
   });
 
@@ -538,14 +540,18 @@ export function exportHeatScorecardPdf({
     lycra: 52,
     surfer: 140,
     country: 56,
-    bestTwo: 42,
+    bestTwo: 72,
+    total: 42,
+    interference: 52,
   };
   const scorecardReservedWidth =
     scorecardBaseWidths.rank +
     scorecardBaseWidths.lycra +
     scorecardBaseWidths.surfer +
     scorecardBaseWidths.country +
-    scorecardBaseWidths.bestTwo;
+    scorecardBaseWidths.bestTwo +
+    scorecardBaseWidths.total +
+    scorecardBaseWidths.interference;
   const scorecardWaveWidth = clamp(
     (scorecardUsableWidth - scorecardReservedWidth) / Math.max(columnsToShow, 1),
     16,
@@ -557,6 +563,8 @@ export function exportHeatScorecardPdf({
       scorecardBaseWidths.lycra +
       scorecardBaseWidths.country +
       scorecardBaseWidths.bestTwo +
+      scorecardBaseWidths.total +
+      scorecardBaseWidths.interference +
       scorecardWaveWidth * columnsToShow
     ),
     92,
@@ -568,6 +576,8 @@ export function exportHeatScorecardPdf({
       scorecardBaseWidths.lycra +
       scorecardSurferWidth +
       scorecardBaseWidths.bestTwo +
+      scorecardBaseWidths.total +
+      scorecardBaseWidths.interference +
       scorecardWaveWidth * columnsToShow
     ),
     44,
@@ -582,7 +592,9 @@ export function exportHeatScorecardPdf({
     1: { cellWidth: scorecardBaseWidths.lycra, halign: 'center', fontStyle: 'bold', fontSize: 8, overflow: 'hidden' },
     2: { cellWidth: scorecardSurferWidth, halign: 'left', fontStyle: 'bold', fontSize: 8, overflow: 'linebreak' },
     3: { cellWidth: scorecardCountryWidth, halign: 'left', fontSize: 7, overflow: 'hidden' },
-    [head.length - 1]: { cellWidth: scorecardBaseWidths.bestTwo, halign: 'center', fontStyle: 'bold', fontSize: 10 },
+    [head.length - 3]: { cellWidth: scorecardBaseWidths.bestTwo, halign: 'center', fontStyle: 'bold', fontSize: 8 },
+    [head.length - 2]: { cellWidth: scorecardBaseWidths.total, halign: 'center', fontStyle: 'bold', fontSize: 10 },
+    [head.length - 1]: { cellWidth: scorecardBaseWidths.interference, halign: 'center', fontStyle: 'bold', fontSize: 8 },
   };
   for (let i = 0; i < columnsToShow; i++) {
     colStyles[4 + i] = waveColStyle;
@@ -621,8 +633,8 @@ export function exportHeatScorecardPdf({
           data.cell.styles.textColor = lycra.text;
         }
       }
-      // Gold highlight for BEST 2 column
-      if (data.section === 'body' && data.column.index === head.length - 1) {
+      // Gold highlight for canonical TOTAL column
+      if (data.section === 'body' && data.column.index === head.length - 2) {
         data.cell.styles.textColor = DS.greenDark;
         if (data.row.index === 0) {
           // First place: gold background
@@ -649,7 +661,7 @@ export function exportHeatScorecardPdf({
 /**
  * Export complete competition PDF with all categories – PRO design
  */
-export function exportFullCompetitionPDF({
+export async function exportFullCompetitionPDF({
   eventName,
   organizer,
   organizerLogoDataUrl,
@@ -657,7 +669,6 @@ export function exportFullCompetitionPDF({
   divisions,
   scores,
   interferenceCalls = {},
-  configuredJudgeCount,
 }: FullCompetitionExportPayload) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -748,11 +759,31 @@ export function exportFullCompetitionPDF({
     return normalizedInterferencesByMeta[buildHeatMetaKey(divisionName, roundNumber, heatNumber)] ?? [];
   };
 
-  const getHeatScoringParams = (heatScores: Score[]) => {
-    const judgeCount = new Set(heatScores.map((s) => getScoreJudgeStation(s)).filter(Boolean)).size;
-    const maxWaves = Math.max(1, ...heatScores.map((s) => Number(s.wave_number) || 0));
-    return { judgeCount: Math.max(configuredJudgeCount || 0, judgeCount, 1), maxWaves };
-  };
+  const canonicalHeatId = (heatId: string | null | undefined, heatScores: readonly Score[]) =>
+    (heatId || heatScores[0]?.heat_id || '').trim();
+
+  const snapshotRequests: CanonicalHeatSnapshotRequest[] = [];
+  Object.entries(mergedDivisions).forEach(([divisionName, rounds]) => {
+    rounds.forEach((round) => round.heats.forEach((heat) => {
+      const heatScores = resolveHeatScores(divisionName, round.roundNumber, heat.heatNumber, heat.heatId ?? null);
+      const heatId = canonicalHeatId(heat.heatId, heatScores);
+      if (!heatId || heatScores.length === 0) return;
+      const surfers = heat.slots
+        .filter((slot) => Boolean(slot.color))
+        .map((slot) => normalizeLycraForPdf(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color!));
+      snapshotRequests.push({
+        heatId,
+        scores: heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
+        surfers,
+        maxWaves: Math.max(1, ...heatScores.map((score) => Number(score.wave_number) || 0)),
+        interferenceCalls: resolveHeatInterferences(divisionName, round.roundNumber, heat.heatNumber, heat.heatId ?? null),
+      });
+    }));
+  });
+  const canonicalSnapshots = await requireCanonicalHeatSnapshots(snapshotRequests, panelRepository.resolveContexts.bind(panelRepository));
+
+  const resolveCanonicalSnapshot = (heatId: string | null | undefined, heatScores: readonly Score[]) =>
+    canonicalSnapshots.get(canonicalHeatId(heatId, heatScores));
 
   const buildQualifierKeyVariants = (divisionName: string, roundNumber: number, heatNumber: number, position: number) => ([
     `${divisionName} R${roundNumber} H${heatNumber} (P${position})`,
@@ -867,21 +898,18 @@ export function exportFullCompetitionPDF({
     });
 
     if (!heatSurfers.length) return;
-    const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
-    const normalizedHeatScores = heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) }));
-    const heatInterferences = resolveHeatInterferences(divisionName, roundNumber, heatNumber, heatId);
-    const effectiveInterferences = computeEffectiveInterferences(heatInterferences, Math.max(judgeCount, 1));
-    const stats = calculateSurferStats(normalizedHeatScores, heatSurfers, judgeCount, maxWaves, false, effectiveInterferences, heatStatus);
-    const orderedStats = [...stats].sort((a, b) => {
+    const snapshot = resolveCanonicalSnapshot(heatId, heatScores);
+    if (!snapshot) return;
+    const orderedStats = [...snapshot.competitors].sort((a, b) => {
       const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
       if (rankDiff !== 0) return rankDiff;
-      return getSeedPriority(a.surfer) - getSeedPriority(b.surfer);
+      return getSeedPriority(a.lycraColor) - getSeedPriority(b.lycraColor);
     });
 
     orderedStats.forEach((stat, index) => {
-      const slotInfo = slotByColor.get(stat.surfer.toUpperCase());
+      const slotInfo = slotByColor.get(stat.lycraColor.toUpperCase());
       if (!slotInfo) return;
-      const resolvedName = slotInfo.name || slotInfo.placeholder || stat.surfer;
+      const resolvedName = slotInfo.name || slotInfo.placeholder || stat.lycraColor;
       const resolvedCountry = slotInfo.country;
       const position = index + 1;
       const keys = buildQualifierKeyVariants(divisionName.toUpperCase(), roundNumber, heatNumber, position);
@@ -892,15 +920,15 @@ export function exportFullCompetitionPDF({
 
     const bestSecond = orderedStats.find((stat) => stat.rank === 2);
     if (bestSecond) {
-      const slotInfo = slotByColor.get(bestSecond.surfer.toUpperCase());
+      const slotInfo = slotByColor.get(bestSecond.lycraColor.toUpperCase());
       if (slotInfo) {
-        const resolvedName = slotInfo.name || slotInfo.placeholder || bestSecond.surfer;
+        const resolvedName = slotInfo.name || slotInfo.placeholder || bestSecond.lycraColor;
         const currentBestSecond = bestSecondMap.get(roundNumber);
-        if (!currentBestSecond || bestSecond.bestTwo > currentBestSecond.score) {
+        if (!currentBestSecond || bestSecond.total > currentBestSecond.score) {
           bestSecondMap.set(roundNumber, {
             name: resolvedName,
             country: slotInfo.country,
-            score: bestSecond.bestTwo,
+            score: bestSecond.total,
           });
         }
       }
@@ -1122,58 +1150,40 @@ export function exportFullCompetitionPDF({
             cursorY = drawContentHeader();
           }
 
-          let surferStats: Array<{ surfer: string; bestTwo: number; rank: number; waves: number[] }> = [];
+          let surferStats: Array<{
+            surfer: string;
+            total: number;
+            rank: number;
+            waves: number[];
+            interference: string;
+          }> = [];
           let currentHeatMaxWaves = 0;
           let showInterferenceCol = false;
 
           if (hasResults) {
-            const heatSurfers = heat.slots.filter(s => s.color !== undefined)
-              .map(s => normalizeLycraForPdf(colorLabelMap[s.color as keyof typeof colorLabelMap] || s.color!));
-            const { judgeCount, maxWaves } = getHeatScoringParams(heatScores);
-            const heatInterferences = resolveHeatInterferences(categoryName, round.roundNumber, heat.heatNumber, heat.heatId ?? null);
-            const effectiveInterferences = computeEffectiveInterferences(heatInterferences, judgeCount);
-            const stats = calculateSurferStats(
-              heatScores.map(score => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
-              heatSurfers, judgeCount, maxWaves, false, effectiveInterferences, heat.status
-            );
-            const maxSurferWaves = Math.max(...stats.map(s => s.waves?.length || 0), 0);
-            currentHeatMaxWaves = Math.max(1, Math.min(maxSurferWaves, maxWaves));
-            showInterferenceCol = stats.some((s) => Boolean(s.isDisqualified) || (s.interferenceCount ?? 0) > 0 || Boolean(s.interferenceType));
+            const snapshot = resolveCanonicalSnapshot(heat.heatId ?? null, heatScores);
+            if (!snapshot) throw new Error(`Résultat canonique absent pour ${heat.heatId || `R${round.roundNumber}H${heat.heatNumber}`}`);
+            const maxSurferWaves = Math.max(...snapshot.competitors.map((competitor) => competitor.waves.length), 0);
+            currentHeatMaxWaves = Math.max(1, maxSurferWaves);
+            showInterferenceCol = snapshot.competitors.some((competitor) =>
+              competitor.disqualified || competitor.interferenceCount > 0 || Boolean(competitor.interferenceType));
 
-            const interferenceMetaBySurfer = new Map<string, { count: number; type: string | null; waves: number[]; isDisqualified: boolean }>();
-            effectiveInterferences.forEach((item) => {
-              const key = (item.surfer || '').trim().toUpperCase();
-              if (!key) return;
-              const current = interferenceMetaBySurfer.get(key) ?? { count: 0, type: null, waves: [], isDisqualified: false };
-              const nextCount = current.count + 1;
-              const nextType = current.type ?? item.type;
-              const nextWaves = current.waves.includes(item.waveNumber) ? current.waves : [...current.waves, item.waveNumber];
-              interferenceMetaBySurfer.set(key, {
-                count: nextCount,
-                type: nextType,
-                waves: nextWaves,
-                isDisqualified: nextCount >= 2,
-              });
-            });
-
-            const buildInterferenceLabel = (s: any) => {
-              const key = (s?.surfer || '').toString().trim().toUpperCase();
-              const meta = interferenceMetaBySurfer.get(key);
-              const waves = [...(meta?.waves || [])].filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+            const buildInterferenceLabel = (competitor: typeof snapshot.competitors[number]) => {
+              const waves = competitor.interferenceWaves.map((item) => item.waveNumber);
               const waveSuffix = waves.length > 0 ? ` V${waves.join(',V')}` : '';
 
-              if (meta?.isDisqualified || s?.isDisqualified) return `DSQ${waveSuffix}`;
-              const count = Number(meta?.count ?? s?.interferenceCount) || 0;
-              const type = String(meta?.type ?? s?.interferenceType ?? '').trim();
+              if (competitor.disqualified) return `DSQ${waveSuffix}`;
+              const count = competitor.interferenceCount;
+              const type = competitor.interferenceType || '';
               if (!type && count <= 0) return '';
               return `${type || 'INT'}${waveSuffix}`;
             };
-            surferStats = stats.map(s => ({
-              surfer: s.surfer,
-              bestTwo: s.bestTwo,
-              rank: s.rank,
-              waves: (s.waves || []).map(w => w.score),
-              interference: buildInterferenceLabel(s),
+            surferStats = snapshot.competitors.map((competitor) => ({
+              surfer: competitor.lycraColor,
+              total: competitor.total,
+              rank: competitor.rank,
+              waves: competitor.waves.map((wave) => wave.average),
+              interference: buildInterferenceLabel(competitor),
             }));
           }
 
@@ -1182,18 +1192,21 @@ export function exportFullCompetitionPDF({
             let numericVal = 0;
             let surferWaves: number[] = [];
             let interference = '';
+            let canonicalRank: number | null = null;
             if (hasResults && slot.color) {
               const colorName = normalizeLycraForPdf(colorLabelMap[slot.color as keyof typeof colorLabelMap] || slot.color);
               const stat = surferStats.find(s => s.surfer === colorName);
               if (stat) {
-                numericVal = stat.bestTwo;
-                scoreStr = stat.bestTwo.toFixed(2);
+                numericVal = stat.total;
+                scoreStr = stat.total.toFixed(2);
                 surferWaves = stat.waves;
                 interference = (stat as any).interference || '';
+                canonicalRank = stat.rank;
               }
             }
             return {
-              pos: sIdx + 1,
+              pos: canonicalRank ?? sIdx + 1,
+              canonicalRank,
               lycra: slot.color ? normalizeLycraForPdf(colorLabelMap[slot.color as keyof typeof colorLabelMap] ?? slot.color) : `—`,
               score: scoreStr || (slot.result != null ? slot.result.toFixed(2) : ''),
               numericVal,
@@ -1204,7 +1217,8 @@ export function exportFullCompetitionPDF({
             };
           });
 
-          if (hasResults) bodyData.sort((a, b) => b.numericVal - a.numericVal);
+          if (hasResults) bodyData.sort((a, b) =>
+            (a.canonicalRank ?? Number.MAX_SAFE_INTEGER) - (b.canonicalRank ?? Number.MAX_SAFE_INTEGER));
 
           // Heat sub-header row
           const heatLabel = `  Heat ${heat.heatNumber}  ${hasResults ? '— RÉSULTATS' : '— PRÉVISIONS'}`;
@@ -1435,8 +1449,24 @@ export interface FinalRankingExportPayload {
   divisions: string[];
 }
 
-function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly: boolean) {
+async function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly: boolean) {
   const { eventName, organizer, organizerLogoDataUrl, date, heats, scores, interferenceCalls, participants, divisions } = payload;
+  const rankingRequests: CanonicalHeatSnapshotRequest[] = heats.flatMap((heat) => {
+    const heatScores = scores[heat.id] || [];
+    if (!heat.id || heatScores.length === 0) return [];
+    const slotColors = (Array.isArray(heat.slots) ? heat.slots : [])
+      .filter((slot: any) => slot && !slot.bye && slot.color)
+      .map((slot: any) => normalizeLycraForPdf(String(slot.color)));
+    const scoreColors = heatScores.map((score) => normalizeLycraForPdf(score.surfer));
+    return [{
+      heatId: heat.id,
+      scores: heatScores.map((score) => ({ ...score, surfer: normalizeLycraForPdf(score.surfer) })),
+      surfers: Array.from(new Set([...slotColors, ...scoreColors])),
+      maxWaves: Math.max(1, ...heatScores.map((score) => Number(score.wave_number) || 0)),
+      interferenceCalls: interferenceCalls[heat.id] || [],
+    }];
+  });
+  const heatSnapshots = await requireCanonicalHeatSnapshots(rankingRequests, panelRepository.resolveContexts.bind(panelRepository));
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -1487,7 +1517,7 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
 
   const sections = divisions
     .map((division) => {
-      const rankings = calculateFinalRankings(division, heats, scores, interferenceCalls, participants);
+      const rankings = calculateFinalRankings(division, heats, heatSnapshots, participants);
       if (!rankings.length) return null;
       const selectedRankings = finalistsOnly ? selectDivisionFinalists(rankings) : rankings;
       if (!selectedRankings.length) return null;
@@ -1644,10 +1674,10 @@ function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly
     : `${slugify(eventName)}_final_rankings.pdf`);
 }
 
-export function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
-  exportRankingDocument(payload, false);
+export async function exportFinalRankingToPDF(payload: FinalRankingExportPayload) {
+  await exportRankingDocument(payload, false);
 }
 
-export function exportFinalistsRankingToPDF(payload: FinalRankingExportPayload) {
-  exportRankingDocument(payload, true);
+export async function exportFinalistsRankingToPDF(payload: FinalRankingExportPayload) {
+  await exportRankingDocument(payload, true);
 }

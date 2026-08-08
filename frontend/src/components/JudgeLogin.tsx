@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { validateJudgeCode, fetchJudgeById } from '../api/supabaseClient';
-import type { Judge } from '../api/supabaseClient';
+import { judgeRepository } from '../repositories/JudgeRepository';
+import type { JudgeRecord } from '../repositories/contracts';
 
 interface JudgeLoginProps {
     judgeId: string;
-    onSuccess: (judge: Judge) => void;
+    onSuccess: (judge: JudgeRecord) => void;
 }
 
 export const JudgeLogin = ({ judgeId, onSuccess }: JudgeLoginProps) => {
@@ -15,7 +15,7 @@ export const JudgeLogin = ({ judgeId, onSuccess }: JudgeLoginProps) => {
 
     // Load judge name on mount
     useEffect(() => {
-        fetchJudgeById(judgeId).then(judge => {
+        judgeRepository.getById(judgeId).then(judge => {
             if (judge) {
                 setJudgeName(judge.name);
             }
@@ -38,7 +38,7 @@ export const JudgeLogin = ({ judgeId, onSuccess }: JudgeLoginProps) => {
         }
 
         try {
-            const judge = await validateJudgeCode(judgeId, personalCode.trim());
+            const judge = await judgeRepository.validateCode(judgeId, personalCode.trim());
 
             if (judge) {
                 // Store authentication in session

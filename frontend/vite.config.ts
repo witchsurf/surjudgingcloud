@@ -24,7 +24,9 @@ const resolveExpectedSchemaVersion = () => {
 export default defineConfig({
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.npm_package_version || '0.0.0'),
-    'import.meta.env.VITE_APP_BUILD': JSON.stringify(process.env.SURFJUDGING_BUILD_ID || new Date().toISOString()),
+    'import.meta.env.VITE_APP_BUILD': JSON.stringify(
+      process.env.SURFJUDGING_RELEASE_ID || process.env.SURFJUDGING_BUILD_ID || new Date().toISOString(),
+    ),
     'import.meta.env.VITE_EXPECTED_SCHEMA_VERSION': JSON.stringify(resolveExpectedSchemaVersion()),
   },
   plugins: [

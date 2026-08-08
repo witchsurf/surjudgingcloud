@@ -1,7 +1,8 @@
 // ----------------------------------------------------------------------------
 // FACADE: supabaseClient.ts
-// Ce fichier sert d'entrée centrale pour tout le front-end,
-// redirigeant vers les modules spécifiques découpés.
+// @deprecated Compatibility/rollback facade only. Production consumers use
+// repositories/services or a documented narrow api/modules adapter.
+// Do not add new imports from this file.
 // ----------------------------------------------------------------------------
 
 export {
@@ -104,3 +105,7 @@ export {
     updateJudgeName
 } from './modules/judges.api';
 export type { Judge } from './modules/judges.api';
+
+export { fetchPanelContext } from './modules/panelContext.api';
+export { fetchPanelContexts } from './modules/panelContext.api';
+export type { PanelContext, PanelContextIssue, PanelSource } from '../domain/scoring/panelContext';

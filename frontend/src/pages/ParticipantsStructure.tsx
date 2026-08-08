@@ -5,16 +5,14 @@ import ParticipantsTable from '../components/ParticipantsTable';
 import BracketPreview from '../components/BracketPreview';
 import {
   fetchEvents,
-  fetchParticipants,
-  upsertParticipants,
-  updateParticipant,
-  deleteParticipant,
-  createHeatsWithEntries,
+  type EventSummary,
+} from '../api/modules/events.api';
+import {
   fetchCategoryHeats,
   subscribeToHeatUpdates,
-  type EventSummary,
-  type ParticipantRecord,
-} from '../api/supabaseClient';
+} from '../api/modules/heats.api';
+import { participantRepository } from '../repositories/ParticipantRepository';
+import type { ParticipantRecord } from '../repositories/contracts';
 import { exportBracketToCSV, exportBracketToPDF } from '../utils/pdfExport';
 import type { ComputeResult, RoundSpec, HybridPlan } from '../utils/bracket';
 import { computeHeats } from '../utils/bracket';
@@ -23,7 +21,7 @@ import type { AppConfig } from '../types';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { supabase } from '../lib/supabase';
-import { upsertActiveHeatPointer } from '../api/supabaseClient';
+import { heatPlanningRepository } from '../repositories/HeatPlanningRepository';
 
 type FormatType = 'single-elim' | 'repechage';
 type PreferredHeatSize = 'auto' | 2 | 3 | 4;
@@ -246,7 +244,7 @@ export default function ParticipantsStructure() {
   const loadParticipants = useCallback(async (eventId: number) => {
     setError(null);
     try {
-      const data = await fetchParticipants(eventId);
+      const data = await participantRepository.listByEvent(eventId);
       setParticipants(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Chargement des participants impossible');
@@ -386,7 +384,7 @@ export default function ParticipantsStructure() {
 
     try {
       setImporting(true);
-      await upsertParticipants(selectedEventId, rows);
+      await participantRepository.upsertMany(selectedEventId, rows);
       await loadParticipants(selectedEventId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import impossible');
@@ -440,7 +438,7 @@ export default function ParticipantsStructure() {
 
   const handleUpdateParticipant = async (participant: ParticipantRecord) => {
     try {
-      await updateParticipant(participant.id, participant);
+      await participantRepository.update(participant.id, participant);
       await loadParticipants(selectedEventId!);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Mise à jour impossible');
@@ -450,7 +448,7 @@ export default function ParticipantsStructure() {
   const handleDeleteParticipant = async (participant: ParticipantRecord) => {
     if (!window.confirm(`Supprimer ${participant.name}?`)) return;
     try {
-      await deleteParticipant(participant.id);
+      await participantRepository.delete(participant.id);
       await loadParticipants(selectedEventId!);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Suppression impossible');
@@ -506,36 +504,21 @@ export default function ParticipantsStructure() {
     try {
       setConfirming(true);
       setSuccess(null);
-      await createHeatsWithEntries(
-        selectedEventId,
-        selectedEvent.name,
-        previewCategory,
-        preview.rounds,
-        seedMap,
-        {
+      await heatPlanningRepository.createWithEntries({
+        eventId: selectedEventId,
+        eventName: selectedEvent.name,
+        category: previewCategory,
+        rounds: preview.rounds,
+        participantsBySeed: seedMap,
+        options: {
           overwrite,
           repechage: preview.repechage,
           defaultJudges: ['J1', 'J2', 'J3'],
           tournamentType: format === 'single-elim' ? 'elimination' : 'repechage',
-        }
-      );
+        },
+      });
 
       persistJudgeInterfaceConfig(selectedEvent, previewCategory, preview.rounds, preview.repechage);
-
-      // Initialize active_heat_pointer with first heat
-      try {
-        const firstHeatId = `${selectedEvent.name.toLowerCase().replace(/\s+/g, '_')}_${previewCategory.toLowerCase().replace(/\s+/g, '_')}_r1_h1`;
-        if (supabase) {
-          await upsertActiveHeatPointer({
-            eventId: selectedEvent.id,
-            eventName: selectedEvent.name,
-            activeHeatId: firstHeatId,
-          });
-          console.log('✅ active_heat_pointer initialisé:', firstHeatId);
-        }
-      } catch (err) {
-        console.warn('⚠️ Impossible d\'initialiser active_heat_pointer:', err);
-      }
 
       setError(null);
       setSuccess('Séries enregistrées et synchronisées avec l’interface juge.');
@@ -816,15 +799,20 @@ export default function ParticipantsStructure() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 text-sm text-slate-300">
-                <input
-                  id="overwrite"
-                  type="checkbox"
-                  checked={overwrite}
-                  onChange={(event) => setOverwrite(event.target.checked)}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-400"
-                />
-                <label htmlFor="overwrite">Écraser les heats planifiés existants de cette catégorie</label>
+              <div className="text-sm text-slate-300">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="overwrite"
+                    type="checkbox"
+                    checked={overwrite}
+                    onChange={(event) => setOverwrite(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-blue-500 focus:ring-blue-400"
+                  />
+                  <label htmlFor="overwrite">Remplacer tous les heats planifiés de cette catégorie</label>
+                </div>
+                <p className="mt-1 pl-6 text-xs text-slate-500">
+                  Sans cette option, seuls les identifiants de heat en collision sont remplacés. Toute donnée sportive bloque l’opération.
+                </p>
               </div>
 
               <button

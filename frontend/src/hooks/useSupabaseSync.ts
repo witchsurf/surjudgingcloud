@@ -5,9 +5,9 @@ import { getLocalRuntimeSchemaReplayReadiness } from '../lib/offlineOperations';
 import type { Score, Heat, ScoreOverrideLog } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
 import { ensureHeatId, buildHeatId } from '../utils/heat';
-import { heatRepository, timerRepository, scoreRepository } from '../repositories';
-import { upsertHeatRealtimeConfig } from '../api/supabaseClient';
-import { recordScoreOverrideSecure } from '../api/supabaseClient';
+import { heatRepository, panelRepository, timerRepository, scoreRepository } from '../repositories';
+import { upsertHeatRealtimeConfig } from '../api/modules/heats.api';
+import { recordScoreOverrideSecure } from '../api/modules/scoring.api';
 
 const normalizeScores = (scores: Score[], idGenerator?: () => string): Score[] =>
   scores.map((score) => ({
@@ -223,15 +223,15 @@ export function useSupabaseSync() {
             ? 'closed'
             : heatData.status;
 
-      await heatRepository.createHeat({
+      await heatRepository.createRuntime({
         id: newHeat.id,
-        event_id: eventId,
+        eventId,
         competition: newHeat.competition,
         division: newHeat.division,
         round: newHeat.round,
-        heat_number: newHeat.heat_number,
+        heatNumber: newHeat.heat_number,
         status: normalizedStatus,
-        created_at: newHeat.created_at
+        createdAt: newHeat.created_at
       });
 
       // We still do heat_realtime_config initialization here to ensure the row exists,
@@ -262,16 +262,16 @@ export function useSupabaseSync() {
     const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : null;
 
     try {
-      await heatRepository.saveHeatConfig(normalizedHeatId, {
-        event_id: eventId,
+      await heatRepository.saveConfiguration(normalizedHeatId, {
+        eventId,
         judges: config.judges,
         surfers: config.surfers,
-        judge_names: config.judgeNames,
-        judge_identities: config.judgeIdentities,
-        surfer_names: config.surferNames,
-        surfer_countries: config.surferCountries,
+        judgeNames: config.judgeNames,
+        judgeIdentities: config.judgeIdentities,
+        surferNames: config.surferNames,
+        surferCountries: config.surferCountries,
         waves: config.waves,
-        tournament_type: config.tournamentType,
+        tournamentType: config.tournamentType,
         podiumId: config.podiumId,
       });
     } catch (error) {
@@ -304,7 +304,7 @@ export function useSupabaseSync() {
       if (error && error.code !== 'PGRST116') throw error;
       if (!data) return null;
 
-      const assignments = await heatRepository.fetchHeatJudgeAssignments(normalizedHeatId);
+      const assignments = await panelRepository.listHeatAssignments(normalizedHeatId);
       if (assignments.length === 0) {
         return data;
       }
@@ -313,11 +313,11 @@ export function useSupabaseSync() {
         ...data,
         judges: assignments.map((assignment) => assignment.station),
         judge_names: assignments.reduce<Record<string, string>>((acc, assignment) => {
-          acc[assignment.station] = assignment.judge_name;
+          acc[assignment.station] = assignment.judgeName;
           return acc;
         }, {}),
         judge_identities: assignments.reduce<Record<string, string>>((acc, assignment) => {
-          acc[assignment.station] = assignment.judge_id;
+          acc[assignment.station] = assignment.judgeId;
           return acc;
         }, {})
       };

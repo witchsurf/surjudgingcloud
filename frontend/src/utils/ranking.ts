@@ -1,8 +1,6 @@
-import { calculateSurferStats } from './scoring';
-import { computeEffectiveInterferences } from './interference';
-import type { Score, InterferenceCall } from '../types';
 import type { ParticipantRecord } from '../api/modules/participants.api';
 import type { HeatRow } from '../api/modules/heats.api';
+import type { HeatResultSnapshot } from '../domain/scoring/contracts';
 
 export interface FinalRankEntry {
   rank: number;
@@ -61,14 +59,10 @@ export function getPointsForRank(rank: number): number {
 export function calculateFinalRankings(
   division: string,
   heats: HeatRow[],
-  scores: Record<string, Score[]>,
-  interferenceCalls: Record<string, InterferenceCall[]>,
+  heatSnapshots: ReadonlyMap<string, HeatResultSnapshot>,
   participants: ParticipantRecord[],
-  configuredJudgeCount: number = 3
 ): FinalRankEntry[] {
   if (!heats || !Array.isArray(heats)) return [];
-  if (!scores) scores = {};
-  if (!interferenceCalls) interferenceCalls = {};
   if (!participants) participants = [];
 
   const normalizeHeatColorKey = (value: string) => {
@@ -185,8 +179,8 @@ export function calculateFinalRankings(
       return null;
     }
 
-    const sourceScores = scores[sourceHeat.id] || [];
-    if (!sourceScores.length) {
+    const sourceSnapshot = heatSnapshots.get(sourceHeat.id);
+    if (!sourceSnapshot) {
       resolvedPlaceholderCache.set(cacheKey, null);
       return null;
     }
@@ -204,9 +198,7 @@ export function calculateFinalRankings(
       });
     });
 
-    const colorsFromScores = sourceScores
-      .map((s) => normalizeHeatColorKey(String(s?.surfer || '')))
-      .filter(Boolean);
+    const colorsFromScores = sourceSnapshot.competitors.map((competitor) => normalizeHeatColorKey(competitor.lycraColor));
     const colorsFromSlots = Array.from(slotByColor.keys());
     const uniqueColorsInHeat = Array.from(new Set([...colorsFromSlots, ...colorsFromScores]));
     if (uniqueColorsInHeat.length === 0) {
@@ -214,23 +206,10 @@ export function calculateFinalRankings(
       return null;
     }
 
-    const heatInterferences = interferenceCalls[sourceHeat.id] || [];
-    const effectiveInterferences = computeEffectiveInterferences(heatInterferences, configuredJudgeCount);
-    const maxWaves = Math.max(1, ...sourceScores.map((s) => Number((s as any)?.wave_number) || Number((s as any)?.wave) || 0));
-    const stats = calculateSurferStats(
-      sourceScores.map((score) => ({ ...score, surfer: normalizeHeatColorKey(String(score.surfer || '')) })),
-      uniqueColorsInHeat,
-      configuredJudgeCount,
-      maxWaves,
-      true,
-      effectiveInterferences,
-      sourceHeat.status as any
-    );
-
-    const orderedStats = [...stats].sort((a, b) => {
+    const orderedStats = [...sourceSnapshot.competitors].sort((a, b) => {
       const rankDiff = (a.rank ?? 99) - (b.rank ?? 99);
       if (rankDiff !== 0) return rankDiff;
-      return getSeedPriority(a.surfer) - getSeedPriority(b.surfer);
+      return getSeedPriority(a.lycraColor) - getSeedPriority(b.lycraColor);
     });
 
     const picked = orderedStats[ref.position - 1];
@@ -239,7 +218,7 @@ export function calculateFinalRankings(
       return null;
     }
 
-    const pickedColor = normalizeHeatColorKey(picked.surfer);
+    const pickedColor = normalizeHeatColorKey(picked.lycraColor);
     const slotInfo = slotByColor.get(pickedColor);
     const resolvedName = (slotInfo?.name || '').trim();
     if (!resolvedName || isPlaceholderLike(resolvedName)) {
@@ -282,9 +261,8 @@ export function calculateFinalRankings(
   const sortedHeats = [...divisionHeats].sort((a, b) => b.round - a.round);
 
   for (const heat of sortedHeats) {
-    const heatScores = scores[heat.id] || [];
-    const heatInterferences = interferenceCalls[heat.id] || [];
-    if (!heatScores.length) continue;
+    const heatSnapshot = heatSnapshots.get(heat.id);
+    if (!heatSnapshot) continue;
     
     const slotByColor = new Map<string, { name?: string; country?: string | null; participantId?: number | null }>();
     const slots = Array.isArray(heat.slots) ? heat.slots : [];
@@ -299,32 +277,15 @@ export function calculateFinalRankings(
       });
     });
 
-    const colorsFromScores = (heatScores || [])
-      .map((s) => normalizeHeatColorKey(String(s?.surfer || '')))
-      .filter(Boolean);
+    const colorsFromScores = heatSnapshot.competitors.map((competitor) => normalizeHeatColorKey(competitor.lycraColor));
     const colorsFromSlots = Array.from(slotByColor.keys());
     const uniqueColorsInHeat = Array.from(new Set([...colorsFromSlots, ...colorsFromScores]));
     if (uniqueColorsInHeat.length === 0) continue;
     
-    const effectiveInterferences = computeEffectiveInterferences(heatInterferences, configuredJudgeCount);
-
-    // Si heat non fermé et pas de scores, on peut avoir des problèmes de ranking.
-    // Pour un classement FINAL, on assume que l'évènement est clos ou qu'on veut le rank actuel.
-    const maxWaves = Math.max(1, ...heatScores.map((s) => Number((s as any)?.wave_number) || Number((s as any)?.wave) || 0));
-    const stats = calculateSurferStats(
-        (heatScores || []).map((score) => ({ ...score, surfer: normalizeHeatColorKey(String(score.surfer || '')) })), 
-        uniqueColorsInHeat, 
-        configuredJudgeCount, 
-        maxWaves,
-        true, // allow incomplete
-        effectiveInterferences,
-        heat.status as any
-    );
-
-    const sortedStats = stats.sort((a, b) => (a.rank || 99) - (b.rank || 99));
+    const sortedStats = [...heatSnapshot.competitors].sort((a, b) => (a.rank || 99) - (b.rank || 99));
 
     sortedStats.forEach((stat) => {
-      const heatColor = normalizeHeatColorKey(stat.surfer);
+      const heatColor = normalizeHeatColorKey(stat.lycraColor);
       const slotInfo = slotByColor.get(heatColor);
       const rawSlotName = slotInfo?.name || heatColor;
       const placeholderResolved = isPlaceholderLike(rawSlotName) ? resolvePlaceholderToSurfer(rawSlotName) : null;
@@ -355,8 +316,8 @@ export function calculateFinalRankings(
           round: heat.round,
           position: stat.rank,
           qualifiers,
-          total: stat.bestTwo,
-          bestWave: Math.max(0, ...(stat.waves || []).map((w) => Number(w?.score) || 0)),
+          total: stat.total,
+          bestWave: Math.max(0, ...(stat.waves || []).map((wave) => Number(wave.average) || 0)),
           name: resolvedName,
           country: placeholderResolved?.country ?? slotInfo?.country ?? participant?.country ?? null
         });
