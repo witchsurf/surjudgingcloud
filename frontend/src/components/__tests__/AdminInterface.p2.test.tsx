@@ -157,5 +157,7 @@ describe('AdminInterface canonical P2 result', () => {
     expect(source).not.toContain('getEffectiveJudgeCount');
     expect(source).toContain('resolveConsumerHeatSnapshot');
     expect(source).toContain('<AdminHeatResultSnapshotPanel');
+    expect(source).not.toContain('currentHeatResultInterferences');
+    expect(source).toContain('[config, currentResultInterferences, currentHeatResultScores, heatId, resultPanelContext]');
   });
 });

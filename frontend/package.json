@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/build-deployment.mjs",
+    "build:cloud": "node scripts/build-deployment.mjs cloud",
+    "build:field": "node scripts/build-deployment.mjs field",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",

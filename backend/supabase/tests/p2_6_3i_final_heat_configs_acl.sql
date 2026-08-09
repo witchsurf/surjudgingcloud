@@ -11,12 +11,17 @@ begin
     end if;
 
     foreach v_privilege in array array[
-      'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'
+      'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'
     ] loop
       if has_table_privilege(v_role, 'public.heat_configs', v_privilege) then
         raise exception '% must not retain % on heat_configs', v_role, v_privilege;
       end if;
     end loop;
+
+    if current_setting('server_version_num')::integer >= 170000
+       and has_table_privilege(v_role, 'public.heat_configs', 'MAINTAIN') then
+      raise exception '% must not retain MAINTAIN on heat_configs', v_role;
+    end if;
   end loop;
 
   if has_function_privilege(
@@ -40,12 +45,17 @@ begin
   end if;
 
   foreach v_privilege in array array[
-    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'
+    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'
   ] loop
     if not has_table_privilege('service_role', 'public.heat_configs', v_privilege) then
       raise exception 'service_role must retain % on heat_configs', v_privilege;
     end if;
   end loop;
+
+  if current_setting('server_version_num')::integer >= 170000
+     and not has_table_privilege('service_role', 'public.heat_configs', 'MAINTAIN') then
+    raise exception 'service_role must retain MAINTAIN on heat_configs';
+  end if;
 
   if not (select relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace
           where n.nspname = 'public' and c.relname = 'heat_configs') then

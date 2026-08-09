@@ -111,14 +111,16 @@ function App() {
 // Wrap with Sentry Error Boundary
 export default Sentry.withErrorBoundary(App, {
     fallback: ({ error }) => (
-        <div style={{ padding: '40px', textAlign: 'center' }}>
+        <div style={{ padding: '40px', textAlign: 'center', minHeight: '100vh', background: '#ffffff', color: '#111827' }}>
             <h1>⚠️ Une erreur est survenue</h1>
             <p>L'équipe a été notifiée. Veuillez rafraîchir la page.</p>
             {import.meta.env.DEV && (
-                <details style={{ marginTop: '20px', textAlign: 'left' }}>
-                    <summary>Détails de l'erreur (dev only)</summary>
-                    <pre style={{ background: '#f5f5f5', padding: '10px' }}>
-                        {error?.toString()}
+                <details open style={{ marginTop: '20px', textAlign: 'left', border: '2px solid #dc2626', borderRadius: '8px', padding: '16px' }}>
+                    <summary>Détails techniques temporaires</summary>
+                    <pre style={{ background: '#f3f4f6', color: '#991b1b', padding: '10px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                        {error instanceof Error
+                            ? `${error.name}: ${error.message}\n${(error.stack || '').split('\n').slice(0, 8).join('\n')}`
+                            : String(error)}
                     </pre>
                 </details>
             )}

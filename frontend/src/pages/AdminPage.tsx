@@ -20,6 +20,7 @@ import { fetchOrderedHeatSequence } from '../api/modules/heats.api';
 import { normalizePodiumId } from '../utils/podium';
 import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
 import type { AppConfig } from '../types';
+import { getSafeLocalStorage } from '../utils/secureStorage';
 
 const shallowArrayEqual = (left: string[] = [], right: string[] = []) =>
     left.length === right.length && left.every((value, index) => value === right[index]);
@@ -32,8 +33,7 @@ const shallowRecordEqual = (left: Record<string, string> = {}, right: Record<str
 };
 
 const getPersistedAdminPodium = () => {
-    if (typeof window === 'undefined') return 'A';
-    return normalizePodiumId(window.localStorage.getItem('surfJudgingSelectedPodiumId'));
+    return normalizePodiumId(getSafeLocalStorage()?.getItem('surfJudgingSelectedPodiumId'));
 };
 
 export default function AdminPage() {
@@ -68,7 +68,7 @@ export default function AdminPage() {
     // Restore judge work count from localStorage on mount
     React.useEffect(() => {
         try {
-            const raw = localStorage.getItem('surfJudgingJudgeWorkCount');
+            const raw = getSafeLocalStorage()?.getItem('surfJudgingJudgeWorkCount');
             if (raw) {
                 const parsed = JSON.parse(raw) as Record<string, number>;
                 if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {

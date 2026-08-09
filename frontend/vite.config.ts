@@ -3,6 +3,17 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
+
+const deploymentMode = process.env.VITE_DEPLOYMENT_MODE || (process.env.VITEST ? 'field' : '')
+const releaseId = process.env.SURFJUDGING_RELEASE_ID || process.env.SURFJUDGING_BUILD_ID || 'unreleased'
+const codeRevision = process.env.SURFJUDGING_CODE_REVISION || (() => {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(__dirname, '..'), encoding: 'utf8' }).trim()
+  } catch {
+    return 'unknown'
+  }
+})()
 
 const resolveExpectedSchemaVersion = () => {
   if (process.env.SURFJUDGING_SCHEMA_VERSION) {
@@ -24,13 +35,28 @@ const resolveExpectedSchemaVersion = () => {
 export default defineConfig({
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.npm_package_version || '0.0.0'),
-    'import.meta.env.VITE_APP_BUILD': JSON.stringify(
-      process.env.SURFJUDGING_RELEASE_ID || process.env.SURFJUDGING_BUILD_ID || new Date().toISOString(),
-    ),
+    'import.meta.env.VITE_APP_BUILD': JSON.stringify(releaseId),
     'import.meta.env.VITE_EXPECTED_SCHEMA_VERSION': JSON.stringify(resolveExpectedSchemaVersion()),
+    'import.meta.env.VITE_DEPLOYMENT_MODE': JSON.stringify(deploymentMode),
   },
   plugins: [
     react(),
+    {
+      name: 'surfjudging-deployment-manifest',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'deployment-manifest.json',
+          source: JSON.stringify({
+            deploymentMode,
+            releaseId,
+            codeRevision,
+            expectedSchemaVersion: resolveExpectedSchemaVersion(),
+            cloudTestActivationSupported: deploymentMode === 'cloud',
+          }, null, 2),
+        })
+      },
+    },
     VitePWA({
       registerType: 'autoUpdate',
       // Use the existing manifest.json in /public
@@ -41,7 +67,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         // Cache all built assets (JS, CSS, HTML)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-        runtimeCaching: [
+        runtimeCaching: deploymentMode === 'cloud' ? [
           {
             // Google Fonts stylesheets
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -59,11 +85,12 @@ export default defineConfig({
               expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 }, // 1 year
             },
           },
-        ],
+        ] : [],
       },
     }),
   ],
   build: {
+    outDir: process.env.P1_DIST_DIR || undefined,
     chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {

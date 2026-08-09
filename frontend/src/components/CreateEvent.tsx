@@ -3,7 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
 import EventStatus from './EventStatus';
-import { isDevMode, getDevUser } from '../lib/offlineAuth';
+import { eventRepository } from '../repositories/EventRepository';
+import { parseCanonicalEventId } from '../domain/eventWorkflow';
+import { getDeploymentMode } from '../domain/deploymentMode';
 
 interface EventFormData {
   name: string;
@@ -26,28 +28,24 @@ const CreateEvent = () => {
   const [formData, setFormData] = useState<EventFormData>(INITIAL_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const requiresAuth = Boolean(isSupabaseConfigured() && supabase);
+  const deploymentMode = getDeploymentMode();
+  const requiresAuth = deploymentMode === 'cloud';
   const [authChecked, setAuthChecked] = useState(!requiresAuth);
   const [authorized, setAuthorized] = useState(!requiresAuth);
   const [participantsReset, setParticipantsReset] = useState(false);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    // In dev mode, bypass all auth checks
-    if (isDevMode()) {
-      const devUser = getDevUser();
-      if (devUser) {
-        setAuthorized(true);
-        setSessionUserId(devUser.id);
-        setAuthChecked(true);
-        console.log('🔧 CreateEvent: Dev mode - auto-authorized as:', devUser.email);
-      }
+    if (deploymentMode === 'field') {
+      setAuthChecked(true);
+      setAuthorized(true);
       return;
     }
 
-    if (!requiresAuth || !supabase) {
+    if (!isSupabaseConfigured() || !supabase) {
       setAuthChecked(true);
-      setAuthorized(true);
+      setAuthorized(false);
+      setSubmitError('Supabase Cloud est requis pour créer un événement.');
       return;
     }
 
@@ -69,7 +67,7 @@ const CreateEvent = () => {
     return () => {
       cancelled = true;
     };
-  }, [navigate, requiresAuth]);
+  }, [deploymentMode, navigate, requiresAuth]);
 
   useEffect(() => {
     if (participantsReset) return;
@@ -106,9 +104,7 @@ const CreateEvent = () => {
       return;
     }
 
-    const eventId = `${formData.name.trim().toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
     const eventData: Record<string, unknown> = {
-      id: eventId,
       name: formData.name.trim(),
       organizer: formData.organizer.trim(),
       startDate: formData.startDate,
@@ -119,36 +115,50 @@ const CreateEvent = () => {
 
     setIsSubmitting(true);
     try {
-      if (isSupabaseConfigured() && supabase) {
-        try {
-          const { data, error } = await supabase
-            .from('events')
-            .insert({
-              name: eventData.name,
-              organizer: eventData.organizer,
-              start_date: formData.startDate,
-              end_date: formData.endDate,
-              price: 0,
-              currency: 'XOF',
-              user_id: sessionUserId ?? undefined
-            })
-            .select('id')
-            .single();
-
-          if (error) {
-            console.error('Erreur création event remote:', error);
-          } else if (data?.id) {
-            eventData.eventDbId = data.id;
-          }
-        } catch (err) {
+      if (!isSupabaseConfigured() || !supabase) {
+        setSubmitError(deploymentMode === 'field'
+          ? 'La base Supabase locale est indisponible. Aucun événement terrain n’a été créé.'
+          : 'Supabase Cloud est indisponible. Aucun événement n’a été créé.');
+        return;
+      }
+      if (deploymentMode === 'cloud' && !sessionUserId) {
+        setSubmitError('Une session Cloud valide est requise pour créer un événement.');
+        return;
+      }
+      try {
+          const created = await eventRepository.create({
+            name: formData.name.trim(),
+            organizer: formData.organizer.trim(),
+            startDate: formData.startDate,
+            endDate: formData.endDate,
+            price: 0,
+            currency: 'XOF',
+            categories: [],
+            judges: [],
+          });
+          const canonicalId = parseCanonicalEventId(created.id);
+          if (!canonicalId) throw new Error("La base n’a pas retourné d’ID d’événement canonique.");
+          eventData.id = canonicalId;
+          eventData.eventDbId = canonicalId;
+          eventData.persisted = true;
+          eventData.paid = created.paid;
+          eventData.status = created.status;
+          eventData.method = created.method;
+      } catch (err) {
           console.error('Erreur lors de la création de l’événement en base:', err);
-        }
+          setSubmitError(err instanceof Error ? err.message : "Impossible de sauvegarder l’événement en base.");
+        return;
+      }
+
+      const canonicalId = parseCanonicalEventId(eventData.eventDbId);
+      if (!canonicalId) {
+        setSubmitError("La base n’a pas retourné d’ID d’événement numérique canonique.");
+        return;
       }
 
       localStorage.setItem('eventData', JSON.stringify(eventData));
 
-      // CRITICAL FIX: Save the numeric DB ID if available, otherwise fallback to the string ID (offline mode only)
-      const activeId = eventData.eventDbId ? String(eventData.eventDbId) : eventId;
+      const activeId = String(canonicalId);
 
       // Use context to set active event (triggers DB load)
       const numericId = Number(activeId);
@@ -175,7 +185,9 @@ const CreateEvent = () => {
       localStorage.setItem('surfJudgingConfig', JSON.stringify(defaultConfig));
       localStorage.setItem('surfJudgingConfigSaved', 'false');
       setFormData(INITIAL_FORM);
-      navigate('/payment');
+      navigate(deploymentMode === 'cloud'
+        ? '/payment'
+        : `/participants?eventId=${canonicalId}&eventName=${encodeURIComponent(formData.name.trim())}`);
     } finally {
       setIsSubmitting(false);
     }

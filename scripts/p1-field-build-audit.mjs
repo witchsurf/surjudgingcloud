@@ -11,7 +11,9 @@ const require = createRequire(import.meta.url);
 const { chromium } = require('../frontend/node_modules/playwright');
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const frontendDir = path.join(rootDir, 'frontend');
-const distDir = path.join(frontendDir, 'dist');
+const distDir = process.env.P1_DIST_DIR
+  ? path.resolve(process.env.P1_DIST_DIR)
+  : path.join(frontendDir, 'dist');
 const host = '127.0.0.1';
 const port = Number(process.env.P1_AUDIT_PORT || 4173);
 const frontendOrigin = `http://${host}:${port}`;
@@ -119,7 +121,7 @@ async function launchBrowser() {
 async function runtimeAudit() {
   const preview = spawn('npm', ['run', 'preview', '--', '--host', host, '--port', String(port), '--strictPort'], {
     cwd: frontendDir,
-    env: { ...process.env },
+    env: { ...process.env, P1_DIST_DIR: distDir, VITE_DEPLOYMENT_MODE: 'field' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   try {

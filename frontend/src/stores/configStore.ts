@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { getPodiumIdFromSearch, normalizePodiumId, shouldPreferActivePointer } from '../utils/podium';
 import { parseActiveHeatId } from '../utils/activeHeatId';
+import { getSafeLocalStorage } from '../utils/secureStorage';
 
 interface ConfigStore {
     // State
@@ -50,6 +51,11 @@ const configLoadInFlight = new Map<string, Promise<void>>();
 const configLastLoadAt = new Map<string, number>();
 let latestRequestedConfigLoadKey = '';
 const CONFIG_LOAD_DEDUPE_MS = 12000;
+const unavailableStorage = {
+    getItem: () => null,
+    setItem: () => undefined,
+    removeItem: () => undefined,
+};
 
 const areConfigsEquivalent = (left: AppConfig, right: AppConfig): boolean => {
     if (Object.is(left, right)) return true;
@@ -601,7 +607,7 @@ export const useConfigStore = create<ConfigStore>()(
         }),
         {
             name: 'surf-judging-config',
-            storage: createJSONStorage(() => localStorage),
+            storage: createJSONStorage(() => getSafeLocalStorage() ?? unavailableStorage),
             partialize: (state) => ({
                 config: state.config,
                 configSaved: state.configSaved,

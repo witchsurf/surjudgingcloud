@@ -9,15 +9,20 @@ import type { AppConfig } from '../types';
 import { fetchEventConfigSnapshot, saveEventConfigSnapshot, type EventConfigSnapshot } from '../api/modules/events.api';
 import { getFirstCategoryFromParticipants } from '../utils/eventConfig';
 import { resolveEventDisplayName } from '../utils/eventName';
-import { OfflineAuthWrapper } from '../components/OfflineAuthWrapper';
+import { DeploymentAuthWrapper } from '../components/DeploymentAuthWrapper';
 import { isDevMode, saveOfflineCredentials, loginAsOfflineAdmin, hasOfflinePin } from '../lib/offlineAuth';
-import { syncEventsFromCloud, getCachedCloudEvents, getLastSyncTime, needsCloudSync, getCloudClient } from '../utils/syncCloudEvents';
+import { syncEventsFromCloud, getLastSyncTime, needsCloudSync, getCloudClient } from '../utils/syncCloudEvents';
 import { OfflineSettingsModal } from '../components/OfflineSettingsModal';
+import { competitionAdminRoute, ownedEventFilter } from '../domain/eventWorkflow';
+import { allowsCloudSync, getDeploymentMode } from '../domain/deploymentMode';
+import { getSafeLocalStorage } from '../utils/secureStorage';
 
 
 
 type OwnedEvent = {
   id: number;
+  user_id?: string | null;
+  owner_id?: string | null;
   name: string;
   organizer?: string | null;
   status?: string | null;
@@ -108,6 +113,8 @@ const buildConfigFromSnapshot = (eventName: string, snapshot: EventConfigSnapsho
 
 type SupabaseEventRow = {
   id: number;
+  user_id: string | null;
+  owner_id: string | null;
   name: string;
   organizer: string | null;
   status: string | null;
@@ -133,6 +140,8 @@ type SupabaseEventRow = {
 const normalizeOwnedEvents = (rows: SupabaseEventRow[]): OwnedEvent[] =>
   rows.map((row) => ({
     id: row.id,
+    user_id: row.user_id,
+    owner_id: row.owner_id,
     name: row.name,
     organizer: row.organizer,
     status: row.status,
@@ -145,6 +154,7 @@ const normalizeOwnedEvents = (rows: SupabaseEventRow[]): OwnedEvent[] =>
 
 // Memoized content component to prevent unnecessary re-renders
 const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMode }: { initialUser: User | null; isOfflineMode: boolean }) {
+  const deploymentMode = getDeploymentMode();
   const [events, setEvents] = useState<OwnedEvent[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -169,7 +179,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [offlinePin, setOfflinePin] = useState('');
   const [offlinePinError, setOfflinePinError] = useState<string | null>(null);
 
-  const [cloudEmail, setCloudEmail] = useState(() => (typeof window !== 'undefined' ? window.localStorage.getItem(CLOUD_EMAIL_KEY) ?? '' : ''));
+  const [cloudEmail, setCloudEmail] = useState(() => getSafeLocalStorage()?.getItem(CLOUD_EMAIL_KEY) ?? '');
   const [cloudPassword, setCloudPassword] = useState('');
   const [cloudSendingMagicLink, setCloudSendingMagicLink] = useState(false);
   const [cloudLinkSent, setCloudLinkSent] = useState(false);
@@ -212,25 +222,26 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     setError(null);
 
     let loadedEvents: OwnedEvent[] = [];
-    let dbSuccess = false;
-
-    // 1. Try to load from Supabase (Local or Cloud) if configured
+    // The configured Supabase database is the sole source of truth in both modes.
     if (supabase && isSupabaseConfigured()) {
       try {
         console.log('🔄 Attempting to load events from Supabase DB...');
+        const eventSelection = deploymentMode === 'field'
+          ? 'id, name, organizer, status, start_date, end_date'
+          : 'id, user_id, owner_id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)';
         let query = supabase
           .from('events')
-          .select('id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)');
+          .select(eventSelection);
 
         const shouldFilterByUser =
           Boolean(userId) &&
           userId !== 'offline-admin' &&
-          mode !== 'local';
+          deploymentMode === 'cloud';
 
         // In LAN/local mode, browser origin changes (192.168.x.y) can reset localStorage identity.
         // The local DB is the source of truth there, so we must not hide synced events behind a stale user_id.
         if (shouldFilterByUser) {
-          query = query.eq('user_id', userId);
+          query = query.or(ownedEventFilter(userId));
         }
 
         const { data, error: fetchError } = await query
@@ -238,36 +249,22 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
 
         if (fetchError) {
           console.warn('⚠️ Supabase fetch failed:', fetchError.message);
-          // Don't set error yet, try cache first
+          setError(fetchError.message);
         } else {
           loadedEvents = normalizeOwnedEvents(((data ?? []) as unknown) as SupabaseEventRow[]);
-          dbSuccess = true;
           console.log(`✅ Loaded ${loadedEvents.length} events from DB`);
         }
       } catch (err) {
         console.warn('⚠️ Supabase fetch error:', err);
+        setError(err instanceof Error ? err.message : 'Impossible de charger les événements.');
       }
-    }
-
-    // 2. Fallback to Cache ONLY if we are in cloud mode or if DB is absolutely unreachable
-    const isLocalMode = mode === 'local';
-
-    if (!dbSuccess || (loadedEvents.length === 0 && !isLocalMode)) {
-      console.log('📴 Checking cached cloud events (fallback)...');
-      const cachedEvents = getCachedCloudEvents();
-
-      if (cachedEvents.length > 0) {
-        console.log(`✅ Loaded ${cachedEvents.length} cached events from localStorage`);
-        loadedEvents = normalizeOwnedEvents(cachedEvents as any[]);
-        setLastSync(getLastSyncTime());
-      }
-    } else if (isLocalMode && loadedEvents.length === 0) {
-      console.log('ℹ️ Local DB is empty. Please "Sync from Cloud" to populate it.');
+    } else {
+      setError(`Supabase ${deploymentMode === 'field' ? 'local' : 'Cloud'} est indisponible.`);
     }
 
     setEvents(loadedEvents);
     setLoadingEvents(false);
-  }, []);
+  }, [deploymentMode]);
 
   // Sync initial user from wrapper (only when user ID changes)
   useEffect(() => {
@@ -365,6 +362,10 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     setSyncing(true);
     setSyncError(null);
     try {
+      if (!allowsCloudSync(deploymentMode)) {
+        setSyncError('Mode Field : les appels Cloud sont désactivés.');
+        return;
+      }
       if (cloudLocked) {
         setSyncError('Mode LAN actif : la synchronisation cloud est bloquée.');
         return;
@@ -399,7 +400,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     } finally {
       setSyncing(false);
     }
-  }, [cloudEmail, user?.email, cloudLocked]);
+  }, [cloudEmail, cloudLocked, deploymentMode, user?.email]);
 
   const handleSendCloudMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -411,8 +412,8 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
 
     try {
       const cloudClient = getCloudClient();
-      window.localStorage.setItem(CLOUD_EMAIL_KEY, cloudEmail.trim());
-      window.localStorage.setItem(CLOUD_SYNC_AFTER_LOGIN_KEY, 'true');
+      getSafeLocalStorage()?.setItem(CLOUD_EMAIL_KEY, cloudEmail.trim());
+      getSafeLocalStorage()?.setItem(CLOUD_SYNC_AFTER_LOGIN_KEY, 'true');
       setCloudSendingMagicLink(true);
       const { error: signInError } = await cloudClient.auth.signInWithOtp({
         email: cloudEmail.trim(),
@@ -452,7 +453,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       }
 
       setCloudLoginRequired(false);
-      window.localStorage.setItem(CLOUD_EMAIL_KEY, cloudEmail.trim());
+      getSafeLocalStorage()?.setItem(CLOUD_EMAIL_KEY, cloudEmail.trim());
       await handleSyncFromCloud();
     } catch (err: any) {
       let msg = err?.message ?? 'Échec de la connexion cloud.';
@@ -469,9 +470,9 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   };
 
   useEffect(() => {
-    if (!isDevMode()) return;
+    if (deploymentMode !== 'cloud' || !isDevMode()) return;
     if (typeof window === 'undefined') return;
-    if (window.localStorage.getItem(CLOUD_SYNC_AFTER_LOGIN_KEY) !== 'true') return;
+    if (getSafeLocalStorage()?.getItem(CLOUD_SYNC_AFTER_LOGIN_KEY) !== 'true') return;
     if (cloudLocked) return;
 
     let cancelled = false;
@@ -485,7 +486,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
 
         if (!session?.access_token) {
           // If we expected a sync but have no session, maybe wait a bit or show error
-          if (window.localStorage.getItem(CLOUD_SYNC_AFTER_LOGIN_KEY) === 'true' && !window.location.hash) {
+          if (getSafeLocalStorage()?.getItem(CLOUD_SYNC_AFTER_LOGIN_KEY) === 'true' && !window.location.hash) {
             console.warn('⚠️ Sync expected but no cloud session found.');
           }
           return;
@@ -493,7 +494,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
 
         if (cancelled) return;
         console.log('🚀 Cloud session found! Starting auto-sync...');
-        window.localStorage.removeItem(CLOUD_SYNC_AFTER_LOGIN_KEY);
+        getSafeLocalStorage()?.removeItem(CLOUD_SYNC_AFTER_LOGIN_KEY);
         await handleSyncFromCloud();
       } catch (err: any) {
         console.warn('Auto sync after cloud login failed:', err);
@@ -509,10 +510,10 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [handleSyncFromCloud, cloudLocked]);
+  }, [deploymentMode, handleSyncFromCloud, cloudLocked]);
 
   useEffect(() => {
-    if (mode !== 'local') return;
+    if (deploymentMode !== 'cloud' || mode !== 'local') return;
     if (cloudLocked || syncing || loadingEvents) return;
     if (localAutoSyncAttemptedRef.current) return;
 
@@ -542,7 +543,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [cloudLocked, events.length, handleSyncFromCloud, loadingEvents, syncing]);
+  }, [cloudLocked, deploymentMode, events.length, handleSyncFromCloud, loadingEvents, syncing]);
 
   const handleSendMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -681,9 +682,10 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           setActiveEventId(event.id);
 
           // Backup to localStorage
-          localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
-          localStorage.setItem('surfJudgingConfigSaved', 'true');
-          localStorage.setItem('surfJudgingActiveEventId', event.id.toString());
+          const storage = getSafeLocalStorage();
+          storage?.setItem('surfJudgingConfig', JSON.stringify(config));
+          storage?.setItem('surfJudgingConfigSaved', 'true');
+          storage?.setItem('surfJudgingActiveEventId', event.id.toString());
 
         } catch (saveError) {
           console.warn('⚠️ Failed to auto-save config, continuing in offline mode:', saveError);
@@ -693,9 +695,10 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           setConfigSaved(false);
           setActiveEventId(event.id);
 
-          localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
-          localStorage.setItem('surfJudgingConfigSaved', 'false');
-          localStorage.setItem('surfJudgingActiveEventId', event.id.toString());
+          const storage = getSafeLocalStorage();
+          storage?.setItem('surfJudgingConfig', JSON.stringify(config));
+          storage?.setItem('surfJudgingConfigSaved', 'false');
+          storage?.setItem('surfJudgingActiveEventId', event.id.toString());
         }
       } else {
         // Snapshot exists, use it normally
@@ -707,17 +710,19 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
         setLoadedFromDb(true); // Mark as loaded from DB
         setActiveEventId(event.id);
 
-        localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
-        localStorage.setItem('surfJudgingConfigSaved', 'true');
-        localStorage.setItem('surfJudgingActiveEventId', event.id.toString());
+        const storage = getSafeLocalStorage();
+        storage?.setItem('surfJudgingConfig', JSON.stringify(config));
+        storage?.setItem('surfJudgingConfigSaved', 'true');
+        storage?.setItem('surfJudgingActiveEventId', event.id.toString());
       }
 
       // Reset other state
-      localStorage.setItem('surfJudgingTimer', JSON.stringify({ isRunning: false, startTime: null, duration: 15 }));
-      localStorage.setItem('surfJudgingScores', JSON.stringify([]));
-      localStorage.setItem('surfJudgingJudgeWorkCount', JSON.stringify({}));
+      const storage = getSafeLocalStorage();
+      storage?.setItem('surfJudgingTimer', JSON.stringify({ isRunning: false, startTime: null, duration: 15 }));
+      storage?.setItem('surfJudgingScores', JSON.stringify([]));
+      storage?.setItem('surfJudgingJudgeWorkCount', JSON.stringify({}));
 
-      navigate('/chief-judge');
+      navigate(competitionAdminRoute(event.id));
     } catch (err: any) {
       setActionError(err?.message ?? "Impossible de charger la configuration de cet événement.");
     } finally {
@@ -884,7 +889,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
               <p className="text-sm text-blue-300">Bienvenue, {user.email}</p>
               <h1 className="mt-2 text-3xl font-bold">Mes événements</h1>
             </div>
-            <button
+            {deploymentMode === 'cloud' && <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-3 bg-slate-900 border border-slate-800 rounded-2xl hover:bg-slate-800 transition-colors group relative"
               title="Paramètres Offline"
@@ -896,7 +901,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
                 </span>
               )}
-            </button>
+            </button>}
           </div>
 
           <div className="mt-4 flex flex-wrap gap-3">
@@ -936,7 +941,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
           </div>
 
           {/* Sync Status */}
-          {lastSync && (
+          {deploymentMode === 'cloud' && lastSync && (
             <p className="mt-2 text-xs text-slate-400">
               📅 Dernière sync: {lastSync.toLocaleString('fr-FR')}
               {needsCloudSync() && <span className="ml-2 text-amber-400">• Sync recommandée</span>}
@@ -1129,8 +1134,8 @@ export default function MyEvents() {
   ), []);
 
   return (
-    <OfflineAuthWrapper>
+    <DeploymentAuthWrapper>
       {renderContent}
-    </OfflineAuthWrapper>
+    </DeploymentAuthWrapper>
   );
 }

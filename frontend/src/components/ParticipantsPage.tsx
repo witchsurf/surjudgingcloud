@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { parsePlanningCsv } from '../adapters/planningImport/csvParser';
 import PlanningImportPanel from './PlanningImportPanel';
+import { supabase } from '../lib/supabase';
+import { canProceedToParticipants, parseCanonicalEventId, resolveEventWorkflowState } from '../domain/eventWorkflow';
+import { getDeploymentMode } from '../domain/deploymentMode';
 
 interface Participant {
   seed: number;
@@ -13,9 +16,13 @@ interface Participant {
 
 const ParticipantsPage = () => {
   const navigate = useNavigate();
+  const deploymentMode = getDeploymentMode();
   const [searchParams] = useSearchParams();
   const eventIdParam = searchParams.get('event') ?? searchParams.get('eventId');
-  const previewEventId = eventIdParam && /^\d+$/.test(eventIdParam) ? Number(eventIdParam) : null;
+  const storedEventData = (() => {
+    try { return JSON.parse(localStorage.getItem('eventData') || 'null'); } catch { return null; }
+  })();
+  const previewEventId = parseCanonicalEventId(eventIdParam) ?? parseCanonicalEventId(storedEventData?.eventDbId);
   const previewEventName = searchParams.get('eventName')?.trim() || undefined;
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('Toutes les catégories');
@@ -23,6 +30,8 @@ const ParticipantsPage = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [showOfflinePreview, setShowOfflinePreview] = useState(false);
+  const [workflowReady, setWorkflowReady] = useState(false);
+  const [workflowStatus, setWorkflowStatus] = useState('Vérification de l’événement…');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -38,6 +47,38 @@ const ParticipantsPage = () => {
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const verifyEvent = async () => {
+      if (!previewEventId || !supabase) {
+        if (!cancelled) {
+          setWorkflowReady(false);
+          setWorkflowStatus('Événement non sauvegardé dans la base : aucune écriture autorisée.');
+        }
+        return;
+      }
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, name, paid, status, method, test_activated_at, test_activated_by')
+        .eq('id', previewEventId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        setWorkflowReady(false);
+        setWorkflowStatus('Événement introuvable en base : import et génération bloqués.');
+        return;
+      }
+      const state = resolveEventWorkflowState(data);
+      const ready = canProceedToParticipants(state, deploymentMode);
+      setWorkflowReady(ready);
+      setWorkflowStatus(ready
+        ? `Événement sauvegardé dans la base ${deploymentMode === 'field' ? 'locale' : 'Cloud'} — ID ${state.eventId}${state.paymentStatus === 'test_activated' ? ' (activation test)' : ''}`
+        : `Événement Cloud sauvegardé — ID ${state.eventId}, paiement ou activation test autorisée requis.`);
+    };
+    void verifyEvent();
+    return () => { cancelled = true; };
+  }, [deploymentMode, previewEventId]);
 
   const toLegacyParticipants = (csv: string, source: 'csv' | 'google_sheets'): Participant[] => {
     const result = parsePlanningCsv(csv, { source });
@@ -63,6 +104,10 @@ const ParticipantsPage = () => {
   };
 
   const handleGoogleSheetImport = async () => {
+    if (deploymentMode === 'field') {
+      setImportError('Google Sheets est désactivé en mode Field. Utilisez un fichier local CSV/XLSX.');
+      return;
+    }
     const sheetIdMatch = googleSheetUrl.match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (!sheetIdMatch) {
       setImportError('URL Google Sheet invalide. Assurez-vous de coller un lien de feuille partagé en lecture.');
@@ -114,11 +159,15 @@ const ParticipantsPage = () => {
   };
 
   const handleGenerateHeats = () => {
+    if (!workflowReady || !previewEventId) {
+      setImportError('Création des heats interdite : événement non sauvegardé ou non activé.');
+      return;
+    }
     if (participants.length === 0) {
       setImportError('Importez ou ajoutez des participants avant de générer les séries.');
       return;
     }
-    navigate('/generate-heats');
+    navigate(`/generate-heats?eventId=${previewEventId}`);
   };
 
   return (
@@ -129,12 +178,15 @@ const ParticipantsPage = () => {
           <p className="text-gray-400">
             Importez vos participants, gérez les inscriptions et générez automatiquement vos séries.
           </p>
+          <p className={`mt-3 rounded-lg border px-4 py-3 text-sm ${workflowReady ? 'border-emerald-600 bg-emerald-500/10 text-emerald-200' : 'border-amber-600 bg-amber-500/10 text-amber-200'}`}>
+            {workflowStatus}
+          </p>
         </div>
 
         {/* Import Section */}
         <div className="bg-gray-800 rounded-lg p-6 mb-8">
           <h2 className="text-xl font-semibold mb-1">Import historique</h2>
-          <p className="mb-4 text-sm text-amber-300">Workflow legacy CSV / Google Sheets conservé pour rollback. L’import hors ligne ci-dessous est recommandé sur le terrain.</p>
+          <p className="mb-4 text-sm text-amber-300">{deploymentMode === 'cloud' ? 'Workflow legacy CSV / Google Sheets conservé pour rollback.' : 'Mode Field : seuls les imports de fichiers locaux sont autorisés.'} L’import hors ligne ci-dessous est recommandé sur le terrain.</p>
           
           <div className="flex gap-4 mb-6">
             <button
@@ -144,9 +196,7 @@ const ParticipantsPage = () => {
             >
               CSV
             </button>
-            <button className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600" type="button">
-              Google Sheets
-            </button>
+            {deploymentMode === 'cloud' && <button className="bg-gray-700 px-6 py-2 rounded-lg hover:bg-gray-600" type="button">Google Sheets</button>}
           </div>
           <input
             ref={fileInputRef}
@@ -156,7 +206,7 @@ const ParticipantsPage = () => {
             onChange={handleCsvFileChange}
           />
 
-          <div className="space-y-4">
+          {deploymentMode === 'cloud' && <div className="space-y-4">
             <p className="text-sm text-gray-400">
               Partagez votre Google Sheet en mode public puis collez l'URL ici.
             </p>
@@ -182,7 +232,7 @@ const ParticipantsPage = () => {
             {importError && (
               <p className="text-sm text-red-400">{importError}</p>
             )}
-          </div>
+          </div>}
         </div>
 
         <div className="mb-8">
@@ -196,7 +246,7 @@ const ParticipantsPage = () => {
           {showOfflinePreview && (
             <div className="mt-4">
               <PlanningImportPanel
-                eventId={previewEventId}
+                eventId={workflowReady ? previewEventId : null}
                 eventName={previewEventName}
                 onPersisted={({ participants: persisted }) => persistParticipants(persisted.map((participant) => ({
                   seed: participant.seed,
@@ -292,6 +342,7 @@ const ParticipantsPage = () => {
           </button>
           <button
             onClick={handleGenerateHeats}
+            disabled={!workflowReady}
             className="bg-blue-600 px-6 py-2 rounded-lg hover:bg-blue-700"
           >
             Générer les séries →

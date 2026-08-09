@@ -21,12 +21,14 @@ import {
 } from '../lib/offlineAuth';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Lock, ShieldAlert, Waves } from 'lucide-react';
+import { getDeploymentMode } from '../domain/deploymentMode';
 
 interface OfflineAuthWrapperProps {
   children: (user: User | null, isOfflineMode: boolean) => React.ReactNode;
 }
 
 export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
+  const deploymentMode = getDeploymentMode();
   const [user, setUser] = useState<User | null>(null);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,23 +45,29 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
     let mounted = true;
 
     async function initAuth() {
-      // 1. Check if dev mode is enabled - skip ALL auth checks
-      if (isDevMode()) {
-        const devUser = getDevUser();
+      // Field uses the local database without requiring a Cloud identity.
+      if (deploymentMode === 'field') {
+        const fieldUser = getDevUser() ?? ({
+          id: 'field-operator',
+          email: 'operator@surfjudging.local',
+          app_metadata: {},
+          user_metadata: {},
+          aud: 'authenticated',
+          created_at: '1970-01-01T00:00:00.000Z',
+        } as User);
         if (mounted) {
-          setUser(devUser);
+          setUser(fieldUser);
           setIsOfflineMode(true);
           setIsLoading(false);
           setInitialized(true);
         }
-        console.log('🔧 Dev mode enabled - bypassing all auth, auto-login as:', devUser?.email);
-        return; // Exit immediately, don't check Supabase
+        return;
       }
 
       // 2. Check if Supabase is configured
       if (!supabase || !isSupabaseConfigured()) {
         // Check for offline credentials
-        const offlineUser = getOfflineUser();
+        const offlineUser = deploymentMode === 'field' ? getOfflineUser() : null;
         if (offlineUser && hasValidOfflineAccess()) {
           if (mounted) {
             // Convert OfflineUser to Supabase User format
@@ -103,7 +111,7 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
 
           // Save credentials for offline use
           const session = await supabase.auth.getSession();
-          if (session.data.session) {
+          if (deploymentMode === 'field' && session.data.session) {
             saveOfflineCredentials(
               data.user,
               session.data.session.access_token,
@@ -113,7 +121,7 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
           }
         } else {
           // No online user, check offline fallback
-          const offlineUser = getOfflineUser();
+          const offlineUser = deploymentMode === 'field' ? getOfflineUser() : null;
           if (offlineUser && hasValidOfflineAccess() && mounted) {
             const mockUser: User = {
               id: offlineUser.id,
@@ -134,7 +142,7 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
         console.error('❌ Auth error:', error);
 
         // Fallback to offline mode on error
-        const offlineUser = getOfflineUser();
+        const offlineUser = deploymentMode === 'field' ? getOfflineUser() : null;
         if (offlineUser && hasValidOfflineAccess() && mounted) {
           const mockUser: User = {
             id: offlineUser.id,
@@ -169,13 +177,13 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
 
   // PIN Security Check
   useEffect(() => {
-    if (initialized && isOfflineMode && !isDevMode() && hasOfflinePin()) {
+    if (deploymentMode === 'field' && initialized && isOfflineMode && !isDevMode() && hasOfflinePin()) {
       setPinRequired(true);
     } else {
       setPinRequired(false);
       setIsUnlocked(true);
     }
-  }, [initialized, isOfflineMode]);
+  }, [deploymentMode, initialized, isOfflineMode]);
 
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,7 +201,7 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
 
   // Separate effect for auth listener
   useEffect(() => {
-    if (!initialized || isDevMode()) return;
+    if (!initialized || (deploymentMode === 'field' && isDevMode())) return;
 
     // Listen for auth state changes (online mode only, NOT in dev mode)
     if (supabase && isSupabaseConfigured()) {
@@ -201,7 +209,7 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
         setUser(session?.user ?? null);
         setIsOfflineMode(false);
 
-        if (session?.user) {
+        if (deploymentMode === 'field' && session?.user) {
           saveOfflineCredentials(
             session.user,
             session.access_token,
@@ -215,7 +223,7 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
         listener.subscription.unsubscribe();
       };
     }
-  }, [initialized]);
+  }, [deploymentMode, initialized]);
 
   // Loading state
   if (isLoading) {

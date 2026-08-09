@@ -55,6 +55,27 @@ export type Database = {
           },
         ]
       }
+      app_deployment_config: {
+        Row: {
+          cloud_test_activation_enabled: boolean
+          deployment_mode: string
+          id: boolean
+          provisioned_at: string
+        }
+        Insert: {
+          cloud_test_activation_enabled?: boolean
+          deployment_mode: string
+          id?: boolean
+          provisioned_at?: string
+        }
+        Update: {
+          cloud_test_activation_enabled?: boolean
+          deployment_mode?: string
+          id?: boolean
+          provisioned_at?: string
+        }
+        Relationships: []
+      }
       app_runtime_schema_version: {
         Row: {
           id: boolean
@@ -209,6 +230,8 @@ export type Database = {
           price: number
           start_date: string
           status: string
+          test_activated_at: string | null
+          test_activated_by: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -229,6 +252,8 @@ export type Database = {
           price: number
           start_date: string
           status?: string
+          test_activated_at?: string | null
+          test_activated_by?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -249,6 +274,8 @@ export type Database = {
           price?: number
           start_date?: string
           status?: string
+          test_activated_at?: string | null
+          test_activated_by?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -1608,17 +1635,6 @@ export type Database = {
         }
         Returns: undefined
       }
-      upsert_heat_config_runtime: {
-        Args: {
-          p_heat_id: string
-          p_judge_names: Json
-          p_judges: string[]
-          p_surfers: string[]
-          p_tournament_type: string
-          p_waves: number
-        }
-        Returns: undefined
-      }
       can_display_event: { Args: { p_event_id: number }; Returns: boolean }
       can_display_heat: { Args: { p_heat_id: string }; Returns: boolean }
       check_heat_planning_safety: {
@@ -1665,6 +1681,14 @@ export type Database = {
         }
         Returns: Json
       }
+      activate_event_for_test: {
+        Args: { p_event_id: number }
+        Returns: {
+          event_id: number
+          test_activated_at: string
+          test_activated_by: string
+        }[]
+      }
       copy_podium_panel_to_heat: {
         Args: {
           p_assigned_by?: string
@@ -1673,6 +1697,36 @@ export type Database = {
           p_podium_id: string
         }
         Returns: number
+      }
+      create_event_secure: {
+        Args: {
+          p_categories?: Json
+          p_currency?: string
+          p_end_date: string
+          p_judges?: Json
+          p_name: string
+          p_organizer: string
+          p_price?: number
+          p_start_date: string
+        }
+        Returns: {
+          categories: Json
+          created_at: string
+          currency: string
+          end_date: string
+          id: number
+          judges: Json
+          method: string
+          name: string
+          organizer: string
+          paid: boolean
+          paid_at: string
+          payment_ref: string
+          price: number
+          start_date: string
+          status: string
+          user_id: string
+        }[]
       }
       delete_score_secure: {
         Args: {
@@ -1685,6 +1739,7 @@ export type Database = {
         }
         Returns: Json
       }
+      event_creation_is_local_database: { Args: never; Returns: boolean }
       fn_audit_podium: {
         Args: { p_event_id: number; p_heat_id: string }
         Returns: string
@@ -1801,6 +1856,11 @@ export type Database = {
               timer_remaining_seconds: number
             }[]
           }
+      get_authoritative_deployment_mode: { Args: never; Returns: string }
+      get_event_test_activation_capability: {
+        Args: { p_event_id: number }
+        Returns: boolean
+      }
       get_heat_planning_safety_inventory: {
         Args: {
           p_category: string
@@ -1908,6 +1968,17 @@ export type Database = {
             }
             Returns: undefined
           }
+      upsert_heat_config_runtime: {
+        Args: {
+          p_heat_id: string
+          p_judge_names: Json
+          p_judges: string[]
+          p_surfers: string[]
+          p_tournament_type: string
+          p_waves: number
+        }
+        Returns: undefined
+      }
       upsert_heat_realtime_config: {
         Args: {
           p_config_data?: Json

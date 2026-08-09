@@ -1,36 +1,69 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { parseCanonicalEventId, resolveEventWorkflowState } from '../domain/eventWorkflow';
+import { getDeploymentMode } from '../domain/deploymentMode';
+import { eventRepository } from '../repositories/EventRepository';
 
 type PaymentMethod = 'stripe' | 'orange-money' | 'wave';
 
 const PaymentPage = () => {
   const navigate = useNavigate();
+  const deploymentMode = getDeploymentMode();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
 
   const eventData = JSON.parse(localStorage.getItem('eventData') || '{}');
   const amount = 50000; // 50,000 FCFA
+  const canonicalEventId = parseCanonicalEventId(eventData.eventDbId ?? eventData.id);
 
   const [loading, setLoading] = useState(false);
+  const [loadingTestActivation, setLoadingTestActivation] = useState(false);
+  const [canActivateForTest, setCanActivateForTest] = useState(false);
+  const [testActivationError, setTestActivationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (deploymentMode !== 'field') return;
+    if (canonicalEventId) {
+      navigate(`/participants?eventId=${canonicalEventId}&eventName=${encodeURIComponent(String(eventData.name ?? ''))}`, { replace: true });
+    } else {
+      navigate('/my-events', { replace: true });
+    }
+  }, [canonicalEventId, deploymentMode, eventData.name, navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (deploymentMode !== 'cloud' || !canonicalEventId) return undefined;
+    void eventRepository.canActivateForTest(canonicalEventId)
+      .then((allowed) => { if (!cancelled) setCanActivateForTest(allowed); })
+      .catch(() => { if (!cancelled) setCanActivateForTest(false); });
+    return () => { cancelled = true; };
+  }, [canonicalEventId, deploymentMode]);
 
   const handlePayment = async () => {
     if (!selectedMethod) return;
+    if (deploymentMode !== 'cloud') return;
+    if (!canonicalEventId) {
+      alert("L’événement doit d’abord être sauvegardé dans la base Cloud.");
+      return;
+    }
     if (!supabase) {
       alert('Supabase n’est pas configuré. Paiement indisponible en mode hors‑ligne.');
       return;
     }
 
-    if (selectedMethod === 'stripe') {
-      try {
+    try {
         setLoading(true);
         const { data, error } = await supabase.functions.invoke('payments', {
           body: {
             action: 'initiate',
+            eventId: canonicalEventId,
+            provider: selectedMethod === 'orange-money' ? 'orange_money' : selectedMethod,
             amount: amount,
             currency: 'xof',
             event_name: eventData.name,
             organizer: eventData.organizer,
-            // Add other necessary fields from eventData if available
+            successUrl: `${window.location.origin}/participants?eventId=${canonicalEventId}`,
+            cancelUrl: `${window.location.origin}/payment?eventId=${canonicalEventId}`,
           },
         });
 
@@ -41,26 +74,38 @@ const PaymentPage = () => {
         } else {
           throw new Error('No checkout URL received');
         }
-      } catch (err) {
+    } catch (err) {
         console.error('Payment initiation failed:', err);
         alert('Erreur lors de l\'initialisation du paiement. Veuillez réessayer.');
         setLoading(false);
-      }
-      return;
     }
-
-    // Simulate payment processing for other methods
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      // After successful payment, navigate to participants page
-      navigate('/participants');
-    }, 1000);
   };
 
-  const handleTestMode = () => {
-    navigate('/participants');
+  const handleTestActivation = async () => {
+    if (deploymentMode !== 'cloud' || !canonicalEventId || !canActivateForTest || !supabase) return;
+    setLoadingTestActivation(true);
+    setTestActivationError(null);
+    try {
+      await eventRepository.activateForTest(canonicalEventId);
+      const { data, error } = await supabase
+        .from('events')
+        .select('id, paid, status, test_activated_at, test_activated_by')
+        .eq('id', canonicalEventId)
+        .maybeSingle();
+      if (error) throw error;
+      if (resolveEventWorkflowState(data).paymentStatus !== 'test_activated') {
+        throw new Error("L’activation test n’a pas été confirmée par la base.");
+      }
+      setCanActivateForTest(false);
+      navigate(`/participants?eventId=${canonicalEventId}&eventName=${encodeURIComponent(String(eventData.name ?? ''))}`);
+    } catch (error) {
+      setTestActivationError(error instanceof Error ? error.message : "Échec de l’activation test.");
+    } finally {
+      setLoadingTestActivation(false);
+    }
   };
+
+  if (deploymentMode === 'field') return null;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -129,12 +174,25 @@ const PaymentPage = () => {
             {loading ? 'Traitement en cours...' : 'Procéder au paiement'}
           </button>
 
-          <button
-            onClick={handleTestMode}
-            className="w-full py-4 rounded-lg border border-dashed border-gray-600 text-gray-400 hover:text-white hover:border-gray-400"
-          >
-            Activer en mode test
-          </button>
+          {canActivateForTest && (
+            <div className="mt-6 rounded-lg border border-amber-400 bg-amber-500/10 p-4">
+              <p className="text-sm text-amber-100">
+                Capacité Cloud réservée aux validations autorisées. Aucun paiement Stripe ne sera enregistré.
+              </p>
+              {testActivationError && <p className="mt-2 text-sm text-red-300">{testActivationError}</p>}
+              <button
+                type="button"
+                onClick={handleTestActivation}
+                disabled={loadingTestActivation}
+                className="mt-4 w-full rounded-lg border border-amber-300 px-4 py-3 font-semibold text-amber-100 hover:bg-amber-400/10 disabled:opacity-60"
+              >
+                {loadingTestActivation
+                  ? 'Activation test en cours…'
+                  : 'Activer pour test — aucun paiement réel'}
+              </button>
+            </div>
+          )}
+
         </div>
       </div>
     </div>

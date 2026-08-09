@@ -8,6 +8,7 @@ import { isLocalNetworkHost, isLocalNetworkUrl } from './networkDetection';
 import { createReconnectAfterMs } from './realtimeBackoff';
 import { useOfflineStore } from '../stores/offlineStore';
 import { replayLegacyRuntimeHeatConfig } from '../api/modules/runtimeHeatConfig.api';
+import { getDeploymentMode } from '../domain/deploymentMode';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -89,39 +90,8 @@ export const setSupabaseOverrides = (url?: string, anonKey?: string) => {
 };
 
 export const getSupabaseConfig = () => {
-  const storedMode = getSupabaseMode();
-  const cloudLocked = isCloudLocked();
-  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const urlMode = searchParams?.get('mode') as SupabaseMode;
-
-  const isServedFromLocalNetwork = isLocalNetworkHost();
-
-  let mode: SupabaseMode | null = cloudLocked ? 'local' : storedMode;
-
-  // 1. URL parameter takes absolute precedence
-  if (urlMode === 'cloud' || urlMode === 'local') {
-    mode = urlMode;
-  } 
-  // 2. Otherwise follow cloud lock
-  else if (cloudLocked) {
-    mode = 'local';
-  }
-  // 3. Otherwise follow hostname detection (default for LAN)
-  else if (isServedFromLocalNetwork) {
-    mode = 'local';
-  }
-  // 4. Finally fallback to stored mode or auto-detect
-  else if (!mode) {
-    mode = storedMode || null;
-    if (!mode) {
-      const currentUrl = overrideUrl || resolveEnv('VITE_SUPABASE_URL') || window.location.origin;
-      if (isLocalNetworkUrl(currentUrl)) {
-        mode = 'local';
-      } else {
-        mode = 'cloud';
-      }
-    }
-  }
+  const deploymentMode = getDeploymentMode();
+  const mode: SupabaseMode = deploymentMode === 'field' ? 'local' : 'cloud';
 
   const isLocalDevice = typeof window !== 'undefined' && isLocalNetworkHost();
 
@@ -139,15 +109,13 @@ export const getSupabaseConfig = () => {
       ? resolveEnv('VITE_SUPABASE_ANON_KEY_LAN') || resolveEnv('VITE_SUPABASE_ANON_KEY_LOCAL')
       : resolveEnv('VITE_SUPABASE_ANON_KEY_CLOUD');
 
-  const supabaseUrl =
-    overrideUrl ||
-    urlFromMode ||
-    resolveEnv('VITE_SUPABASE_URL');
+  const supabaseUrl = mode === 'local'
+    ? ((overrideUrl && isLocalNetworkUrl(overrideUrl) ? overrideUrl : undefined) || urlFromMode)
+    : (urlFromMode || resolveEnv('VITE_SUPABASE_URL'));
 
-  const supabaseAnonKey =
-    overrideAnon ||
-    anonFromMode ||
-    resolveEnv('VITE_SUPABASE_ANON_KEY');
+  const supabaseAnonKey = mode === 'local'
+    ? ((overrideUrl && isLocalNetworkUrl(overrideUrl) ? overrideAnon : undefined) || anonFromMode)
+    : (anonFromMode || resolveEnv('VITE_SUPABASE_ANON_KEY'));
 
   return {
     supabaseUrl,

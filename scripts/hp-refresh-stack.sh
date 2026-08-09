@@ -206,6 +206,10 @@ for migration in \$migrations; do
   apply_sql_if_needed "\$migration"
 done
 
+echo "==> Provisioning authoritative Field deployment mode"
+docker exec -i surfjudging_postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+  < "${HP_BASE_DIR}/backend/sql/PROVISION_FIELD_DEPLOYMENT_MODE.sql"
+
 echo "==> Verifying migration tracker..."
 latest_migration=\$(find "${HP_BASE_DIR}/backend/supabase/migrations" -maxdepth 1 -name "*.sql" ! -name "._*" ! -name "TEST_MIGRATIONS.sql" | sort | tail -n 1)
 latest_base=\$(basename "\$latest_migration")

@@ -42,7 +42,38 @@ export interface EventConfigurationUpdate {
   config: Readonly<Record<string, unknown>>;
 }
 
+export interface CreateEventRequest {
+  name: string;
+  organizer: string;
+  startDate: string;
+  endDate: string;
+  price: number;
+  currency: string;
+  categories: readonly unknown[];
+  judges: readonly unknown[];
+}
+
+export interface CreatedEventRecord extends CreateEventRequest {
+  id: number;
+  method: string | null;
+  status: string;
+  paid: boolean;
+  paidAt: string | null;
+  paymentRef: string | null;
+  userId: string | null;
+  createdAt: string;
+}
+
+export interface EventTestActivationRecord {
+  eventId: number;
+  testActivatedAt: string;
+  testActivatedBy: string;
+}
+
 export interface EventRepositoryContract {
+  create(request: CreateEventRequest): Promise<CreatedEventRecord>;
+  canActivateForTest(eventId: number): Promise<boolean>;
+  activateForTest(eventId: number): Promise<EventTestActivationRecord>;
   list(): Promise<readonly EventSummary[]>;
   getById(eventId: number): Promise<EventSummary | null>;
   getIdByName(name: string): Promise<number | null>;

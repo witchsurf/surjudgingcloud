@@ -11,6 +11,21 @@ interface StorageItem<T> {
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+function getBrowserStorage(kind: 'localStorage' | 'sessionStorage'): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window[kind] ?? null;
+  } catch {
+    // Safari privacy contexts, replay sandboxes and hardened browsers may expose
+    // window while denying access to Web Storage. Cache storage is non-critical.
+    return null;
+  }
+}
+
+export const getSafeLocalStorage = (): Storage | null => getBrowserStorage('localStorage');
+
+export const getSafeSessionStorage = (): Storage | null => getBrowserStorage('sessionStorage');
+
 /**
  * Basic obfuscation using base64 (NOT encryption, just prevents casual inspection)
  * For true security, use Web Crypto API for actual encryption
@@ -35,6 +50,8 @@ function deobfuscate(data: string): string {
  * Securely set an item in localStorage with optional expiration
  */
 export function secureSetItem<T>(key: string, value: T, ttlMs: number = DEFAULT_TTL_MS): void {
+  const storage = getBrowserStorage('localStorage');
+  if (!storage) return;
   try {
     const item: StorageItem<T> = {
       value,
@@ -44,12 +61,12 @@ export function secureSetItem<T>(key: string, value: T, ttlMs: number = DEFAULT_
 
     const serialized = JSON.stringify(item);
     const obfuscated = obfuscate(serialized);
-    localStorage.setItem(key, obfuscated);
+    storage.setItem(key, obfuscated);
   } catch (error) {
     console.error(`Failed to set secure item ${key}:`, error);
     // Fallback to regular storage if obfuscation fails
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      storage.setItem(key, JSON.stringify(value));
     } catch {
       // Silent fail if localStorage is full or unavailable
     }
@@ -60,8 +77,10 @@ export function secureSetItem<T>(key: string, value: T, ttlMs: number = DEFAULT_
  * Securely get an item from localStorage with expiration check
  */
 export function secureGetItem<T>(key: string): T | null {
+  const storage = getBrowserStorage('localStorage');
+  if (!storage) return null;
   try {
-    const stored = localStorage.getItem(key);
+    const stored = storage.getItem(key);
     if (!stored) {
       return null;
     }
@@ -73,7 +92,7 @@ export function secureGetItem<T>(key: string): T | null {
 
       // Check expiration
       if (item.expiresAt && Date.now() > item.expiresAt) {
-        localStorage.removeItem(key);
+        storage.removeItem(key);
         return null;
       }
 
@@ -92,8 +111,10 @@ export function secureGetItem<T>(key: string): T | null {
  * Remove an item from secure storage
  */
 export function secureRemoveItem(key: string): void {
+  const storage = getBrowserStorage('localStorage');
+  if (!storage) return;
   try {
-    localStorage.removeItem(key);
+    storage.removeItem(key);
   } catch (error) {
     console.error(`Failed to remove secure item ${key}:`, error);
   }
@@ -103,20 +124,22 @@ export function secureRemoveItem(key: string): void {
  * Clear all expired items from localStorage
  */
 export function clearExpiredItems(): void {
+  const storage = getBrowserStorage('localStorage');
+  if (!storage) return;
   try {
-    const keys = Object.keys(localStorage);
+    const keys = Object.keys(storage);
     let removedCount = 0;
 
     keys.forEach((key) => {
       try {
-        const stored = localStorage.getItem(key);
+        const stored = storage.getItem(key);
         if (!stored) return;
 
         const deobfuscated = deobfuscate(stored);
         const item = JSON.parse(deobfuscated) as StorageItem<unknown>;
 
         if (item.expiresAt && Date.now() > item.expiresAt) {
-          localStorage.removeItem(key);
+          storage.removeItem(key);
           removedCount++;
         }
       } catch {
@@ -137,11 +160,13 @@ export function clearExpiredItems(): void {
  * Useful for logout or reset functionality
  */
 export function clearAppStorage(prefix = 'surfJudging'): void {
+  const storage = getBrowserStorage('localStorage');
+  if (!storage) return;
   try {
-    const keys = Object.keys(localStorage);
+    const keys = Object.keys(storage);
     keys.forEach((key) => {
       if (key.startsWith(prefix)) {
-        localStorage.removeItem(key);
+        storage.removeItem(key);
       }
     });
     console.log(`Cleared all ${prefix} data from storage`);
@@ -154,10 +179,12 @@ export function clearAppStorage(prefix = 'surfJudging'): void {
  * Get storage usage information
  */
 export function getStorageInfo(): { used: number; available: number; percentage: number } {
+  const storage = getBrowserStorage('localStorage');
+  if (!storage) return { used: 0, available: 0, percentage: 0 };
   try {
     let used = 0;
-    Object.keys(localStorage).forEach((key) => {
-      const item = localStorage.getItem(key);
+    Object.keys(storage).forEach((key) => {
+      const item = storage.getItem(key);
       used += (key.length + (item?.length ?? 0)) * 2; // UTF-16 encoding
     });
 
@@ -180,10 +207,12 @@ export function getStorageInfo(): { used: number; available: number; percentage:
  * Check if localStorage is available and working
  */
 export function isStorageAvailable(): boolean {
+  const storage = getBrowserStorage('localStorage');
+  if (!storage) return false;
   try {
     const testKey = '__storage_test__';
-    localStorage.setItem(testKey, 'test');
-    localStorage.removeItem(testKey);
+    storage.setItem(testKey, 'test');
+    storage.removeItem(testKey);
     return true;
   } catch {
     return false;
@@ -194,8 +223,10 @@ export function isStorageAvailable(): boolean {
  * Set item with session-only expiration (cleared when browser closes)
  */
 export function sessionSetItem<T>(key: string, value: T): void {
+  const storage = getBrowserStorage('sessionStorage');
+  if (!storage) return;
   try {
-    sessionStorage.setItem(key, JSON.stringify(value));
+    storage.setItem(key, JSON.stringify(value));
   } catch (error) {
     console.error(`Failed to set session item ${key}:`, error);
   }
@@ -205,8 +236,10 @@ export function sessionSetItem<T>(key: string, value: T): void {
  * Get item from session storage
  */
 export function sessionGetItem<T>(key: string): T | null {
+  const storage = getBrowserStorage('sessionStorage');
+  if (!storage) return null;
   try {
-    const stored = sessionStorage.getItem(key);
+    const stored = storage.getItem(key);
     return stored ? (JSON.parse(stored) as T) : null;
   } catch (error) {
     console.error(`Failed to get session item ${key}:`, error);
@@ -218,8 +251,10 @@ export function sessionGetItem<T>(key: string): T | null {
  * Remove item from session storage
  */
 export function sessionRemoveItem(key: string): void {
+  const storage = getBrowserStorage('sessionStorage');
+  if (!storage) return;
   try {
-    sessionStorage.removeItem(key);
+    storage.removeItem(key);
   } catch (error) {
     console.error(`Failed to remove session item ${key}:`, error);
   }

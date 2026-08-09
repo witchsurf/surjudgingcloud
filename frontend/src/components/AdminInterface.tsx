@@ -916,7 +916,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     scores: currentHeatResultScores,
     panelContext: resultPanelContext,
     effectiveInterferences: currentResultInterferences,
-  }), [config, currentHeatResultInterferences, currentHeatResultScores, heatId, resultPanelContext]);
+  }), [config, currentResultInterferences, currentHeatResultScores, heatId, resultPanelContext]);
 
   const effectiveOverrideLogs = React.useMemo(() => {
     const byId = new Map<string, ScoreOverrideLog>();

@@ -1,5 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { EventRecord, PaymentRecord, PaymentProvider } from '../types';
+import { ownedEventFilter } from '../domain/eventWorkflow';
+import { eventRepository } from '../repositories/EventRepository';
 
 export interface NewEventInput {
   name: string;
@@ -52,7 +54,7 @@ export async function fetchOrganizerEvents(userId: string) {
   const { data: eventsData, error: eventsError } = await supabase!
     .from('events')
     .select('*')
-    .eq('user_id', userId)
+    .or(ownedEventFilter(userId))
     .order('created_at', { ascending: false });
 
   if (eventsError) {
@@ -100,40 +102,36 @@ export async function fetchOrganizerEvents(userId: string) {
   return events;
 }
 
-export async function createEventRecord(userId: string, payload: NewEventInput) {
-  requireSupabase();
-
-  const insertPayload = {
+export async function createEventRecord(userId: string | null, payload: NewEventInput) {
+  void userId; // Compatibility argument; ownership is resolved inside the secure RPC.
+  const created = await eventRepository.create({
     name: payload.name,
     organizer: payload.organizer,
-    start_date: payload.start_date,
-    end_date: payload.end_date,
+    startDate: payload.start_date,
+    endDate: payload.end_date,
     price: payload.price,
     currency: payload.currency,
     categories: payload.categories,
     judges: payload.judges,
-    method: null,
-    status: 'pending',
-    paid: false,
-    user_id: userId,
-  };
-
-  const { data, error } = await supabase!
-    .from('events')
-    .insert(insertPayload)
-    .select('*')
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message ?? 'Impossible de créer l’événement');
-  }
+  });
 
   return {
-    ...(data as unknown as EventRecord),
-    id: Number(data.id),
-    price: Number(data.price),
-    categories: Array.isArray(data.categories) ? data.categories : [],
-    judges: Array.isArray(data.judges) ? data.judges : [],
+    id: created.id,
+    name: created.name,
+    organizer: created.organizer,
+    start_date: created.startDate,
+    end_date: created.endDate,
+    price: created.price,
+    currency: created.currency,
+    method: created.method,
+    status: created.status as EventRecord['status'],
+    paid: created.paid,
+    paid_at: created.paidAt,
+    payment_ref: created.paymentRef,
+    categories: [...created.categories],
+    judges: [...created.judges],
+    user_id: created.userId,
+    created_at: created.createdAt,
   };
 }
 

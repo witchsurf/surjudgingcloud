@@ -12,6 +12,8 @@
  */
 
 import type { User } from '@supabase/supabase-js';
+import { isLocalNetworkHost } from './networkDetection';
+import { getDeploymentMode, type DeploymentMode } from '../domain/deploymentMode';
 
 const OFFLINE_USER_KEY = 'surfjudging_offline_user';
 const OFFLINE_CREDS_KEY = 'surfjudging_offline_credentials';
@@ -29,6 +31,13 @@ export interface OfflineUser {
   lastOnlineSync: string | null;
 }
 
+export const canEnableDevMode = (
+  requested: boolean,
+  devBuild: boolean,
+  localHost: boolean,
+  deploymentMode: DeploymentMode,
+): boolean => deploymentMode === 'field' && requested && (devBuild || localHost);
+
 interface StoredCredentials {
   email: string;
   accessToken: string;
@@ -40,7 +49,14 @@ interface StoredCredentials {
  * Check if dev mode is enabled
  */
 export function isDevMode(): boolean {
-  return import.meta.env.VITE_DEV_MODE === 'true';
+  // A local .env.local is loaded by Vite during production builds too. Never
+  // let that operational convenience bypass real authentication on Cloud.
+  return canEnableDevMode(
+    import.meta.env.VITE_DEV_MODE === 'true',
+    import.meta.env.DEV,
+    isLocalNetworkHost(),
+    getDeploymentMode(),
+  );
 }
 
 /**

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getDeploymentMode } from '../domain/deploymentMode';
+import { parseCanonicalEventId, resolveEventWorkflowState } from '../domain/eventWorkflow';
+import { eventRepository } from '../repositories/EventRepository';
 
 const PAYMENT_METHODS = [
   { id: 'stripe', label: 'Carte bancaire (Stripe)', icon: '💳' },
@@ -28,6 +31,10 @@ type PaymentEvent = {
   start_date?: string | null;
   end_date?: string | null;
   currency?: string | null;
+  paid?: boolean | null;
+  status?: string | null;
+  test_activated_at?: string | null;
+  test_activated_by?: string | null;
 };
 
 const errorMessage = (error: unknown, fallback: string) => {
@@ -47,18 +54,27 @@ const formatEventDate = (value?: string | null) => {
 };
 
 export default function PaymentPage() {
+  const deploymentMode = getDeploymentMode();
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
   const [event, setEvent] = useState<PaymentEvent | null>(null);
   const [loadingEvent, setLoadingEvent] = useState(true);
   const [loadingPayment, setLoadingPayment] = useState(false);
+  const [loadingTestActivation, setLoadingTestActivation] = useState(false);
+  const [canActivateForTest, setCanActivateForTest] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('stripe');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const queryStatus = useMemo(() => new URLSearchParams(location.search).get('status'), [location.search]);
+
+  useEffect(() => {
+    if (deploymentMode !== 'field') return;
+    const eventId = parseCanonicalEventId(id);
+    navigate(eventId ? `/events/participants?eventId=${eventId}` : '/my-events', { replace: true });
+  }, [deploymentMode, id, navigate]);
 
   const seedCompetitionState = useCallback(() => {
     if (!event) return;
@@ -136,7 +152,11 @@ export default function PaymentPage() {
           return;
         }
 
-        setEvent(data as PaymentEvent);
+        const loadedEvent = data as PaymentEvent;
+        setEvent(loadedEvent);
+        if (deploymentMode === 'cloud') {
+          setCanActivateForTest(await eventRepository.canActivateForTest(Number(loadedEvent.id)));
+        }
       } catch (err) {
         setError(errorMessage(err, 'Impossible de charger cet événement pour le moment.'));
       } finally {
@@ -145,11 +165,12 @@ export default function PaymentPage() {
     };
 
     loadEvent();
-  }, [id]);
+  }, [deploymentMode, id]);
 
   const price = FIXED_EVENT_PRICE;
 
   const handlePayment = async () => {
+    if (deploymentMode !== 'cloud') return;
     if (!event) return;
     if (!supabase || !isSupabaseConfigured()) {
       setError("Supabase n'est pas configuré.");
@@ -202,6 +223,37 @@ export default function PaymentPage() {
       setError(errorMessage(err, 'Impossible de démarrer le paiement.'));
     } finally {
       setLoadingPayment(false);
+    }
+  };
+
+  const handleTestActivation = async () => {
+    if (deploymentMode !== 'cloud' || !event || !canActivateForTest || !supabase) return;
+    const eventId = parseCanonicalEventId(event.id);
+    if (!eventId) return;
+    setError(null);
+    setMessage(null);
+    setLoadingTestActivation(true);
+    try {
+      await eventRepository.activateForTest(eventId);
+      const { data, error: reloadError } = await supabase
+        .from('events')
+        .select('id, name, organizer, start_date, end_date, currency, paid, status, test_activated_at, test_activated_by')
+        .eq('id', eventId)
+        .maybeSingle();
+      if (reloadError) throw reloadError;
+      const state = resolveEventWorkflowState(data);
+      if (state.paymentStatus !== 'test_activated') {
+        throw new Error("L’activation test n’a pas été confirmée par la base.");
+      }
+      setEvent(data as PaymentEvent);
+      setCanActivateForTest(false);
+      seedCompetitionState();
+      setMessage('Activation test confirmée en base. Aucun paiement réel n’a été enregistré.');
+      navigate(`/events/participants?eventId=${eventId}`);
+    } catch (err) {
+      setError(errorMessage(err, "Impossible d’activer cet événement pour test."));
+    } finally {
+      setLoadingTestActivation(false);
     }
   };
 
@@ -303,37 +355,24 @@ export default function PaymentPage() {
             >
               {loadingPayment ? 'Traitement en cours…' : 'Procéder au paiement'}
             </button>
-            <button
-              type="button"
-              onClick={async () => {
-                if (!event?.id || !supabase) return;
-                setLoadingPayment(true);
-                setError(null);
-                try {
-                  // Mark event as paid in test mode
-                  const { error: updateError } = await supabase
-                    .from('events')
-                    .update({ paid: true, status: 'active', method: 'test' })
-                    .eq('id', event.id);
 
-                  if (updateError) {
-                    throw updateError;
-                  }
-
-                  setMessage("✅ Mode test activé ! Redirection vers l'espace participants…");
-                  seedCompetitionState();
-                  setTimeout(() => navigate(`/events/participants?eventId=${event.id}`), 1000);
-                } catch (err) {
-                  setError("Erreur lors de l'activation du mode test: " + errorMessage(err, 'Erreur inconnue'));
-                } finally {
-                  setLoadingPayment(false);
-                }
-              }}
-              disabled={loadingPayment}
-              className="mt-3 w-full rounded-full border-2 border-dashed border-yellow-400/60 bg-yellow-500/5 px-6 py-3 text-sm font-semibold text-yellow-200 transition hover:border-yellow-300 hover:bg-yellow-500/10 hover:text-yellow-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              🧪 Activer en mode test (bypasser le paiement)
-            </button>
+            {deploymentMode === 'cloud' && canActivateForTest && (
+              <div className="rounded-2xl border border-amber-400/70 bg-amber-500/10 p-4">
+                <p className="text-sm text-amber-100">
+                  Capacité réservée aux validations Cloud autorisées. Cette action ne simule pas un paiement Stripe.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleTestActivation}
+                  disabled={loadingTestActivation}
+                  className="mt-3 flex w-full items-center justify-center rounded-full border border-amber-300 px-6 py-3 text-base font-semibold text-amber-100 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loadingTestActivation
+                    ? 'Activation test en cours…'
+                    : 'Activer pour test — aucun paiement réel'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

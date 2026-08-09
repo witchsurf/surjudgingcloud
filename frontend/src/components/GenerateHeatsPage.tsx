@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { fetchEventIdByName } from '../api/modules/events.api';
 import { heatPlanningRepository } from '../repositories/HeatPlanningRepository';
 import { participantRepository } from '../repositories/ParticipantRepository';
 import type { ParticipantRecord } from '../repositories/contracts';
@@ -14,6 +13,8 @@ import {
 import EventStatus from './EventStatus';
 import { useConfigStore } from '../stores/configStore';
 import { supabase } from '../lib/supabase';
+import { assertPlanningAllowed, canPersistHeats, planningSuccessRoute, resolveEventWorkflowState, type EventWorkflowState } from '../domain/eventWorkflow';
+import { getDeploymentMode } from '../domain/deploymentMode';
 
 interface Heat {
   round: number;
@@ -71,6 +72,7 @@ const readStoredEventDbId = () => {
 
 const GenerateHeatsPage = () => {
   const navigate = useNavigate();
+  const deploymentMode = getDeploymentMode();
   const [searchParams] = useSearchParams();
   const { setActiveEventId, setConfig, setConfigSaved, saveConfigToDb } = useConfigStore();
   const [selectedFormat, setSelectedFormat] = useState<'elimination' | 'repechage'>('elimination');
@@ -80,6 +82,7 @@ const GenerateHeatsPage = () => {
   const [eventId, setEventId] = useState<string | null>(null);
   const [eventName, setEventName] = useState<string | null>(null);
   const [participants, setParticipants] = useState<ParticipantRecord[]>([]);
+  const [workflowState, setWorkflowState] = useState<EventWorkflowState>({ eventId: null, persisted: false, paymentStatus: 'unpaid' });
 
   useEffect(() => {
     const urlEventId = searchParams.get('eventId');
@@ -133,12 +136,13 @@ const GenerateHeatsPage = () => {
           try {
             const { data, error } = await supabase
               .from('events')
-              .select('id, name, organizer, start_date, end_date')
+              .select('id, name, organizer, start_date, end_date, paid, status, method, test_activated_at, test_activated_by')
               .eq('id', numericEventId)
               .maybeSingle();
 
             if (error) throw error;
             if (data?.name) {
+              setWorkflowState(resolveEventWorkflowState(data));
               setEventName(data.name);
               localStorage.setItem('eventData', JSON.stringify({
                 id: data.id,
@@ -149,8 +153,10 @@ const GenerateHeatsPage = () => {
                 end_date: data.end_date
               }));
             }
+            if (!data) setWorkflowState({ eventId: null, persisted: false, paymentStatus: 'unpaid' });
           } catch (error) {
             console.warn('Impossible de charger le contexte événement:', error);
+            setWorkflowState({ eventId: null, persisted: false, paymentStatus: 'unpaid' });
           }
         }
 
@@ -298,6 +304,8 @@ const GenerateHeatsPage = () => {
           localStorage.getItem('eventId');
       }
 
+      const authorizedEventId = assertPlanningAllowed(workflowState, deploymentMode);
+
       if (!currentEventId) {
         console.error('Event ID missing. Keys checked: surfJudgingActiveEventId, eventId');
         throw new Error('Aucun événement sélectionné (ID introuvable). Veuillez retourner à "Mes événements" et sélectionner "Continuer".');
@@ -319,33 +327,7 @@ const GenerateHeatsPage = () => {
         }
       }
 
-      if (!numericId) {
-        const eventData = JSON.parse(localStorage.getItem('eventData') || 'null');
-        const candidateName =
-          eventName ||
-          eventData?.name ||
-          eventData?.competition ||
-          null;
-
-        if (candidateName) {
-          const resolvedId = await fetchEventIdByName(candidateName);
-          if (resolvedId) {
-            numericId = resolvedId;
-            currentEventId = String(resolvedId);
-            localStorage.setItem('eventId', currentEventId);
-            localStorage.setItem('surfJudgingActiveEventId', currentEventId);
-            localStorage.setItem('eventData', JSON.stringify({
-              ...eventData,
-              eventDbId: resolvedId,
-              id: eventData?.id ?? resolvedId,
-            }));
-            setEventId(currentEventId);
-            setActiveEventId(resolvedId);
-          }
-        }
-      }
-
-      if (!numericId) {
+      if (!numericId || numericId !== authorizedEventId) {
         throw new Error(`ID d'événement invalide (${currentEventId}). Veuillez recharger la page.`);
       }
 
@@ -469,7 +451,7 @@ const GenerateHeatsPage = () => {
         await saveConfigToDb(numericId, configPayload);
       }
 
-      navigate('/chief-judge');
+      navigate(planningSuccessRoute);
     } catch (error: any) {
       console.error('Erreur lors de la sauvegarde:', error);
       const message = error?.message || error?.error_description || JSON.stringify(error);
@@ -983,10 +965,19 @@ const GenerateHeatsPage = () => {
             {previewData.length > 0 && (
               <button
                 onClick={handleConfirm}
-                className="w-full bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium"
+                disabled={!canPersistHeats(workflowState, deploymentMode)}
+                className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium"
               >
                 Confirmer et écrire dans la base
               </button>
+            )}
+
+            {!canPersistHeats(workflowState, deploymentMode) && (
+              <div className="rounded-lg border border-amber-500 bg-amber-500/10 p-4 text-sm text-amber-200">
+                {!workflowState.persisted
+                  ? 'Écriture bloquée : événement non sauvegardé en base.'
+                  : 'Écriture bloquée : paiement Cloud validé requis.'}
+              </div>
             )}
 
             <div className="bg-gray-800 rounded-lg p-4">

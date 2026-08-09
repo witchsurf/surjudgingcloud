@@ -10,12 +10,20 @@ import type { AppConfig } from '../types';
 import { logger } from '../lib/logger';
 import { heatRepository } from './HeatRepository';
 import { ensureEventExists as ensureEventExistsApi } from '../api/modules/events.api';
+import {
+    activateEventForTest,
+    canActivateEventForTest,
+    createEventSecure,
+} from '../api/modules/eventCreation.api';
 import type {
     EventConfigurationUpdate as CanonicalEventConfigurationUpdate,
     EventConfigSnapshot as CanonicalEventConfigSnapshot,
     EventRepositoryContract,
     EventSummary as CanonicalEventSummary,
     SaveEventSnapshotRequest,
+    CreateEventRequest,
+    CreatedEventRecord,
+    EventTestActivationRecord,
 } from './contracts';
 
 export interface EventSummary {
@@ -69,6 +77,18 @@ export interface SaveSnapshotRequest {
 export class EventRepository extends BaseRepository implements EventRepositoryContract {
     constructor() {
         super('events');
+    }
+
+    async create(request: CreateEventRequest): Promise<CreatedEventRecord> {
+        return createEventSecure(request);
+    }
+
+    async canActivateForTest(eventId: number): Promise<boolean> {
+        return canActivateEventForTest(eventId);
+    }
+
+    async activateForTest(eventId: number): Promise<EventTestActivationRecord> {
+        return activateEventForTest(eventId);
     }
 
     /**
