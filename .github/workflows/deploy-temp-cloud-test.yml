@@ -1,0 +1,60 @@
+name: Deploy temporary Cloud test frontend
+
+on:
+  push:
+    branches: [ops-p2-6-6e-temp-frontend]
+    paths:
+      - 'releases/surfjudging-2026.08.09-p2.6.6e-temp-frontend.tar.gz'
+      - 'scripts/deploy-test-frontend.sh'
+      - '.github/workflows/deploy-temp-cloud-test.yml'
+
+concurrency:
+  group: surfjudging-temporary-cloud-test
+  cancel-in-progress: false
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-latest
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      RELEASE_ID: surfjudging-2026.08.09-p2.6.6e-temp
+      ARCHIVE_NAME: surfjudging-2026.08.09-p2.6.6e-temp-frontend.tar.gz
+      ARCHIVE_SHA256: b17e18147ecf86304f4986e75fa9f287358f84bb97b33e0268581501390c9842
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify immutable candidate
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$ARCHIVE_SHA256" "releases/$ARCHIVE_NAME" | sha256sum -c -
+          tar -xOf "releases/$ARCHIVE_NAME" dist/deployment-manifest.json | grep -Eq '"deploymentMode"[[:space:]]*:[[:space:]]*"cloud"'
+
+      - name: Prepare SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/github_actions_vps
+          chmod 600 ~/.ssh/github_actions_vps
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Stage and activate isolated test release
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i ~/.ssh/github_actions_vps -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new)
+          SCP=(scp -i ~/.ssh/github_actions_vps -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new)
+          "${SSH[@]}" "$VPS_USER@$VPS_HOST" 'mkdir -p /opt/surfjudging-test/releases'
+          "${SCP[@]}" "releases/$ARCHIVE_NAME" "$VPS_USER@$VPS_HOST:/tmp/$ARCHIVE_NAME"
+          "${SCP[@]}" scripts/deploy-test-frontend.sh "$VPS_USER@$VPS_HOST:/tmp/deploy-test-frontend.sh"
+          "${SSH[@]}" "$VPS_USER@$VPS_HOST" "chmod +x /tmp/deploy-test-frontend.sh && /tmp/deploy-test-frontend.sh '$RELEASE_ID' '$ARCHIVE_SHA256' '/tmp/$ARCHIVE_NAME'"
+
+      - name: Verify test only
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 20 --retry-delay 3 --retry-all-errors https://test.surfjudging.cloud/admin >/dev/null
+          test "$(curl -fsS https://test.surfjudging.cloud/RELEASE_ID | tr -d '\r\n')" = "$RELEASE_ID"
+          curl -fsS https://surfjudging.cloud/admin >/dev/null
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/github_actions_vps
