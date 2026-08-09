@@ -29,12 +29,12 @@ import { participantRepository } from '../repositories/ParticipantRepository';
 import { judgeRepository } from '../repositories/JudgeRepository';
 import type { JudgeRecord, ParticipantRecord } from '../repositories/contracts';
 import { supabase, isSupabaseConfigured, getSupabaseMode } from '../lib/supabase';
-import { isPrivateHostname } from '../utils/network';
 import { TimerAudio } from '../utils/audioUtils';
 import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 import { getScoresByHeatIDB } from '../lib/idbStorage';
 import { DEFAULT_PODIUM_ID, normalizePodiumId } from '../utils/podium';
+import { buildDeploymentAwareUrl, encodeDeploymentAwareQr, type InternalAccessRoute } from '../domain/deploymentLinks';
 import AdminHeatResultSnapshotPanel from './AdminHeatResultSnapshotPanel';
 import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
 import { panelRepository } from '../repositories/PanelRepository';
@@ -1810,49 +1810,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const kioskBaseUrl = React.useMemo(() => {
     if (typeof window === 'undefined') return '';
-
-    const env = (import.meta as { env?: Record<string, string> }).env ?? {};
-    const envBase =
-      getSupabaseMode() === 'local'
-        ? env.VITE_KIOSK_BASE_URL_LAN ||
-          env.VITE_KIOSK_BASE_URL_LOCAL ||
-          env.VITE_SITE_URL_LAN ||
-          env.VITE_SITE_URL_LOCAL ||
-          env.VITE_SITE_URL ||
-          env.VITE_KIOSK_BASE_URL
-        : getSupabaseMode() === 'cloud'
-          ? env.VITE_KIOSK_BASE_URL_CLOUD ||
-            env.VITE_SITE_URL_CLOUD ||
-            env.VITE_KIOSK_BASE_URL ||
-            env.VITE_SITE_URL
-          : env.VITE_KIOSK_BASE_URL || env.VITE_SITE_URL;
-
-    const currentOrigin = window.location.origin;
-    const currentHostname = window.location.hostname;
-    let kioskBase = (isPrivateHostname(currentHostname) && currentHostname !== 'localhost') ? currentOrigin : '';
-
-    if (!kioskBase && envBase) {
-      try {
-        const url = new URL(envBase);
-        const trimmedPath = url.pathname.replace(/\/+$/, '');
-        kioskBase = `${url.origin}${trimmedPath}`;
-      } catch {
-        kioskBase = envBase.replace(/\/+$/, '');
-      }
-    }
-
-    return kioskBase || currentOrigin;
+    return window.location.origin;
   }, []);
 
-  const buildAccessUrl = React.useCallback((pathname: string) => {
+  const buildAccessUrl = React.useCallback((pathname: InternalAccessRoute) => {
     const base = kioskBaseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
     if (!base) return null;
-    const url = new URL(base);
-    url.pathname = pathname;
-    return url;
+    return new URL(buildDeploymentAwareUrl(base, pathname));
   }, [kioskBaseUrl]);
 
-  const buildPodiumAccessUrl = React.useCallback((pathname: string, extraParams?: Record<string, string | number | null | undefined>) => {
+  const buildPodiumAccessUrl = React.useCallback((pathname: InternalAccessRoute, extraParams?: Record<string, string | number | null | undefined>) => {
     const url = buildAccessUrl(pathname);
     if (!url) return '';
 
@@ -2024,14 +1991,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       try {
-        const dataUrl = await QRCode.toDataURL(publicDisplayUrl, {
-          width: 220,
-          margin: 1,
-          color: {
-            dark: '#1f1147',
-            light: '#ffffff',
-          },
-        });
+        const dataUrl = await encodeDeploymentAwareQr(publicDisplayUrl, '#1f1147', QRCode.toDataURL);
         if (!cancelled) {
           setDisplayQrCode(dataUrl);
         }
@@ -2060,14 +2020,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       try {
-        const dataUrl = await QRCode.toDataURL(sharedJudgeAccessUrl, {
-          width: 220,
-          margin: 1,
-          color: {
-            dark: '#3b0764',
-            light: '#ffffff',
-          },
-        });
+        const dataUrl = await encodeDeploymentAwareQr(sharedJudgeAccessUrl, '#3b0764', QRCode.toDataURL);
         if (!cancelled) {
           setJudgeAccessQrCode(dataUrl);
         }
@@ -2096,14 +2049,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
 
       try {
-        const dataUrl = await QRCode.toDataURL(priorityJudgeUrl, {
-          width: 220,
-          margin: 1,
-          color: {
-            dark: '#312e81',
-            light: '#ffffff',
-          },
-        });
+        const dataUrl = await encodeDeploymentAwareQr(priorityJudgeUrl, '#312e81', QRCode.toDataURL);
         if (!cancelled) {
           setPriorityQrCode(dataUrl);
         }
