@@ -4,7 +4,7 @@ on:
   push:
     branches: [ops-p2-6-6e-temp-frontend]
     paths:
-      - 'releases/surfjudging-2026.08.09-p2.6.6-test-d92c23a-cloud.tar.gz'
+      - 'releases/surfjudging-2026.08.09-p2.6.6-test-63ccc21-cloud.tar.gz'
       - 'scripts/deploy-test-frontend.sh'
       - '.github/workflows/deploy-temp-cloud-test.yml'
 
@@ -18,9 +18,9 @@ jobs:
     env:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
-      RELEASE_ID: surfjudging-2026.08.09-p2.6.6-test-d92c23a
-      ARCHIVE_NAME: surfjudging-2026.08.09-p2.6.6-test-d92c23a-cloud.tar.gz
-      ARCHIVE_SHA256: 9131de2f1ec1307474e6e50430326bf03eb3093e30fc2daedcdfbfca54751607
+      RELEASE_ID: surfjudging-2026.08.09-p2.6.6-test-63ccc21
+      ARCHIVE_NAME: surfjudging-2026.08.09-p2.6.6-test-63ccc21-cloud.tar.gz
+      ARCHIVE_SHA256: 41c19a08596208b20530d05b8c4b5c835cadac910bc93a47dcd7eb9903e2845d
     steps:
       - uses: actions/checkout@v4
 
