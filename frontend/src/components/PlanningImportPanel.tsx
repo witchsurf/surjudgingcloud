@@ -160,7 +160,7 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
     await parseLocalFile(nextFile);
   };
 
-  const runPreflight = async (cats: string[], currentPreviews: Record<string, ComputeResult>, overwriteValue = overwrite) => {
+  const runPreflight = async (cats: string[], overwriteValue = overwrite) => {
     if (!eventId || !Number.isSafeInteger(eventId) || eventId <= 0) {
       setPreflightState('UNKNOWN');
       setPreflightError('Événement absent ou invalide : la sécurité planning ne peut pas être déclarée SAFE.');
@@ -199,13 +199,14 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
       const newPreviews: Record<string, ComputeResult> = {};
       categories.forEach(category => {
         const participants = participantGroups.get(category) ?? [];
-        newPreviews[category] = computeHeats(participants, { format, preferredHeatSize: 'auto', variant: 'V1' });
+        const safeParticipants = participants.map(p => ({ ...p, country: p.country ?? undefined }));
+        newPreviews[category] = computeHeats(safeParticipants, { format, preferredHeatSize: 'auto', variant: 'V1' });
       });
       
       setPreviews(newPreviews);
       setFatalError(null);
       setUiState('PREVIEW_READY');
-      void runPreflight(categories, newPreviews);
+      void runPreflight(categories);
     } catch (cause) {
       setFatalError(cause instanceof Error ? cause.message : String(cause));
       setUiState('ERROR');
@@ -445,7 +446,7 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
               setPreflightError(null);
               setPersistenceState('IDLE');
               setPersistenceMessage(null);
-              void runPreflight(categories, previews, nextOverwrite);
+              void runPreflight(categories, nextOverwrite);
             }}
             className="mt-0.5 h-4 w-4"
           />

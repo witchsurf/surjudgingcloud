@@ -105,9 +105,9 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
             const participant = participants.find(p => p.name === surfer.name || p.seed === surfer.seed);
             
             return {
-              seed: participant?.seed ?? surfer.seed,
+              seed: participant?.seed ?? (surfer.seed ?? undefined),
               name: surfer.name,
-              country: surfer.country,
+              country: surfer.country || undefined,
               license: participant?.license,
               participantId: participant?.id,
               color: slotColor,
