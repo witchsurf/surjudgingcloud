@@ -76,13 +76,15 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
   const [result, setResult] = useState<PlanningImportParseResult | null>(null);
   const [xlsxMetadata, setXlsxMetadata] = useState<XlsxMetadata | null>(null);
   const [selectedWorksheet, setSelectedWorksheet] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
+  
   const [format, setFormat] = useState<FormatType>('single-elim');
-  const [preview, setPreview] = useState<ComputeResult | null>(null);
+  const [previews, setPreviews] = useState<Record<string, ComputeResult>>({});
   const [fatalError, setFatalError] = useState<string | null>(null);
+  
   const [preflightState, setPreflightState] = useState<'IDLE' | 'CHECKING' | 'SAFE' | 'BLOCKED' | 'UNKNOWN'>('IDLE');
-  const [preflightResult, setPreflightResult] = useState<PlanningSafetyPreflightResult | null>(null);
+  const [preflightResults, setPreflightResults] = useState<Record<string, PlanningSafetyPreflightResult>>({});
   const [preflightError, setPreflightError] = useState<string | null>(null);
+  
   const [overwrite, setOverwrite] = useState(true);
   const [persistenceState, setPersistenceState] = useState<PersistenceState>('IDLE');
   const [persistenceMessage, setPersistenceMessage] = useState<string | null>(null);
@@ -100,13 +102,12 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
   ) => {
     setResult(nextResult);
     setXlsxMetadata(metadata);
-    setPreview(null);
+    setPreviews({});
     setPreflightState('IDLE');
-    setPreflightResult(null);
+    setPreflightResults({});
     setPreflightError(null);
     setPersistenceState('IDLE');
     setPersistenceMessage(null);
-    setSelectedCategory(nextResult.validRows[0]?.category ?? '');
     setUiState(nextResult.input !== null ? 'VALID' : 'INVALID');
   };
 
@@ -120,7 +121,7 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
 
     setUiState('PARSING');
     setFatalError(null);
-    setPreview(null);
+    setPreviews({});
     try {
       if (extension === 'csv') {
         setFileType('CSV');
@@ -150,8 +151,7 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
     setResult(null);
     setXlsxMetadata(null);
     setSelectedWorksheet('');
-    setSelectedCategory('');
-    setPreview(null);
+    setPreviews({});
     if (!nextFile) {
       setFileType(null);
       setUiState('IDLE');
@@ -160,21 +160,30 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
     await parseLocalFile(nextFile);
   };
 
-  const runPreflight = async (category: string, overwriteValue = overwrite) => {
+  const runPreflight = async (cats: string[], currentPreviews: Record<string, ComputeResult>, overwriteValue = overwrite) => {
     if (!eventId || !Number.isSafeInteger(eventId) || eventId <= 0) {
       setPreflightState('UNKNOWN');
       setPreflightError('Événement absent ou invalide : la sécurité planning ne peut pas être déclarée SAFE.');
       return;
     }
     setPreflightState('CHECKING');
-    setPreflightResult(null);
+    setPreflightResults({});
     setPreflightError(null);
     try {
-      const safety = await planningSafetyRepository.preflight({
-        eventId, category, proposedHeatIds: [], overwrite: overwriteValue,
-      });
-      setPreflightResult(safety);
-      setPreflightState(safety.state);
+      const results: Record<string, PlanningSafetyPreflightResult> = {};
+      let globalState: typeof preflightState = 'SAFE';
+
+      for (const category of cats) {
+        const safety = await planningSafetyRepository.preflight({
+          eventId, category, proposedHeatIds: [], overwrite: overwriteValue,
+        });
+        results[category] = safety;
+        if (safety.state === 'BLOCKED') globalState = 'BLOCKED';
+        else if (safety.state !== 'SAFE' && globalState === 'SAFE') globalState = safety.state;
+      }
+      
+      setPreflightResults(results);
+      setPreflightState(globalState);
     } catch (cause) {
       setPreflightState('UNKNOWN');
       setPreflightError(cause instanceof Error ? cause.message : String(cause));
@@ -182,30 +191,41 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
   };
 
   const generatePreview = () => {
-    if (!result?.input || !selectedCategory) return;
-    const participants = participantGroups.get(selectedCategory) ?? [];
+    if (!result?.input || categories.length === 0) return;
     try {
       setPersistenceState('IDLE');
       setPersistenceMessage(null);
-      setPreview(computeHeats(participants, { format, preferredHeatSize: 'auto', variant: 'V1' }));
+      
+      const newPreviews: Record<string, ComputeResult> = {};
+      categories.forEach(category => {
+        const participants = participantGroups.get(category) ?? [];
+        newPreviews[category] = computeHeats(participants, { format, preferredHeatSize: 'auto', variant: 'V1' });
+      });
+      
+      setPreviews(newPreviews);
       setFatalError(null);
       setUiState('PREVIEW_READY');
-      void runPreflight(selectedCategory);
+      void runPreflight(categories, newPreviews);
     } catch (cause) {
       setFatalError(cause instanceof Error ? cause.message : String(cause));
       setUiState('ERROR');
     }
   };
 
-  const participantCount = participantGroups.get(selectedCategory)?.length ?? 0;
-  const heatCount = preview?.rounds.reduce((total, round) => total + round.heats.length, 0) ?? 0;
-  const replacedHeatCount = preflightResult?.targetedHeats.length ?? 0;
+  const totalParticipantCount = categories.reduce((sum, cat) => sum + (participantGroups.get(cat)?.length ?? 0), 0);
+  const totalHeatCount = Object.values(previews).reduce((total, preview) => 
+    total + (preview.rounds.reduce((sum, round) => sum + round.heats.length, 0) ?? 0), 0
+  );
+  
+  const totalReplacedHeatCount = Object.values(preflightResults).reduce((sum, res) => sum + res.targetedHeats.length, 0);
+
   const validEventId = Number.isSafeInteger(eventId) && Number(eventId) > 0;
+  const hasPreviews = Object.keys(previews).length > 0;
   const canPersist = Boolean(
     result?.input
-    && preview
+    && hasPreviews
     && validEventId
-    && selectedCategory
+    && categories.length > 0
     && format
     && preflightState === 'SAFE'
     && persistenceState !== 'PERSISTING'
@@ -219,27 +239,34 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
   };
 
   const persistPlanning = async () => {
-    if (!canPersist || !result?.input || !preview || !eventId || persistingRef.current) return;
+    if (!canPersist || !result?.input || Object.keys(previews).length === 0 || !eventId || persistingRef.current) return;
     persistingRef.current = true;
     setPersistenceState('PERSISTING');
     setPersistenceMessage(null);
     try {
-      await persistPlanningImportSafely({
-        input: result.input,
-        preview,
-        eventId,
-        eventName,
-        category: selectedCategory,
-        format,
-        overwrite,
-      });
+      for (const category of categories) {
+        const preview = previews[category];
+        if (!preview) continue;
+        
+        await persistPlanningImportSafely({
+          input: result.input,
+          preview,
+          eventId,
+          eventName,
+          category,
+          format,
+          overwrite,
+        });
+      }
+      
       setPersistenceState('SUCCESS');
-      setPersistenceMessage(`Planning créé avec succès — ${selectedCategory}, ${heatCount} heats, ${participantCount} participants — ${new Date().toLocaleString('fr-FR')}`);
+      setPersistenceMessage(`Planning créé avec succès — ${categories.length} catégories, ${totalHeatCount} heats, ${totalParticipantCount} participants — ${new Date().toLocaleString('fr-FR')}`);
+      
       onPersisted?.({
-        category: selectedCategory,
-        participantCount,
-        heatCount,
-        participants: participantGroups.get(selectedCategory) ?? [],
+        category: categories.join(', '),
+        participantCount: totalParticipantCount,
+        heatCount: totalHeatCount,
+        participants: result.validRows,
       });
     } catch (cause) {
       const error = cause as { code?: string; message?: string; details?: string };
@@ -249,7 +276,7 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
       } else if (`${error?.message ?? ''} ${error?.details ?? ''}`.includes('HEAT_PLANNING_BLOCKED')) {
         setPersistenceState('BLOCKED');
         setPreflightState('BLOCKED');
-        setPreflightResult(null);
+        setPreflightResults({});
         setPreflightError('Les données ont changé depuis le preflight. Relancez le contrôle de sécurité planning.');
         setPersistenceMessage('Création bloquée par le serveur : des données sportives protègent désormais ces heats. La preview est conservée.');
       } else {
@@ -354,45 +381,56 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
             ))}
           </div>
 
-          <div className="grid gap-4 rounded-2xl border border-slate-700 p-4 md:grid-cols-3">
-            <label className="text-sm text-slate-300">Catégorie
-              <select aria-label="Catégorie preview" value={selectedCategory} onChange={(event) => { setSelectedCategory(event.target.value); setPreview(null); setPreflightState('IDLE'); setPreflightResult(null); setPreflightError(null); setPersistenceState('IDLE'); setPersistenceMessage(null); setUiState('VALID'); }} className="mt-2 block w-full rounded-xl bg-slate-950 px-3 py-2">
-                {categories.map((category) => <option key={category}>{category}</option>)}
-              </select>
-            </label>
-            <label className="text-sm text-slate-300">Format
-              <select aria-label="Format preview" value={format} onChange={(event) => { setFormat(event.target.value as FormatType); setPreview(null); setPreflightState('IDLE'); setPreflightResult(null); setPreflightError(null); setPersistenceState('IDLE'); setPersistenceMessage(null); setUiState('VALID'); }} className="mt-2 block w-full rounded-xl bg-slate-950 px-3 py-2">
+          <div className="grid gap-4 rounded-2xl border border-slate-700 p-4 md:grid-cols-2">
+            <label className="text-sm text-slate-300">Format de compétition (appliqué à toutes les catégories)
+              <select aria-label="Format preview" value={format} onChange={(event) => { setFormat(event.target.value as FormatType); setPreviews({}); setPreflightState('IDLE'); setPreflightResults({}); setPreflightError(null); setPersistenceState('IDLE'); setPersistenceMessage(null); setUiState('VALID'); }} className="mt-2 block w-full rounded-xl bg-slate-950 px-3 py-2">
                 <option value="single-elim">Élimination directe</option><option value="repechage">Repêchage</option>
               </select>
             </label>
-            <button type="button" onClick={generatePreview} className="self-end rounded-xl bg-cyan-600 px-4 py-2 font-semibold text-white hover:bg-cyan-500">Générer la preview en mémoire</button>
+            <button type="button" onClick={generatePreview} className="self-end rounded-xl bg-cyan-600 px-4 py-2 font-semibold text-white hover:bg-cyan-500">Générer les previews ({categories.length} catégories)</button>
           </div>
         </div>
       )}
 
-      {preview && <BracketPreview rounds={preview.rounds} repechage={preview.repechage} onExportPdf={() => undefined} onExportCsv={() => undefined} showExportActions={false} />}
+      {hasPreviews && (
+        <div className="space-y-6">
+          {categories.map((category) => {
+            const preview = previews[category];
+            if (!preview) return null;
+            return (
+              <div key={category} className="space-y-3">
+                <h3 className="text-lg font-semibold text-cyan-100 border-b border-cyan-800 pb-2">{category}</h3>
+                <BracketPreview rounds={preview.rounds} repechage={preview.repechage} onExportPdf={() => undefined} onExportCsv={() => undefined} showExportActions={false} />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {preview && (
+      {hasPreviews && (
         <div data-testid="planning-safety-preflight" className={`rounded-2xl border p-4 ${preflightState === 'SAFE' ? 'border-emerald-500 bg-emerald-500/10' : preflightState === 'BLOCKED' ? 'border-red-500 bg-red-500/10' : 'border-amber-500 bg-amber-500/10'}`}>
           <h3 className="font-semibold text-white">Sécurité planning serveur : {preflightState}</h3>
           {preflightState === 'CHECKING' && <p className="mt-2 text-sm text-slate-300">Vérification transactionnelle des heats ciblés…</p>}
           {preflightError && <p role="alert" className="mt-2 text-sm text-amber-100">{preflightError}</p>}
-          {preflightResult && preflightResult.targetedHeats.length === 0 && <p className="mt-2 text-sm text-emerald-100">Aucun heat existant ciblé.</p>}
-          {preflightResult?.targetedHeats.map((heat) => (
-            <div key={heat.heatId} className="mt-3 rounded-xl border border-white/10 bg-slate-950/50 p-3 text-sm text-slate-200">
-              <strong>{heat.heatId}</strong> — statut {heat.status}
-              <div className="mt-1 grid gap-1 sm:grid-cols-3">
-                <span>scores: {heat.scoreCount}</span><span>overrides: {heat.overrideCount}</span><span>interférences: {heat.interferenceCount}</span>
-                <span>juges: {heat.judgeAssignmentCount}</span><span>timers: {heat.timerCount}</span><span>historique: {heat.historyCount}</span>
-                <span>actif: {heat.isActive ? 'oui' : 'non'}</span><span>pointeurs: {heat.activePointerCount}</span>
+          {totalReplacedHeatCount === 0 && <p className="mt-2 text-sm text-emerald-100">Aucun heat existant ciblé.</p>}
+          
+          {Object.entries(preflightResults).map(([category, result]) => 
+            result.targetedHeats.map((heat) => (
+              <div key={`${category}-${heat.heatId}`} className="mt-3 rounded-xl border border-white/10 bg-slate-950/50 p-3 text-sm text-slate-200">
+                <strong>{category} : {heat.heatId}</strong> — statut {heat.status}
+                <div className="mt-1 grid gap-1 sm:grid-cols-3">
+                  <span>scores: {heat.scoreCount}</span><span>overrides: {heat.overrideCount}</span><span>interférences: {heat.interferenceCount}</span>
+                  <span>juges: {heat.judgeAssignmentCount}</span><span>timers: {heat.timerCount}</span><span>historique: {heat.historyCount}</span>
+                  <span>actif: {heat.isActive ? 'oui' : 'non'}</span><span>pointeurs: {heat.activePointerCount}</span>
+                </div>
+                {heat.blockerReasons.length > 0 && <p className="mt-2 text-red-200">Raisons : {heat.blockerReasons.join(', ')}</p>}
               </div>
-              {heat.blockerReasons.length > 0 && <p className="mt-2 text-red-200">Raisons : {heat.blockerReasons.join(', ')}</p>}
-            </div>
-          ))}
+            ))
+          )}
         </div>
       )}
 
-      {preview && (
+      {hasPreviews && (
         <label className="flex items-start gap-3 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-200">
           <input
             aria-label="Remplacer tous les heats préparatoires"
@@ -403,16 +441,16 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
               const nextOverwrite = event.target.checked;
               setOverwrite(nextOverwrite);
               setPreflightState('CHECKING');
-              setPreflightResult(null);
+              setPreflightResults({});
               setPreflightError(null);
               setPersistenceState('IDLE');
               setPersistenceMessage(null);
-              void runPreflight(selectedCategory, nextOverwrite);
+              void runPreflight(categories, previews, nextOverwrite);
             }}
             className="mt-0.5 h-4 w-4"
           />
           <span>
-            Remplacer tous les heats préparatoires existants de cette catégorie.
+            Remplacer tous les heats préparatoires existants.
             <span className="mt-1 block text-xs text-slate-400">
               Sans cette option, seules les collisions d’ID propres peuvent être remplacées. Toute donnée sportive bloque l’opération.
             </span>
@@ -420,26 +458,26 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
         </label>
       )}
 
-      {persistenceState === 'CONFIRMING' && preview && (
+      {persistenceState === 'CONFIRMING' && hasPreviews && (
         <div role="dialog" aria-label="Confirmation création planning" className="rounded-2xl border border-cyan-500 bg-cyan-500/10 p-4 text-sm text-slate-100">
-          <h3 className="font-semibold text-white">Confirmer la création du planning</h3>
+          <h3 className="font-semibold text-white">Confirmer la création globale du planning</h3>
           <dl className="mt-3 grid gap-2 sm:grid-cols-2">
             <div><dt className="text-slate-400">Événement</dt><dd>{eventName ?? `#${eventId}`}</dd></div>
-            <div><dt className="text-slate-400">Catégorie</dt><dd>{selectedCategory}</dd></div>
-            <div><dt className="text-slate-400">Participants</dt><dd>{participantCount}</dd></div>
-            <div><dt className="text-slate-400">Heats</dt><dd>{heatCount}</dd></div>
+            <div><dt className="text-slate-400">Catégories</dt><dd>{categories.length}</dd></div>
+            <div><dt className="text-slate-400">Participants</dt><dd>{totalParticipantCount}</dd></div>
+            <div><dt className="text-slate-400">Heats au total</dt><dd>{totalHeatCount}</dd></div>
             <div><dt className="text-slate-400">Format</dt><dd>{format}</dd></div>
             <div><dt className="text-slate-400">Overwrite</dt><dd>{overwrite ? 'true' : 'false'}</dd></div>
             <div><dt className="text-slate-400">Preflight</dt><dd>SAFE</dd></div>
-            <div><dt className="text-slate-400">Heats ciblés</dt><dd>{replacedHeatCount}</dd></div>
+            <div><dt className="text-slate-400">Heats ciblés</dt><dd>{totalReplacedHeatCount}</dd></div>
           </dl>
           <p className="mt-3 text-amber-100">
             {overwrite
-              ? 'Les heats préparatoires existants de cette catégorie seront remplacés. Les heats contenant des données sportives sont protégés et bloqueront l’opération.'
+              ? 'Les heats préparatoires existants seront remplacés. Les heats contenant des données sportives sont protégés et bloqueront l’opération.'
               : 'Les collisions d’identifiants propres peuvent être remplacées. Les heats contenant des données sportives sont protégés et bloqueront l’opération.'}
           </p>
           <div className="mt-4 flex gap-3">
-            <button type="button" onClick={() => void persistPlanning()} className="rounded-xl bg-cyan-600 px-4 py-2 font-semibold text-white">Confirmer et créer</button>
+            <button type="button" onClick={() => void persistPlanning()} className="rounded-xl bg-cyan-600 px-4 py-2 font-semibold text-white">Confirmer et créer ({categories.length} catégories)</button>
             <button type="button" onClick={() => setPersistenceState('IDLE')} className="rounded-xl border border-slate-600 px-4 py-2">Annuler</button>
           </div>
         </div>

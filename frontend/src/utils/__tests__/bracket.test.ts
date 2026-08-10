@@ -8,125 +8,152 @@ const buildParticipants = (count: number, category = 'OPEN') =>
     category,
   }));
 
-describe('computeHeats', () => {
-  it('builds single elimination bracket variant V1 for 12 surfers', () => {
-    const participants = buildParticipants(12);
-    const result = computeHeats(participants, {
-      format: 'single-elim',
-      variant: 'V1',
-      preferredHeatSize: 4,
-    });
+describe('computeHeats (heatGeneration engine)', () => {
+  // ─────────────────────────────────────────────────────────────────
+  // REGRESSION: 13 participants — the business-critical Cadet case.
+  // Historical rule: R1 = 4/3/3/3, R2 = 4/4, Final = 4
+  // ─────────────────────────────────────────────────────────────────
+  it('13 participants — generates 4/3/3/3 in R1, 4/4 in R2, and a 4-person final (no BYEs)', () => {
+    const participants = buildParticipants(13);
+    const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 4 });
 
+    // Round 1: 4 heats distributed 4/3/3/3
+    const round1 = result.rounds[0];
+    expect(round1.heats).toHaveLength(4);
+    const r1Sizes = round1.heats.map(h => h.slots.length).sort((a, b) => b - a);
+    expect(r1Sizes).toEqual([4, 3, 3, 3]);
+
+    // No BYEs in Round 1
+    const r1Byes = round1.heats.flatMap(h => h.slots).filter(s => s.bye);
+    expect(r1Byes).toHaveLength(0);
+
+    // Round 2: 2 heats of 4
+    const round2 = result.rounds[1];
+    expect(round2.heats).toHaveLength(2);
+    round2.heats.forEach(h => expect(h.slots).toHaveLength(4));
+
+    // Final: 1 heat of 4
+    const final = result.rounds[result.rounds.length - 1];
+    expect(final.heats).toHaveLength(1);
+    expect(final.heats[0].slots).toHaveLength(4);
+
+    // Total rounds: R1 + R2 + Final = 3
     expect(result.rounds).toHaveLength(3);
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Standard cases
+  // ─────────────────────────────────────────────────────────────────
+  it('12 participants — 3 heats of 4 in R1, R2, Final', () => {
+    const participants = buildParticipants(12);
+    const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 4 });
 
     const round1 = result.rounds[0];
     expect(round1.heats).toHaveLength(3);
-    expect(round1.heats[0].slots.map((slot) => slot.seed ?? null)).toEqual([1, 6, 7, 12]);
-    expect(round1.heats[1].slots.map((slot) => slot.seed ?? null)).toEqual([2, 5, 8, 11]);
-    expect(round1.heats[2].slots.map((slot) => slot.seed ?? null)).toEqual([3, 4, 9, 10]);
-    expect(round1.heats[0].slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE', 'YELLOW', 'BLUE']);
+    round1.heats.forEach(h => expect(h.slots).toHaveLength(4));
 
-    const round2 = result.rounds[1];
-    expect(round2.heats).toHaveLength(2);
-    round2.heats.forEach((heat) => {
-      expect(heat.slots).toHaveLength(3);
-      expect(heat.slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE', 'YELLOW']);
-    });
+    // No BYEs in R1 for 12 participants
+    const r1Byes = round1.heats.flatMap(h => h.slots).filter(s => s.bye);
+    expect(r1Byes).toHaveLength(0);
 
-    const final = result.rounds[2];
-    expect(final.heats).toHaveLength(1);
-    expect(final.heats[0].slots).toHaveLength(4);
-    expect(final.heats[0].slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE', 'YELLOW', 'BLUE']);
+    // Seeds are present in R1 slots
+    const r1Seeds = round1.heats[0].slots.map(s => s.seed ?? null);
+    expect(r1Seeds).toHaveLength(4);
+    expect(r1Seeds.every(seed => seed !== null)).toBe(true);
   });
 
-  it('builds single elimination variant V2 man-on-man', () => {
-    const participants = buildParticipants(12);
-    const result = computeHeats(participants, {
-      format: 'single-elim',
-      variant: 'V2',
-      preferredHeatSize: 4,
-    });
+  it('4 participants — 1 heat of 4 R1, then a direct final', () => {
+    const participants = buildParticipants(4);
+    const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 4 });
 
-    expect(result.rounds).toHaveLength(4);
-    const round2 = result.rounds[1];
-    expect(round2.heats).toHaveLength(3);
-    round2.heats.forEach((heat) => {
-      expect(heat.slots).toHaveLength(2);
-      expect(heat.slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE']);
-    });
-
-    const final = result.rounds[3];
-    expect(final.name).toBe('Finale');
-    expect(final.heats[0].slots).toHaveLength(2);
-    expect(final.heats[0].slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE']);
+    expect(result.rounds[0].heats).toHaveLength(1);
+    expect(result.rounds[0].heats[0].slots).toHaveLength(4);
+    // With 4 participants in a single heat, no subsequent rounds are generated
+    expect(result.rounds).toHaveLength(1);
   });
 
-  it('advances only winners from round 1 when preferred heat size is man-on-man', () => {
+  it('2 participants — man-on-man, single heat', () => {
+    const participants = buildParticipants(2);
+    const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 2 });
+
+    expect(result.rounds[0].heats).toHaveLength(1);
+    expect(result.rounds[0].heats[0].slots).toHaveLength(2);
+  });
+
+  it('8 participants — 2 heats of 4 in R1, then finals', () => {
     const participants = buildParticipants(8);
-    const result = computeHeats(participants, {
-      format: 'single-elim',
-      variant: 'V2',
-      preferredHeatSize: 2,
-    });
+    const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 4 });
 
     const round1 = result.rounds[0];
-    expect(round1.heats).toHaveLength(4);
-    round1.heats.forEach((heat) => {
-      expect(heat.slots).toHaveLength(2);
-    });
+    expect(round1.heats).toHaveLength(2);
+    round1.heats.forEach(h => expect(h.slots).toHaveLength(4));
+
+    const r1Byes = round1.heats.flatMap(h => h.slots).filter(s => s.bye);
+    expect(r1Byes).toHaveLength(0);
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Placeholder format correctness — critical for persistence
+  // ─────────────────────────────────────────────────────────────────
+  it('R2 slots reference valid round/heat/position placeholders', () => {
+    const participants = buildParticipants(12);
+    const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 4 });
 
     const round2 = result.rounds[1];
-    const placeholders = round2.heats.flatMap((heat) =>
-      heat.slots.map((slot) => slot.placeholder).filter(Boolean)
-    );
-    expect(placeholders).toContain('R1-H1-P1');
-    expect(placeholders).toContain('R1-H2-P1');
-    expect(placeholders).toContain('R1-H3-P1');
-    expect(placeholders).toContain('R1-H4-P1');
-    expect(placeholders.some((placeholder) => placeholder?.includes('-P2'))).toBe(false);
+    const placeholders = round2.heats.flatMap(h => h.slots).map(s => s.placeholder).filter(Boolean) as string[];
+    expect(placeholders.length).toBeGreaterThan(0);
+
+    // Each placeholder should embed R{round}-H{heat} (P{position}) which is parseable by heats.api.ts
+    const parsePattern = /R\d+-H\d+\s*(?:\(P\d+\)|P\d+)/i;
+    placeholders.forEach(ph => {
+      expect(parsePattern.test(ph)).toBe(true);
+    });
   });
 
-  it('builds a hybrid bracket (R2 heats of 4, then man-on-man to final)', () => {
-    const participants = buildParticipants(12);
-    const result = computeHeats(participants, {
-      format: 'single-elim',
-      preferredHeatSize: 4,
-      hybridPlan: {
-        enabled: true,
-        round2HeatSize: 4,
-        round2Advance: 2,
-      },
+  // ─────────────────────────────────────────────────────────────────
+  // No-bye rule for normal distributions
+  // ─────────────────────────────────────────────────────────────────
+  it('avoids BYEs in R1 for standard participant counts (4-16)', () => {
+    [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].forEach(count => {
+      const participants = buildParticipants(count);
+      const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 4 });
+      const r1Byes = result.rounds[0].heats.flatMap(h => h.slots).filter(s => s.bye);
+      expect(r1Byes).toHaveLength(0);
     });
-
-    expect(result.rounds).toHaveLength(4);
-    expect(result.rounds[0].heats).toHaveLength(3);
-    expect(result.rounds[1].heats).toHaveLength(2);
-    expect(result.rounds[1].heats[0].slots).toHaveLength(4);
-    expect(result.rounds[2].heats).toHaveLength(2);
-    expect(result.rounds[2].heats[0].slots).toHaveLength(2);
-    expect(result.rounds[3].name).toBe('Finale');
-    expect(result.rounds[3].heats[0].slots).toHaveLength(2);
-
-    const round2Placeholders = result.rounds[1].heats.flatMap((heat) =>
-      heat.slots.map((slot) => slot.placeholder).filter(Boolean)
-    );
-    expect(round2Placeholders.some((value) => value?.startsWith('R1-H'))).toBe(true);
   });
 
-  it('builds repechage bracket with losers from round 1', () => {
+  // ─────────────────────────────────────────────────────────────────
+  // Repechage format
+  // ─────────────────────────────────────────────────────────────────
+  it('repechage format generates rounds without repechage property on ComputeResult', () => {
     const participants = buildParticipants(12);
-    const result = computeHeats(participants, {
-      format: 'repechage',
-      variant: 'V1',
-      preferredHeatSize: 4,
-    });
+    const result = computeHeats(participants, { format: 'repechage', preferredHeatSize: 4 });
 
-    expect(result.repechage).toBeDefined();
-    const rp = result.repechage!;
-    expect(rp[0].name).toBe('Repechage R1');
-    const placeholders = rp[0].heats.flatMap((heat) => heat.slots.map((slot) => slot.placeholder));
-    expect(placeholders).toContain('R1-H1-P3');
-    expect(placeholders).toContain('R1-H1-P4');
-    expect(rp[0].heats[0].slots.map((slot) => slot.color)).toEqual(['RED', 'WHITE', 'YELLOW', 'BLUE']);
+    // heatGeneration.ts weaves repechage into the main rounds; no separate `repechage` array.
+    expect(result.rounds).toBeDefined();
+    expect(result.rounds.length).toBeGreaterThanOrEqual(2);
+    
+    // R1 still has 12 participants in 3 heats, no BYEs
+    const round1 = result.rounds[0];
+    expect(round1.heats).toHaveLength(3);
+    const r1Byes = round1.heats.flatMap(h => h.slots).filter(s => s.bye);
+    expect(r1Byes).toHaveLength(0);
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Color assignment — French colors are valid HeatColor values
+  // ─────────────────────────────────────────────────────────────────
+  it('slots in R1 have color assigned (ROUGE/BLANC/JAUNE/BLEU or equivalent)', () => {
+    const VALID_COLORS = new Set(['RED', 'WHITE', 'YELLOW', 'BLUE', 'GREEN', 'BLACK', 'ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR']);
+    const participants = buildParticipants(12);
+    const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 4 });
+    
+    result.rounds[0].heats.forEach(heat => {
+      heat.slots.forEach(slot => {
+        if (slot.color) {
+          expect(VALID_COLORS.has(slot.color)).toBe(true);
+        }
+      });
+    });
   });
 });

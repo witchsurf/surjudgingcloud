@@ -26,7 +26,7 @@ const normaliseParticipant = (participant: any, colorIndex: number) => ({
 const createHeat = (
   round: number,
   heatNumber: number,
-  surfers: Array<{ color: string; name: string; country: string }>
+  surfers: Array<{ color: string; name: string; country: string; seed?: number | null }>
 ): Heat => ({
   round,
   heat_number: heatNumber,
@@ -378,7 +378,7 @@ export const generatePreviewHeats = (
 
   // General Logic: now we can just use the seedMap we already calculated!
   seedMap.forEach((hm) => {
-    const surfers: Array<{ color: string; name: string; country: string }> = [];
+    const surfers: Array<{ color: string; name: string; country: string; seed?: number | null }> = [];
 
     hm.seeds.forEach((seed, slotIdx) => {
       if (seed === null) return; // Empty slot (Bye)
@@ -390,7 +390,8 @@ export const generatePreviewHeats = (
         surfers.push({
           color: pickColor(slotIdx),
           name: `Semence ${seed}`,
-          country: ''
+          country: '',
+          seed
         });
       }
     });

@@ -1,5 +1,6 @@
-import { determineHeatCount, determineHeatSize, distributeSeedsSnake, ParticipantSeed, HeatSeedMap } from './seeding';
-import { getColorSet, HeatColor } from './colorUtils';
+import { generatePreviewHeats } from './heatGeneration';
+import type { HeatColor } from './colorUtils';
+import type { ParticipantSeed } from './seeding';
 
 export interface HeatSlotSpec {
   seed?: number;
@@ -49,431 +50,73 @@ export interface ComputeResult {
   repechage?: RoundSpec[];
 }
 
-interface SlotReference {
-  sourceRound: number;
-  heatNumber: number;
-  position: number;
-}
-
-const makePlaceholder = (ref: SlotReference, prefix = 'R'): string => {
-  // Generates format: "R1-H1-P3" compatible with parsePlaceholder regex in supabaseClient.ts
-  // Regex: /^(RP?)(\d+)-H(\d+)-P(\d+)$/
-  const base = `${prefix}${ref.sourceRound}-H${ref.heatNumber}`;
-  return `${base}-P${ref.position}`;
+const isBracketPlaceholderName = (value?: string | null) => {
+  const normalized = (value || '').trim();
+  if (!normalized) return false;
+  return (
+    normalized.startsWith('Qualifié') ||
+    normalized.startsWith('Winner') ||
+    normalized.startsWith('Vainqueur') ||
+    normalized.startsWith('Repêchage') ||
+    normalized.startsWith('Finaliste') ||
+    normalized.startsWith('Meilleur 2e') ||
+    /^R\d+\s*-\s*H\d+/i.test(normalized) ||
+    normalized === 'BYE'
+  );
 };
 
-function toHeatSlots(map: HeatSeedMap[], participants: ParticipantSeed[]): HeatSpec[] {
-  const bySeed = new Map<number, ParticipantSeed>();
-  participants.forEach((p) => bySeed.set(p.seed, p));
-
-  return map.map(({ heatNumber, seeds }) => {
-    const colors = getColorSet(seeds.length || 0);
-    const slots = seeds.map<HeatSlotSpec>((seed, index) => {
-      if (seed == null) {
-        return { bye: true, placeholder: 'BYE', color: colors[index] };
-      }
-      const participant = bySeed.get(seed);
-      if (!participant) {
-        return { bye: true, placeholder: `Seed ${seed}`, color: colors[index] };
-      }
-      return {
-        seed: participant.seed,
-        name: participant.name,
-        country: participant.country,
-        license: participant.license,
-        participantId: participant.id,
-        color: colors[index],
-      };
-    });
-    return {
-      heatNumber,
-      slots,
-      roundRef: `R1-H${heatNumber}`,
-    };
-  });
-}
-
-function distributeReferencesSnake(refs: SlotReference[], heatCount: number, heatSize: number): SlotReference[][] {
-  const heats: SlotReference[][] = Array.from({ length: heatCount }, () => []);
-  let index = 0;
-  let direction: 1 | -1 = 1;
-
-  for (let i = 0; i < refs.length; i += 1) {
-    heats[index].push(refs[i]);
-
-    if (heatCount === 1) continue;
-
-    if (direction === 1) {
-      if (index === heatCount - 1) direction = -1;
-      else index += 1;
-    } else if (index === 0) direction = 1;
-    else index -= 1;
-  }
-
-  const totalSlots = heatCount * heatSize;
-  let added = refs.length;
-  if (added < totalSlots) {
-    for (let heatIdx = 0; heatIdx < heats.length && added < totalSlots; heatIdx += 1) {
-      while (heats[heatIdx].length < heatSize && added < totalSlots) {
-        heats[heatIdx].push({ sourceRound: 0, heatNumber: 0, position: 0 });
-        added += 1;
-      }
-    }
-  }
-
-  return heats;
-}
-
-function getAdvancingPositions(heat: HeatSpec): number[] {
-  const nonByePositions = heat.slots
-    .map((slot, idx) => ({ slot, position: idx + 1 }))
-    .filter(({ slot }) => !slot?.bye)
-    .map(({ position }) => position);
-
-  if (!nonByePositions.length) return [];
-  if (nonByePositions.length <= 2) {
-    // Man-on-man (or single-surfer with bye): only winner advances.
-    return [nonByePositions[0]];
-  }
-  // Legacy WSL rule for 3/4-person heats.
-  return nonByePositions.slice(0, Math.min(2, nonByePositions.length));
-}
-
-function buildRoundFromReferences(
-  refs: SlotReference[],
-  roundNumber: number,
-  heatSize: number,
-  roundName: string
-): RoundSpec {
-  const heatCount = Math.max(1, Math.ceil(refs.length / heatSize));
-  const distribution = distributeReferencesSnake(refs, heatCount, heatSize);
-
-  return {
-    name: roundName,
-    roundNumber,
-    heats: distribution.map((heatRefs, idx) => {
-      const colorSet = getColorSet(heatSize);
-      return {
-        heatNumber: idx + 1,
-        slots: heatRefs.map((ref, slotIdx) => {
-          if (ref.sourceRound === 0) {
-            return { bye: true, placeholder: 'BYE', color: colorSet[slotIdx] };
-          }
-          return { placeholder: makePlaceholder(ref), color: colorSet[slotIdx] };
-        }),
-        roundRef: `R${roundNumber}-H${idx + 1}`,
-      };
-    }),
-  };
-}
-
-function collectAdvancers(round: RoundSpec, advanceCount: number): SlotReference[] {
-  const qualifiers: SlotReference[] = [];
-
-  round.heats.forEach((heat) => {
-    const nonByeCount = heat.slots.filter((slot) => !slot.bye).length;
-    const advancersInHeat = Math.min(Math.max(1, advanceCount), nonByeCount);
-    for (let position = 1; position <= advancersInHeat; position += 1) {
-      qualifiers.push({
-        sourceRound: round.roundNumber,
-        heatNumber: heat.heatNumber,
-        position,
-      });
-    }
-  });
-
-  return qualifiers;
-}
-
-function buildHybridSingleElimNextRounds(round1: HeatSpec[], plan: HybridPlan): RoundSpec[] {
-  const results: RoundSpec[] = [];
-  const round1Refs: SlotReference[] = [];
-
-  round1.forEach((heat) => {
-    const advancingPositions = getAdvancingPositions(heat);
-    advancingPositions.forEach((position) => {
-      round1Refs.push({ sourceRound: 1, heatNumber: heat.heatNumber, position });
-    });
-  });
-
-  if (!round1Refs.length) return results;
-
-  const round2 = buildRoundFromReferences(round1Refs, 2, plan.round2HeatSize, 'Round 2');
-  results.push(round2);
-
-  let currentRefs = collectAdvancers(round2, plan.round2Advance);
-  let roundNumber = 3;
-
-  while (currentRefs.length > 0) {
-    const round = buildRoundFromReferences(
-      currentRefs,
-      roundNumber,
-      2,
-      Math.ceil(currentRefs.length / 2) === 1 ? 'Finale' : `Round ${roundNumber}`
-    );
-    results.push(round);
-    if (round.heats.length === 1) break;
-
-    currentRefs = collectAdvancers(round, 1);
-    roundNumber += 1;
-  }
-
-  return results;
-}
-
-export function buildSingleElimNextRounds(round1: HeatSpec[], variant: VariantType = 'V1'): RoundSpec[] {
-  const results: RoundSpec[] = [];
-  const qualifiers: SlotReference[] = [];
-
-  round1.forEach((heat) => {
-    const advancingPositions = getAdvancingPositions(heat);
-    advancingPositions.forEach((position) => {
-      qualifiers.push({ sourceRound: 1, heatNumber: heat.heatNumber, position });
-    });
-  });
-
-  if (qualifiers.length === 0) {
-    return results;
-  }
-
-  if (variant === 'V2') {
-    const heatSize = 2;
-    let currentRefs = qualifiers;
-    let roundNumber = 2;
-
-    while (currentRefs.length > 0) {
-      const heatCount = Math.max(1, Math.ceil(currentRefs.length / heatSize));
-      const distribution = distributeReferencesSnake(currentRefs, heatCount, heatSize);
-
-      const round: RoundSpec = {
-        name: heatCount === 1 ? 'Finale' : `Round ${roundNumber}`,
-        roundNumber,
-        heats: distribution.map((refs, idx) => {
-          const colorSet = getColorSet(heatSize);
-          return {
-            heatNumber: idx + 1,
-            slots: refs.map((ref, slotIdx) => {
-              if (ref.sourceRound === 0) {
-                return { bye: true, placeholder: 'BYE', color: colorSet[slotIdx] };
-              }
-              return { placeholder: makePlaceholder(ref), color: colorSet[slotIdx] };
-            }),
-            roundRef: `R${roundNumber}-H${idx + 1}`,
-          };
-        }),
-      };
-
-      results.push(round);
-      if (heatCount === 1) break;
-
-      currentRefs = round.heats.map((heat) => ({
-        sourceRound: roundNumber,
-        heatNumber: heat.heatNumber,
-        position: 1,
-      }));
-      roundNumber += 1;
-    }
-
-    return results;
-  }
-
-  // Variant V1
-  const r2HeatSize = 3;
-  const r2HeatCount = Math.max(1, Math.ceil(qualifiers.length / r2HeatSize));
-  const r2Distribution = distributeReferencesSnake(qualifiers, r2HeatCount, r2HeatSize);
-
-  const round2: RoundSpec = {
-    name: qualifiers.length <= 3 ? 'Finale' : 'Round 2',
-    roundNumber: 2,
-    heats: r2Distribution.map((refs, idx) => {
-      const colorSet = getColorSet(r2HeatSize);
-      return {
-        heatNumber: idx + 1,
-        slots: refs.map((ref, slotIdx) => {
-          if (ref.sourceRound === 0) {
-            return { bye: true, placeholder: 'BYE', color: colorSet[slotIdx] };
-          }
-          return { placeholder: makePlaceholder(ref), color: colorSet[slotIdx] };
-        }),
-        roundRef: `R2-H${idx + 1}`,
-      };
-    }),
-  };
-
-  results.push(round2);
-
-  if (qualifiers.length > 3) {
-    const finalists: SlotReference[] = [];
-    round2.heats.forEach((heat) => {
-      finalists.push({ sourceRound: 2, heatNumber: heat.heatNumber, position: 1 });
-      finalists.push({ sourceRound: 2, heatNumber: heat.heatNumber, position: 2 });
-    });
-
-    const finalRound: RoundSpec = {
-      name: 'Finale',
-      roundNumber: 3,
-      heats: [
-        {
-          heatNumber: 1,
-          slots: finalists.map((ref, slotIdx) => ({
-            placeholder: makePlaceholder(ref),
-            color: getColorSet(finalists.length)[slotIdx],
-          })),
-          roundRef: 'Finale-H1',
-        },
-      ],
-    };
-
-    results.push(finalRound);
-  }
-
-  return results;
-}
-
-export function buildRepechageFlows(round1: HeatSpec[], mainRounds: RoundSpec[]): RoundSpec[] {
-  const repechage: RoundSpec[] = [];
-
-  const initialLosers: SlotReference[] = [];
-  round1.forEach((heat) => {
-    heat.slots.forEach((slot, index) => {
-      if (slot?.bye) return;
-      if (index >= 2) {
-        initialLosers.push({ sourceRound: 1, heatNumber: heat.heatNumber, position: index + 1 });
-      }
-    });
-  });
-
-  if (initialLosers.length === 0) {
-    return repechage;
-  }
-
-  const heatSize = round1[0]?.slots.length ?? 4;
-  const heatCount = Math.max(1, Math.ceil(initialLosers.length / heatSize));
-  const round1Dist = distributeReferencesSnake(initialLosers, heatCount, heatSize);
-
-  repechage.push({
-    name: 'Repechage R1',
-    roundNumber: 1,
-    heats: round1Dist.map((refs, idx) => {
-      const colorSet = getColorSet(heatSize);
-      return {
-        heatNumber: idx + 1,
-        slots: refs.map((ref, slotIdx) => ({
-          placeholder: makePlaceholder(ref, 'R'),
-          color: colorSet[slotIdx],
-        })),
-        roundRef: `RP1-H${idx + 1}`,
-      };
-    }),
-  });
-
-  if (mainRounds.length === 0) return repechage;
-
-  let previousRefs = repechage[0].heats.flatMap((heat) => heat.slots.map((_, slotIdx) => ({
-    sourceRound: 101,
-    heatNumber: heat.heatNumber,
-    position: slotIdx + 1,
-  })));
-
-  mainRounds.forEach((round, roundIdx) => {
-    const losers: SlotReference[] = [];
-    round.heats.forEach((heat) => {
-      const loserStart = roundIdx === mainRounds.length - 1 ? 2 : 3;
-      for (let pos = loserStart; pos <= heat.slots.length; pos += 1) {
-        losers.push({ sourceRound: round.roundNumber, heatNumber: heat.heatNumber, position: pos });
-      }
-    });
-
-    if (losers.length === 0) return;
-
-    const combined = [...previousRefs, ...losers];
-    const rpHeatSize = Math.min(heatSize, 4);
-    const rpHeatCount = Math.max(1, Math.ceil(combined.length / rpHeatSize));
-    const dist = distributeReferencesSnake(combined, rpHeatCount, rpHeatSize);
-
-    const rpRound: RoundSpec = {
-      name: `Repechage R${repechage.length + 1}`,
-      roundNumber: repechage.length + 1,
-      heats: dist.map((refs, idx) => {
-        const colorSet = getColorSet(rpHeatSize);
-        return {
-          heatNumber: idx + 1,
-          slots: refs.map((ref, slotIdx) => {
-            if (ref.sourceRound === 101) {
-              return {
-                placeholder: makePlaceholder({ sourceRound: 900, heatNumber: ref.heatNumber, position: ref.position }, 'RP'),
-                color: colorSet[slotIdx],
-              };
-            }
-            if (ref.sourceRound === 0) {
-              return { bye: true, placeholder: 'BYE', color: colorSet[slotIdx] };
-            }
-            return { placeholder: makePlaceholder(ref), color: colorSet[slotIdx] };
-          }),
-          roundRef: `RP${repechage.length + 1}-H${idx + 1}`,
-        };
-      }),
-    };
-
-    repechage.push(rpRound);
-    previousRefs = rpRound.heats.flatMap((heat) => heat.slots.map((_, slotIdx) => ({
-      sourceRound: 100 + repechage.length,
-      heatNumber: heat.heatNumber,
-      position: slotIdx + 1,
-    })));
-  });
-
-  return repechage;
-}
-
 export function computeHeats(participants: ParticipantSeed[], options: ComputeOptions): ComputeResult {
-  const { preferredHeatSize = 'auto', variant = 'V1', hybridPlan } = options;
-  const participantCount = participants.length;
-  const heatSize = determineHeatSize(participantCount, preferredHeatSize);
-  const heatCount = determineHeatCount(participantCount, heatSize);
-  const baseSize = heatCount > 0 ? Math.floor(participantCount / heatCount) : participantCount;
-  const remainder = heatCount > 0 ? participantCount % heatCount : 0;
-  const variableHeatSizes =
-    heatCount > 0
-      ? Array.from({ length: heatCount }, (_, idx) => {
-        const sizeCandidate = baseSize + (idx < remainder ? 1 : 0);
-        if (sizeCandidate <= 0) {
-          return heatSize;
-        }
-        return Math.min(heatSize, sizeCandidate);
-      })
-      : [];
+  const { preferredHeatSize = 'auto', format } = options;
+  const seriesSize = preferredHeatSize === 'auto' ? 4 : (typeof preferredHeatSize === 'number' ? preferredHeatSize : 4);
 
-  const seedMap = distributeSeedsSnake(
-    participants.map((p) => p.seed),
-    {
-      heatSize,
-      heatCount,
-      heatSizes: variableHeatSizes,
-    }
+  // Map Participants to format expected by heatGeneration.ts (requires 'seed' to be preserved, id, etc. can be passed along)
+  const legacyParticipants = participants.map(p => ({
+    ...p,
+    // ensure seed is passed for distribution
+    seed: p.seed
+  }));
+
+  const rawPlan = generatePreviewHeats(
+    legacyParticipants, 
+    format === 'single-elim' ? 'elimination' : 'repechage', 
+    seriesSize
   );
 
-  const round1Heats = toHeatSlots(seedMap, participants);
-  const mainRounds = [
-    {
-      name: 'Round 1',
-      roundNumber: 1,
-      heats: round1Heats,
-    } satisfies RoundSpec,
-  ];
+  const rounds: RoundSpec[] = rawPlan.map(plan => {
+    return {
+      name: plan.round === rawPlan.length && rawPlan.length > 1 ? 'Finale' : `Round ${plan.round}`,
+      roundNumber: plan.round,
+      heats: plan.heats.map(heat => {
+        return {
+          heatNumber: heat.heat_number,
+          roundRef: `R${heat.round}-H${heat.heat_number}`,
+          slots: heat.surfers.map(surfer => {
+            const isPlaceholder = isBracketPlaceholderName(surfer.name);
+            const slotColor = surfer.color?.toUpperCase() as HeatColor;
 
-  if (options.format === 'single-elim') {
-    if (hybridPlan?.enabled) {
-      const nextRounds = buildHybridSingleElimNextRounds(round1Heats, hybridPlan);
-      mainRounds.push(...nextRounds);
-      return { rounds: mainRounds };
-    }
-    const nextRounds = buildSingleElimNextRounds(round1Heats, variant);
-    mainRounds.push(...nextRounds);
-    return { rounds: mainRounds };
-  }
+            if (isPlaceholder) {
+              return {
+                placeholder: surfer.name,
+                color: slotColor,
+                bye: surfer.name === 'BYE'
+              };
+            }
 
-  const nextRounds = buildSingleElimNextRounds(round1Heats, variant);
-  const repechageRounds = buildRepechageFlows(round1Heats, nextRounds);
-  return { rounds: [...mainRounds, ...nextRounds], repechage: repechageRounds };
+            const participant = participants.find(p => p.name === surfer.name || p.seed === surfer.seed);
+            
+            return {
+              seed: participant?.seed ?? surfer.seed,
+              name: surfer.name,
+              country: surfer.country,
+              license: participant?.license,
+              participantId: participant?.id,
+              color: slotColor,
+            };
+          })
+        };
+      })
+    };
+  });
+  
+  return { rounds };
 }

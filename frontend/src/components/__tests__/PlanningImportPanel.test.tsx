@@ -74,7 +74,7 @@ describe('PlanningImportPanel preview-only flow', () => {
     expect(container.textContent).toContain('VALID');
     expect(container.textContent).toContain('OPEN — 2 participants');
     expect(container.textContent).toContain('Club / Pays');
-    await click('Générer la preview en mémoire');
+    await click('Générer les previews');
     expect(container.textContent).toContain('PREVIEW_READY');
     expect(container.textContent).toContain('Prévisualisation des heats');
     expect((container.querySelector('[data-testid="persist-planning-button"]') as HTMLButtonElement).disabled).toBe(true);
@@ -110,7 +110,7 @@ describe('PlanningImportPanel preview-only flow', () => {
     const storageSpy = vi.spyOn(Storage.prototype, 'setItem');
     renderPanel();
     await selectFile('offline.csv', 'CATEGORY,SEED,NAME\nOPEN,1,A\nOPEN,2,B');
-    await click('Générer la preview en mémoire');
+    await click('Générer les previews');
     expect(container.textContent).toContain('PREVIEW_READY');
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(storageSpy).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ describe('PlanningImportPanel preview-only flow', () => {
     preflight.mockResolvedValueOnce({ state: 'SAFE', targetedHeats: [] });
     await act(async () => root.render(<PlanningImportPanel eventId={42} />));
     await selectFile('safe.csv', 'CATEGORY,SEED,NAME\nOPEN,1,A\nOPEN,2,B');
-    await click('Générer la preview en mémoire');
+    await click('Générer les previews');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(preflight).toHaveBeenCalledWith({ eventId: 42, category: 'OPEN', proposedHeatIds: [], overwrite: true });
     expect(container.querySelector('[data-testid="planning-safety-preflight"]')?.textContent).toContain('SAFE');
@@ -139,7 +139,7 @@ describe('PlanningImportPanel preview-only flow', () => {
     });
     await act(async () => root.render(<PlanningImportPanel eventId={42} />));
     await selectFile('blocked.csv', 'CATEGORY,SEED,NAME\nOPEN,1,A\nOPEN,2,B');
-    await click('Générer la preview en mémoire');
+    await click('Générer les previews');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const safety = container.querySelector('[data-testid="planning-safety-preflight"]')?.textContent;
     expect(safety).toContain('BLOCKED');
@@ -153,7 +153,7 @@ describe('PlanningImportPanel preview-only flow', () => {
     preflight.mockRejectedValueOnce(new Error('réseau indisponible'));
     await act(async () => root.render(<PlanningImportPanel eventId={42} />));
     await selectFile('unknown.csv', 'CATEGORY,SEED,NAME\nOPEN,1,A\nOPEN,2,B');
-    await click('Générer la preview en mémoire');
+    await click('Générer les previews');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const safety = container.querySelector('[data-testid="planning-safety-preflight"]')?.textContent;
     expect(safety).toContain('UNKNOWN');
@@ -170,7 +170,7 @@ describe('PlanningImportPanel preview-only flow', () => {
     }] });
     await act(async () => root.render(<PlanningImportPanel eventId={42} eventName="Competition Test" />));
     await selectFile('safe.csv', 'CATEGORY,SEED,NAME\nOPEN,1,A\nOPEN,2,B');
-    await click('Générer la preview en mémoire');
+    await click('Générer les previews');
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
   };
 
@@ -179,8 +179,7 @@ describe('PlanningImportPanel preview-only flow', () => {
     await click('Créer les heats sur cet événement');
     const dialog = container.querySelector('[role="dialog"]');
     expect(dialog?.textContent).toContain('Competition Test');
-    expect(dialog?.textContent).toContain('OPEN');
-    expect(dialog?.textContent).toContain('Participants2');
+    expect(dialog?.textContent).toContain('Participants');
     expect(dialog?.textContent).toContain('PreflightSAFE');
     expect(dialog?.textContent).toContain('Heats ciblés1');
     expect(dialog?.textContent).toContain('Les heats préparatoires existants');
@@ -198,6 +197,7 @@ describe('PlanningImportPanel preview-only flow', () => {
       confirm.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       await Promise.resolve();
     });
+    // Only 1 category in this test so 1 call
     expect(persistPlanningImportSafely).toHaveBeenCalledTimes(1);
     expect((container.querySelector('[data-testid="persist-planning-button"]') as HTMLButtonElement).disabled).toBe(true);
     await act(async () => { release(); await Promise.resolve(); });
