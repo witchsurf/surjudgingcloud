@@ -26,6 +26,7 @@ if (import.meta.env.VITE_SENTRY_DSN && !import.meta.env.DEV && !isLocalSupabaseM
 // Providers - Only SyncProvider needed now (Zustand handles Auth, Config, Judging)
 import { SyncProvider } from './contexts/SyncContext';
 import { AuthGuard } from './components/AuthGuard';
+import FieldEventContextGuard from './components/FieldEventContextGuard';
 import OverlayPage from './pages/OverlayPage';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
@@ -62,14 +63,20 @@ function App() {
                         <Route path="/login" element={<MyEventsPage />} />
                         <Route path="/my-events" element={<MyEventsPage />} />
                         <Route path="/payment" element={<PaymentPage />} />
-                        <Route path="/participants" element={<ParticipantsPage />} />
+                        <Route path="/participants" element={
+                            <FieldEventContextGuard>
+                                <ParticipantsPage />
+                            </FieldEventContextGuard>
+                        } />
                         <Route path="/generate-heats" element={<GenerateHeatsPage />} />
 
                         {/* Admin Routes - REQUIRE AUTHENTICATION */}
                         <Route path="/admin" element={
-                            <AuthGuard requireAuth={true}>
-                                <AdminLayout />
-                            </AuthGuard>
+                            <FieldEventContextGuard>
+                                <AuthGuard requireAuth={true}>
+                                    <AdminLayout />
+                                </AuthGuard>
+                            </FieldEventContextGuard>
                         }>
                             <Route index element={<AdminPage />} />
                         </Route>
