@@ -25,7 +25,7 @@ jobs:
       RELEASE_ID: surfjudging-2026.08.12-main-b7b9da1
       RELEASE_COMMIT: b7b9da16fb642fd85c9fd1398c95e2d3c523a56a
       ARCHIVE_NAME: surfjudging-2026.08.12-main-b7b9da1-frontend.tar.gz
-      ARCHIVE_SHA256: 1fa218aec8f891562fc061c8a14e74ef3db1a0643b10359ed5ff323a5d39ee15
+      ARCHIVE_SHA256: c18e646bcfc7ab2a32d75bc13dcfd859f03cee9e1a68c0c9fc18c675eb0e56e7
 
     steps:
       - name: Checkout deployment metadata and immutable artifact
