@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CURRENT_DIR="$ROOT_DIR/releases/mac-runtime/current"
-RELEASE_ID="$(cat "$CURRENT_DIR/dist/RELEASE_ID" 2>/dev/null || echo "surfjudging-2026.08.10-p2.7.0-da441fc")"
+RELEASE_ID="$(sed -nE 's/.*"releaseId"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$CURRENT_DIR/dist/deployment-manifest.json" | head -n 1)"
+[[ -n "$RELEASE_ID" ]] || RELEASE_ID="surfjudging-2026.08.10-p2.7.0-da441fc"
 COMPOSE_FILE="$ROOT_DIR/infra/docker-compose-local.yml"
 COMPOSE_ENV="$ROOT_DIR/infra/.env"
 NO_CAFFEINATE=false
@@ -100,7 +101,7 @@ done
 curl -fsS --connect-timeout 3 "http://127.0.0.1:8080/" >/dev/null \
   || fail "Frontend Field inaccessible sur :8080."
 
-SERVED_RELEASE="$(curl -fsS --connect-timeout 3 "http://127.0.0.1:8080/RELEASE_ID")"
+SERVED_RELEASE="$(curl -fsS --connect-timeout 3 "http://127.0.0.1:8080/deployment-manifest.json" | sed -nE 's/.*"releaseId"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1)"
 [[ "$SERVED_RELEASE" == "$RELEASE_ID" ]] \
   || fail "Release servie incorrecte: ${SERVED_RELEASE:-absente} (attendue: $RELEASE_ID)."
 
