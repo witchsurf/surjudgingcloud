@@ -22,9 +22,9 @@ jobs:
     env:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
-      RELEASE_ID: surfjudging-2026.08.12-main-b7b9da1
-      RELEASE_COMMIT: b7b9da16fb642fd85c9fd1398c95e2d3c523a56a
-      ARCHIVE_NAME: surfjudging-2026.08.12-main-b7b9da1-frontend.tar.gz
+      RELEASE_ID: surfjudging-2026.08.12-main-0659e0e
+      RELEASE_COMMIT: 0659e0e6ad34c2fad94f1140cf0003aa7b73c3a8
+      ARCHIVE_NAME: surfjudging-2026.08.12-main-0659e0e-frontend.tar.gz
       ARCHIVE_SHA256: c18e646bcfc7ab2a32d75bc13dcfd859f03cee9e1a68c0c9fc18c675eb0e56e7
 
     steps:
