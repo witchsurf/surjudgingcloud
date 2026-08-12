@@ -15,6 +15,10 @@ describe('P2.7.18 display active heat switch', () => {
     expect(pointerBranch).not.toContain('window.location.reload');
   });
 
+  it('ignores late callbacks from the previous heat subscription', () => {
+    expect(source).toContain('if (liveHeatIdRef.current !== currentHeatId) return;');
+  });
+
   it('keeps podium isolation on the active-pointer subscription', () => {
     expect(source).toContain('}, { podiumId });');
     expect(source).toContain('[activeEventId, configSaved, config.competition');

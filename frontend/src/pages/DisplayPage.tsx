@@ -1423,6 +1423,10 @@ export default function DisplayPage() {
         refreshScores(currentHeatId);
 
         const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, nextConfig, status) => {
+            // The initial load of an old heat can resolve after the active-pointer
+            // transition has already switched the store. Ignore that stale callback;
+            // otherwise it overwrites the new config/render with the previous heat.
+            if (liveHeatIdRef.current !== currentHeatId) return;
             setTimer(nextTimer);
             if (nextConfig) {
                 setConfig((prev) => normalizeConfig(
