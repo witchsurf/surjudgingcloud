@@ -46,6 +46,8 @@ mcp_config.json
 
 # Local validation artifacts (never part of a release)
 /artifacts/
+/local-artifacts/
+/releases/mac-runtime/
 /Export_PDF_Complet_Event33.pdf
 /Rapport_Event33.pdf
 /frontend/dist-xlsx-spike/
