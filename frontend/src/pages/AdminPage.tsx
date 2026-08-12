@@ -12,18 +12,48 @@ import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
 import { getHeatIdentifiers } from '../utils/heat';
 import { resolveEventIdForHeat } from '../utils/heatWorkflow';
-import {
-    updateEventConfiguration,
-    saveEventConfigSnapshot,
-} from '../api/modules/events.api';
-import { fetchOrderedHeatSequence } from '../api/modules/heats.api';
+import { fetchHeatMetadata, fetchOrderedHeatSequence } from '../api/modules/heats.api';
 import { normalizePodiumId } from '../utils/podium';
-import { isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
+import { isSupabaseConfigured } from '../lib/supabase';
 import type { AppConfig } from '../types';
 import { getSafeLocalStorage } from '../utils/secureStorage';
 
 const shallowArrayEqual = (left: string[] = [], right: string[] = []) =>
     left.length === right.length && left.every((value, index) => value === right[index]);
+
+const JERSEY_COLOR_ALIASES: Record<string, string> = {
+    RED: 'ROUGE',
+    WHITE: 'BLANC',
+    YELLOW: 'JAUNE',
+    BLUE: 'BLEU',
+    GREEN: 'VERT',
+    BLACK: 'NOIR',
+};
+
+const normalizeJerseyColor = (value: string) => {
+    const normalized = value.trim().toUpperCase();
+    return JERSEY_COLOR_ALIASES[normalized] ?? normalized;
+};
+
+const shallowJerseyArrayEqual = (left: string[] = [], right: string[] = []) =>
+    left.length === right.length && left.every(
+        (value, index) => normalizeJerseyColor(value) === normalizeJerseyColor(right[index]),
+    );
+
+const shallowJerseyRecordEqual = (
+    left: Record<string, string> = {},
+    right: Record<string, string> = {},
+) => {
+    const normalizedLeft = Object.fromEntries(
+        Object.entries(left).map(([key, value]) => [normalizeJerseyColor(key), value]),
+    );
+    const normalizedRight = Object.fromEntries(
+        Object.entries(right).map(([key, value]) => [normalizeJerseyColor(key), value]),
+    );
+    const leftEntries = Object.entries(normalizedLeft);
+    if (leftEntries.length !== Object.keys(normalizedRight).length) return false;
+    return leftEntries.every(([key, value]) => normalizedRight[key] === value);
+};
 
 const shallowRecordEqual = (left: Record<string, string> = {}, right: Record<string, string> = {}) => {
     const leftEntries = Object.entries(left);
@@ -89,7 +119,7 @@ export default function AdminPage() {
         publishTimerReset
     } = useRealtimeSync();
     const { handleScoreOverride } = useScoreManager();
-    const { createHeat, saveHeatConfig } = useSupabaseSync();
+    const { saveHeatConfig } = useSupabaseSync();
 
     // Local UI state for loading feedback
     const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'empty' | 'error'>('loaded');
@@ -103,6 +133,15 @@ export default function AdminPage() {
         config.heatId
     ).normalized;
 
+    const hasCanonicalHeatContext = Boolean(
+        loadedFromDb
+        && configSaved
+        && (config.competition || '').trim()
+        && (config.division || '').trim()
+        && currentHeatId
+        && currentHeatId !== 'r1_h1'
+    );
+
     const eventIdFromUrl = Number(searchParams.get('eventId'));
 
     const resolveEventIdForCurrentHeat = useCallback(
@@ -115,7 +154,9 @@ export default function AdminPage() {
     );
 
     // Load participant names for current heat
-    const { participants: heatParticipants } = useHeatParticipants(currentHeatId);
+    const { participants: heatParticipants } = useHeatParticipants(
+        hasCanonicalHeatContext ? currentHeatId : ''
+    );
 
     useEffect(() => {
         const targetEventId = Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0
@@ -153,10 +194,10 @@ export default function AdminPage() {
             config.division === newConfig.division &&
             config.round === newConfig.round &&
             config.heatId === newConfig.heatId &&
-            shallowArrayEqual(config.surfers, newConfig.surfers) &&
+            shallowJerseyArrayEqual(config.surfers, newConfig.surfers) &&
             shallowArrayEqual(config.judges, newConfig.judges) &&
-            shallowRecordEqual(config.surferNames, newConfig.surferNames) &&
-            shallowRecordEqual(config.surferCountries, newConfig.surferCountries) &&
+            shallowJerseyRecordEqual(config.surferNames, newConfig.surferNames) &&
+            shallowJerseyRecordEqual(config.surferCountries, newConfig.surferCountries) &&
             shallowRecordEqual(config.judgeNames, newConfig.judgeNames) &&
             shallowRecordEqual(config.judgeIdentities, newConfig.judgeIdentities) &&
             (config.secretKey || '') === (newConfig.secretKey || '');
@@ -194,104 +235,87 @@ export default function AdminPage() {
 
     const handleConfigSaved = useCallback(async (saved: boolean, podiumIdInput?: string) => {
         const podiumId = normalizePodiumId(podiumIdInput);
-        setConfigSaved(saved);
-
-        if (saved) {
-            const targetEventId = await resolveEventIdForCurrentHeat();
-
-            if (targetEventId && activeEventId !== targetEventId) {
-                setActiveEventId(targetEventId);
-            }
-
-            const divisionsPayload = Array.from(
-                new Set<string>(
-                    [...availableDivisions, config.division]
-                        .filter((value): value is string => Boolean(value))
-                )
-            );
-            const judgesPayload = config.judges.map((id) => ({
-                id,
-                name: config.judgeNames[id] || id,
-                identityId: config.judgeIdentities?.[id],
-            }));
-
-            if (canUseSupabaseConnection() && isSupabaseConfigured() && targetEventId) {
-                try {
-                    // event_last_config and the legacy event-level judge panel belong
-                    // to podium A. Podium B persists only heat-scoped configuration.
-                    if (podiumId === 'A') {
-                        await updateEventConfiguration(targetEventId, {
-                            config,
-                            divisions: divisionsPayload,
-                            judges: judgesPayload,
-                        });
-                        await saveEventConfigSnapshot({
-                            eventId: targetEventId,
-                            eventName: config.competition,
-                            division: config.division,
-                            round: config.round,
-                            heatNumber: config.heatId,
-                            judges: judgesPayload,
-                            surfers: config.surfers || [],
-                            surferNames: config.surferNames || {},
-                            surferCountries: config.surferCountries || {},
-                        });
-                    }
-                    setLoadState('loaded');
-                    setLoadError(null);
-                } catch (error) {
-                    console.warn('Impossible de synchroniser la configuration événement avec Supabase', error);
-                    setLoadError(error instanceof Error ? error.message : 'Synchronisation de la configuration impossible.');
-                }
-            } else {
-                setLoadState('loaded');
-                if (!canUseSupabaseConnection()) {
-                    setLoadError('Configuration enregistrée localement (mode hors ligne).');
-                } else {
-                    setLoadError(null);
-                }
-            }
-
-            try {
-                await createHeat({
-                    competition: config.competition,
-                    division: config.division,
-                    round: config.round,
-                    heat_number: config.heatId,
-                    status: 'open',
-                    surfers: config.surfers.map(surfer => ({
-                        color: surfer,
-                        name: config.surferNames?.[surfer] || surfer, // Provide the real name if available
-                        country: config.surferCountries?.[surfer] || 'SENEGAL'
-                    }))
-                });
-
-                // Sauvegarder la config du heat
-                await saveHeatConfig(currentHeatId, { ...config, podiumId });
-
-                // Publier la config en temps réel
-                await publishConfigUpdate(currentHeatId, config);
-
-                console.log('✅ Heat créé et config publiée:', currentHeatId);
-            } catch (error) {
-                const maybeError = error as { code?: string; message?: string };
-                if (maybeError?.code === '23514' || maybeError?.code === '23505') {
-                    console.error('❌ Configuration refusée par les contraintes terrain:', error);
-                    setConfigSaved(false);
-                    return;
-                }
-                console.log('⚠️ Heat créé en mode local uniquement', error);
-            }
-
-            persistConfig(config);
+        if (!saved) {
+            setConfigSaved(false);
+            return;
         }
+
+        // SAVE remains pending until the complete canonical DB chain resolves.
+        setConfigSaved(false);
+
+        const targetEventId = await resolveEventIdForCurrentHeat();
+        if (!targetEventId) {
+            const error = new Error(`Événement introuvable pour le heat planifié ${currentHeatId}.`);
+            setLoadError(error.message);
+            throw error;
+        }
+
+        if (activeEventId !== targetEventId) {
+            setActiveEventId(targetEventId);
+        }
+        // saveHeatConfig resolves event_id from localStorage. Persist the
+        // already-resolved event synchronously so the first SAVE carries the
+        // same canonical context as subsequent clicks.
+        try {
+            localStorage.setItem('surfJudgingActiveEventId', String(targetEventId));
+            localStorage.setItem('eventId', String(targetEventId));
+        } catch {
+            // Persistence is best effort; the canonical chain reports errors.
+        }
+
+        try {
+            // Admin SAVE configures an existing planning heat. Recreating it here
+            // would overwrite status, created_at and other planning metadata.
+            const plannedHeat = await fetchHeatMetadata(currentHeatId);
+            const plannedHeatMatches = Boolean(
+                plannedHeat
+                && Number(plannedHeat.event_id) === Number(targetEventId)
+                && plannedHeat.division?.trim().toUpperCase() === config.division.trim().toUpperCase()
+                && Number(plannedHeat.round) === Number(config.round)
+                && Number(plannedHeat.heat_number) === Number(config.heatId)
+            );
+
+            if (!plannedHeatMatches) {
+                throw new Error(`Heat planifié introuvable ou incohérent : ${currentHeatId}.`);
+            }
+
+            // HeatRepository owns the canonical order:
+            // config RPC -> assignments -> entries -> podium A event snapshot.
+            await saveHeatConfig(currentHeatId, { ...config, podiumId });
+
+            setConfigSaved(true);
+            setLoadState('loaded');
+            setLoadError(null);
+            console.log('✅ Configuration canonique du heat sauvegardée:', currentHeatId);
+        } catch (error) {
+            setConfigSaved(false);
+            setLoadError(error instanceof Error ? error.message : 'Persistance du heat impossible.');
+            console.error('❌ Persistance heat impossible', {
+                heatId: currentHeatId,
+                podiumId,
+                code: (error as { code?: string })?.code,
+                message: (error as { message?: string })?.message,
+            });
+            throw error;
+        }
+
+        // Realtime publication is secondary and follows canonical persistence.
+        try {
+            await publishConfigUpdate(currentHeatId, config);
+        } catch (error) {
+            console.warn('⚠️ Publication realtime de la config échouée (persistance DB conservée)', {
+                heatId: currentHeatId,
+                podiumId,
+                error,
+            });
+        }
+
+        persistConfig(config);
     }, [
         config,
-        availableDivisions,
         activeEventId,
         setActiveEventId,
         setConfigSaved,
-        createHeat,
         saveHeatConfig,
         publishConfigUpdate,
         currentHeatId,
@@ -340,10 +364,14 @@ export default function AdminPage() {
     const { setTimer: setLocalTimer, setHeatStatus } = useJudgingStore();
 
     useEffect(() => {
+        // heatStatus is global Zustand state. Clear it as soon as the selected
+        // heat changes, even before that heat has been saved, so a closed
+        // previous heat cannot lock the new heat in the Admin UI.
+        if (!currentHeatId) return;
+        setHeatStatus('waiting');
         if (!configSaved || !config.competition) return;
 
         console.log('📡 Admin: subscribing to own heat timer:', currentHeatId);
-        setHeatStatus('waiting');
 
         const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, _nextConfig, status) => {
             setLocalTimer(nextTimer);
@@ -431,6 +459,7 @@ export default function AdminPage() {
     return (
         <AdminInterface
             config={config}
+            canonicalHeatId={currentHeatId}
             onConfigChange={handleConfigChange}
             onConfigSaved={handleConfigSaved}
             configSaved={configSaved}

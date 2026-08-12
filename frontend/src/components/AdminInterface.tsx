@@ -11,7 +11,7 @@ import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/h
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF, exportFinalistsRankingToPDF } from '../utils/pdfExport';
-import { fetchEventIdByName, ensureEventExists } from '../api/modules/events.api';
+import { fetchEventIdByName } from '../api/modules/events.api';
 import {
   fetchOrderedHeatSequence, fetchAllEventHeats, fetchAllEventCategories,
   fetchHeatEntriesWithParticipants, fetchHeatSlotMappings, fetchHeatMetadata,
@@ -35,6 +35,7 @@ import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference'
 import { getScoresByHeatIDB } from '../lib/idbStorage';
 import { DEFAULT_PODIUM_ID, normalizePodiumId } from '../utils/podium';
 import { buildDeploymentAwareUrl, encodeDeploymentAwareQr, type InternalAccessRoute } from '../domain/deploymentLinks';
+import { generateUuidV4 } from '../lib/uuid';
 import AdminHeatResultSnapshotPanel from './AdminHeatResultSnapshotPanel';
 import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
 import { panelRepository } from '../repositories/PanelRepository';
@@ -43,7 +44,7 @@ import { heatLifecycleRepository } from '../repositories/HeatLifecycleRepository
 import { qualificationRecoveryRepository } from '../repositories/QualificationRecoveryRepository';
 import type { PanelContext } from '../domain/scoring/panelContext';
 import { resolveConsumerHeatSnapshot } from '../domain/scoring/overlaySnapshot';
-import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
+import { subscribeToHeatInterference, subscribeToHeatScores } from '../lib/sharedHeatTableSubscriptions';
 
 const ACTIVE_EVENT_STORAGE_KEY = 'surfJudgingActiveEventId';
 const LINEUP_OVERRIDE_COLORS = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'] as const;
@@ -193,8 +194,9 @@ const fetchHeatContext = (heatId: string, score?: Partial<Score>) => {
 
 interface AdminInterfaceProps {
   config: AppConfig;
+  canonicalHeatId?: string;
   onConfigChange: (config: AppConfig) => void;
-  onConfigSaved: (saved: boolean, podiumId?: string) => void;
+  onConfigSaved: (saved: boolean, podiumId?: string) => Promise<void>;
   configSaved: boolean;
   loadError?: string | null;
   timer: HeatTimerType;
@@ -233,6 +235,7 @@ interface AdminInterfaceProps {
 }
 const AdminInterface: React.FC<AdminInterfaceProps> = ({
   config,
+  canonicalHeatId,
   onConfigChange,
   onConfigSaved,
   configSaved,
@@ -680,7 +683,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [activeEventId]);
+  }, [activeEventId, selectedPodiumId, podiumAssignStatus]);
 
   const formatMinSec = (secs: number) => {
     const mins = Math.floor(secs / 60);
@@ -746,15 +749,32 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => { cancelled = true; };
   }, [activeEventId, selectedPodiumId, podiumAssignStatus, config.heatId]);
 
-  const { normalized: heatId } = React.useMemo(
+  const fallbackHeatId = React.useMemo(
     () =>
       getHeatIdentifiers(
         config.competition,
         config.division,
         config.round,
         config.heatId
-      ),
+      ).normalized,
     [config.competition, config.division, config.round, config.heatId]
+  );
+
+  const heatId = React.useMemo(
+    () => ensureHeatId(canonicalHeatId || fallbackHeatId),
+    [canonicalHeatId, fallbackHeatId]
+  );
+
+  const hasCanonicalHeatContext = React.useMemo(
+    () => Boolean(
+      loadedFromDb &&
+      configSaved &&
+      (config.competition || '').trim() &&
+      (config.division || '').trim() &&
+      heatId &&
+      heatId !== 'r1_h1'
+    ),
+    [loadedFromDb, configSaved, config.competition, config.division, heatId]
   );
 
   const resolveEventIdForCurrentHeat = useCallback(async (): Promise<number | null> => {
@@ -762,7 +782,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       return activeEventId;
     }
 
-    if (heatId) {
+    if (hasCanonicalHeatContext && heatId) {
       const heatMetadata = await fetchHeatMetadata(heatId);
       if (heatMetadata?.event_id) {
         return heatMetadata.event_id;
@@ -784,7 +804,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
 
     return null;
-  }, [activeEventId, config.competition, heatId]);
+  }, [activeEventId, config.competition, hasCanonicalHeatContext, heatId]);
 
   useEffect(() => {
     setPlannedTimerDuration(timer.duration);
@@ -943,9 +963,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const refreshCorrectionPanelData = useCallback(async () => {
     if (!supabase) throw new Error('Supabase non initialisé');
+    if (!hasCanonicalHeatContext) {
+      setDbHeatScoreHistory([]);
+      setDbHeatScores([]);
+      setDbOverrideLogs([]);
+      setCompetitionAuditLogs([]);
+      return;
+    }
 
     try {
-      const [{ data: scoreRows, error: scoresError }, { data: overrideRows, error: overridesError }] = await Promise.all([
+      const [{ data: scoreRows, error: scoresError }, { data: overrideRows, error: overridesError }, { data: auditRows, error: auditError }] = await Promise.all([
         supabase
           .from('scores')
           .select('*')
@@ -956,26 +983,30 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           .select('*')
           .eq('heat_id', heatId)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('competition_audit_log')
+          .select('*')
+          .eq('heat_id', heatId)
+          .order('created_at', { ascending: false })
+          .limit(100),
       ]);
 
       if (scoresError) throw scoresError;
-      if (overridesError) throw overridesError;
 
       const nextScores = (scoreRows || []) as Score[];
       setDbHeatScoreHistory(nextScores);
       setDbHeatScores(canonicalizeScores(nextScores));
-      setDbOverrideLogs((overrideRows || []) as ScoreOverrideLog[]);
-
-      const { data: auditRows, error: auditError } = await supabase
-        .from('competition_audit_log')
-        .select('*')
-        .eq('heat_id', heatId)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (!auditError) {
-        setCompetitionAuditLogs((auditRows || []) as CompetitionAuditEntry[]);
+      if (overridesError) {
+        console.warn('⚠️ Admin: score_overrides indisponible pour ce heat, scores conservés', overridesError);
+        setDbOverrideLogs([]);
       } else {
+        setDbOverrideLogs((overrideRows || []) as ScoreOverrideLog[]);
+      }
+
+      if (auditError) {
         setCompetitionAuditLogs([]);
+      } else {
+        setCompetitionAuditLogs((auditRows || []) as CompetitionAuditEntry[]);
       }
     } catch (error) {
       console.warn('⚠️ Base de données inaccessible - chargement des scores locaux de secours', error);
@@ -992,7 +1023,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       setDbOverrideLogs(localLogs);
       setCompetitionAuditLogs([]);
     }
-  }, [heatId]);
+  }, [hasCanonicalHeatContext, heatId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1007,17 +1038,23 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
     };
 
-    loadDbScores();
+    if (hasCanonicalHeatContext) {
+      loadDbScores();
+    }
 
     const handleOverrideEvent = () => {
       void loadDbScores();
     };
+    const unsubscribeScores = hasCanonicalHeatContext
+      ? subscribeToHeatScores(heatId, () => { void loadDbScores(); })
+      : () => {};
     window.addEventListener('scoreOverrideApplied', handleOverrideEvent as EventListener);
     return () => {
       cancelled = true;
+      unsubscribeScores();
       window.removeEventListener('scoreOverrideApplied', handleOverrideEvent as EventListener);
     };
-  }, [heatId, refreshCorrectionPanelData]);
+  }, [hasCanonicalHeatContext, heatId, refreshCorrectionPanelData]);
 
   const currentScore = React.useMemo(() => {
     if (!selectedJudge || !selectedSurfer || !selectedWave) return undefined;
@@ -1630,7 +1667,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         wave_number: destinationWave,
         timestamp: new Date().toISOString(),
         override_log: {
-          id: crypto.randomUUID(),
+          id: generateUuidV4(),
           heat_id: heatId,
           score_id: currentScore.id,
           judge_id: currentScore.judge_id,
@@ -2188,6 +2225,24 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [syncDivisionsFromParticipants]);
 
   const handleConfigChange = (field: keyof AppConfig, value: any) => {
+    if (field === 'division') {
+      const nextDivision = String(value || '').trim();
+      const planned = allEventHeatsMeta
+        .filter((heat) => heat.division.trim().toLowerCase() === nextDivision.toLowerCase())
+        .sort((a, b) => a.round - b.round || a.heat_number - b.heat_number);
+      const available = planned.find((heat) => !isHeatClosed(heat.heat_number, heat.round));
+      const selected = available || planned[0];
+      onConfigChange({
+        ...config,
+        division: value,
+        round: selected?.round ?? 1,
+        heatId: selected?.heat_number ?? 1,
+        surfers: [],
+        surferNames: {},
+        surferCountries: {},
+      });
+      return;
+    }
     const isHeatSelectionField = field === 'division' || field === 'round' || field === 'heatId';
     const nextConfig = {
       ...config,
@@ -2263,7 +2318,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [activeEventId, config.division, config.round, config.heatId]);
 
   useEffect(() => {
-    if (!loadedFromDb || !heatId || !isSupabaseConfigured()) {
+    if (!hasCanonicalHeatContext || !isSupabaseConfigured()) {
       setLineupRows([]);
       setLineupParticipantOptions([]);
       return;
@@ -2355,6 +2410,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           Number(currentConfig.heatId) === Number(config.heatId);
 
         if (!sameHeat) return;
+        if (configSaved) return;
 
         onConfigChange({
           ...currentConfig,
@@ -2374,7 +2430,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [loadedFromDb, heatId, activeEventId, config.division, config.round, config.heatId, lineupRefreshToken, onConfigChange]);
+  }, [hasCanonicalHeatContext, heatId, activeEventId, config.division, config.round, config.heatId, lineupRefreshToken, onConfigChange]);
 
   // Dropdowns visual states
   const isCategoryClosed = useCallback((div: string) => {
@@ -2513,10 +2569,6 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   );
 
   const isCurrentHeatClosed = currentHeatStatus === 'closed';
-  const isCurrentHeatFinished = currentHeatStatus === 'finished';
-
-  // Timer came to zero: started, not running, and remaining seconds is 0
-  const timerHasExpired = Boolean(timer.startTime) && !timer.isRunning && floatingTimeLeft === 0;
 
   useEffect(() => {
     if (isCurrentHeatLocked) {
@@ -2529,23 +2581,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const stableHeatLocked = hasBeenLockedRef.current || isCurrentHeatClosed;
 
-  // A heat is considered "already run" if closed, finished, timer reached zero, or has scores while timer is inactive
-  const currentHeatAlreadyRan = 
-    stableHeatLocked || 
-    isCurrentHeatFinished || 
-    timerHasExpired || 
-    (currentHeatHasScores && !timer.isRunning && !timer.startTime);
+  // Product contract: only an explicit operator close may make a heat
+  // semantically completed/already judged. Timer, scores and readiness are
+  // advisory only.
+  const currentHeatAlreadyRan = stableHeatLocked;
 
   const rejudgeOverrideActive = rejudgeOverrideHeatKey === currentHeatKey;
   const heatRejudgeProtected = currentHeatAlreadyRan && !rejudgeOverrideActive;
 
-  const rejudgeProtectionReason = stableHeatLocked
-    ? 'closed'
-    : (isCurrentHeatFinished || timerHasExpired)
-      ? 'finished'
-      : (currentHeatHasScores && !timer.isRunning && !timer.startTime)
-        ? 'scores'
-        : null;
+  const rejudgeProtectionReason = stableHeatLocked ? 'closed' : null;
 
   const activeOtherPodiumJudgeAssignments = React.useMemo(() => {
     const selectedPodium = normalizePodiumId(selectedPodiumId);
@@ -2934,24 +2978,25 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       return;
     }
 
-    // Ensure event exists in Supabase if competition is set
-    if (config.competition && isSupabaseConfigured()) {
-      try {
-        // ensureEventExists is now imported statically
-        const eventId = await ensureEventExists(config.competition);
-        // Store event ID for future use
-        localStorage.setItem('surfJudgingActiveEventId', String(eventId));
-        console.log(`✅ Event ensured: ${config.competition} (ID: ${eventId})`);
-      } catch (error) {
-        console.warn('⚠️ Could not ensure event exists:', error);
-        // Continue anyway - event creation is optional
-      }
-    }
+    try {
+      // The parent owns the authoritative persistence chain and saved state.
+      await onConfigSaved(true, normalizePodiumId(selectedPodiumId));
 
-    onConfigSaved(true, normalizePodiumId(selectedPodiumId));
-    // Sauvegarder immédiatement dans localStorage
-    localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
-    localStorage.setItem('surfJudgingConfigSaved', 'true');
+      // Keep the recovery snapshot only after the authoritative save resolves.
+      localStorage.setItem('surfJudgingConfigSaved', 'true');
+      localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
+      setSyncError(null);
+    } catch (error) {
+      localStorage.setItem('surfJudgingConfigSaved', 'false');
+
+      const message = error instanceof Error
+        ? error.message
+        : 'La configuration du heat n’a pas pu être sauvegardée.';
+
+      setSyncError(message);
+      console.error('❌ Sauvegarde configuration heat échouée:', error);
+      alert(`Sauvegarde impossible : ${message}`);
+    }
   };
 
   const handleTimerStart = async () => {
