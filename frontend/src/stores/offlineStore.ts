@@ -11,6 +11,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { logger } from '../lib/logger';
 import { describeScoreWalMutation, recordOfflineOperation } from '../lib/offlineOperations';
 import { createIDBZustandStorage } from '../lib/idbOfflineStore';
+import { generateUuidV4 } from '../lib/uuid';
 
 export interface OfflineMutation {
     id: string;
@@ -124,9 +125,7 @@ export const useOfflineStore = create<OfflineStore>()(
 
                 // Register a new mutation sequentially to the WAL
                 registerMutation: (table, action, payload) => {
-                    const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto 
-                        ? crypto.randomUUID() 
-                        : Math.random().toString(36).substring(2, 15);
+                    const id = generateUuidV4();
 
                     const mutation: OfflineMutation = {
                         id,

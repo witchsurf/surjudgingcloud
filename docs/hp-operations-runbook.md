@@ -61,6 +61,12 @@ Audit rapide :
 ./scripts/hp-ops.sh healthcheck --home
 ```
 
+Lancer une Event Box Mac locale déjà provisionnée :
+
+```bash
+./scripts/start-surfjudging-field-mac.sh
+```
+
 Préflight complet d'un événement :
 
 ```bash
@@ -104,6 +110,57 @@ toutes les dépendances métier. Les fichiers sont stockés dans
 `~/surfjudging-backups` sur le HP, avec checksum SHA-256. Les 12 derniers
 snapshots sont conservés par défaut. Cette commande ne restaure et ne modifie
 aucune donnée métier.
+
+## Event Box Mac Locale
+
+Cette variante sert quand le poste terrain est un Mac au lieu du HP ProDesk.
+Le principe reste le même : la base locale et le frontend Field doivent déjà
+être prêts avant l'événement. Le script de lancement ne fait ni migration, ni
+build, ni nettoyage de données.
+
+Préconditions :
+
+- Docker Desktop ou un runtime Colima fonctionnel.
+- `infra/.env` présent.
+- Une stack locale existante basée sur `infra/docker-compose-local.yml`.
+- Une release Field déjà installée dans `releases/mac-runtime/current/dist/`.
+
+Commande normale :
+
+```bash
+./scripts/start-surfjudging-field-mac.sh
+```
+
+Le script :
+
+- détecte l'adresse IP LAN privée du Mac ;
+- démarre Colima si Docker ne répond pas et que Colima est disponible ;
+- démarre les services Supabase locaux existants ;
+- vérifie le backend local sur `:8000` ;
+- vérifie que le frontend actif est bien un build `field` ;
+- démarre ou redémarre le conteneur `surfjudging` sur `:8080` ;
+- contrôle le `RELEASE_ID` servi et le mode DB autoritatif `field` ;
+- affiche toutes les URL LAN utiles ;
+- garde ensuite le Mac éveillé avec `caffeinate`.
+
+Option sans blocage du terminal :
+
+```bash
+./scripts/start-surfjudging-field-mac.sh --no-caffeinate
+```
+
+Après le message de succès, utiliser les URL affichées par le script, par
+exemple :
+
+```text
+ADMIN        http://<IP_LAN_DU_MAC>:8080/admin
+JUGES        http://<IP_LAN_DU_MAC>:8080/judge
+DISPLAY      http://<IP_LAN_DU_MAC>:8080/display
+PRIORITÉ     http://<IP_LAN_DU_MAC>:8080/priority
+PARTICIPANTS http://<IP_LAN_DU_MAC>:8080/participants
+```
+
+`Ctrl-C` arrête uniquement `caffeinate`. Les conteneurs restent démarrés.
 
 ## Accès SSH Depuis Un Nouveau Mac
 
@@ -229,8 +286,13 @@ peut appliquer une dérogation depuis l'admin, mais il doit saisir un motif. La
 dérogation, le diagnostic complet, le podium et l'auteur sont alors conservés
 dans `competition_audit_log` sous l'action `HEAT_CLOSE_FORCED`.
 
-Le bouton général `Sauvegarder` ne déplace plus les tablettes et ne change plus
-le heat actif d'un podium.
+Le bouton général `Sauvegarder` configure uniquement un heat déjà présent dans
+le planning. Il valide le heat, appelle le RPC canonique de configuration,
+persiste les affectations et les entrées, puis maintient le snapshot de reprise
+du podium A. Il ne crée pas de heat, n'écrit pas directement `events` ou
+`heat_configs`, ne déplace pas les tablettes et ne change pas le heat actif.
+Le succès n'est affiché qu'après la fin de cette chaîne. Voir
+[`admin-field-save-workflow.md`](admin-field-save-workflow.md).
 
 ### 1. Préparer Dans Le Cloud
 
@@ -294,6 +356,14 @@ Allumer la box HP, puis dans le terminal :
 ./beach
 ```
 
+Si l'événement tourne sur une Event Box Mac au lieu du HP, lancer à la place :
+
+```bash
+./scripts/start-surfjudging-field-mac.sh
+```
+
+Puis distribuer l'IP LAN affichée par le script aux juges et aux écrans.
+
 URLs terrain (à distribuer aux juges et écrans) :
 ```text
 Tablettes Juges : http://192.168.1.2:8080
@@ -301,6 +371,10 @@ Tablettes Juges : http://192.168.1.2:8080
 ```
 
 Pendant l’événement, le HP local est l'unique source de vérité.
+
+Sur Mac terrain, la même règle s'applique : la base locale servie sur `:8000`
+et le frontend Field servi sur `:8080` deviennent la source de vérité tant que
+l'événement est en cours.
 
 ### 5. Choisir La Source De Vérité Avant Une Sync
 

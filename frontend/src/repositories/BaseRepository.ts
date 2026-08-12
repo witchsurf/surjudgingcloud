@@ -9,6 +9,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, canUseSupabaseConnection } from '../lib/supabase';
 import { logger } from '../lib/logger';
 import { retryWithBackoff } from '../lib/retryWithBackoff';
+import { generateUuidV4 } from '../lib/uuid';
 
 export interface RepositoryOptions {
     enableOffline?: boolean;
@@ -150,15 +151,7 @@ export abstract class BaseRepository {
      * Generate a UUID for new records
      */
     protected generateId(): string {
-        if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-            return crypto.randomUUID();
-        }
-        // Fallback UUID-ish generator
-        const ts = Date.now().toString(16).padStart(12, '0');
-        const rand = Math.floor(Math.random() * 0xffff)
-            .toString(16)
-            .padStart(4, '0');
-        return `00000000-0000-4000-${rand}-${ts}`;
+        return generateUuidV4();
     }
 
     /**

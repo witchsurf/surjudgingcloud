@@ -564,7 +564,15 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
         const judgeIds = Array.isArray(config?.judges) ? config.judges : [];
         const configJudgeNames = config?.judge_names ?? config?.judgeNames ?? {};
         const configJudgeIdentities = config?.judge_identities ?? config?.judgeIdentities ?? {};
-        const eventId = Number.isFinite(Number(config?.event_id)) ? Number(config.event_id) : null;
+        // event_id null/undefined/'' ne doit jamais être coerci en 0 (Number(null) === 0),
+        // sinon la FK heat_judge_assignments.event_id → events(id) échoue silencieusement en amont.
+        const rawEventId: unknown = config?.event_id;
+        const eventId =
+            rawEventId == null || rawEventId === ''
+                ? null
+                : Number.isFinite(Number(rawEventId))
+                    ? Number(rawEventId)
+                    : null;
 
         const safeJudgeNames = Object.fromEntries(
             Object.entries(configJudgeNames).map(([k, v]) => [k.trim().toUpperCase(), v])

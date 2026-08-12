@@ -62,6 +62,15 @@ Puis choisir :
 - **Option 8** : 📡 Live Score Sync via 4G (start)
 - **Option 9** : ⏹  Live Score Sync via 4G (stop)
 
+Sur une Event Box Mac, lancer d'abord :
+
+```bash
+./scripts/start-surfjudging-field-mac.sh
+```
+
+Puis demarrer la sync live depuis un terminal operateur sur le Mac avec
+`./scripts/hp-live-sync.sh --event-id <ID>` ou via `./scripts/hp-ops.sh`.
+
 ### En ligne de commande directe
 
 ```bash
@@ -99,7 +108,7 @@ infra/.live-sync.status.json
 
 ## Prérequis
 
-1. Le HP doit pouvoir atteindre internet (via hotspot 4G relié au DLINK ou en USB).
+1. Le serveur terrain local (HP ou Mac) doit pouvoir atteindre internet (via hotspot 4G relié au DLINK ou en USB).
 2. Les variables `SUPABASE_SERVICE_ROLE_KEY_CLOUD` et `VITE_SUPABASE_URL_CLOUD` doivent être définies dans `frontend/.env.local`.
 3. Le script `hp-push-db-to-cloud.mjs` doit pouvoir joindre le HP local ET le Cloud simultanément.
 4. Node.js doit être disponible sur la machine qui lance `hp-live-sync.sh`.

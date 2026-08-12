@@ -1,4 +1,9 @@
-# Déploiement de la release P2.5.7 — Cloud + HP
+# Déploiement de la release P2.5.7 — Cloud + HP — historique
+
+> Cette checklist est conservée comme preuve de release. Elle référence des
+> migrations et artefacts P2.5.7 et ne constitue plus la procédure courante.
+> Utiliser `DEPLOYMENT.md`, `docs/hp-operations-runbook.md` et
+> `docs/admin-field-save-workflow.md` pour une opération actuelle.
 
 Cette checklist ne déclenche aucun déploiement. Elle impose le même candidat sur Cloud et HP avant toute reprise de P2.6.0.
 

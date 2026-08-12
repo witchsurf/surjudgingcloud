@@ -1,6 +1,7 @@
 import { legacyGetAll, walGetAll } from './idbOfflineStore';
 import { buildFieldNetworkInfo, probeEsp32, type FieldNetworkInfo } from './fieldNetwork';
 import { isLocalNetworkHost } from './networkDetection';
+import { generateUuidV4 } from './uuid';
 
 export type OfflineQueueName = 'legacy' | 'score_wal' | 'coordinator';
 export type OfflineOperationStatus = 'queued' | 'replaying' | 'synced' | 'failed' | 'skipped';
@@ -93,10 +94,7 @@ const MAX_OPERATION_LOG_ENTRIES = 120;
 const nowIso = () => new Date().toISOString();
 
 const makeId = () => {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return generateUuidV4();
 };
 
 const readJson = <T>(key: string, fallback: T): T => {

@@ -7,6 +7,8 @@ Application de jugement surf pour événement en mode cloud + terrain local HP.
 - `./event-box` : menu maison / maintenance HP (`10.0.0.14`).
 - `./beach` : menu plage / D-LINK (`192.168.1.2`).
 - `docs/hp-operations-runbook.md` : runbook opérationnel principal.
+- `docs/admin-field-save-workflow.md` : méthode actuelle pour sauvegarder la configuration d'un heat Field.
+- `docs/README.md` : index des documents actuels et séparation avec les rapports historiques.
 - `DEPLOYMENT.md` : déploiement cloud et HP.
 - `DEPLOY_EDGE_FUNCTIONS.md` : Edge Functions Supabase.
 
@@ -28,6 +30,17 @@ Application de jugement surf pour événement en mode cloud + terrain local HP.
 4. Exploiter l’événement en LAN via `./beach`.
 5. Après l’événement, pousser les faits terrain vers le cloud via `./event-box`.
 
+Sur une Event Box Mac, lancer la stack et le frontend Field avec :
+
+```bash
+./scripts/start-surfjudging-field-mac.sh
+```
+
+Le script affiche l'IP et toutes les URL LAN. La procédure opérateur détaillée,
+ainsi que la variante `--no-caffeinate`, sont documentées dans
+`docs/hp-operations-runbook.md`. `DEPLOYMENT.md` couvre surtout les releases et
+déploiements.
+
 ## Développement
 
 Frontend :
@@ -37,6 +50,13 @@ cd frontend
 npm install
 npm run dev
 npm run build
+```
+
+Builds de déploiement explicites :
+
+```bash
+npm --prefix frontend run build:cloud
+npm --prefix frontend run build:field
 ```
 
 Scripts utiles :

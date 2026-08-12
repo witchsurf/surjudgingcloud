@@ -4,6 +4,10 @@ Ce memo resume les scripts utiles pour exploiter et maintenir `surjudgingcloud`.
 
 Regle simple : pour les operations HP/Event Box du quotidien, utiliser d'abord `./scripts/hp-ops.sh` ou les menus `./event-box` / `./beach`. Les scripts plus bas niveau restent disponibles, mais ils sont surtout la pour les cas precis.
 
+Pour une Event Box Mac locale, le point d'entree operateur est
+`./scripts/start-surfjudging-field-mac.sh`. Le runbook de reference reste
+`docs/hp-operations-runbook.md`.
+
 ## Entrees Operateur
 
 - [ ] `./event-box`
@@ -15,6 +19,12 @@ Regle simple : pour les operations HP/Event Box du quotidien, utiliser d'abord `
   - Menu terrain / plage.
   - Lance le menu terrain avec le profil par defaut.
   - A utiliser sur le reseau D-LINK / plage.
+
+- [ ] `./scripts/start-surfjudging-field-mac.sh`
+  - Point d'entree operateur pour une Event Box Mac locale.
+  - Demarre ou redemarre le frontend Field local et les services Supabase utiles.
+  - Verifie `RELEASE_ID`, le mode DB `field` et affiche les URL LAN.
+  - Variante : `./scripts/start-surfjudging-field-mac.sh --no-caffeinate`.
 
 - [ ] `scripts/field-menu.sh`
   - Menu interactif commun aux profils maison et plage.
@@ -68,8 +78,8 @@ Regle simple : pour les operations HP/Event Box du quotidien, utiliser d'abord `
   - A eviter le jour terrain si la stack repond deja.
 
 - [ ] `scripts/hp-deploy-frontend.sh`
-  - Build le frontend localement.
-  - Envoie `frontend/dist/` vers le HP.
+  - Build le frontend HP localement.
+  - Envoie l'artefact de deploiement vers le HP.
   - Recharge nginx dans le conteneur web.
   - Verifie que le bundle servi par le HP correspond au bundle build.
 
@@ -135,6 +145,12 @@ Menu plage :
 ./beach
 ```
 
+Lancer une Event Box Mac locale :
+
+```bash
+./scripts/start-surfjudging-field-mac.sh
+```
+
 Pousser un evenement HP local vers Cloud :
 
 ```bash
@@ -146,4 +162,3 @@ Live sync HP -> Cloud :
 ```bash
 ./scripts/hp-ops.sh live-start --field --event-id <ID> --interval 10
 ```
-

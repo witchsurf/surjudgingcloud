@@ -317,7 +317,18 @@ export const useConfigStore = create<ConfigStore>()(
                                     });
                                     if (latestRequestedConfigLoadKey === loadKey) {
                                         set({
-                                            config: INITIAL_CONFIG,
+                                            // Keep the event context visible on an
+                                            // unassigned podium. Only the heat
+                                            // lineup is reset; losing competition
+                                            // makes the UI fall back to open_r1_h1.
+                                            config: {
+                                                ...INITIAL_CONFIG,
+                                                competition: resolveEventDisplayName(
+                                                    snapshot.eventDetails?.name,
+                                                    snapshot.event_name,
+                                                ),
+                                                division: snapshot.division || INITIAL_CONFIG.division,
+                                            },
                                             configSaved: false,
                                             loadedFromDb: false,
                                         });
@@ -353,7 +364,14 @@ export const useConfigStore = create<ConfigStore>()(
                                 if (podiumId !== 'A') {
                                     if (latestRequestedConfigLoadKey === loadKey) {
                                         set({
-                                            config: INITIAL_CONFIG,
+                                            config: {
+                                                ...INITIAL_CONFIG,
+                                                competition: resolveEventDisplayName(
+                                                    snapshot?.eventDetails?.name,
+                                                    snapshot?.event_name,
+                                                ),
+                                                division: snapshot?.division || INITIAL_CONFIG.division,
+                                            },
                                             configSaved: false,
                                             loadedFromDb: false,
                                         });

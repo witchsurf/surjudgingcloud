@@ -1,0 +1,153 @@
+diff --git a/frontend/src/repositories/HeatRepository.ts b/frontend/src/repositories/HeatRepository.ts
+--- a/frontend/src/repositories/HeatRepository.ts
++++ b/frontend/src/repositories/HeatRepository.ts
+@@ -30,7 +30,6 @@
+     replaceHeatEntries,
+     adminOverrideHeatEntry,
+ } from '../api/modules/heats.api';
+-import { upsertRuntimeHeatConfig } from '../api/modules/runtimeHeatConfig.api';
+ import {
+     parseHeatEntryJoinedRow,
+     parseLegacyLineupRow,
+@@ -420,14 +419,67 @@
+
+         return this.execute(
+             async () => {
+                 this.ensureSupabase();
+-                await upsertRuntimeHeatConfig(this.supabase!, payload);
++
++                // Restore the proven persistence order: heat_configs first,
++                // then official judge assignments, then entries/snapshot.
++                // This avoids gating the panel write behind the newer runtime RPC.
++                const { error: configError } = await this.supabase!
++                    .from('heat_configs')
++                    .upsert(payload, { onConflict: 'heat_id' });
++
++                if (configError) throw configError;
++
+                 if (assignmentPayload.length > 0) {
+                     const { error: assignmentError } = await this.supabase!
+                         .from('heat_judge_assignments')
+                         .upsert(assignmentPayload, { onConflict: 'heat_id,station' });
+
+                     if (assignmentError) throw assignmentError;
++
++                    // A DB write is not considered successful until the
++                    // authoritative panel can be read back and matches.
++                    const expectedStations = assignmentPayload.map((row) => row.station);
++                    const { data: persistedAssignments, error: verifyError } = await this.supabase!
++                        .from('heat_judge_assignments')
++                        .select('heat_id, event_id, station, judge_id, judge_name')
++                        .eq('heat_id', normalizedHeatId)
++                        .in('station', expectedStations)
++                        .order('station', { ascending: true });
++
++                    if (verifyError) throw verifyError;
++
++                    const persistedByStation = new Map(
++                        ((persistedAssignments ?? []) as HeatJudgeAssignment[]).map((row) => [
++                            row.station.trim().toUpperCase(),
++                            row,
++                        ])
++                    );
++
++                    const missingOrMismatched = assignmentPayload.filter((expected) => {
++                        const persisted = persistedByStation.get(expected.station.trim().toUpperCase());
++                        if (!persisted) return true;
++
++                        return persisted.judge_id.trim() !== expected.judge_id.trim()
++                            || persisted.judge_name.trim() !== expected.judge_name.trim()
++                            || (
++                                expected.event_id != null
++                                && Number(persisted.event_id) !== Number(expected.event_id)
++                            );
++                    });
++
++                    if (missingOrMismatched.length > 0) {
++                        throw new Error(
++                            `Affectations juges non persistées pour ${normalizedHeatId}: ${
++                                missingOrMismatched.map((row) => row.station).join(', ')
++                            }`
++                        );
++                    }
++
++                    logger.info('HeatRepository', 'Official judge assignments verified', {
++                        heatId: normalizedHeatId,
++                        stations: expectedStations,
++                    });
+                 }
+                 await this.ensureHeatEntries(normalizedHeatId, config);
+                 if ((config?.podiumId || 'A').toString().trim().toUpperCase() === 'A') {
+diff --git a/frontend/src/components/AdminInterface.tsx b/frontend/src/components/AdminInterface.tsx
+--- a/frontend/src/components/AdminInterface.tsx
++++ b/frontend/src/components/AdminInterface.tsx
+@@ -192,11 +192,11 @@
+ 
+ 
+ interface AdminInterfaceProps {
+   config: AppConfig;
+   onConfigChange: (config: AppConfig) => void;
+-  onConfigSaved: (saved: boolean, podiumId?: string) => void;
++  onConfigSaved: (saved: boolean, podiumId?: string) => Promise<void>;
+   configSaved: boolean;
+   loadError?: string | null;
+   timer: HeatTimerType;
+   onTimerChange: (timer: HeatTimerType) => void;
+   onReloadData: () => void;
+@@ -2948,14 +2948,29 @@
+         console.warn('⚠️ Could not ensure event exists:', error);
+         // Continue anyway - event creation is optional
+       }
+     }
+ 
+-    onConfigSaved(true, normalizePodiumId(selectedPodiumId));
+-    // Sauvegarder immédiatement dans localStorage
+-    localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
+-    localStorage.setItem('surfJudgingConfigSaved', 'true');
++    try {
++      // The parent owns the authoritative persistence chain. Do not mark the
++      // configuration as saved until that asynchronous chain has completed.
++      await onConfigSaved(true, normalizePodiumId(selectedPodiumId));
++
++      localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
++      localStorage.setItem('surfJudgingConfigSaved', 'true');
++      setSyncError(null);
++    } catch (error) {
++      localStorage.setItem('surfJudgingConfigSaved', 'false');
++
++      const message = error instanceof Error
++        ? error.message
++        : 'La configuration du heat n’a pas pu être sauvegardée.';
++
++      setSyncError(message);
++      console.error('❌ Sauvegarde configuration heat échouée:', error);
++      alert(`Sauvegarde impossible : ${message}`);
++    }
+   };
+ 
+   const handleTimerStart = async () => {
+     if (!judgeAssignmentStatus.isReady) {
+       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
+diff --git a/frontend/src/pages/AdminPage.tsx b/frontend/src/pages/AdminPage.tsx
+--- a/frontend/src/pages/AdminPage.tsx
++++ b/frontend/src/pages/AdminPage.tsx
+@@ -286,12 +286,17 @@
+             // persists heat_judge_assignments from config.judgeIdentities here.
+             await saveHeatConfig(currentHeatId, { ...config, podiumId });
+         } catch (error) {
+             console.error('❌ Sauvegarde de la configuration du heat impossible:', error);
+             setConfigSaved(false);
+-            setLoadError(error instanceof Error ? error.message : 'Sauvegarde de la configuration du heat impossible.');
+-            return;
++            const message = error instanceof Error
++                ? error.message
++                : 'Sauvegarde de la configuration du heat impossible.';
++            setLoadError(message);
++            // Propagate the failure so AdminInterface cannot report a false
++            // "SAUVEGARDÉE" state or persist surfJudgingConfigSaved=true.
++            throw error instanceof Error ? error : new Error(message);
+         }
+ 
+         // Realtime publication is secondary to the authoritative DB save.
+         try {
+             await publishConfigUpdate(currentHeatId, config);

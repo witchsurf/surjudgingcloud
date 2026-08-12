@@ -777,7 +777,9 @@ export default function DisplayPage() {
             if (!heatChanged) return;
 
             if (activeEventId) {
-                void loadConfigFromDb(activeEventId, { podiumId });
+                // A pointer update must bypass the config-store dedupe window:
+                // this is an explicit live heat transition, not a duplicate load.
+                void loadConfigFromDb(activeEventId, { force: true, podiumId });
                 return;
             }
 

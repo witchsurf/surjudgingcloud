@@ -21,7 +21,10 @@ Les identifiants sont mixtes : événements en `bigint`, nombreuses entités en 
 - `heats` : clé texte, événement, compétition, division, round, numéro et état open/closed.
 - `heat_entries` : participants réellement placés dans un heat, position/couleur et overrides de lineup.
 - `heat_slot_mappings` : placeholders et propagation entre rounds.
-- `heat_configs` : snapshot du panel, des lycras, du nombre de vagues et du format.
+- `heat_configs` : snapshot du panel, des lycras, du nombre de vagues et du
+  format. En mode Field, le navigateur ne l'upsert pas directement : le SAVE
+  Admin passe par `upsert_heat_config_runtime` après validation d'un heat déjà
+  planifié.
 - `heat_judge_assignments` : station J1…J5 et identité du juge pour un heat ; le panel permanent par podium est aussi conservé et recopié lors de l'activation.
 - `active_heat_pointer` : heat actif par événement/podium.
 - `podium_judge_panels` : panel stable d'un podium.
@@ -50,6 +53,8 @@ Les identifiants sont mixtes : événements en `bigint`, nombreuses entités en 
 - Une note appartient à un heat et à une vague, mais cible d'abord une **couleur de lycra** et une station de juge. Le nom affiché est résolu séparément.
 - Un pointeur actif relie un podium à un heat ; un juge ne doit pas être actif simultanément sur plusieurs podiums.
 - Les qualifiés sont propagés des résultats sources vers les slots aval par fonctions SQL transactionnelles.
+- Le SAVE Admin n'est pas une mutation de planning : la création des heats et
+  la propagation des qualifiés appartiennent aux workflows dédiés.
 
 ## Calculs dérivés
 

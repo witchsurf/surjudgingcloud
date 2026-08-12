@@ -8,19 +8,14 @@ import { ensureHeatId, buildHeatId } from '../utils/heat';
 import { heatRepository, panelRepository, timerRepository, scoreRepository } from '../repositories';
 import { upsertHeatRealtimeConfig } from '../api/modules/heats.api';
 import { recordScoreOverrideSecure } from '../api/modules/scoring.api';
+import { generateUuidV4, isUuidV4 } from '../lib/uuid';
 
-const normalizeScores = (scores: Score[], idGenerator?: () => string): Score[] =>
+export const normalizePersistedScores = (scores: Score[], idGenerator?: () => string): Score[] =>
   scores.map((score) => ({
     ...score,
-    id: isValidUuid(score.id) ? score.id : (idGenerator ? idGenerator() : score.id),
+    id: isUuidV4(score.id) ? score.id : (idGenerator ? idGenerator() : score.id),
     heat_id: ensureHeatId(score.heat_id),
   }));
-
-const isValidUuid = (value: string | undefined): boolean => {
-  if (!value) return false;
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(value);
-};
 
 interface SyncStatus {
   isOnline: boolean;
@@ -144,7 +139,7 @@ export function useSupabaseSync() {
       const result = await scoreRepository.syncPendingScores();
 
       const localScores = localStorage.getItem('surfJudgingScores');
-      const scores: Score[] = localScores ? normalizeScores(JSON.parse(localScores), generateId) : [];
+      const scores: Score[] = localScores ? normalizePersistedScores(JSON.parse(localScores), generateId) : [];
       updatePendingCount(scores);
 
       setSyncStatus(prev => ({
@@ -186,15 +181,7 @@ export function useSupabaseSync() {
   }, [supabaseEnabled, syncPendingScores, syncOverrideLogs]);
 
   const generateId = () => {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      return crypto.randomUUID();
-    }
-    // Fallback UUID-ish (not perfect but avoids non-UUID errors server-side)
-    const ts = Date.now().toString(16).padStart(12, '0');
-    const rand = Math.floor(Math.random() * 0xffff)
-      .toString(16)
-      .padStart(4, '0');
-    return `00000000-0000-4000-${rand}-${ts}`;
+    return generateUuidV4();
   };
 
   // Créer un heat
@@ -365,7 +352,7 @@ export function useSupabaseSync() {
   const loadScoresFromDatabase = useCallback(async (heatId: string, legacyHeatId?: string) => {
     try {
       const fetched = await scoreRepository.fetchScores(heatId, legacyHeatId);
-      return normalizeScores(fetched, generateId);
+      return normalizePersistedScores(fetched, generateId);
     } catch (error) {
       console.log('⚠️ Scores non chargés depuis Supabase (mode local):', error instanceof Error ? error.message : error);
       return [];
@@ -384,7 +371,7 @@ export function useSupabaseSync() {
     const checkPendingScores = () => {
       const localScores = localStorage.getItem('surfJudgingScores');
       if (localScores) {
-        const scores: Score[] = normalizeScores(JSON.parse(localScores), generateId);
+        const scores: Score[] = normalizePersistedScores(JSON.parse(localScores), generateId);
         updatePendingCount(scores);
       }
     };
