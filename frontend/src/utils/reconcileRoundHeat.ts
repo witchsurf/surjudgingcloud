@@ -31,21 +31,16 @@ export function reconcileRoundHeat(input: ReconcileInput): { round: number; heat
   }
 
   if (!input.visibleRoundOptions.length) return null;
-  const nextRound = input.visibleRoundOptions.includes(input.currentRound)
-    ? input.currentRound
-    : input.visibleRoundOptions[0];
   const active = input.activeHeatIds || new Set<string>();
   const statuses = input.authoritativeStatuses || new Map<string, string>();
   const eligible = input.heats
-    .filter((row) => row.division.trim().toLowerCase() === division && row.round === nextRound)
+    .filter((row) => row.division.trim().toLowerCase() === division)
     .filter((row) => (input.showClosedHeats || (statuses.get(row.id) || row.status || '').toLowerCase() !== 'closed'))
     .filter((row) => !active.has(row.id))
-    .map((row) => row.heat_number)
-    .sort((a, b) => a - b);
-  const firstHeat = eligible[0] ?? input.currentHeatId;
-  const nextHeatId = eligible.includes(input.currentHeatId) && nextRound === input.currentRound
-    ? input.currentHeatId
-    : firstHeat;
-  if (nextRound === input.currentRound && nextHeatId === input.currentHeatId) return null;
-  return { round: nextRound, heatId: nextHeatId };
+    .sort((a, b) => a.round - b.round || a.heat_number - b.heat_number);
+  const current = eligible.find((row) => row.round === input.currentRound && row.heat_number === input.currentHeatId);
+  if (current) return null;
+  const first = eligible[0];
+  if (!first) return null;
+  return { round: first.round, heatId: first.heat_number };
 }

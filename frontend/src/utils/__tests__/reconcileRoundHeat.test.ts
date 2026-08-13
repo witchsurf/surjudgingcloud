@@ -30,6 +30,10 @@ describe('P2.7.32 W5 reconciliation decision', () => {
     expect(reconcileRoundHeat({ ...base, currentRound: 3, currentHeatId: 1, pending: null }))
       .toEqual({ round: 3, heatId: 2 });
   });
+  it('advances past the current podium heat when it is the only eligible heat in the current round', () => {
+    expect(reconcileRoundHeat({ ...base, activeHeatIds: new Set(['r2h3']), pending: null }))
+      .toEqual({ round: 3, heatId: 1 });
+  });
   it('keeps ordinary current heat once pending selection is consumed', () => {
     expect(reconcileRoundHeat({ ...base, currentRound: 3, currentHeatId: 2, pending: null })).toBeNull();
   });
