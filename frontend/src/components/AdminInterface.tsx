@@ -342,6 +342,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [showClosedHeats, setShowClosedHeats] = useState(false);
   const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<Array<{ id: string; division: string; round: number; heat_number: number; status: string }>>([]);
   const authoritativeHeatStatusRef = React.useRef(new Map<string, string>());
+  const divisionSelectionRef = React.useRef<{ division: string; round: number; heatId: number } | null>(null);
   const [rejudgeOverrideHeatKey, setRejudgeOverrideHeatKey] = useState<string | null>(null);
   const [rejudgeConfirmText, setRejudgeConfirmText] = useState('');
   const [rejudgeOverridePending, setRejudgeOverridePending] = useState(false);
@@ -2250,6 +2251,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         !isLockedStatus(authoritativeHeatStatusRef.current.get(ensureHeatId(heat.id)) || heat.status)
         && !activeHeatIds.has(ensureHeatId(heat.id))
       );
+      if (selected) {
+        divisionSelectionRef.current = {
+          division: nextDivision.toLowerCase(),
+          round: selected.round,
+          heatId: selected.heat_number,
+        };
+      }
       onConfigChange({
         ...config,
         division: value,
@@ -2952,6 +2960,19 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   useEffect(() => {
     if (!visibleRoundOptions.length) return;
+
+    const pendingDivisionSelection = divisionSelectionRef.current;
+    if (pendingDivisionSelection && pendingDivisionSelection.division === config.division.toLowerCase()) {
+      const selectedHeat = allEventHeatsMeta.find((row) =>
+        row.division.toLowerCase().trim() === config.division.toLowerCase().trim()
+        && row.round === pendingDivisionSelection.round
+        && row.heat_number === pendingDivisionSelection.heatId
+      );
+      if (selectedHeat) {
+        divisionSelectionRef.current = null;
+        return;
+      }
+    }
 
     const firstRound = visibleRoundOptions[0];
     const nextRound = visibleRoundOptions.includes(config.round) ? config.round : firstRound;
