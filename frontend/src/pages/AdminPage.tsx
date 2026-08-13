@@ -223,7 +223,7 @@ export default function AdminPage() {
         }
 
         persistConfig(newConfig);
-    }, [config, configSaved, selectedPodiumId, setConfig, setConfigSaved, persistConfig]);
+    }, [config, configSaved, setConfig, setConfigSaved, persistConfig]);
 
     // Sync heat participants into config when they load
     useEffect(() => {
