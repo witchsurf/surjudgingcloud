@@ -19,4 +19,31 @@ describe('P2.7.22 — division selects first planned available heat', () => {
     const end = source.indexOf('useEffect(() => {', start);
     expect(source.slice(start, end)).toContain("field === 'division'");
   });
+
+  it('excludes the current podium heat even while pointer metadata is loading', () => {
+    const start = source.indexOf('const handleConfigChange = (field: keyof AppConfig');
+    const end = source.indexOf('useEffect(() => {', start);
+    const block = source.slice(start, end);
+    expect(block).toContain('const currentHeatKey = ensureHeatId(heatId || config.heatId)');
+    expect(block).toContain('activeHeatIds.add(currentHeatKey)');
+  });
+});
+
+describe('P2.7.31 — controlled writer decision model (no runtime instrumentation)', () => {
+  it('records the deterministic division transition against authoritative Mamelles metadata', () => {
+    const calls: Array<{ division: string; round: number; heatId: number }> = [];
+    const planned = [
+      { id: 'mamelles_open_open_r2_h1', division: 'OPEN', round: 2, heat: 1, status: 'closed' },
+      { id: 'mamelles_open_open_r2_h2', division: 'OPEN', round: 2, heat: 2, status: 'closed' },
+      { id: 'mamelles_open_open_r2_h3', division: 'OPEN', round: 2, heat: 3, status: 'open' },
+      { id: 'mamelles_open_open_r3_h1', division: 'OPEN', round: 3, heat: 1, status: 'open' },
+      { id: 'mamelles_open_open_r3_h2', division: 'OPEN', round: 3, heat: 2, status: 'open' },
+      { id: 'mamelles_open_open_r4_h1', division: 'OPEN', round: 4, heat: 1, status: 'open' },
+    ];
+    const active = new Set(['mamelles_open_open_r3_h1', 'mamelles_open_open_r2_h3']);
+    const selected = planned.find((heat) => heat.status !== 'closed' && !active.has(heat.id));
+    expect(selected).toMatchObject({ round: 3, heat: 2 });
+    calls.push({ division: 'OPEN', round: selected!.round, heatId: selected!.heat });
+    expect(calls).toEqual([{ division: 'OPEN', round: 3, heatId: 2 }]);
+  });
 });

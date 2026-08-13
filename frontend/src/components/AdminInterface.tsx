@@ -8,6 +8,7 @@ import { sanitizeScoreInput, validateScore } from '../utils/scoring';
 import { buildJudgeDeviationDetails, calculateJudgeAccuracy } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
+import { reconcileRoundHeat } from '../utils/reconcileRoundHeat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { exportHeatScorecardPdf, exportFullCompetitionPDF, exportFinalRankingToPDF, exportFinalistsRankingToPDF } from '../utils/pdfExport';
@@ -2243,6 +2244,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           .map((pointer) => ensureHeatId(pointer.active_heat_id || ''))
           .filter(Boolean)
       );
+      // During a division switch the current podium pointer may still be
+      // loading asynchronously. Never auto-select the currently viewed heat
+      // as the next destination; manual viewing/editing remains available.
+      const currentHeatKey = ensureHeatId(heatId || config.heatId);
+      if (currentHeatKey) activeHeatIds.add(currentHeatKey);
       const available = planned.find((heat) =>
         !isLockedStatus(authoritativeHeatStatusRef.current.get(ensureHeatId(heat.id)) || heat.status)
         && !activeHeatIds.has(ensureHeatId(heat.id))
@@ -2960,39 +2966,33 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   useEffect(() => {
     if (!visibleRoundOptions.length) return;
-
     const pendingDivisionSelection = divisionSelectionRef.current;
+    const decision = reconcileRoundHeat({
+      division: config.division,
+      currentRound: config.round,
+      currentHeatId: config.heatId,
+      visibleRoundOptions,
+      heats: allEventHeatsMeta,
+      authoritativeStatuses: new Map(allEventHeatsMeta.map((row) => [
+        ensureHeatId(row.id),
+        authoritativeHeatStatusRef.current.get(ensureHeatId(row.id)) || row.status || '',
+      ])),
+      activeHeatIds: new Set(activePodiumPointers.map((pointer) => ensureHeatId(pointer.active_heat_id || '')).filter(Boolean)),
+      pending: pendingDivisionSelection,
+      showClosedHeats,
+    });
     if (pendingDivisionSelection && pendingDivisionSelection.division === config.division.toLowerCase()) {
-      const selectedHeat = allEventHeatsMeta.find((row) =>
-        row.division.toLowerCase().trim() === config.division.toLowerCase().trim()
-        && row.round === pendingDivisionSelection.round
-        && row.heat_number === pendingDivisionSelection.heatId
+      const selectedHeat = allEventHeatsMeta.some((row) =>
+        row.division.toLowerCase().trim() === config.division.toLowerCase().trim() &&
+        row.round === pendingDivisionSelection.round && row.heat_number === pendingDivisionSelection.heatId
       );
       if (selectedHeat) {
         divisionSelectionRef.current = null;
         return;
       }
     }
-
-    const firstRound = visibleRoundOptions[0];
-    const nextRound = visibleRoundOptions.includes(config.round) ? config.round : firstRound;
-
-    const activeHeatIds = new Set(activePodiumPointers.map((pointer) => ensureHeatId(pointer.active_heat_id || '')).filter(Boolean));
-    const heatsInRound = allEventHeatsMeta
-      .filter((row) => row.division.toLowerCase().trim() === config.division.toLowerCase().trim() && row.round === nextRound)
-      .filter((row) => !isLockedStatus(authoritativeHeatStatusRef.current.get(ensureHeatId(row.id)) || row.status))
-      .filter((row) => !activeHeatIds.has(ensureHeatId(row.id)))
-      .map((row) => row.heat_number);
-    const uniqueHeats = Array.from(new Set(heatsInRound))
-      .sort((a, b) => a - b)
-      .filter((heat) => showClosedHeats || !isHeatClosed(heat, nextRound));
-    const firstHeat = uniqueHeats[0] ?? config.heatId;
-    const nextHeatId = uniqueHeats.includes(config.heatId) && nextRound === config.round
-      ? config.heatId
-      : firstHeat;
-
-    if (nextRound !== config.round || nextHeatId !== config.heatId) {
-      onConfigChange({ ...config, round: nextRound, heatId: nextHeatId });
+    if (decision && (decision.round !== config.round || decision.heatId !== config.heatId)) {
+      onConfigChange({ ...config, round: decision.round, heatId: decision.heatId });
     }
   }, [visibleRoundOptions, divisionHeatSequence, allEventHeatsMeta, activePodiumPointers, config, onConfigChange, showClosedHeats, isHeatClosed, isLockedStatus]);
 
