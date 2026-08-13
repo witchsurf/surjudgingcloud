@@ -186,7 +186,23 @@ export default function AdminPage() {
         }
     }, [eventIdFromUrl, activeEventId, loadedFromDb, loadConfigFromDb, setActiveEventId]);
 
-    const handleConfigChange = useCallback((newConfig: AppConfig) => {
+    const handleConfigChange = useCallback((newConfig: AppConfig, writerId = 'ADMIN_INTERFACE_UNKNOWN') => {
+        const previous = config;
+        if (typeof window !== 'undefined' && (previous.division !== newConfig.division || previous.round !== newConfig.round || previous.heatId !== newConfig.heatId)) {
+            const record = {
+                seq: ((window as any).__surfConfigWriterSeq = ((window as any).__surfConfigWriterSeq || 0) + 1),
+                t: performance.now(),
+                writerId,
+                previous: { division: previous.division, round: previous.round, heatId: previous.heatId },
+                next: { division: newConfig.division, round: newConfig.round, heatId: newConfig.heatId },
+                selectedPodiumId: getPersistedAdminPodium(),
+                configSaved,
+                stack: new Error().stack,
+            };
+            const trace = ((window as any).__surfConfigWriterTrace ||= []);
+            trace.push(record);
+            console.info('[P2.7.54-CONFIG-WRITE]', record);
+        }
         setConfig(newConfig);
 
         const structurallySameConfig =
@@ -207,7 +223,7 @@ export default function AdminPage() {
         }
 
         persistConfig(newConfig);
-    }, [config, configSaved, setConfig, setConfigSaved, persistConfig]);
+    }, [config, configSaved, selectedPodiumId, setConfig, setConfigSaved, persistConfig]);
 
     // Sync heat participants into config when they load
     useEffect(() => {

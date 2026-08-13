@@ -196,7 +196,7 @@ const fetchHeatContext = (heatId: string, score?: Partial<Score>) => {
 interface AdminInterfaceProps {
   config: AppConfig;
   canonicalHeatId?: string;
-  onConfigChange: (config: AppConfig) => void;
+  onConfigChange: (config: AppConfig, writerId?: string) => void;
   onConfigSaved: (saved: boolean, podiumId?: string) => Promise<void>;
   configSaved: boolean;
   loadError?: string | null;
@@ -2207,9 +2207,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         categories.some(cat => cat.toLowerCase() === value.toLowerCase());
 
       if (categories.length === 1 && !matchesCategory(config.division)) {
-        onConfigChange({ ...config, division: categories[0] });
+        onConfigChange({ ...config, division: categories[0] }, 'INVALID_DIVISION_EFFECT');
       } else if (categories.length > 1 && config.division && !matchesCategory(config.division)) {
-        onConfigChange({ ...config, division: '' });
+        onConfigChange({ ...config, division: '' }, 'INVALID_DIVISION_EFFECT');
       }
     } catch (error) {
       console.warn('Impossible de lire les catégories participants:', error);
@@ -2272,7 +2272,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         surfers: [],
         surferNames: {},
         surferCountries: {},
-      });
+      }, 'DIVISION_HANDLER');
       return;
     }
     const isHeatSelectionField = field === 'division' || field === 'round' || field === 'heatId';
@@ -2992,7 +2992,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
     }
     if (decision && (decision.round !== config.round || decision.heatId !== config.heatId)) {
-      onConfigChange({ ...config, round: decision.round, heatId: decision.heatId });
+      onConfigChange({ ...config, round: decision.round, heatId: decision.heatId }, 'ROUND_HEAT_RECONCILIATION');
     }
   }, [visibleRoundOptions, divisionHeatSequence, allEventHeatsMeta, activePodiumPointers, config, onConfigChange, showClosedHeats, isHeatClosed, isLockedStatus]);
 
