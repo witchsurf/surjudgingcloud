@@ -2956,8 +2956,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const firstRound = visibleRoundOptions[0];
     const nextRound = visibleRoundOptions.includes(config.round) ? config.round : firstRound;
 
-    const heatsInRound = divisionHeatSequence
-      .filter((row) => row.round === nextRound)
+    const activeHeatIds = new Set(activePodiumPointers.map((pointer) => ensureHeatId(pointer.active_heat_id || '')).filter(Boolean));
+    const heatsInRound = allEventHeatsMeta
+      .filter((row) => row.division.toLowerCase().trim() === config.division.toLowerCase().trim() && row.round === nextRound)
+      .filter((row) => !isLockedStatus(authoritativeHeatStatusRef.current.get(ensureHeatId(row.id)) || row.status))
+      .filter((row) => !activeHeatIds.has(ensureHeatId(row.id)))
       .map((row) => row.heat_number);
     const uniqueHeats = Array.from(new Set(heatsInRound))
       .sort((a, b) => a - b)
@@ -2970,7 +2973,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     if (nextRound !== config.round || nextHeatId !== config.heatId) {
       onConfigChange({ ...config, round: nextRound, heatId: nextHeatId });
     }
-  }, [visibleRoundOptions, divisionHeatSequence, config, onConfigChange, showClosedHeats, isHeatClosed]);
+  }, [visibleRoundOptions, divisionHeatSequence, allEventHeatsMeta, activePodiumPointers, config, onConfigChange, showClosedHeats, isHeatClosed, isLockedStatus]);
 
   const handleSaveOfflineAdminPin = () => {
     try {
