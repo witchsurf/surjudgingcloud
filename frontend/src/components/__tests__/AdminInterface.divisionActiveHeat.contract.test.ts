@@ -9,7 +9,8 @@ const block = source.slice(start, end);
 
 describe('P2.7.31 — division destination eligibility', () => {
   it('uses authoritative planned heat status, not stale division sequence state', () => {
-    expect(block).toContain('isLockedStatus(heat.status)');
+    expect(block).toContain('isLockedStatus(authoritativeHeatStatusRef.current.get');
+    expect(source).toContain('authoritativeHeatStatusRef.current');
     expect(block).not.toContain('isHeatClosed(heat.heat_number, heat.round)');
   });
 

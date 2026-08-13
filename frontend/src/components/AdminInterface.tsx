@@ -341,6 +341,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [selectedJudgeProfileId, setSelectedJudgeProfileId] = useState<string | null>(null);
   const [showClosedHeats, setShowClosedHeats] = useState(false);
   const [allEventHeatsMeta, setAllEventHeatsMeta] = useState<Array<{ id: string; division: string; round: number; heat_number: number; status: string }>>([]);
+  const authoritativeHeatStatusRef = React.useRef(new Map<string, string>());
   const [rejudgeOverrideHeatKey, setRejudgeOverrideHeatKey] = useState<string | null>(null);
   const [rejudgeConfirmText, setRejudgeConfirmText] = useState('');
   const [rejudgeOverridePending, setRejudgeOverridePending] = useState(false);
@@ -713,6 +714,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         return;
       }
       if (!cancelled && data) {
+        authoritativeHeatStatusRef.current = new Map(
+          data.map((row) => [ensureHeatId(row.id), String(row.status || '')])
+        );
         setAllEventHeatsMeta(data);
       }
     };
@@ -2239,10 +2243,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           .filter(Boolean)
       );
       const available = planned.find((heat) =>
-        !isLockedStatus(heat.status)
+        !isLockedStatus(authoritativeHeatStatusRef.current.get(ensureHeatId(heat.id)) || heat.status)
         && !activeHeatIds.has(ensureHeatId(heat.id))
       );
-      const selected = available || planned.find((heat) => !isLockedStatus(heat.status) && !activeHeatIds.has(ensureHeatId(heat.id)));
+      const selected = available || planned.find((heat) =>
+        !isLockedStatus(authoritativeHeatStatusRef.current.get(ensureHeatId(heat.id)) || heat.status)
+        && !activeHeatIds.has(ensureHeatId(heat.id))
+      );
       onConfigChange({
         ...config,
         division: value,
