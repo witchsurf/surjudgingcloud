@@ -36,6 +36,7 @@ import {
     fetchOrderedHeatSequence as readHeatSequence,
     replaceHeatEntries,
     adminOverrideHeatEntry,
+    activateHeatOnPodium,
 } from '../api/modules/heats.api';
 import { upsertRuntimeHeatConfig } from '../api/modules/runtimeHeatConfig.api';
 import {
@@ -422,12 +423,25 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
             async () => {
                 this.ensureSupabase();
                 await upsertRuntimeHeatConfig(this.supabase!, payload);
+                // A podium transition must move the panel and pointer in the
+                // same database transaction.  The RPC deliberately retires
+                // the old heat on this podium before validating the new panel;
+                // cross-podium conflicts remain enforced by the database.
+                const podiumId = (config?.podiumId || '').toString().trim().toUpperCase();
                 if (assignmentPayload.length > 0) {
                     const { error: assignmentError } = await this.supabase!
                         .from('heat_judge_assignments')
                         .upsert(assignmentPayload, { onConflict: 'heat_id,station' });
 
                     if (assignmentError) throw assignmentError;
+                }
+                if (podiumId && config.event_id) {
+                    await activateHeatOnPodium({
+                        eventId: Number(config.event_id),
+                        podiumId,
+                        heatId: normalizedHeatId,
+                        assignedBy: 'admin',
+                    });
                 }
                 await this.ensureHeatEntries(normalizedHeatId, config);
                 if ((config?.podiumId || 'A').toString().trim().toUpperCase() === 'A') {

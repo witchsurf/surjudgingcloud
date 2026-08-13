@@ -2230,8 +2230,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       const planned = allEventHeatsMeta
         .filter((heat) => heat.division.trim().toLowerCase() === nextDivision.toLowerCase())
         .sort((a, b) => a.round - b.round || a.heat_number - b.heat_number);
-      const available = planned.find((heat) => !isHeatClosed(heat.heat_number, heat.round));
-      const selected = available || planned[0];
+      // A heat already active on the other podium cannot be selected as the
+      // automatic destination.  Keep the current podium's own heat eligible
+      // so revisiting a division remains passive and deterministic.
+      const currentPodium = normalizePodiumId(selectedPodiumId);
+      const activeOnOtherPodium = new Set(
+        activePodiumPointers
+          .filter((pointer) => normalizePodiumId(pointer.podium_id) !== currentPodium)
+          .map((pointer) => ensureHeatId(pointer.active_heat_id || ''))
+          .filter(Boolean)
+      );
+      const available = planned.find((heat) =>
+        !isHeatClosed(heat.heat_number, heat.round)
+        && !activeOnOtherPodium.has(ensureHeatId(heat.id))
+      );
+      const selected = available || planned.find((heat) => !activeOnOtherPodium.has(ensureHeatId(heat.id))) || planned[0];
       onConfigChange({
         ...config,
         division: value,

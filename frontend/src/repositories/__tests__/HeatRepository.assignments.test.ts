@@ -5,6 +5,7 @@ const api = vi.hoisted(() => ({
   fetchHeatEntriesWithParticipants: vi.fn(), fetchHeatEntriesWithParticipantsBatch: vi.fn(),
   fetchHeatMetadata: vi.fn(), fetchHeatSlotMappings: vi.fn(), fetchHeatSlotMappingsBatch: vi.fn(),
   fetchOrderedHeatSequence: vi.fn(), replaceHeatEntries: vi.fn(), adminOverrideHeatEntry: vi.fn(),
+  activateHeatOnPodium: vi.fn(async () => ({})),
 }));
 const supabaseLib = vi.hoisted(() => ({
   supabase: null, isSupabaseConfigured: vi.fn(() => true), canUseSupabaseConnection: vi.fn(() => true),
