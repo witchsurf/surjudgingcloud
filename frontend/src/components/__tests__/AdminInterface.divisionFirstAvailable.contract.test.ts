@@ -30,6 +30,12 @@ describe('P2.7.22 — division selects first planned available heat', () => {
 });
 
 describe('P2.7.31 — controlled writer decision model (no runtime instrumentation)', () => {
+  it('latches a pending division destination instead of clearing it during reconciliation', () => {
+    const reconciliation = source.slice(source.indexOf('const pendingDivisionSelection'), source.indexOf('const handleSaveOfflineAdminPin'));
+    expect(reconciliation).toContain('Keep the pending division destination latched');
+    expect(reconciliation).not.toContain('divisionSelectionRef.current = null;');
+  });
+
   it('records the deterministic division transition against authoritative Mamelles metadata', () => {
     const calls: Array<{ division: string; round: number; heatId: number }> = [];
     const planned = [

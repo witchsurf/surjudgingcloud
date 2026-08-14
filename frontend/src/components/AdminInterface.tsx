@@ -196,7 +196,7 @@ const fetchHeatContext = (heatId: string, score?: Partial<Score>) => {
 interface AdminInterfaceProps {
   config: AppConfig;
   canonicalHeatId?: string;
-  onConfigChange: (config: AppConfig, writerId?: string) => void;
+  onConfigChange: (config: AppConfig) => void;
   onConfigSaved: (saved: boolean, podiumId?: string) => Promise<void>;
   configSaved: boolean;
   loadError?: string | null;
@@ -2207,9 +2207,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         categories.some(cat => cat.toLowerCase() === value.toLowerCase());
 
       if (categories.length === 1 && !matchesCategory(config.division)) {
-        onConfigChange({ ...config, division: categories[0] }, 'INVALID_DIVISION_EFFECT');
+        onConfigChange({ ...config, division: categories[0] });
       } else if (categories.length > 1 && config.division && !matchesCategory(config.division)) {
-        onConfigChange({ ...config, division: '' }, 'INVALID_DIVISION_EFFECT');
+        onConfigChange({ ...config, division: '' });
       }
     } catch (error) {
       console.warn('Impossible de lire les catégories participants:', error);
@@ -2272,7 +2272,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         surfers: [],
         surferNames: {},
         surferCountries: {},
-      }, 'DIVISION_HANDLER');
+      });
       return;
     }
     const isHeatSelectionField = field === 'division' || field === 'round' || field === 'heatId';
@@ -2286,6 +2286,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           }
         : {}),
     };
+    if (isHeatSelectionField) {
+      divisionSelectionRef.current = null;
+    }
     onConfigChange(nextConfig);
   };
 
@@ -2987,12 +2990,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         row.round === pendingDivisionSelection.round && row.heat_number === pendingDivisionSelection.heatId
       );
       if (selectedHeat) {
-        divisionSelectionRef.current = null;
+        // Keep the pending division destination latched while the operator
+        // is still editing this division. Clearing it here lets subsequent
+        // reconciliation passes re-derive from a stale/current pointer and
+        // can oscillate between two heats.
         return;
       }
     }
     if (decision && (decision.round !== config.round || decision.heatId !== config.heatId)) {
-      onConfigChange({ ...config, round: decision.round, heatId: decision.heatId }, 'ROUND_HEAT_RECONCILIATION');
+      onConfigChange({ ...config, round: decision.round, heatId: decision.heatId });
     }
   }, [visibleRoundOptions, divisionHeatSequence, allEventHeatsMeta, activePodiumPointers, config, onConfigChange, showClosedHeats, isHeatClosed, isLockedStatus]);
 
