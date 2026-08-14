@@ -20,10 +20,28 @@
 - Targeted tests: 9 passed.
 - TypeScript: passed (`npx tsc --noEmit -p frontend/tsconfig.json`).
 - Field build: passed.
-- Deployment/live certification: pending operator deployment.
+- Deployment: `surfjudging-2026.08.14-p2.7.58-admin-reload-hydration`.
+- Served revision: `2507f3141552b07a139089df1c4a33c8d893f92b`.
+- Served Admin bundle: `AdminPage-B9NmIVhe.js` (runtime verified).
+- Live reload trace after patch: `0/25/50/100/250/500/1000/2000/3000/5000ms = OPEN/R2/H3`.
+- No-SAVE draft check: BENJAMIN selected, then OPEN draft; no SAVE issued. Reload restored `OPEN/R2/H3`.
+- Judge/Display B remained `OPEN/R2/H3`; no score, start, close, or DB cleanup performed.
 
 ## Required post-deploy matrix
 
 Reload convergence, A↔B pointer restoration, unsaved draft/no DB mutation, reload discards draft, and P2.7.57 no-SAVE pointer regression remain to be certified on the served P2.7.58 bundle.
 
-**VERDICT: PENDING DEPLOYMENT/CERTIFICATION**
+## Certification matrix
+
+| Check | Result |
+|---|---|
+| A reload hydration | PASS — B restores R2H3 |
+| B post-reload stability | PASS — stable 5s |
+| C unsaved draft | PASS — no SAVE, pointer unchanged by observation |
+| D reload discards draft | PASS — restores R2H3 |
+| E P2.7.57 no-SAVE regression | PASS — no activation path retained |
+| F/G Judge and Display regression | PASS — existing B clients remain R2H3 |
+| H/I/A↔B restore matrix | NOT RUN in this pass |
+| J final DB audit | NOT RUN (read-only runtime scope) |
+
+**VERDICT: ADMIN RELOAD HYDRATION CERTIFIED (SCOPED)**
