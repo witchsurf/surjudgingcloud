@@ -295,6 +295,15 @@ export default function JudgePage() {
         const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
             if (!row?.active_heat_id) return;
 
+            const traceRoot = window as typeof window & { __surfRealtimeCommitTrace?: Record<string, unknown>[] };
+            (traceRoot.__surfRealtimeCommitTrace ??= []).push({
+                t: performance.now(),
+                timestamp: new Date().toISOString(),
+                operation: 'JUDGE_CALLBACK',
+                owner: `JudgePage:event${targetEventId}:podium${podiumId}`,
+                active_heat_id: row.active_heat_id,
+            });
+
             const eventName = (row.event_name || '').trim();
             if (expectedEvent && normalizeEventRealtimeKey(eventName) !== expectedEvent) return;
 
@@ -331,7 +340,7 @@ export default function JudgePage() {
 
         return subscribeToActiveHeatPointer(targetEventId, config.competition, (row) => {
             applyActiveHeatPointer(row);
-        }, { initialRefresh: true, fallbackPolling: !positionFromUrl || isLocalSupabaseMode(), podiumId });
+        }, { initialRefresh: true, fallbackPolling: !positionFromUrl || isLocalSupabaseMode(), podiumId, owner: `JudgePage:event${targetEventId}:podium${podiumId}` });
     }, [activeEventId, config.competition, configLoading, setConfig, positionFromUrl, loadKioskConfig, eventIdFromUrl, loadConfigFromDb, podiumId]);
 
     // Purge local scores only when heat changes.
