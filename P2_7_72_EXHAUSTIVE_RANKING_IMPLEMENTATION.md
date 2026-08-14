@@ -11,7 +11,7 @@ RECURSION SAFETY: Static design is non-recursive for qualification; live SQL exe
 MIGRATION: `backend/supabase/migrations/20260814210000_exhaustive_heat_ranking_inherited_tiebreak.sql` created, not yet applied.
 SCHEMA: NOT VERIFIED.
 REGRESSION A-J: Not run in Codex. Read-only invariant script created at `backend/supabase/tests/p2_7_72_exhaustive_ranking.sql`; operator must run it plus the A–J matrix on `surfjudging_postgres`.
-COMMIT: none.
+COMMIT: `bd7decf8859f07db31e1e5483af67ee168d9afe5` (`fix(db): rank all heat entries with inherited tiebreak`).
 RELEASE: none.
 FIELD_HOST: not discoverable in this session.
 SOURCE == SERVED: NOT VERIFIED.
@@ -39,4 +39,5 @@ OPERATOR MIGRATION: Applied to `surfjudging_postgres`; CADET R1H2 ranking return
 REGRESSION INVARIANT: PASS after migration (`ranked=3`, `entries=3`; RED/WHITE/YELLOW all emitted).
 LIVE READINESS: PASS for CADET R1H2 (`can_close=true`, blockers=[], score_count=3, missing_score_count=0, panel 3/3, lineup complete).
 LIVE LINEAGE: R1H2 mappings are empty (directly seeded); previous totals NULL. Seed tie-break therefore predicts WHITE seed 14 > YELLOW seed 17.
-FINAL VERDICT: PARTIAL IMPLEMENTATION PASS — exhaustive ranking and readiness are live; R2 destination mapping and migration commit/deployment verification remain mandatory before CLOSE.
+R2 DESTINATIONS: R1H2 P1 → `mamelles_open_cadet_r2_h2` position 1; R1H2 P2 → `mamelles_open_cadet_r2_h1` position 3.
+FINAL VERDICT: PARTIAL IMPLEMENTATION PASS — exhaustive ranking, readiness, destination mappings, and Git commit are confirmed; schema version, full A–J matrix, runtime alignment/push, and live client verification remain mandatory before CLOSE.
