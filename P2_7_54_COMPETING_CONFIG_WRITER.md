@@ -28,3 +28,12 @@ ROOT CAUSE PROVEN: YES — pending division destination was cleared after matchi
 The pending division destination remains latched while it matches the current division; explicit round/heat edits clear it. Diagnostic instrumentation was removed before the final build.
 
 NO SAVE / NO DB MUTATION during trace.
+
+## Post-patch runtime
+
+- Served bundle: `AdminPage-9nju6FLm.js`.
+- The oscillation stopped: after BENJAMIN → OPEN, the value settled at `OPEN/R2/H3` and remained unchanged for 6.5 s.
+- This confirms the competing-writer loop is removed.
+- The selected destination was not the expected free `R3/H2` for the stated fixture, so destination-selection correctness remains a separate issue and is not claimed certified here.
+
+Verdict: `PARTIALLY CERTIFIED` — reconciliation oscillation fixed; first-available destination still requires a separate controlled audit.
