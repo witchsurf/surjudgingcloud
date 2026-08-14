@@ -11,6 +11,8 @@ type RegistryState<T> = {
   listeners: Map<string, Listener<T>>;
   pollingInterval: ReturnType<typeof setInterval> | null;
   lastPayload: T | null;
+  generation: number;
+  expectedClose: boolean;
 };
 
 export type EventConfigRealtimeRow = {
@@ -36,6 +38,15 @@ type RegistryKey = string | number;
 const eventConfigRegistry = new Map<number, RegistryState<EventConfigRealtimeRow>>();
 const activeHeatPointerRegistry = new Map<RegistryKey, RegistryState<ActiveHeatPointerRealtimeRow>>();
 let listenerSequence = 0;
+let generationSequence = 0;
+
+const traceLifecycle = (entry: Record<string, unknown>) => {
+  if (typeof window === 'undefined') return;
+  const root = window as typeof window & { __surfRealtimeLifecycleTrace?: Record<string, unknown>[] };
+  const trace = (root.__surfRealtimeLifecycleTrace ??= []);
+  trace.push({ timestamp: new Date().toISOString(), ...entry });
+  if (trace.length > 500) trace.splice(0, trace.length - 500);
+};
 
 const startPolling = <T>(state: RegistryState<T>, refresh: () => void, intervalMs: number) => {
   if (state.pollingInterval) return;
@@ -88,6 +99,7 @@ const addListener = <K extends RegistryKey, T>(
 ) => {
   const listenerId = `listener_${listenerSequence += 1}`;
   state.listeners.set(listenerId, listener);
+  traceLifecycle({ operation: 'LISTENER_ADD', key, generation: state.generation, owner: listenerId, listeners: state.listeners.size, status: state.channel ? 'created' : 'pending' });
   registry.set(key, state);
   updateSharedRealtimeDebug();
 
@@ -97,6 +109,7 @@ const addListener = <K extends RegistryKey, T>(
 
   return () => {
     state.listeners.delete(listenerId);
+    traceLifecycle({ operation: 'LISTENER_REMOVE', key, generation: state.generation, owner: listenerId, listeners: state.listeners.size, status: state.channel ? 'active' : 'pending' });
     if (state.listeners.size > 0) {
       return;
     }
@@ -107,7 +120,10 @@ const addListener = <K extends RegistryKey, T>(
 
     if (state.channel && supabase) {
       try {
+        state.expectedClose = true;
+        traceLifecycle({ operation: 'UNSUBSCRIBE_CALL', key, generation: state.generation, listeners: 0, status: 'cleanup', stack: new Error().stack });
         state.channel.unsubscribe();
+        traceLifecycle({ operation: 'REMOVE_CHANNEL_CALL', key, generation: state.generation, listeners: 0, status: 'cleanup', stack: new Error().stack });
         supabase.removeChannel(state.channel);
       } catch (error) {
         console.warn('⚠️ Failed to release shared realtime channel', key, error);
@@ -150,6 +166,8 @@ export const subscribeToEventConfig = (
     listeners: new Map(),
     pollingInterval: null,
     lastPayload: null,
+    generation: generationSequence += 1,
+    expectedClose: false,
   };
 
   const refresh = async () => {
@@ -178,6 +196,7 @@ export const subscribeToEventConfig = (
   }
 
   if (supabase) {
+    traceLifecycle({ operation: 'SUBSCRIBE_CALL', key: eventId, generation: state.generation, listeners: state.listeners.size, status: 'created' });
     state.channel = supabase
       .channel(`shared-event-config-${eventId}`)
       .on(
@@ -205,6 +224,7 @@ export const subscribeToEventConfig = (
         }
       )
       .subscribe((status) => {
+        traceLifecycle({ operation: `STATUS_${status}`, key: eventId, generation: state.generation, listeners: state.listeners.size, status, expectedClose: state.expectedClose });
         updateSharedRealtimeDebug();
         if (status === 'SUBSCRIBED') {
           stopPolling(state);
@@ -265,6 +285,8 @@ export const subscribeToActiveHeatPointer = (
     listeners: new Map(),
     pollingInterval: null,
     lastPayload: null,
+    generation: generationSequence += 1,
+    expectedClose: false,
   };
 
   const matchesEvent = (row: ActiveHeatPointerRealtimeRow | null): row is ActiveHeatPointerRealtimeRow => {
@@ -307,6 +329,7 @@ export const subscribeToActiveHeatPointer = (
   }
 
   if (supabase) {
+    traceLifecycle({ operation: 'SUBSCRIBE_CALL', key, generation: state.generation, listeners: state.listeners.size, status: 'created' });
     state.channel = supabase
       .channel(`shared-active-heat-${key}`)
       .on(
@@ -334,6 +357,7 @@ export const subscribeToActiveHeatPointer = (
         }
       )
       .subscribe((status) => {
+        traceLifecycle({ operation: `STATUS_${status}`, key, generation: state.generation, listeners: state.listeners.size, status, expectedClose: state.expectedClose });
         updateSharedRealtimeDebug();
         if (status === 'SUBSCRIBED') {
           stopPolling(state);
