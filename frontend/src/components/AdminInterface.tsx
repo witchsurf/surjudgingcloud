@@ -2963,6 +2963,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   useEffect(() => {
     if (!visibleRoundOptions.length) return;
     const pendingDivisionSelection = divisionSelectionRef.current;
+    // A config loaded from the canonical DB pointer is already authoritative.
+    // Reconciliation is only for an operator's unsaved navigation; otherwise it
+    // can replace the hydrated active heat with the first merely eligible heat.
+    if (configSaved && !pendingDivisionSelection) return;
     const decision = reconcileRoundHeat({
       division: config.division,
       currentRound: config.round,
