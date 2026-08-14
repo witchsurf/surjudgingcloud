@@ -48,6 +48,7 @@ interface ConfigStore {
 }
 
 const configLoadInFlight = new Map<string, Promise<void>>();
+const configLoadSequence = new Map<string, number>();
 const configLastLoadAt = new Map<string, number>();
 let latestRequestedConfigLoadKey = '';
 const CONFIG_LOAD_DEDUPE_MS = 12000;
@@ -292,10 +293,13 @@ export const useConfigStore = create<ConfigStore>()(
                 }
 
                 const existingLoad = configLoadInFlight.get(loadKey);
-                if (existingLoad) {
+                if (existingLoad && !force) {
                     logger.debug('ConfigStore', 'Reusing in-flight config load', { eventId });
                     return existingLoad;
                 }
+
+                const requestSequence = (configLoadSequence.get(loadKey) ?? 0) + 1;
+                configLoadSequence.set(loadKey, requestSequence);
 
                 const loadPromise = (async () => {
                     logger.info('ConfigStore', 'Fetching config from database', { eventId });
@@ -315,7 +319,7 @@ export const useConfigStore = create<ConfigStore>()(
                                         eventId,
                                         podiumId,
                                     });
-                                    if (latestRequestedConfigLoadKey === loadKey) {
+                                    if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
                                         set({
                                             // Keep the event context visible on an
                                             // unassigned podium. Only the heat
@@ -362,7 +366,7 @@ export const useConfigStore = create<ConfigStore>()(
                             } catch (err) {
                                 logger.warn('ConfigStore', 'Unable to resolve active_heat_pointer', err);
                                 if (podiumId !== 'A') {
-                                    if (latestRequestedConfigLoadKey === loadKey) {
+                                    if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
                                         set({
                                             config: {
                                                 ...INITIAL_CONFIG,
@@ -471,7 +475,7 @@ export const useConfigStore = create<ConfigStore>()(
                             const heatConfig = await applyHeatJudgeAssignments(baseConfig, heatKey);
                             const dbConfig = await applyPodiumJudgePanel(heatConfig, eventId, podiumId);
 
-                            if (latestRequestedConfigLoadKey === loadKey) {
+                            if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
                                 set({
                                     config: dbConfig,
                                     loadedFromDb: true,
@@ -487,18 +491,20 @@ export const useConfigStore = create<ConfigStore>()(
                             // Note: Zustand persist middleware automatically saves to localStorage
                         } else {
                             logger.warn('ConfigStore', 'No snapshot found');
-                            if (latestRequestedConfigLoadKey === loadKey) {
+                            if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
                                 set({ loadedFromDb: false });
                             }
                         }
                     } catch (error) {
                         logger.error('ConfigStore', 'DB fetch error', error);
-                        if (latestRequestedConfigLoadKey === loadKey) {
+                        if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
                             set({ loadedFromDb: false });
                         }
                     }
                 })().finally(() => {
-                    configLoadInFlight.delete(loadKey);
+                    if (configLoadSequence.get(loadKey) === requestSequence) {
+                        configLoadInFlight.delete(loadKey);
+                    }
                 });
 
                 configLoadInFlight.set(loadKey, loadPromise);

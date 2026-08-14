@@ -19,4 +19,11 @@ describe('P2.7.17B — podium B event context contract', () => {
     expect(branch).not.toContain('config: INITIAL_CONFIG');
     expect(branch).toContain('competition: resolveEventDisplayName(');
   });
+
+  it('does not let a forced pointer load reuse or overwrite an older in-flight load', () => {
+    const text = source();
+    expect(text).toContain('if (existingLoad && !force)');
+    expect(text).toContain('const configLoadSequence = new Map<string, number>();');
+    expect(text).toContain('configLoadSequence.get(loadKey) === requestSequence');
+  });
 });
