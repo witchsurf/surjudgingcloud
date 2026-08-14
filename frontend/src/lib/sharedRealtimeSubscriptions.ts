@@ -340,6 +340,13 @@ export const subscribeToActiveHeatPointer = (
           }
           const row = payload.new as ActiveHeatPointerRealtimeRow | null;
           trace({ operation: 'POINTER_EVENT_RAW', key, generation: state.generation, listeners: state.listeners.size, payload: row });
+          // Realtime may deliver an UPDATE envelope without the row body (for
+          // example when replica identity/RLS omits columns). The database is
+          // authoritative: resolve the committed pointer before dispatching.
+          if (!row?.active_heat_id) {
+            void refresh();
+            return;
+          }
           if (!matchesEvent(row)) return;
           reportRealtimeDiagnostic({
             key: `active-heat:${key}`,
