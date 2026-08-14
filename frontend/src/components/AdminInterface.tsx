@@ -2824,16 +2824,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           assignments,
           assignedBy: 'admin-auto-podium-panel',
         });
-        await heatLifecycleRepository.activate({
-          eventId: activeEventId,
-          podiumId,
-          heatId,
-          assignedBy: 'admin-auto-podium-activate',
-        });
-
         setPodiumAssignStatus({
           type: 'success',
-          message: `Podium ${podiumId} prêt · panel enregistré · ${config.division} R${config.round}H${config.heatId} diffusé.`,
+          message: `Podium ${podiumId} prêt · panel enregistré · ${config.division} R${config.round}H${config.heatId} prêt à sauvegarder.`,
         });
       } catch (error) {
         autoPodiumSyncFingerprintRef.current = '';
