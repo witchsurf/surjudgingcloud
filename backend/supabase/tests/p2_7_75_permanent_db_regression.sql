@@ -179,6 +179,22 @@ begin
   perform public.fn_propagate_qualifiers_for_source_heat(src);
   if not exists (select 1 from public.heat_entries where heat_id=dst and position=1 and participant_id=p_red) then raise exception 'J failed: qualifier not propagated'; end if;
 
+  -- K: cardinality regression. Two source divisions share the same
+  -- (event, round, heat_number); the current production lineage join is
+  -- expected to fail this assertion until its division semantics are fixed.
+  insert into public.heats(id,competition,division,round,heat_number,status,event_id,heat_size,color_order) values
+    ('p275_k_source_a','P2.7.75','K_TARGET',1,20,'closed',e,1,array['RED']),
+    ('p275_k_source_b','P2.7.75','K_B',1,20,'closed',e,1,array['RED']),
+    ('p275_k_target','P2.7.75','K_TARGET',2,1,'waiting',e,1,array['RED']);
+  insert into public.heat_realtime_config(heat_id,status) values
+    ('p275_k_source_a','closed'),('p275_k_source_b','closed'),('p275_k_target','waiting');
+  insert into public.heat_entries(heat_id,participant_id,position,seed,color) values
+    ('p275_k_source_a',p_red,1,1,'RED'),('p275_k_source_b',p_white,1,2,'RED'),('p275_k_target',p_red,1,1,'RED');
+  insert into public.heat_slot_mappings(heat_id,position,placeholder,source_round,source_heat,source_position)
+    values ('p275_k_target',1,'K',1,20,1);
+  select count(*) into n from public.fn_rank_heat_entries_from_scores('p275_k_target');
+  if n <> 1 then raise exception 'K failed before patch: expected 1 row, got %', n; end if;
+
   raise notice 'P2.7.75 A-J PASS (synthetic event %, transaction will rollback)', e;
 end $$;
 
