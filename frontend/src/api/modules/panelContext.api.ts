@@ -1,5 +1,5 @@
 import { isSupabaseConfigured, supabase } from '../../lib/supabase';
-import { ensureHeatId } from '../../utils/heat';
+import { ensurePersistedHeatId } from '../../utils/heat';
 import { resolvePanelContext, type PanelContext } from '../../domain/scoring/panelContext';
 
 export type RuntimePanelSnapshots = ReadonlyMap<string, readonly string[]> | Record<string, readonly string[]>;
@@ -20,7 +20,7 @@ export async function fetchPanelContexts(
   heatIds: readonly string[],
   runtimeSnapshots?: RuntimePanelSnapshots,
 ): Promise<Map<string, PanelContext>> {
-  const normalizedIds = Array.from(new Set(heatIds.map(ensureHeatId).filter(Boolean)));
+  const normalizedIds = Array.from(new Set(heatIds.map(ensurePersistedHeatId).filter(Boolean)));
   if (normalizedIds.length === 0) return new Map();
 
   if (!supabase || !isSupabaseConfigured()) {
@@ -65,7 +65,7 @@ export async function fetchPanelContext(
   heatId: string,
   runtimeSnapshotJudges?: readonly string[] | null,
 ): Promise<PanelContext> {
-  const normalizedHeatId = ensureHeatId(heatId);
+  const normalizedHeatId = ensurePersistedHeatId(heatId);
   const contexts = await fetchPanelContexts(
     [normalizedHeatId],
     runtimeSnapshotJudges ? { [normalizedHeatId]: runtimeSnapshotJudges } : undefined,

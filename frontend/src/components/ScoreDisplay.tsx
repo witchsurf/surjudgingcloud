@@ -6,7 +6,7 @@ import { calculateShadowHeatResult } from '../domain/scoring/shadow';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/modules/scoring.api';
 import { computeEffectiveInterferences } from '../utils/interference';
-import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
+import { getHeatIdentifiers, getHeatSeriesLabel, ensurePersistedHeatId } from '../utils/heat';
 import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
 import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
@@ -35,6 +35,7 @@ interface ScoreDisplayProps {
   eventTopScoresLoading?: boolean;
   onToggleEventTopScores?: () => void;
   panelContext: PanelContext;
+  authoritativeHeatId?: string;
 }
 
 // Couleurs officielles
@@ -182,6 +183,7 @@ export default function ScoreDisplay({
   eventTopScoresLoading = false,
   onToggleEventTopScores,
   panelContext,
+  authoritativeHeatId,
 }: ScoreDisplayProps) {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [surferStats, setSurferStats] = useState<SurferStats[]>([]);
@@ -189,12 +191,14 @@ export default function ScoreDisplay({
   const [heatResultSnapshot, setHeatResultSnapshot] = useState<HeatResultSnapshot | null>(null);
   const [eventData, setEventData] = useState<Record<string, any> | null>(null);
   const [effectiveInterferences, setEffectiveInterferences] = useState<EffectiveInterference[]>([]);
-  const { normalized: heatId } = getHeatIdentifiers(
-    config.competition,
-    config.division,
-    config.round,
-    config.heatId
-  );
+  const heatId = authoritativeHeatId
+    ? ensurePersistedHeatId(authoritativeHeatId)
+    : getHeatIdentifiers(
+        config.competition,
+        config.division,
+        config.round,
+        config.heatId
+      ).normalized;
   const shouldLoadParticipantDetails = Boolean(
     configSaved
       && heatId

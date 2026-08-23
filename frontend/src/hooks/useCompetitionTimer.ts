@@ -4,22 +4,24 @@ import { useConfigStore } from '../stores/configStore';
 import { useRealtimeSync } from './useRealtimeSync';
 import type { HeatTimer } from '../types';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
-import { getHeatIdentifiers } from '../utils/heat';
+import { getHeatIdentifiers, ensurePersistedHeatId } from '../utils/heat';
 
 const STORAGE_KEYS = {
     timer: 'surfJudgingTimer'
 } as const;
 
-export function useCompetitionTimer() {
+export function useCompetitionTimer(authoritativeHeatId?: string) {
     const { timer, setTimer, setHeatStatus } = useJudgingStore();
     const { config } = useConfigStore();
     const { publishTimerStart, publishTimerPause, publishTimerReset } = useRealtimeSync();
-    const currentHeatId = getHeatIdentifiers(
-        config.competition,
-        config.division,
-        config.round,
-        config.heatId
-    ).normalized;
+    const currentHeatId = authoritativeHeatId
+        ? ensurePersistedHeatId(authoritativeHeatId)
+        : getHeatIdentifiers(
+            config.competition,
+            config.division,
+            config.round,
+            config.heatId
+        ).normalized;
 
     // Persist timer to localStorage
     const persistTimer = useCallback((newTimer: HeatTimer) => {

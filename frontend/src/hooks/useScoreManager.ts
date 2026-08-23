@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import { scoreRepository } from '../repositories';
-import { ensureHeatId } from '../utils/heat';
+import { ensurePersistedHeatId } from '../utils/heat';
 import type { Score, ScoreOverrideLog, OverrideReason } from '../types';
 import { scoreOverrideLogRecordToLegacy, scoreRecordToLegacy } from '../repositories/internal/scoreRepositoryMappings';
 
@@ -85,7 +85,7 @@ export function useScoreManager() {
             setScores(prev => {
                 const matchIndex = prev.findIndex(
                     score =>
-                        ensureHeatId(score.heat_id) === heatId &&
+                        ensurePersistedHeatId(score.heat_id) === heatId &&
                         (score.judge_station || score.judge_id) === (request.judgeStation || request.judgeId) &&
                         score.wave_number === request.waveNumber &&
                         score.surfer === request.surfer
@@ -106,7 +106,7 @@ export function useScoreManager() {
             window.dispatchEvent(new CustomEvent('newScoreRealtime', { detail: updatedScore }));
             window.dispatchEvent(new CustomEvent('scoreOverrideApplied', {
                 detail: {
-                    heatId: ensureHeatId(heatId),
+                    heatId: ensurePersistedHeatId(heatId),
                     judgeId: request.judgeIdentityId || request.judgeId,
                     judgeStation: request.judgeStation || request.judgeId,
                     surfer: request.surfer,

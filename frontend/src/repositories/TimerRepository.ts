@@ -1,5 +1,5 @@
 import { BaseRepository } from './BaseRepository';
-import { ensureHeatId } from '../utils/heat';
+import { ensurePersistedHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
 import type { HeatTimer } from '../types';
 import { saveOffline } from '../lib/supabase';
@@ -45,7 +45,7 @@ export class TimerRepository extends BaseRepository {
      * Uses the offline queue if the network is unavailable.
      */
     async saveTimerState(heatId: string, timer: HeatTimer): Promise<void> {
-        const normalizedHeatId = ensureHeatId(heatId);
+        const normalizedHeatId = ensurePersistedHeatId(heatId);
         
         const payload = {
             heat_id: normalizedHeatId,

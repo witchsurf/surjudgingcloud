@@ -7,7 +7,7 @@
 
 import { BaseRepository } from './BaseRepository';
 import type { Score, ScoreOverrideLog, OverrideReason } from '../types';
-import { ensureHeatId } from '../utils/heat';
+import { ensurePersistedHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
 import { 
     saveScoreIDB, 
@@ -126,7 +126,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
     }
 
     private parseHeatNumberFromHeatId(heatId: string): number {
-        const match = ensureHeatId(heatId).match(/_h(\d+)$/i);
+        const match = ensurePersistedHeatId(heatId).match(/_h(\d+)$/i);
         if (!match) return 1;
         const value = Number.parseInt(match[1], 10);
         return Number.isFinite(value) && value > 0 ? value : 1;
@@ -219,7 +219,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
         heatId: string,
         fallbackEventId?: number | null
     ): Promise<number | null> {
-        const normalizedHeatId = ensureHeatId(heatId);
+        const normalizedHeatId = ensurePersistedHeatId(heatId);
 
         try {
             const metadata = await fetchHeatMetadata(normalizedHeatId);
@@ -260,7 +260,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
         }>();
 
         scores.forEach((score) => {
-            const normalized = ensureHeatId(score.heat_id);
+            const normalized = ensurePersistedHeatId(score.heat_id);
             if (!byHeatId.has(normalized)) {
                 byHeatId.set(normalized, { ...score, heat_id: normalized });
             }
@@ -305,7 +305,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
      * Save a new score
      */
     async saveScore(request: SaveScoreRequest): Promise<Score> {
-        const normalizedHeatId = ensureHeatId(request.heatId);
+        const normalizedHeatId = ensurePersistedHeatId(request.heatId);
 
         const newScore: Score = {
             id: this.generateId(),
@@ -375,7 +375,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
         if (!score.id || !score.timestamp || !score.created_at) {
             throw new Error('Score WAL non rejouable : identité ou chronologie absente.');
         }
-        const persistedScore: Score = { ...score, heat_id: ensureHeatId(score.heat_id) };
+        const persistedScore: Score = { ...score, heat_id: ensurePersistedHeatId(score.heat_id) };
 
         await this.execute(
             async () => {
@@ -437,10 +437,10 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
      * Fetch all scores for a heat
      */
     async fetchScores(heatId: string, legacyHeatId?: string): Promise<Score[]> {
-        const normalizedHeatId = ensureHeatId(heatId);
+        const normalizedHeatId = ensurePersistedHeatId(heatId);
         const heatIds = [normalizedHeatId];
         if (legacyHeatId) {
-            heatIds.push(ensureHeatId(legacyHeatId));
+            heatIds.push(ensurePersistedHeatId(legacyHeatId));
         }
 
         return this.execute(
@@ -481,14 +481,14 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
      * Override an existing score
      */
     async overrideScore(request: OverrideScoreRequest): Promise<OverrideResult> {
-        const normalizedHeatId = ensureHeatId(request.heatId);
+        const normalizedHeatId = ensurePersistedHeatId(request.heatId);
         const now = new Date();
 
         // Find the latest logical score in IndexedDB without destroying history.
         const localScores = await getAllScoresIDB();
         const matchingScores = localScores.filter(
             score =>
-                ensureHeatId(score.heat_id) === normalizedHeatId &&
+                ensurePersistedHeatId(score.heat_id) === normalizedHeatId &&
                 (score.judge_station || score.judge_id) === (request.judgeStation || request.judgeId) &&
                 score.wave_number === request.waveNumber &&
                 score.surfer === request.surfer
@@ -604,7 +604,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
      * Fetch override logs for a heat
      */
     async fetchOverrideLogs(heatId: string): Promise<ScoreOverrideLog[]> {
-        const normalizedHeatId = ensureHeatId(heatId);
+        const normalizedHeatId = ensurePersistedHeatId(heatId);
 
         return this.execute(
             // Online operation
@@ -640,7 +640,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
      * This is used for manual recovery if scores are in IndexedDB but not on server.
      */
     async syncScores(heatId: string): Promise<{ success: number; failed: number }> {
-        const normalizedHeatId = ensureHeatId(heatId);
+        const normalizedHeatId = ensurePersistedHeatId(heatId);
         
         if (!this.isOnline) {
             throw new Error('Impossible de synchroniser : vous êtes hors ligne ou Supabase n\'est pas configuré.');
@@ -728,7 +728,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
         const unsyncedScores = await getUnsyncedScoresIDB();
         const pendingHeatIds = Array.from(
             new Set(
-                unsyncedScores.map((score) => ensureHeatId(score.heat_id))
+                unsyncedScores.map((score) => ensurePersistedHeatId(score.heat_id))
             )
         );
 
@@ -746,7 +746,7 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
                 failed += result.failed;
             } catch (error) {
                 const heatUnsyncedCount = unsyncedScores.filter(
-                    (score) => ensureHeatId(score.heat_id) === heatId
+                    (score) => ensurePersistedHeatId(score.heat_id) === heatId
                 ).length;
                 failed += heatUnsyncedCount;
                 logger.error('ScoreRepository', 'Pending heat sync failed', { heatId, error });

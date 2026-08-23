@@ -1,6 +1,6 @@
 import { isLocalSupabaseMode, supabase } from '../../lib/supabase';
 import { ensureSupabase } from './core.api';
-import { ensureHeatId } from '../../utils/heat';
+import { ensurePersistedHeatId } from '../../utils/heat';
 import type { InterferenceCall, InterferenceType, Score } from '../../types';
 
 const INTERFERENCE_CACHE_TTL_MS = 1500;
@@ -329,7 +329,7 @@ export const normalizeScoreJudgeStation = (judgeStation?: string | null, judgeId
 export const toParsedScore = (row: RawScoreRow): Score => ({
     id: row.id,
     event_id: row.event_id,
-    heat_id: ensureHeatId(row.heat_id),
+    heat_id: ensurePersistedHeatId(row.heat_id),
     competition: row.competition,
     division: row.division,
     round: row.round,
@@ -415,7 +415,7 @@ async function fetchPagedInterferenceRows(heatIds: string[]): Promise<Interferen
 
 export async function fetchHeatScores(heatId: string): Promise<Score[]> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!
             .from('scores')
         .select('id, event_id, heat_id, competition, division, round, judge_id, judge_name, judge_station, judge_identity_id, surfer, wave_number, score, timestamp, created_at')
@@ -431,7 +431,7 @@ export async function fetchScoresForHeats(heatIds: string[]): Promise<Record<str
     ensureSupabase();
     if (!heatIds.length) return {};
 
-    const normalizedIds = Array.from(new Set(heatIds.map((id) => ensureHeatId(id))));
+    const normalizedIds = Array.from(new Set(heatIds.map((id) => ensurePersistedHeatId(id))));
     const grouped: Record<string, Score[]> = {};
     (await fetchPagedScoreRows(normalizedIds)).forEach((row) => {
         const parsed = toParsedScore(row);
@@ -472,7 +472,7 @@ export async function fetchCanonicalScoresForEvent(eventId: number): Promise<Rec
 
     if (heatsError) throw heatsError;
 
-    const heatIds = (heats ?? []).map((row) => ensureHeatId(row.id));
+    const heatIds = (heats ?? []).map((row) => ensurePersistedHeatId(row.id));
     if (!heatIds.length) return {};
 
     const { data, error } = await supabase!
@@ -557,7 +557,7 @@ export async function fetchEventJudgeAccuracySummary(eventId: number): Promise<E
 
 export async function fetchHeatMissingScoreSlots(heatId: string): Promise<HeatMissingScoreSlotRow[]> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!
         .from('v_heat_missing_score_slots')
         .select('*')
@@ -578,7 +578,7 @@ export async function fetchHeatMissingScoreSlots(heatId: string): Promise<HeatMi
 
 export async function fetchHeatCloseValidation(heatId: string): Promise<HeatCloseValidationResult | null> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!
         .rpc('fn_get_heat_close_validation', { p_heat_id: normalizedHeatId });
 
@@ -604,7 +604,7 @@ export async function fetchHeatCloseValidation(heatId: string): Promise<HeatClos
 
 export async function fetchHeatCloseReadiness(heatId: string): Promise<HeatCloseReadinessResult> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!
         .rpc('fn_get_heat_close_readiness', { p_heat_id: normalizedHeatId });
 
@@ -620,7 +620,7 @@ export async function fetchHeatCloseReadiness(heatId: string): Promise<HeatClose
 
 export async function fetchInterferenceCalls(heatId: string): Promise<InterferenceCall[]> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const cached = interferenceCache.get(normalizedHeatId);
     if (cached && Date.now() - cached.at < INTERFERENCE_CACHE_TTL_MS) return cached.value;
 
@@ -661,7 +661,7 @@ export async function fetchAllInterferenceCallsForEvent(eventId: number): Promis
 
     const result: Record<string, InterferenceCall[]> = {};
     (await fetchPagedInterferenceRows(heatIds)).forEach((call) => {
-        const key = ensureHeatId((call as InterferenceCall).heat_id);
+        const key = ensurePersistedHeatId((call as InterferenceCall).heat_id);
         if (!result[key]) result[key] = [];
         result[key].push(call as InterferenceCall);
     });
@@ -675,7 +675,7 @@ export async function upsertInterferenceCall(input: {
 }): Promise<void> {
     ensureSupabase();
     const payload = {
-        event_id: input.event_id ?? null, heat_id: ensureHeatId(input.heat_id), competition: input.competition ?? null,
+        event_id: input.event_id ?? null, heat_id: ensurePersistedHeatId(input.heat_id), competition: input.competition ?? null,
         division: input.division ?? null, round: input.round ?? null, judge_id: input.judge_id,
         judge_name: input.judge_name ?? null, judge_station: input.judge_station ?? input.judge_id,
         judge_identity_id: input.judge_identity_id ?? null, surfer: input.surfer, wave_number: input.wave_number,
@@ -699,7 +699,7 @@ export async function deleteInterferenceCall(input: {
     wave_number: number;
 }): Promise<void> {
     ensureSupabase();
-    const heatId = ensureHeatId(input.heat_id);
+    const heatId = ensurePersistedHeatId(input.heat_id);
     const { error } = await supabase!
         .from('interference_calls')
         .delete()
@@ -715,7 +715,7 @@ export async function deleteScoreSecure(input: SecureScoreDeletionInput): Promis
     ensureSupabase();
     const { data, error } = await supabase!.rpc('delete_score_secure', {
         p_score_id: input.score_id,
-        p_heat_id: ensureHeatId(input.heat_id),
+        p_heat_id: ensurePersistedHeatId(input.heat_id),
         p_reason: input.reason ?? 'correction',
         p_comment: input.comment ?? null,
         p_deleted_by: input.deleted_by ?? 'chief_judge',
@@ -730,7 +730,7 @@ export async function recordScoreOverrideSecure(input: SecureScoreOverrideInput)
 
     const { error } = await supabase!.rpc('record_score_override_secure', {
         p_id: input.id,
-        p_heat_id: ensureHeatId(input.heat_id),
+        p_heat_id: ensurePersistedHeatId(input.heat_id),
         p_score_id: input.score_id,
         p_judge_id: input.judge_id,
         p_judge_name: input.judge_name ?? null,
@@ -754,7 +754,7 @@ export async function recordScoreOverrideSecure(input: SecureScoreOverrideInput)
     if (error) {
         const { error: fallbackError } = await supabase!.from('score_overrides').upsert({
             id: input.id,
-            heat_id: ensureHeatId(input.heat_id),
+            heat_id: ensurePersistedHeatId(input.heat_id),
             score_id: input.score_id,
             judge_id: input.judge_id,
             judge_name: input.judge_name ?? null,
@@ -780,7 +780,7 @@ export async function applyScoreCorrectionSecure(input: SecureScoreCorrectionInp
 
     const { error } = await supabase!.rpc('apply_score_correction_secure', {
         p_score_id: input.score_id,
-        p_heat_id: input.heat_id ? ensureHeatId(input.heat_id) : null,
+        p_heat_id: input.heat_id ? ensurePersistedHeatId(input.heat_id) : null,
         p_set_surfer: Object.prototype.hasOwnProperty.call(input, 'surfer'),
         p_surfer: input.surfer ?? null,
         p_set_wave_number: Object.prototype.hasOwnProperty.call(input, 'wave_number'),
@@ -810,7 +810,7 @@ export async function applyScoreCorrectionSecure(input: SecureScoreCorrectionInp
 
         let query = supabase!.from('scores').update(updatePayload).eq('id', input.score_id);
         if (input.heat_id) {
-            query = query.eq('heat_id', ensureHeatId(input.heat_id));
+            query = query.eq('heat_id', ensurePersistedHeatId(input.heat_id));
         }
         const { error: fallbackError } = await query;
         if (fallbackError) throw mapSecureScoreRpcError(fallbackError);
