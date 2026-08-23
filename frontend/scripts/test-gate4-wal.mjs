@@ -28,17 +28,50 @@ async function runGate4() {
     p_podium_id: 'A'
   });
 
-  // Assign judges J1-J5
+  // Assign judges J1-J5 via psql
   const judges = ['J1', 'J2', 'J3', 'J4', 'J5'];
-  for (const j of judges) {
-    await supabase.from('heat_judge_assignments').upsert({
-      heat_id: H1_ID,
-      event_id: EVENT_ID,
-      station: j,
-      judge_id: j,
-      judge_name: `Judge ${j}`
-    });
-  }
+  execSync(`docker exec surfjudging_p38_manonman_test2_postgres psql -U postgres -d postgres -c "
+    INSERT INTO podium_judge_assignments (event_id, podium_id, station, judge_id, judge_name)
+    VALUES
+      (${EVENT_ID}, 'A', 'J1', 'J1', 'Judge J1'),
+      (${EVENT_ID}, 'A', 'J2', 'J2', 'Judge J2'),
+      (${EVENT_ID}, 'A', 'J3', 'J3', 'Judge J3'),
+      (${EVENT_ID}, 'A', 'J4', 'J4', 'Judge J4'),
+      (${EVENT_ID}, 'A', 'J5', 'J5', 'Judge J5')
+    ON CONFLICT (event_id, podium_id, station) DO UPDATE
+    SET judge_id = excluded.judge_id, judge_name = excluded.judge_name;
+
+    INSERT INTO heat_judge_assignments (heat_id, event_id, station, judge_id, judge_name)
+    VALUES
+      ('${H1_ID}', ${EVENT_ID}, 'J1', 'J1', 'Judge J1'),
+      ('${H1_ID}', ${EVENT_ID}, 'J2', 'J2', 'Judge J2'),
+      ('${H1_ID}', ${EVENT_ID}, 'J3', 'J3', 'Judge J3'),
+      ('${H1_ID}', ${EVENT_ID}, 'J4', 'J4', 'Judge J4'),
+      ('${H1_ID}', ${EVENT_ID}, 'J5', 'J5', 'Judge J5')
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO event_last_config (event_id, event_name, division, round, heat_number, judges, surfers)
+    VALUES (${EVENT_ID}, 'P38-Test2-Disposable', 'OPEN', 1, 1, jsonb_build_array('J1','J2','J3','J4','J5'), ARRAY['ROUGE','BLANC','JAUNE','BLEU'])
+    ON CONFLICT (event_id) DO UPDATE
+    SET event_name = excluded.event_name, division = excluded.division, round = excluded.round, heat_number = excluded.heat_number, judges = excluded.judges, surfers = excluded.surfers;
+
+    INSERT INTO heat_configs (heat_id, judges, surfers, waves, tournament_type)
+    VALUES ('${H1_ID}', ARRAY['J1','J2','J3','J4','J5'], ARRAY['ROUGE','BLANC','JAUNE','BLEU'], 15, 'standard')
+    ON CONFLICT (heat_id) DO UPDATE SET judges = excluded.judges, surfers = excluded.surfers;
+
+    INSERT INTO participants (event_id, category, name, seed)
+    VALUES
+      (${EVENT_ID}, 'OPEN', 'Surfer Red 1', 1),
+      (${EVENT_ID}, 'OPEN', 'Surfer White 1', 2),
+      (${EVENT_ID}, 'OPEN', 'Surfer Yellow 1', 3),
+      (${EVENT_ID}, 'OPEN', 'Surfer Blue 1', 4)
+    ON CONFLICT DO NOTHING;
+
+    UPDATE heat_entries SET participant_id = p.id FROM participants p WHERE heat_entries.heat_id = '${H1_ID}' AND heat_entries.color = 'ROUGE' AND p.name = 'Surfer Red 1';
+    UPDATE heat_entries SET participant_id = p.id FROM participants p WHERE heat_entries.heat_id = '${H1_ID}' AND heat_entries.color = 'BLANC' AND p.name = 'Surfer White 1';
+    UPDATE heat_entries SET participant_id = p.id FROM participants p WHERE heat_entries.heat_id = '${H1_ID}' AND heat_entries.color = 'JAUNE' AND p.name = 'Surfer Yellow 1';
+    UPDATE heat_entries SET participant_id = p.id FROM participants p WHERE heat_entries.heat_id = '${H1_ID}' AND heat_entries.color = 'BLEU' AND p.name = 'Surfer Blue 1';
+  "`);
 
   // Set H1 to running
   await supabase.rpc('upsert_heat_realtime_config', {
@@ -124,7 +157,7 @@ async function runGate4() {
   // STEP 4: Assert DB=0 / WAL=1 while offline
   console.log('[STEP 4] Asserting DB=0 / WAL=1 while offline...');
   const dbCountOffline = execSync(`docker exec surfjudging_p38_manonman_test2_postgres psql -U postgres -d postgres -t -A -c "SELECT count(*) FROM scores WHERE heat_id = '${H1_ID}';"`, { encoding: 'utf8' }).trim();
-  
+
   const walCount = await pJudge.evaluate(() => {
     const raw = localStorage.getItem('surfjudging-offline-store');
     try { return JSON.parse(raw).state.mutations.length; } catch { return 0; }

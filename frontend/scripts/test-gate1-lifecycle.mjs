@@ -32,18 +32,33 @@ async function runGate1() {
   await supabase.from('heats').update({ status: 'open', is_active: false }).eq('id', H2_ID);
 
   // Assign judges J1-J5 to H1 and H2
+  // Setup judges via psql
   const judges = ['J1', 'J2', 'J3', 'J4', 'J5'];
-  for (const hId of [H1_ID, H2_ID]) {
-    for (const j of judges) {
-      await supabase.from('heat_judge_assignments').upsert({
-        heat_id: hId,
-        event_id: EVENT_ID,
-        station: j,
-        judge_id: j,
-        judge_name: `Judge ${j}`
-      });
-    }
-  }
+  execSync(`docker exec surfjudging_p38_manonman_test2_postgres psql -U postgres -d postgres -c "
+    INSERT INTO podium_judge_assignments (event_id, podium_id, station, judge_id, judge_name)
+    VALUES
+      (${EVENT_ID}, 'A', 'J1', 'J1', 'Judge J1'),
+      (${EVENT_ID}, 'A', 'J2', 'J2', 'Judge J2'),
+      (${EVENT_ID}, 'A', 'J3', 'J3', 'Judge J3'),
+      (${EVENT_ID}, 'A', 'J4', 'J4', 'Judge J4'),
+      (${EVENT_ID}, 'A', 'J5', 'J5', 'Judge J5')
+    ON CONFLICT (event_id, podium_id, station) DO UPDATE
+    SET judge_id = excluded.judge_id, judge_name = excluded.judge_name;
+
+    INSERT INTO heat_judge_assignments (heat_id, event_id, station, judge_id, judge_name)
+    VALUES
+      ('${H1_ID}', ${EVENT_ID}, 'J1', 'J1', 'Judge J1'),
+      ('${H1_ID}', ${EVENT_ID}, 'J2', 'J2', 'Judge J2'),
+      ('${H1_ID}', ${EVENT_ID}, 'J3', 'J3', 'Judge J3'),
+      ('${H1_ID}', ${EVENT_ID}, 'J4', 'J4', 'Judge J4'),
+      ('${H1_ID}', ${EVENT_ID}, 'J5', 'J5', 'Judge J5'),
+      ('${H2_ID}', ${EVENT_ID}, 'J1', 'J1', 'Judge J1'),
+      ('${H2_ID}', ${EVENT_ID}, 'J2', 'J2', 'Judge J2'),
+      ('${H2_ID}', ${EVENT_ID}, 'J3', 'J3', 'Judge J3'),
+      ('${H2_ID}', ${EVENT_ID}, 'J4', 'J4', 'Judge J4'),
+      ('${H2_ID}', ${EVENT_ID}, 'J5', 'J5', 'Judge J5')
+    ON CONFLICT DO NOTHING;
+  "`);
 
   // Setup H1 realtime config
   await supabase.rpc('upsert_heat_realtime_config', {
@@ -197,10 +212,10 @@ async function runGate1() {
   // STEP 8: Reload all 4 interfaces and assert persistence
   console.log('[STEP 8] Reloading all 4 interfaces...');
   await Promise.all([
-    pAdmin.reload({ waitUntil: 'networkidle' }),
-    pJudge.reload({ waitUntil: 'networkidle' }),
-    pPriority.reload({ waitUntil: 'networkidle' }),
-    pDisplay.reload({ waitUntil: 'networkidle' })
+    pAdmin.reload({ waitUntil: 'domcontentloaded' }),
+    pJudge.reload({ waitUntil: 'domcontentloaded' }),
+    pPriority.reload({ waitUntil: 'domcontentloaded' }),
+    pDisplay.reload({ waitUntil: 'domcontentloaded' })
   ]);
   await pAdmin.waitForTimeout(2000);
 

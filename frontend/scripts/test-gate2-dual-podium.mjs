@@ -39,19 +39,38 @@ async function runGate2() {
     p_podium_id: 'B'
   });
 
-  // Assign judges J1-J5 to both heats
   const judges = ['J1', 'J2', 'J3', 'J4', 'J5'];
-  for (const hId of [H1_ID, H2_ID]) {
-    for (const j of judges) {
-      await supabase.from('heat_judge_assignments').upsert({
-        heat_id: hId,
-        event_id: EVENT_ID,
-        station: j,
-        judge_id: j,
-        judge_name: `Judge ${j}`
-      });
-    }
-  }
+  // Assign judges to heats and podiums via psql
+  execSync(`docker exec surfjudging_p38_manonman_test2_postgres psql -U postgres -d postgres -c "
+    INSERT INTO podium_judge_assignments (event_id, podium_id, station, judge_id, judge_name)
+    VALUES
+      (${EVENT_ID}, 'A', 'J1', 'J1', 'Judge J1'),
+      (${EVENT_ID}, 'A', 'J2', 'J2', 'Judge J2'),
+      (${EVENT_ID}, 'A', 'J3', 'J3', 'Judge J3'),
+      (${EVENT_ID}, 'A', 'J4', 'J4', 'Judge J4'),
+      (${EVENT_ID}, 'A', 'J5', 'J5', 'Judge J5'),
+      (${EVENT_ID}, 'B', 'J1', 'B_J1', 'Judge B J1'),
+      (${EVENT_ID}, 'B', 'J2', 'B_J2', 'Judge B J2'),
+      (${EVENT_ID}, 'B', 'J3', 'B_J3', 'Judge B J3'),
+      (${EVENT_ID}, 'B', 'J4', 'B_J4', 'Judge B J4'),
+      (${EVENT_ID}, 'B', 'J5', 'B_J5', 'Judge B J5')
+    ON CONFLICT (event_id, podium_id, station) DO UPDATE
+    SET judge_id = excluded.judge_id, judge_name = excluded.judge_name;
+
+    INSERT INTO heat_judge_assignments (heat_id, event_id, station, judge_id, judge_name)
+    VALUES
+      ('${H1_ID}', ${EVENT_ID}, 'J1', 'J1', 'Judge J1'),
+      ('${H1_ID}', ${EVENT_ID}, 'J2', 'J2', 'Judge J2'),
+      ('${H1_ID}', ${EVENT_ID}, 'J3', 'J3', 'Judge J3'),
+      ('${H1_ID}', ${EVENT_ID}, 'J4', 'J4', 'Judge J4'),
+      ('${H1_ID}', ${EVENT_ID}, 'J5', 'J5', 'Judge J5'),
+      ('${H2_ID}', ${EVENT_ID}, 'J1', 'B_J1', 'Judge B J1'),
+      ('${H2_ID}', ${EVENT_ID}, 'J2', 'B_J2', 'Judge B J2'),
+      ('${H2_ID}', ${EVENT_ID}, 'J3', 'B_J3', 'Judge B J3'),
+      ('${H2_ID}', ${EVENT_ID}, 'J4', 'B_J4', 'Judge B J4'),
+      ('${H2_ID}', ${EVENT_ID}, 'J5', 'B_J5', 'Judge B J5')
+    ON CONFLICT DO NOTHING;
+  "`);
 
   // Setup H1 (Podium A) and H2 (Podium B) configs (stopped/waiting)
   await supabase.rpc('upsert_heat_realtime_config', {
