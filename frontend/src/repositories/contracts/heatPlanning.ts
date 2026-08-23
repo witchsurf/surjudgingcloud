@@ -6,6 +6,7 @@ export interface HeatPlanningOptions {
   repechage?: RoundSpec[];
   defaultJudges?: string[];
   tournamentType?: string;
+  progressionEdges?: readonly Record<string, unknown>[];
 }
 
 export interface CreateHeatPlanRequest {

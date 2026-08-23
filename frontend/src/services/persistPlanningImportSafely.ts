@@ -46,6 +46,16 @@ export async function persistPlanningImportSafely(request: PersistPlanningImport
       repechage: request.preview.repechage,
       defaultJudges: ['J1', 'J2', 'J3'],
       tournamentType: request.format === 'single-elim' ? 'elimination' : 'repechage',
+      progressionEdges: (request.preview.progressionEdges ?? []).map((edge) => ({
+        event_id: request.eventId,
+        category: request.category,
+        target_heat_id: `${eventName}_${request.category}_R${edge.targetRound}_H${edge.targetHeat}`.toLowerCase().replace(/\s+/g, '_'),
+        target_position: edge.targetPosition,
+        source_round: edge.sourceRound,
+        source_heat: edge.sourceHeat === 0 ? 'BYE' : `${eventName}_${request.category}_R${edge.sourceRound}_H${edge.sourceHeat}`.toLowerCase().replace(/\s+/g, '_'),
+        source_position: edge.sourcePosition,
+        progression_type: edge.type,
+      })),
     },
   });
 }

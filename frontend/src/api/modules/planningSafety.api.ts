@@ -66,15 +66,31 @@ export async function fetchPlanningSafetyInventory(input: {
 
 export async function persistSafePlanningRpc(input: SafePlanningPersistenceRequest): Promise<void> {
   ensureSupabase();
-  const { error } = await supabase!.rpc('bulk_upsert_heats_safe_v2', {
-    p_event_id: input.eventId,
-    p_category: input.category,
-    p_overwrite: input.overwrite,
-    p_heats: [...input.heats],
-    p_entries: [...input.entries],
-    p_mappings: [...input.mappings],
-    p_participants: [...input.participants],
-    p_heat_configs: [...input.heatConfigs],
-  });
-  if (error) throw error;
+  if (input.progressionEdges?.length || input.policies?.length) {
+    const { error } = await supabase!.rpc('bulk_upsert_heats_safe_v3', {
+      p_event_id: input.eventId,
+      p_category: input.category,
+      p_overwrite: input.overwrite,
+      p_heats: [...input.heats],
+      p_entries: [...input.entries],
+      p_mappings: [...input.mappings],
+      p_participants: [...input.participants],
+      p_heat_configs: [...input.heatConfigs],
+      p_progression_edges: [...(input.progressionEdges ?? [])],
+      p_policies: [...(input.policies ?? [])],
+    });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase!.rpc('bulk_upsert_heats_safe_v2', {
+      p_event_id: input.eventId,
+      p_category: input.category,
+      p_overwrite: input.overwrite,
+      p_heats: [...input.heats],
+      p_entries: [...input.entries],
+      p_mappings: [...input.mappings],
+      p_participants: [...input.participants],
+      p_heat_configs: [...input.heatConfigs],
+    });
+    if (error) throw error;
+  }
 }

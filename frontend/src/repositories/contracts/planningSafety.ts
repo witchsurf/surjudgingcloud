@@ -32,6 +32,8 @@ export interface SafePlanningPersistenceRequest extends PlanningSafetyPreflightR
   mappings: readonly Record<string, unknown>[];
   participants: readonly Record<string, unknown>[];
   heatConfigs: readonly Record<string, unknown>[];
+  progressionEdges?: readonly Record<string, unknown>[];
+  policies?: readonly Record<string, unknown>[];
 }
 
 export interface PlanningSafetyRepositoryContract {

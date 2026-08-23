@@ -1,6 +1,6 @@
-import { eventRepository } from '../repositories';
+import { eventRepository } from '../repositories/EventRepository';
 import { fetchHeatMetadata } from '../api/modules/heats.api';
-import { ensureHeatId } from './heat';
+import { ensurePersistedHeatId } from './heat';
 import { getHeatIdentifiers } from './heat';
 import type { AppConfig } from '../types';
 
@@ -38,7 +38,7 @@ export async function resolveEventIdForHeat(input: ResolveEventIdInput): Promise
         }
     }
 
-    const normalizedHeatId = input.heatId ? ensureHeatId(input.heatId) : '';
+    const normalizedHeatId = input.heatId ? ensurePersistedHeatId(input.heatId) : '';
     if (normalizedHeatId) {
         try {
             const metadata = await fetchHeatMetadata(normalizedHeatId);

@@ -43,11 +43,22 @@ export interface ComputeOptions {
   variant?: VariantType;
   seedingMethod?: 'snake';
   hybridPlan?: HybridPlan;
+  manOnManFromRound?: number;
+  promoteBestSecond?: boolean;
 }
 
 export interface ComputeResult {
   rounds: RoundSpec[];
   repechage?: RoundSpec[];
+  progressionEdges?: Array<{
+    targetRound: number;
+    targetHeat: number;
+    targetPosition: number;
+    sourceRound: number;
+    sourceHeat: number;
+    sourcePosition: number;
+    type: 'COMPETITION_RESULT' | 'AUTO_ADVANCE_BYE';
+  }>;
 }
 
 const isBracketPlaceholderName = (value?: string | null) => {
@@ -79,8 +90,13 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
   const rawPlan = generatePreviewHeats(
     legacyParticipants, 
     format === 'single-elim' ? 'elimination' : 'repechage', 
-    seriesSize
+    seriesSize,
+    { manOnManFromRound: options.manOnManFromRound, promoteBestSecond: options.promoteBestSecond }
   );
+
+  let progressionEdges: ComputeResult['progressionEdges'] = [];
+  // Mixed-format transitions deliberately use the existing production
+  // generator above. No parallel bracket or BYE semantics are introduced.
 
   const rounds: RoundSpec[] = rawPlan.map(plan => {
     return {
@@ -118,5 +134,5 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
     };
   });
   
-  return { rounds };
+  return { rounds, progressionEdges };
 }
