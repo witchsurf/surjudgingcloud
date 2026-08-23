@@ -1,0 +1,9 @@
+BUNDLE = /private/tmp/SurfJudging-P3.7B-Offline-Certification-amd64
+MANIFEST = release-manifest-v3.json
+MANIFEST_SHA256 = 8842622e8fd817e772dd6855c487a4b8f228946644c7fcb7672879d499549f69
+SIGNATURE_NAMESPACE = surfjudging-release-v3
+SIGNER_IDENTITY = surfjudging-p3.7b-test
+EXPECTED_PUBLIC_KEY_FINGERPRINT = SHA256:wYZTQ+HBk0oQKisbYPxr2jkobVJOTRSiJgcHmYJlEio
+SIGN_COMMAND = ssh-keygen -Y sign -f <AUTHORIZED_PRIVATE_KEY> -n surfjudging-release-v3 release-manifest-v3.json
+VERIFY_COMMAND = ssh-keygen -Y verify -f trust/allowed_signers -I surfjudging-p3.7b-test -n surfjudging-release-v3 -s release-manifest-v3.json.sig < release-manifest-v3.json
+DO_NOT_MODIFY_MANIFEST_AFTER_SIGNING = YES

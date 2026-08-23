@@ -426,7 +426,7 @@ Règle pratique :
 - Si le Cloud contient des tests récents mais peu de scores, et que le HP contient l’historique terrain complet : considérer le Cloud comme bruit de test et pousser le HP.
 
 #### B. Installation Hardware (Panneaux Priorité & Horn)
-Le module ESP32 a été rendu **100% autonome et Plug & Play**. 
+Le module ESP32 a été rendu **100% autonome et Plug & Play**.
 
 **1. Connexion WiFi Automatique :**
 Dès qu'il est allumé, l'ESP32 va chercher le réseau `DLINK`.

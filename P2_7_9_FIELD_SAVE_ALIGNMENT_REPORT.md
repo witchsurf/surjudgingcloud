@@ -1,8 +1,8 @@
 # SURFJUDGING — P2.7.9 — FIELD SAVE ALIGNMENT + DEPLOYMENT
 
-Date de certification : 2026-08-11 (Africa/Dakar)  
-Release Field : `surfjudging-2026.08.11-p2.7.9-977128b-field`  
-URL certifiée : `http://192.168.1.41:8080/admin?eventId=10`  
+Date de certification : 2026-08-11 (Africa/Dakar)
+Release Field : `surfjudging-2026.08.11-p2.7.9-977128b-field`
+URL certifiée : `http://192.168.1.41:8080/admin?eventId=10`
 Contexte : `MAMELLES OPEN → JUNIOR → R1 H1`, podium A, event 10.
 
 ## A. Tests écrits avant correction
