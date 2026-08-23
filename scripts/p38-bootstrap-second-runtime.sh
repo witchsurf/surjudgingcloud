@@ -85,7 +85,12 @@ ACTUAL_BASE_SHA=$(shasum -a 256 "$BASELINE" | awk '{print $1}')
 [[ "$ACTUAL_BASE_SHA" == "$EXPECTED_BASELINE_SHA" ]] || _fail "Baseline SHA mismatch: expected=$EXPECTED_BASELINE_SHA actual=$ACTUAL_BASE_SHA"
 _ok "Baseline SHA256 verified: $EXPECTED_BASELINE_SHA"
 
-# 0.3  Verify 8 migration hashes
+# 0.3  Verify manifest migration hashes and derive the required schema version.
+EXPECTED_SCHEMA_VERSION=$(python3 -c "
+import json
+m = json.load(open('$MANIFEST'))
+print(max(m['migrations'], key=lambda x: x['order'])['path'].rsplit('/', 1)[-1].removesuffix('.sql'))
+")
 MIGRATION_CHECK=$(python3 -c "
 import json, hashlib, sys
 m = json.load(open('$MANIFEST'))
@@ -100,6 +105,7 @@ print(f'{len(m[\"migrations\"])} migrations checked, {fail} failures')
 sys.exit(fail)
 ")
 _ok "Migrations: $MIGRATION_CHECK"
+_ok "Expected schema version: $EXPECTED_SCHEMA_VERSION"
 
 # 0.4  Port collision check
 for P in $API_PORT $FRONTEND_PORT $PG_PORT; do
@@ -212,7 +218,7 @@ if [[ $DRY -eq 1 ]]; then
   done
   echo ""
   echo "  Baseline:  $BASELINE (SHA OK)"
-  echo "  Migrations: 8/8 verified"
+  echo "  Migrations: ${MIGRATION_CHECK}"
   echo "  JWT: ANON_KEY valid, SERVICE_ROLE_KEY valid"
   echo ""
   python3 -c "
@@ -619,7 +625,7 @@ cat > "$RUNTIME_ROOT/deployment-manifest.json" <<DMEOF
   "deploymentMode": "field",
   "releaseId": "p38-disposable-${PROJECT}",
   "codeRevision": "$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo 'unknown')",
-  "expectedSchemaVersion": "20260821180000_p38_v4_legacy_recursion_fix",
+  "expectedSchemaVersion": "$EXPECTED_SCHEMA_VERSION",
   "cloudTestActivationSupported": false,
   "publicApiUrl": "http://192.168.1.107:${API_PORT}"
 }
@@ -732,9 +738,9 @@ GRANT USAGE ON SCHEMA _realtime TO postgres, anon, authenticated, service_role;
 _ok "Service role passwords and _realtime schema configured"
 
 ###############################################################################
-# PHASE 6 — APPLY 8 MANIFEST MIGRATIONS
+# PHASE 6 — APPLY MANIFEST MIGRATIONS
 ###############################################################################
-_info "PHASE 6: Apply 8 manifest migrations in order"
+_info "PHASE 6: Apply manifest migrations in order"
 
 python3 -c "
 import json
@@ -748,7 +754,7 @@ for mig in sorted(m['migrations'], key=lambda x: x['order']):
   docker exec -i "$C_POSTGRES" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$MIG_FULL" || _fail "Migration failed: $MIG_NAME"
   _ok "  Applied: $MIG_NAME"
 done
-_ok "All 8 migrations applied"
+_ok "All manifest migrations applied"
 
 ###############################################################################
 # PHASE 7 — FIELD MODE PROVISIONING
@@ -764,7 +770,7 @@ ON CONFLICT (id) DO UPDATE SET
   provisioned_at = now();
 
 INSERT INTO public.app_runtime_schema_version (id, schema_version, schema_label, updated_at)
-VALUES (true, '20260821180000_p38_v4_legacy_recursion_fix', 'P3.8 Second Runtime', now())
+VALUES (true, '$EXPECTED_SCHEMA_VERSION', 'P3.8 Second Runtime', now())
 ON CONFLICT (id) DO UPDATE SET
   schema_version = EXCLUDED.schema_version,
   schema_label = EXCLUDED.schema_label,
@@ -907,7 +913,7 @@ echo "  Realtime:        Running"
 echo "  deployment_mode: field"
 echo ""
 echo "  Baseline:        PASS ($EXPECTED_BASELINE_SHA)"
-echo "  Migrations:      8/8 PASS"
+echo "  Migrations:      ${MIGRATION_CHECK}"
 echo ""
 echo "  BOOTSTRAP_STATUS = PASS"
 echo "═══════════════════════════════════════════════════════════════════"

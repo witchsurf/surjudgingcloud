@@ -126,4 +126,15 @@ SITE_URL=http://localhost:18480
       })
     );
   });
+
+  it('(I) frontend field:test2 relay executes the root CLI instead of importing past its CLI guard', () => {
+    const relay = fs.readFileSync(
+      path.resolve(process.cwd(), 'scripts/build-field-runtime.mjs'),
+      'utf8',
+    );
+
+    expect(relay).toContain('spawnSync(process.execPath');
+    expect(relay).toContain("[rootScript, ...process.argv.slice(2)]");
+    expect(relay).not.toMatch(/^import\(rootScript\);$/mu);
+  });
 });

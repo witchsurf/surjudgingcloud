@@ -54,7 +54,12 @@ async function run() {
   info('1. Verifying schema integrity and migration status');
   const verRes = await client.query('SELECT schema_version FROM public.app_runtime_schema_version LIMIT 1;');
   const schemaVersion = verRes.rows[0]?.schema_version;
-  const EXPECTED_SCHEMA_VERSION = '20260821180000_p38_v4_legacy_recursion_fix';
+  const manifest = JSON.parse(readFileSync(resolve('config/p38-from-zero-manifest.json'), 'utf8'));
+  const EXPECTED_SCHEMA_VERSION = manifest.migrations
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .at(-1)
+    .path.split('/').at(-1).replace(/\.sql$/, '');
   if (schemaVersion !== EXPECTED_SCHEMA_VERSION) {
     fail(`Schema version mismatch: ${schemaVersion}`);
   }
