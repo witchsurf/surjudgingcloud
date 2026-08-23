@@ -1,7 +1,0 @@
-{
-  "deploymentMode": "cloud",
-  "releaseId": "surfjudging-2026.08.12-main-080a2d4",
-  "codeRevision": "b7b9da16fb642fd85c9fd1398c95e2d3c523a56a",
-  "expectedSchemaVersion": "20260811090000_allow_field_anon_runtime_heat_config",
-  "cloudTestActivationSupported": true
-}

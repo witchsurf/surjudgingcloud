@@ -13,7 +13,13 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MANIFEST="$REPO_ROOT/config/p38-from-zero-manifest.json"
-BASELINE="$REPO_ROOT/.p38-worktree/database/p38-canonical-baseline.sql"
+if [[ -f "$REPO_ROOT/backend/supabase/p38-canonical-baseline.sql" ]]; then
+  BASELINE="$REPO_ROOT/backend/supabase/p38-canonical-baseline.sql"
+elif [[ -f "$REPO_ROOT/.p38-worktree/database/p38-canonical-baseline.sql" ]]; then
+  BASELINE="$REPO_ROOT/.p38-worktree/database/p38-canonical-baseline.sql"
+else
+  BASELINE="$REPO_ROOT/backend/supabase/p38-canonical-baseline.sql"
+fi
 
 # ── Project identity ─────────────────────────────────────────────────────────
 PROJECT="${P38_PROJECT:-surfjudging_p38_manonman_test2}"

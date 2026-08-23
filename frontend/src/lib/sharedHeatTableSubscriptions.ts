@@ -23,6 +23,7 @@ type HeatSignalState = {
   retryCount: number;
   listeners: Record<HeatSignalType, Map<string, ListenerEntry>>;
   lastPollAt: Partial<Record<HeatSignalType, number>>;
+  reconcileScheduled?: boolean;
 };
 
 const HEAT_SIGNAL_LOCAL_FALLBACK_POLL_INTERVAL_MS = 30000;
@@ -398,6 +399,16 @@ const reconcile = (heatId: string, state: HeatSignalState) => {
   setupChannel();
 };
 
+const scheduleReconcile = (heatId: string, state: HeatSignalState) => {
+  if (state.reconcileScheduled) return;
+  state.reconcileScheduled = true;
+  queueMicrotask(() => {
+    state.reconcileScheduled = false;
+    if (!heatSignalRegistry.has(heatId)) return;
+    reconcile(heatId, state);
+  });
+};
+
 const subscribe = (
   heatId: string,
   type: HeatSignalType,
@@ -411,12 +422,12 @@ const subscribe = (
 
   state.listeners[type].set(listenerId, { listener, mode: options?.mode ?? 'auto' });
   updateHeatSignalDebug();
-  reconcile(normalizedHeatId, state);
+  scheduleReconcile(normalizedHeatId, state);
 
   return () => {
     state.listeners[type].delete(listenerId);
     updateHeatSignalDebug();
-    reconcile(normalizedHeatId, state);
+    scheduleReconcile(normalizedHeatId, state);
     release(normalizedHeatId);
   };
 };

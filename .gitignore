@@ -55,6 +55,7 @@ mcp_config.json
 /frontend/vite.xlsx-spike.config.ts
 /supabase/.temp/
 frontend/dist-field/
+frontend/dist-cloud/
 frontend/dist-test2/
 frontend/playwright-report/
 frontend/test-results/
