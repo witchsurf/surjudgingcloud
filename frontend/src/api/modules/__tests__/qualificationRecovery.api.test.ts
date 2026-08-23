@@ -9,13 +9,15 @@ vi.mock('../../../lib/supabase', () => ({
 import { propagateQualifiersForSourceHeat, rebuildDivisionQualifiersFromScores } from '../heats.api';
 
 describe('qualification recovery RPC adapters', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('uses the exact propagation RPC/payload and numeric return', async () => {
     rpc.mockResolvedValue({ data: '4', error: null });
     await expect(propagateQualifiersForSourceHeat('event-open-r1-h1')).resolves.toBe(4);
     expect(rpc).toHaveBeenCalledWith('fn_propagate_qualifiers_for_source_heat', {
-      p_source_heat_id: 'event_open_r1_h1',
+      p_source_heat_id: 'event-open-r1-h1',
     });
   });
 

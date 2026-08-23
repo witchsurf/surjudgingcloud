@@ -45,7 +45,7 @@ const mapCreatedEvent = (row: CreatedEventRpcRow): CreatedEventRecord => ({
 
 export async function createEventSecure(request: CreateEventRequest): Promise<CreatedEventRecord> {
   if (!supabase || !isSupabaseConfigured()) throw new Error('Supabase est indisponible.');
-  const { data, error } = await supabase.rpc('create_event_secure', {
+  const rpcBody = {
     p_name: request.name,
     p_organizer: request.organizer,
     p_start_date: request.startDate,
@@ -54,7 +54,14 @@ export async function createEventSecure(request: CreateEventRequest): Promise<Cr
     p_currency: request.currency,
     p_categories: [...request.categories],
     p_judges: [...request.judges],
-  });
+  };
+  let data;
+  let error;
+  try {
+    ({ data, error } = await supabase.rpc('create_event_secure', rpcBody));
+  } catch (caught) {
+    throw caught;
+  }
   if (error) throw new Error(error.message);
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error("La création n’a retourné aucun événement.");

@@ -448,13 +448,11 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
       authorization: `Bearer ${supabaseAnonKey}`,
     }
     : undefined;
-  const configuredSupabaseUrl =
-    (import.meta.env.VITE_SUPABASE_URL_LAN as string | undefined)
-    || (import.meta.env.VITE_SUPABASE_URL_LOCAL as string | undefined)
-    || `http://${hostname}:8000`;
-  const localSupabaseBase = /^https?:\/\/(?:localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/i.test(configuredSupabaseUrl)
-    ? configuredSupabaseUrl.replace(/\/$/, '')
-    : `http://${hostname}:8000`;
+  const localSupabaseBase = typeof window !== 'undefined'
+    ? origin
+    : ((import.meta.env.VITE_SUPABASE_URL_LAN as string | undefined)
+      || (import.meta.env.VITE_SUPABASE_URL_LOCAL as string | undefined)
+      || origin).replace(/\/$/, '');
   const esp32Url = (import.meta.env.VITE_ESP32_URL as string | undefined) || 'http://priority.local';
   const fieldNetwork = buildFieldNetworkInfo(window.location, localSupabaseBase, esp32Url);
   const supabaseUrl = `${localSupabaseBase}/rest/v1/events?select=id&limit=1`;

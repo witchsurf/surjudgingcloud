@@ -39,7 +39,12 @@ export const buildHeatId = (
   heatNumber: number
 ): string => normalizeHeatId(buildLegacyHeatId(competition, division, round, heatNumber));
 
-export const ensureHeatId = (heatId: string): string => normalizeHeatId(heatId);
+export const ensureHeatId = (heatId: string | number): string => normalizeHeatId(String(heatId || ''));
+
+export const ensurePersistedHeatId = (raw: unknown): string => {
+  if (raw === null || raw === undefined) return '';
+  return String(raw).trim();
+};
 
 export const getHeatRoundLabel = (round: number, finalRoundNumber?: number): string => {
   const parsedFinalRound = Number(finalRoundNumber);

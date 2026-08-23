@@ -6,7 +6,7 @@
  */
 
 import { BaseRepository } from './BaseRepository';
-import { ensureHeatId } from '../utils/heat';
+import { ensurePersistedHeatId } from '../utils/heat';
 import { logger } from '../lib/logger';
 import { saveOffline } from '../lib/supabase';
 import { distributeSeedsSnake, expandSeedMap, type ParticipantSeed } from '../utils/seeding';
@@ -251,7 +251,7 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
 
     async listSlotMappings(heatId: string): Promise<HeatSlotMapping[]> {
         return (await readHeatSlotMappings(heatId)).map((row) => ({
-            heatId: ensureHeatId(row.heat_id),
+            heatId: ensurePersistedHeatId(row.heat_id),
             position: row.position,
             placeholder: row.placeholder,
             sourceRound: row.source_round,
@@ -263,7 +263,7 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
     async listSlotMappingsBatch(heatIds: readonly string[]): Promise<ReadonlyMap<string, readonly HeatSlotMapping[]>> {
         const rowsByHeat = await readHeatSlotMappingsBatch([...heatIds]);
         return new Map(Array.from(rowsByHeat, ([heatId, rows]) => [heatId, rows.map((row) => ({
-            heatId: ensureHeatId(row.heat_id),
+            heatId: ensurePersistedHeatId(row.heat_id),
             position: row.position,
             placeholder: row.placeholder,
             sourceRound: row.source_round,
@@ -325,7 +325,7 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
      * Fetch heat entries with participant information
      */
     async fetchHeatEntriesWithParticipants(heatId: string): Promise<HeatEntryWithParticipant[]> {
-        const entries = await readHeatEntries(ensureHeatId(heatId));
+        const entries = await readHeatEntries(ensurePersistedHeatId(heatId));
         return entries.map((entry) => ({
             color: entry.color,
             position: entry.position,
@@ -355,7 +355,7 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
      * Update heat status with offline fallback
      */
     async updateHeatStatus(heatId: string, status: string, closedAt?: string): Promise<void> {
-        const normalizedHeatId = ensureHeatId(heatId);
+        const normalizedHeatId = ensurePersistedHeatId(heatId);
         const updateData: Record<string, any> = { status };
         if (closedAt) {
             updateData.closed_at = closedAt;
@@ -407,7 +407,7 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
      * Save Heat Configuration (Surfers, Colors, Judges)
      */
     async saveHeatConfig(heatId: string, config: LegacyHeatConfiguration): Promise<void> {
-        const normalizedHeatId = ensureHeatId(heatId);
+        const normalizedHeatId = ensurePersistedHeatId(heatId);
         const assignmentPayload = this.buildJudgeAssignments(normalizedHeatId, config);
         
         const payload = {
@@ -487,7 +487,7 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
     }
 
     async fetchHeatJudgeAssignments(heatId: string): Promise<HeatJudgeAssignment[]> {
-        const normalizedHeatId = ensureHeatId(heatId);
+        const normalizedHeatId = ensurePersistedHeatId(heatId);
 
         return this.execute(
             async () => {
@@ -807,7 +807,7 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
             )
             .sort((a, b) => Number(a.heat_number) - Number(b.heat_number));
 
-        const targetHeat = orderedHeats.find((heat) => ensureHeatId(heat.id) === heatId);
+        const targetHeat = orderedHeats.find((heat) => ensurePersistedHeatId(heat.id) === heatId);
         if (!targetHeat) {
             return;
         }

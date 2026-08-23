@@ -13,7 +13,7 @@ import { canUseSupabaseConnection, isSupabaseConfigured, supabase } from '../lib
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { calculateSurferStats } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
-import { getHeatIdentifiers, ensureHeatId } from '../utils/heat';
+import { getHeatIdentifiers, ensurePersistedHeatId } from '../utils/heat';
 import { eventRepository, heatLifecycleRepository, heatRepository, qualificationRecoveryRepository } from '../repositories';
 import { HEAT_COLOR_CACHE_KEY, DEFAULT_TIMER_DURATION } from '../utils/constants';
 import { getNextHeatSyncTarget, resolveEventIdForHeat } from '../utils/heatWorkflow';
@@ -124,7 +124,7 @@ export function useHeatManager() {
                 ) ?? null;
 
                 if (currentSequenceHeat?.id) {
-                    currentDbHeatId = ensureHeatId(currentSequenceHeat.id);
+                    currentDbHeatId = ensurePersistedHeatId(currentSequenceHeat.id);
                 }
             } catch (error) {
                 console.warn('Impossible de récupérer la séquence des heats', error);
@@ -224,7 +224,7 @@ export function useHeatManager() {
         }
 
         const currentHeatScores = (scores || []).filter(
-            (score) => ensureHeatId(score.heat_id) === currentDbHeatId && Number(score.score) > 0
+            (score) => ensurePersistedHeatId(score.heat_id) === currentDbHeatId && Number(score.score) > 0
         );
         const hasCurrentHeatResults = currentHeatScores.length > 0;
         let qualifiersHandledByDatabase = false;
@@ -490,7 +490,7 @@ export function useHeatManager() {
                 }
 
                 const remainingEventHeats = (eventHeats ?? []).filter((heat: any) => {
-                    const heatId = ensureHeatId(heat.id);
+                    const heatId = ensurePersistedHeatId(heat.id);
                     const status = (heat.status || '').toString().trim().toLowerCase();
                     return heatId !== currentDbHeatId && status !== 'closed';
                 });
@@ -578,7 +578,7 @@ export function useHeatManager() {
             }
         }
 
-        const nextHeatKeyCandidate = nextCandidate ? ensureHeatId(nextCandidate.id) : null;
+        const nextHeatKeyCandidate = nextCandidate ? ensurePersistedHeatId(nextCandidate.id) : null;
         if (nextHeatKeyCandidate && isSupabaseConfigured()) {
             try {
                 const cachedLineup = colorCache[nextHeatKeyCandidate] ?? {};

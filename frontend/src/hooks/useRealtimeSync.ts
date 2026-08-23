@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured, getSupabaseConfig, isLocalSupabaseMode } from '../lib/supabase';
 import type { AppConfig, HeatTimer, KioskConfig, HeatSyncRequest } from '../types';
-import { ensureHeatId } from '../utils/heat';
+import { ensurePersistedHeatId } from '../utils/heat';
 import { DEFAULT_TIMER_DURATION, INITIAL_CONFIG } from '../utils/constants';
 import { parseActiveHeatId } from '../utils/activeHeatId';
 import { upsertHeatRealtimeConfig } from '../api/modules/heats.api';
@@ -478,7 +478,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
   }, []);
 
   const publishTimerStart = useCallback(async (heatId: string, config: AppConfig, duration: number) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!isSupabaseConfigured()) {
       console.warn('⏩ Timer start ignoré (Supabase non configuré)');
       return;
@@ -509,7 +509,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
   }, [ensureAuthenticatedSession]);
 
   const publishTimerPause = useCallback(async (heatId: string, remainingDuration?: number) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!isSupabaseConfigured()) {
       console.warn('⏩ Timer pause ignoré (Supabase non configuré)');
       return;
@@ -554,7 +554,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
   }, [ensureAuthenticatedSession]);
 
   const publishTimerReset = useCallback(async (heatId: string, duration: number) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!isSupabaseConfigured()) {
       console.warn('⏩ Timer reset ignoré (Supabase non configuré)');
       return;
@@ -586,7 +586,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
   }, [ensureAuthenticatedSession]);
 
   const markHeatFinished = useCallback(async (heatId: string) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!isSupabaseConfigured()) {
       console.warn('⏩ Statut terminé ignoré (Supabase non configuré)');
       return;
@@ -611,7 +611,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
   }, [ensureAuthenticatedSession]);
 
   const publishConfigUpdate = useCallback(async (heatId: string, config: AppConfig) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!isSupabaseConfigured()) {
       console.warn('⏩ Publication config ignorée (Supabase non configuré)');
       return;
@@ -636,7 +636,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
   }, [ensureAuthenticatedSession]);
 
   const fetchRealtimeState = useCallback(async (heatId: string) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!isSupabaseConfigured()) return null;
 
     try {
@@ -658,7 +658,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
     heatId: string,
     onUpdate: (timer: HeatTimer, config: AppConfig | null, status: HeatLifecycleStatus) => void
   ) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!isSupabaseConfigured()) {
       console.warn('Supabase non configuré - pas de subscription');
       return () => { };
@@ -817,7 +817,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
   }, [setLastUpdate]); // Dependencies stabilized
 
   const initializeKiosk = useCallback(async (input: { eventId?: number | null; heatId: string; judgeId?: string | null }): Promise<KioskConfig> => {
-    const normalizedHeatId = ensureHeatId(input.heatId);
+    const normalizedHeatId = ensurePersistedHeatId(input.heatId);
     const parsed = parseActiveHeatId(normalizedHeatId);
     const eventName = parsed?.competition ?? '';
     const division = parsed?.division ?? '';
@@ -914,7 +914,7 @@ export function useRealtimeSync(): UseRealtimeSyncReturn {
   }, []);
 
   const syncHeatViaWebhook = useCallback(async (heatId: string, updates: Partial<RealtimeHeatConfig>) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!isSupabaseConfigured() || !supabase) {
       console.warn('⏩ Heat sync ignoré (Supabase non configuré)');
       return;

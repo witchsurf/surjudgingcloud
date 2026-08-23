@@ -6,12 +6,11 @@
  */
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AppConfig } from '../types';
 import { INITIAL_CONFIG } from '../utils/constants';
-import { activeHeatPointerRepository, eventRepository, panelRepository } from '../repositories';
-import { fetchAllEventCategories, fetchHeatEntriesWithParticipants, fetchHeatMetadata, fetchHeatSlotMappings } from '../api/modules/heats.api';
-import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
+import { activeHeatPointerRepository, eventRepository, heatRepository, panelRepository } from '../repositories';
+import { fetchAllEventCategories, fetchHeatBySchedule, fetchHeatEntriesWithParticipants, fetchHeatMetadata, fetchHeatSlotMappings } from '../api/modules/heats.api';
+import { ensureHeatId, ensurePersistedHeatId } from '../utils/heat';
 import { resolveEventDisplayName } from '../utils/eventName';
 import { logger } from '../lib/logger';
 import type { EventConfigSnapshot } from '../repositories';
@@ -19,7 +18,7 @@ import { supabase } from '../lib/supabase';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { getPodiumIdFromSearch, normalizePodiumId, shouldPreferActivePointer } from '../utils/podium';
 import { parseActiveHeatId } from '../utils/activeHeatId';
-import { getSafeLocalStorage } from '../utils/secureStorage';
+// Secure storage imports removed (no longer needed)
 
 interface ConfigStore {
     // State
@@ -52,11 +51,6 @@ const configLoadSequence = new Map<string, number>();
 const configLastLoadAt = new Map<string, number>();
 let latestRequestedConfigLoadKey = '';
 const CONFIG_LOAD_DEDUPE_MS = 12000;
-const unavailableStorage = {
-    getItem: () => null,
-    setItem: () => undefined,
-    removeItem: () => undefined,
-};
 
 const areConfigsEquivalent = (left: AppConfig, right: AppConfig): boolean => {
     if (Object.is(left, right)) return true;
@@ -171,8 +165,7 @@ const applyPodiumJudgePanel = async (
 };
 
 export const useConfigStore = create<ConfigStore>()(
-    persist(
-        (set, get) => ({
+    (set, get) => ({
             // Initial state
             config: INITIAL_CONFIG,
             configSaved: false,
@@ -208,18 +201,30 @@ export const useConfigStore = create<ConfigStore>()(
                     const urlParams = new URLSearchParams(window.location.search);
                     const urlEventId = urlParams.get('eventId');
                     const podiumId = getPodiumIdFromSearch(window.location.search);
-                    const persistedEventId = get().activeEventId;
-                    const eventIdCandidate = Number.isFinite(Number(urlEventId))
+                    const currentEventId = get().activeEventId;
+                    const eventIdCandidate = Number.isFinite(Number(urlEventId)) && Number(urlEventId) > 0
                         ? Number(urlEventId)
-                        : (Number.isFinite(persistedEventId) && persistedEventId ? persistedEventId : null);
+                        : null;
 
                     if (eventIdCandidate) {
-                        set({ activeEventId: eventIdCandidate });
-                        await get().loadConfigFromDb(eventIdCandidate, { podiumId });
+                        if (currentEventId !== eventIdCandidate) {
+                            set({
+                                config: INITIAL_CONFIG,
+                                configSaved: false,
+                                loadedFromDb: false,
+                                activeEventId: eventIdCandidate,
+                            });
+                        } else {
+                            set({ activeEventId: eventIdCandidate });
+                        }
+                        await get().loadConfigFromDb(eventIdCandidate, { podiumId, force: true });
                         return;
                     }
 
-                    const activeHeat = await activeHeatPointerRepository.get({ eventId: null, podiumId });
+                    const activeHeat = await activeHeatPointerRepository.get({
+                        eventId: currentEventId ?? null,
+                        podiumId,
+                    });
 
                     if (activeHeat) {
                         logger.info('ConfigStore', 'Active heat pointer found', activeHeat);
@@ -248,7 +253,7 @@ export const useConfigStore = create<ConfigStore>()(
                                 return;
                             }
 
-                            const nextHeatId = ensureHeatId(activeHeat.active_heat_id);
+                            const nextHeatId = ensurePersistedHeatId(activeHeat.activeHeatId);
                             const nextConfig = await applyHeatJudgeAssignments({
                                 ...INITIAL_CONFIG,
                                 competition: resolveEventDisplayName(parsed.competition, parsed.competition),
@@ -359,7 +364,7 @@ export const useConfigStore = create<ConfigStore>()(
                                             division: parsed.division,
                                             round: parsed.round,
                                             heat_number: parsed.heatNumber,
-                                            updated_at: activeHeat.updated_at,
+                                            updated_at: activeHeat.updatedAt,
                                         };
                                     }
                                 }
@@ -388,7 +393,13 @@ export const useConfigStore = create<ConfigStore>()(
                         // Fallback: enrich snapshot with lineup names if missing
                         if (snapshot) {
                             try {
-                                const heatKey = ensureHeatId(
+                                const authoritativeHeat = await fetchHeatBySchedule(
+                                    eventId,
+                                    snapshot.division,
+                                    snapshot.round,
+                                    snapshot.heat_number
+                                );
+                                const heatKey = authoritativeHeat?.id ?? ensureHeatId(
                                     `${snapshot.event_name}_${snapshot.division}_R${snapshot.round}_H${snapshot.heat_number}`
                                 );
                                 const [entries, heatMeta, slotMappings] = await Promise.all([
@@ -478,6 +489,7 @@ export const useConfigStore = create<ConfigStore>()(
                             if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
                                 set({
                                     config: dbConfig,
+                                    activeEventId: eventId,
                                     loadedFromDb: true,
                                     configSaved: true
                                 });
@@ -488,9 +500,41 @@ export const useConfigStore = create<ConfigStore>()(
                                     latestRequestedConfigLoadKey,
                                 });
                             }
-                            // Note: Zustand persist middleware automatically saves to localStorage
                         } else {
-                            logger.warn('ConfigStore', 'No snapshot found');
+                            logger.warn('ConfigStore', 'No snapshot found in event_last_config, loading from events table');
+                            try {
+                                const event = await eventRepository.fetchEvent(eventId);
+                                const eventCategories = await fetchAllEventCategories(eventId).catch(() => []);
+                                const defaultDivision = eventCategories[0] || 'OPEN';
+                                if (event?.name) {
+                                    const eventName = event.name.trim();
+                                    const heatKey = ensureHeatId(`${eventName}_${defaultDivision}_R1_H1`);
+                                    let initialConfig: AppConfig = {
+                                        ...INITIAL_CONFIG,
+                                        competition: eventName,
+                                        division: defaultDivision,
+                                        round: 1,
+                                        heatId: 1,
+                                    };
+                                    initialConfig = await applyHeatJudgeAssignments(initialConfig, heatKey);
+                                    initialConfig = await applyPodiumJudgePanel(initialConfig, eventId, podiumId);
+
+                                    if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
+                                        set({
+                                            config: initialConfig,
+                                            availableDivisions: eventCategories.length > 0 ? eventCategories : [defaultDivision],
+                                            loadedFromDb: true,
+                                            configSaved: false,
+                                            activeEventId: eventId,
+                                        });
+                                        configLastLoadAt.set(loadKey, Date.now());
+                                    }
+                                    return;
+                                }
+                            } catch (err) {
+                                logger.error('ConfigStore', 'Error loading event fallback', err);
+                            }
+
                             if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
                                 set({ loadedFromDb: false });
                             }
@@ -540,13 +584,23 @@ export const useConfigStore = create<ConfigStore>()(
                         surferCountries: config.surferCountries || {}
                     });
 
-                    // Update active_heat_pointer for kiosk judges
-                    const { normalized: heatId } = getHeatIdentifiers(
-                        config.competition,
-                        config.division,
-                        config.round,
-                        config.heatId
-                    );
+                    let heatId = '';
+                    try {
+                        const plannedHeat = await fetchHeatBySchedule(
+                            eventId,
+                            config.division,
+                            config.round,
+                            config.heatId
+                        );
+                        if (plannedHeat?.id) {
+                            heatId = plannedHeat.id;
+                        } else {
+                            throw new Error(`Planned heat not found in DB for ${config.division} R${config.round} H${config.heatId}`);
+                        }
+                    } catch (error) {
+                        logger.error('ConfigStore', 'Could not resolve authoritative heat ID for save', error);
+                        throw error;
+                    }
 
                     if (supabase) {
                         try {
@@ -587,7 +641,6 @@ export const useConfigStore = create<ConfigStore>()(
                     activeEventId: null,
                     loadedFromDb: false
                 });
-                // Note: Zustand persist middleware automatically clears its own key
             },
 
             // Initialize from URL params
@@ -598,14 +651,24 @@ export const useConfigStore = create<ConfigStore>()(
                 const urlEventId = urlParams.get('eventId');
                 const position = urlParams.get('position');
                 const eventIdNumber = urlEventId ? Number(urlEventId) : NaN;
+                const currentEventId = get().activeEventId;
 
                 // KIOSK MODE: If position=JX is in URL
                 if (position && /^J[1-5]$/i.test(position)) {
                     logger.info('ConfigStore', 'Kiosk mode detected', { position });
                     set({ isKioskMode: true });
-                    if (Number.isFinite(eventIdNumber)) {
-                        set({ activeEventId: eventIdNumber });
-                        await get().loadConfigFromDb(eventIdNumber);
+                    if (Number.isFinite(eventIdNumber) && eventIdNumber > 0) {
+                        if (currentEventId !== eventIdNumber) {
+                            set({
+                                config: INITIAL_CONFIG,
+                                configSaved: false,
+                                loadedFromDb: false,
+                                activeEventId: eventIdNumber,
+                            });
+                        } else {
+                            set({ activeEventId: eventIdNumber });
+                        }
+                        await get().loadConfigFromDb(eventIdNumber, { force: true });
                         return;
                     }
                     await get().loadKioskConfig();
@@ -613,30 +676,27 @@ export const useConfigStore = create<ConfigStore>()(
                 }
 
                 // NORMAL MODE: Load from eventId
-                if (Number.isFinite(eventIdNumber)) {
+                if (Number.isFinite(eventIdNumber) && eventIdNumber > 0) {
                     logger.info('ConfigStore', 'Found eventId in URL', { eventIdNumber });
-                    set({ activeEventId: eventIdNumber });
-                    await get().loadConfigFromDb(eventIdNumber);
+                    if (currentEventId !== eventIdNumber) {
+                        set({
+                            config: INITIAL_CONFIG,
+                            configSaved: false,
+                            loadedFromDb: false,
+                            activeEventId: eventIdNumber,
+                        });
+                    } else {
+                        set({ activeEventId: eventIdNumber });
+                    }
+                    await get().loadConfigFromDb(eventIdNumber, { force: true });
                     return;
                 }
 
-                // Fallback: Load from persisted activeEventId (managed by Zustand persist)
-                const persistedEventId = get().activeEventId;
-                if (Number.isFinite(persistedEventId) && persistedEventId && persistedEventId > 0 && !get().loadedFromDb) {
-                    logger.info('ConfigStore', 'Loading config from persisted eventId', { persistedEventId });
-                    set({ activeEventId: persistedEventId });
-                    await get().loadConfigFromDb(persistedEventId);
+                // Fallback: If no eventId in URL, load from activeEventId if set
+                if (Number.isFinite(currentEventId) && currentEventId && currentEventId > 0 && !get().loadedFromDb) {
+                    logger.info('ConfigStore', 'Loading config from activeEventId', { currentEventId });
+                    await get().loadConfigFromDb(currentEventId);
                 }
             },
-        }),
-        {
-            name: 'surf-judging-config',
-            storage: createJSONStorage(() => getSafeLocalStorage() ?? unavailableStorage),
-            partialize: (state) => ({
-                config: state.config,
-                configSaved: state.configSaved,
-                activeEventId: state.activeEventId,
-            }),
-        }
-    )
+        })
 );

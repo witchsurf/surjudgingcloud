@@ -8,10 +8,10 @@ const state = vi.hoisted(() => ({
   updates: [] as unknown[],
 }));
 
-const makeQuery = () => {
+const makeQuery = (): any => {
   const filters: Array<[string, unknown]> = [];
   state.queryFilters.push(filters);
-  const query = {
+  const query: any = {
     select: vi.fn(() => query),
     order: vi.fn(() => query),
     eq: vi.fn((field: string, value: unknown) => { filters.push([field, value]); return query; }),
@@ -76,7 +76,7 @@ describe('active heat pointer legacy adapter', () => {
       updatedAt: '2026-08-06T00:00:00.000Z',
     });
     expect(state.rpc).toHaveBeenCalledWith('upsert_active_heat_pointer', {
-      p_event_id: 7, p_event_name: 'Open', p_active_heat_id: 'open_r1_h2',
+      p_event_id: 7, p_event_name: 'Open', p_active_heat_id: 'open-r1-h2',
       p_updated_at: '2026-08-06T00:00:00.000Z', p_podium_id: 'B',
     });
   });
@@ -119,6 +119,6 @@ describe('active heat pointer legacy adapter', () => {
     expect(window.localStorage.getItem('active_heat_pointer_event_id_upsert_support')).toContain('"supported":true');
     state.limitResponses.push({ data: [], error: null });
     await fetchActiveHeatPointer(Number.NaN, undefined, 'A');
-    expect(state.queryFilters.at(-1)).not.toContainEqual(['event_id', Number.NaN]);
+    expect(state.queryFilters[state.queryFilters.length - 1]).not.toContainEqual(['event_id', Number.NaN]);
   });
 });

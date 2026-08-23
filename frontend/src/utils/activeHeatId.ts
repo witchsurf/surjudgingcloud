@@ -1,4 +1,4 @@
-import { ensureHeatId } from './heat';
+import { ensurePersistedHeatId } from './heat';
 
 const KNOWN_DIVISION_ID_SUFFIXES = [
   'ondine_open',
@@ -12,7 +12,7 @@ const KNOWN_DIVISION_ID_SUFFIXES = [
 ];
 
 export function parseActiveHeatId(heatId: string): { competition: string; division: string; round: number; heatNumber: number } | null {
-  const match = ensureHeatId(heatId).match(/^(.+)_r(\d+)_h(\d+)$/i);
+  const match = ensurePersistedHeatId(heatId).match(/^(.+)_r(\d+)_h(\d+)$/i);
   if (!match) return null;
   const prefix = match[1];
   const round = parseInt(match[2], 10);

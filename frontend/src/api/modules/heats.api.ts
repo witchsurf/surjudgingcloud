@@ -2,7 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { ensureSupabase } from './core.api';
 import { getColorSet, type HeatColor } from '../../utils/colorUtils';
 import { colorLabelMap } from '../../utils/colorUtils';
-import { ensureHeatId } from '../../utils/heat';
+import { ensurePersistedHeatId } from '../../utils/heat';
 import { parseActiveHeatId } from '../../utils/activeHeatId';
 import { isStrictHeatCloseRpcUnavailable } from '../../utils/heatCloseErrors';
 import type { RoundSpec, HeatSlotSpec } from '../../utils/bracket';
@@ -152,7 +152,7 @@ async function buildRoundOneEntriesFromParticipants(heatId: string): Promise<Hea
         )
         .sort((a, b) => Number(a.heat_number) - Number(b.heat_number));
 
-    const targetHeat = orderedHeats.find((heat) => ensureHeatId(heat.id) === heatId);
+    const targetHeat = orderedHeats.find((heat) => ensurePersistedHeatId(heat.id) === heatId);
     if (!targetHeat) return [];
 
     const { data: participantRows, error: participantsError } = await supabase!
@@ -165,7 +165,7 @@ async function buildRoundOneEntriesFromParticipants(heatId: string): Promise<Hea
     if (participantsError) throw participantsError;
     if (!participantRows?.length) return [];
 
-    const rawParticipants = (participantRows as ParticipantRecord[])
+    const rawParticipants = (participantRows as any[])
         .map((participant, index) => ({
             id: participant.id,
             seed: Number.isFinite(Number(participant.seed)) ? Number(participant.seed) : null,
@@ -250,7 +250,8 @@ export interface CreateHeatsOptions {
     overwrite?: boolean;
     repechage?: RoundSpec[];
     defaultJudges?: string[];
-    tournamentType?: string;
+  tournamentType?: string;
+  progressionEdges?: readonly Record<string, unknown>[];
 }
 
 export async function createHeatsWithEntries(
@@ -400,11 +401,12 @@ export async function createHeatsWithEntries(
         category,
         proposedHeatIds: newHeatIds,
         overwrite: Boolean(options.overwrite),
-        heats: heatRows,
-        entries: entryRows,
-        mappings: slotMappings,
+        heats: heatRows as any,
+        entries: entryRows as any,
+        mappings: slotMappings as any,
         participants: participantsPayload,
         heatConfigs: heatConfigRows,
+        progressionEdges: options.progressionEdges,
     });
 
     return { heats: heatRows, entries: entryRows };
@@ -426,7 +428,7 @@ export async function fetchOrderedHeatSequence(eventId: number, category: string
 
 export async function fetchHeatMetadata(heatId: string): Promise<HeatRow | null> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!
         .from('heats')
         .select('id, event_id, competition, division, round, heat_number, heat_size, status, color_order')
@@ -437,9 +439,29 @@ export async function fetchHeatMetadata(heatId: string): Promise<HeatRow | null>
     return data ? parseHeatRow(data) : null;
 }
 
+export async function fetchHeatBySchedule(
+    eventId: number,
+    division: string,
+    round: number,
+    heatNumber: number
+): Promise<HeatRow | null> {
+    ensureSupabase();
+    const { data, error } = await supabase!
+        .from('heats')
+        .select('id, event_id, competition, division, round, heat_number, heat_size, status, color_order')
+        .eq('event_id', eventId)
+        .ilike('division', division.trim())
+        .eq('round', round)
+        .eq('heat_number', heatNumber)
+        .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data ? parseHeatRow(data) : null;
+}
+
 export async function fetchHeatJudgeAssignments(heatId: string): Promise<HeatJudgeAssignmentRow[]> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!
         .from('heat_judge_assignments')
         .select('heat_id, event_id, station, judge_id, judge_name, assigned_at, updated_at')
@@ -459,7 +481,7 @@ export async function fetchEventJudgeAssignments(eventId: number): Promise<HeatJ
 
     if (heatsError) throw heatsError;
 
-    const heatIds = (heats ?? []).map((row: { id: string }) => ensureHeatId(row.id));
+    const heatIds = (heats ?? []).map((row: { id: string }) => ensurePersistedHeatId(row.id));
     if (!heatIds.length) return [];
 
     const { data, error } = await supabase!
@@ -475,7 +497,7 @@ export async function fetchEventJudgeAssignments(eventId: number): Promise<HeatJ
 
 export async function replaceHeatEntries(heatId: string, rows: { position: number; participant_id: number | null; seed?: number | null; color?: string | null }[]) {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!rows.length) return;
 
     const positions = rows.map((row) => row.position);
@@ -490,7 +512,7 @@ export async function replaceHeatEntries(heatId: string, rows: { position: numbe
         heat_id: normalizedHeatId,
         participant_id: row.participant_id,
         position: row.position,
-        seed: row.seed ?? null,
+        seed: row.seed ?? 0,
         color: row.color ?? null,
     }));
 
@@ -500,7 +522,7 @@ export async function replaceHeatEntries(heatId: string, rows: { position: numbe
 
 export async function fetchHeatEntriesWithParticipants(heatId: string): Promise<HeatEntriesWithParticipantRow[]> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
 
     const { data, error } = await supabase!
         .from('heat_entries')
@@ -568,7 +590,7 @@ export async function fetchHeatEntriesWithParticipantsBatch(
     heatIds: string[]
 ): Promise<Map<string, HeatEntriesWithParticipantRow[]>> {
     ensureSupabase();
-    const normalizedHeatIds = Array.from(new Set(heatIds.map(ensureHeatId).filter(Boolean)));
+    const normalizedHeatIds = Array.from(new Set(heatIds.map(ensurePersistedHeatId).filter(Boolean)));
     const result = new Map<string, HeatEntriesWithParticipantRow[]>(
         normalizedHeatIds.map((heatId) => [heatId, []])
     );
@@ -594,7 +616,7 @@ export async function fetchHeatEntriesWithParticipantsBatch(
     const fallbackByHeat = new Map<string, HeatEntriesWithParticipantRow[]>();
     if (!lineupsError) {
         for (const row of parseRows(lineups, parseLegacyLineupRow)) {
-            const heatId = ensureHeatId(row.heat_id || '');
+            const heatId = ensurePersistedHeatId(row.heat_id || '');
             if (!heatId) continue;
             const rows = fallbackByHeat.get(heatId) ?? [];
             rows.push({
@@ -612,7 +634,7 @@ export async function fetchHeatEntriesWithParticipantsBatch(
 
     const entriesByHeat = new Map<string, HeatEntriesWithParticipantRow[]>();
     for (const row of parseRows(entries, parseHeatEntryJoinedRow)) {
-        const heatId = ensureHeatId(row.heat_id || '');
+        const heatId = ensurePersistedHeatId(row.heat_id || '');
         if (!heatId) continue;
         const rows = entriesByHeat.get(heatId) ?? [];
         const participant = normalizeJoinedParticipant(row.participant);
@@ -658,21 +680,21 @@ export async function fetchHeatEntriesWithParticipantsBatch(
 
 export async function adminOverrideHeatEntry(input: HeatEntryOverrideInput): Promise<HeatEntryOverrideResult> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(input.heatId);
+    const normalizedHeatId = ensurePersistedHeatId(input.heatId);
 
     const { data, error } = await supabase!.rpc('admin_override_heat_entry', {
         p_heat_id: normalizedHeatId,
         p_position: input.position,
-        p_color: input.color ?? null,
-        p_participant_id: input.participantId ?? null,
-        p_name: input.name ?? null,
-        p_country: input.country ?? null,
-        p_reason: input.reason ?? null,
+        p_color: input.color ?? undefined,
+        p_participant_id: input.participantId ?? undefined,
+        p_name: input.name ?? undefined,
+        p_country: input.country ?? undefined,
+        p_reason: input.reason ?? undefined,
         p_created_by: input.createdBy ?? 'chief_judge',
     });
 
     if (error) throw error;
-    return data as HeatEntryOverrideResult;
+    return data as unknown as HeatEntryOverrideResult;
 }
 
 type CategoryHeatUpdateState = {
@@ -935,12 +957,12 @@ export async function upsertActiveHeatPointer(input: {
         event_id: input.eventId ?? null,
         event_name: input.eventName,
         podium_id: podiumId,
-        active_heat_id: ensureHeatId(input.activeHeatId),
+        active_heat_id: ensurePersistedHeatId(input.activeHeatId),
         updated_at: input.updatedAt ?? new Date().toISOString(),
     };
 
     let { error: rpcError } = await supabase!.rpc('upsert_active_heat_pointer', {
-        p_event_id: payload.event_id,
+        p_event_id: payload.event_id ?? undefined,
         p_event_name: payload.event_name,
         p_active_heat_id: payload.active_heat_id,
         p_updated_at: payload.updated_at,
@@ -949,7 +971,7 @@ export async function upsertActiveHeatPointer(input: {
 
     if (rpcError && isRpcUnavailableError(rpcError, 'upsert_active_heat_pointer')) {
         const legacyResult = await supabase!.rpc('upsert_active_heat_pointer', {
-            p_event_id: payload.event_id,
+            p_event_id: payload.event_id ?? undefined,
             p_event_name: payload.event_name,
             p_active_heat_id: payload.active_heat_id,
             p_updated_at: payload.updated_at,
@@ -968,7 +990,7 @@ export async function upsertActiveHeatPointer(input: {
     const fallbackPayload = {
         event_name: input.eventName,
         podium_id: podiumId,
-        active_heat_id: ensureHeatId(input.activeHeatId),
+        active_heat_id: ensurePersistedHeatId(input.activeHeatId),
         updated_at: payload.updated_at,
     };
 
@@ -1088,12 +1110,12 @@ export async function activateHeatOnPodium(input: {
     const { data, error } = await supabase!.rpc('activate_heat_on_podium', {
         p_event_id: input.eventId,
         p_podium_id: podiumId,
-        p_heat_id: ensureHeatId(input.heatId),
+        p_heat_id: ensurePersistedHeatId(input.heatId),
         p_assigned_by: input.assignedBy || 'admin',
     });
 
     if (error) throw error;
-    return (data || {}) as PodiumHeatTransitionResult;
+    return (data || {}) as unknown as PodiumHeatTransitionResult;
 }
 
 export async function closeHeatOnPodium(input: {
@@ -1110,11 +1132,11 @@ export async function closeHeatOnPodium(input: {
     let { data, error } = await supabase!.rpc('close_heat_on_podium_strict', {
         p_event_id: input.eventId,
         p_podium_id: podiumId,
-        p_heat_id: ensureHeatId(input.heatId),
-        p_next_heat_id: input.nextHeatId ? ensureHeatId(input.nextHeatId) : null,
+        p_heat_id: ensurePersistedHeatId(input.heatId),
+        p_next_heat_id: (input.nextHeatId ? ensurePersistedHeatId(input.nextHeatId) : null) as unknown as string | undefined,
         p_closed_by: input.closedBy || 'admin',
         p_force: Boolean(input.force),
-        p_force_reason: input.forceReason?.trim() || null,
+        p_force_reason: (input.forceReason?.trim() || null) as unknown as string | undefined,
     });
 
     const strictRpcUnavailable = isStrictHeatCloseRpcUnavailable(error);
@@ -1122,14 +1144,14 @@ export async function closeHeatOnPodium(input: {
         ({ data, error } = await supabase!.rpc('close_heat_on_podium', {
             p_event_id: input.eventId,
             p_podium_id: podiumId,
-            p_heat_id: ensureHeatId(input.heatId),
-            p_next_heat_id: input.nextHeatId ? ensureHeatId(input.nextHeatId) : null,
+            p_heat_id: ensurePersistedHeatId(input.heatId),
+            p_next_heat_id: (input.nextHeatId ? ensurePersistedHeatId(input.nextHeatId) : null) as unknown as string | undefined,
             p_closed_by: input.closedBy || 'admin',
         }));
     }
 
     if (error) throw error;
-    return (data || {}) as PodiumHeatTransitionResult;
+    return (data || {}) as unknown as PodiumHeatTransitionResult;
 }
 
 const buildHeatRealtimePatch = (input: HeatRealtimeConfigWriteInput) => {
@@ -1179,7 +1201,7 @@ const fallbackUpsertHeatRealtimeConfig = async (
         return;
     }
 
-    const insertPayload: Record<string, unknown> = {
+    const insertPayload: any = {
         heat_id: normalizedHeatId,
         updated_by: input.updatedBy ?? 'system',
         status: input.status ?? 'waiting',
@@ -1201,16 +1223,16 @@ export async function upsertHeatRealtimeConfig(
 ): Promise<void> {
     ensureSupabase();
 
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { error } = await supabase!.rpc('upsert_heat_realtime_config', {
         p_heat_id: normalizedHeatId,
-        p_status: input.status ?? null,
+        p_status: (input.status ?? undefined) as any,
         p_set_timer_start_time: Boolean(input.setTimerStartTime),
-        p_timer_start_time: input.setTimerStartTime ? (input.timerStartTime ?? null) : null,
+        p_timer_start_time: input.setTimerStartTime ? (input.timerStartTime ?? undefined) : undefined,
         p_set_timer_duration: Boolean(input.setTimerDuration),
-        p_timer_duration_minutes: input.setTimerDuration ? (input.timerDurationMinutes ?? null) : null,
+        p_timer_duration_minutes: input.setTimerDuration ? (input.timerDurationMinutes ?? undefined) : undefined,
         p_set_config_data: Boolean(input.setConfigData),
-        p_config_data: input.setConfigData ? (input.configData ?? null) : null,
+        p_config_data: input.setConfigData ? ((input.configData as any) ?? undefined) : undefined,
         p_updated_by: input.updatedBy ?? 'system',
     });
 
@@ -1228,7 +1250,7 @@ export async function upsertHeatRealtimeConfig(
 export async function propagateQualifiersForSourceHeat(heatId: string): Promise<number> {
     ensureSupabase();
 
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!.rpc('fn_propagate_qualifiers_for_source_heat', {
         p_source_heat_id: normalizedHeatId,
     });
@@ -1264,7 +1286,7 @@ export async function rebuildDivisionQualifiersFromScores(eventId: number, divis
 export async function validateHeatStartDependencies(heatId: string): Promise<HeatStartDependencyCheck> {
     ensureSupabase();
 
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!.rpc('validate_heat_start_dependencies', {
         p_heat_id: normalizedHeatId,
     });
@@ -1351,7 +1373,7 @@ export { parseActiveHeatId };
 
 export async function fetchHeatSlotMappings(heatId: string): Promise<HeatSlotMappingRow[]> {
     ensureSupabase();
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const { data, error } = await supabase!
         .from('heat_slot_mappings')
         .select('position, placeholder, source_round, source_heat, source_position')
@@ -1373,7 +1395,7 @@ export async function fetchHeatSlotMappingsBatch(
     heatIds: string[]
 ): Promise<Map<string, HeatSlotMappingRow[]>> {
     ensureSupabase();
-    const normalizedHeatIds = Array.from(new Set(heatIds.map(ensureHeatId).filter(Boolean)));
+    const normalizedHeatIds = Array.from(new Set(heatIds.map(ensurePersistedHeatId).filter(Boolean)));
     const result = new Map<string, HeatSlotMappingRow[]>(
         normalizedHeatIds.map((heatId) => [heatId, []])
     );
@@ -1388,7 +1410,7 @@ export async function fetchHeatSlotMappingsBatch(
 
     if (error) throw error;
     for (const parsed of parseRows(data, parseHeatSlotMapping)) {
-        const heatId = ensureHeatId(parsed.heat_id || '');
+        const heatId = ensurePersistedHeatId(parsed.heat_id || '');
         if (!heatId) continue;
         const row: HeatSlotMappingRow = { ...parsed, heat_id: heatId };
         const rows = result.get(heatId) ?? [];
@@ -1447,11 +1469,11 @@ export async function fetchCategoryHeats(eventId: number, category: string): Pro
                 const entryColor = entry.color ? (entry.color.toUpperCase() as HeatColor) : undefined;
                 const resolvedColor = entryColor && allowedColors.includes(entryColor) ? entryColor : color;
                 return {
-                    seed: entry.seed,
+                    seed: entry.seed ?? undefined,
                     name: participant.name,
                     country: participant.country ?? undefined,
                     license: participant.license ?? undefined,
-                    participantId: entry.participant_id ?? participant.id,
+                    participantId: (entry.participant_id ?? participant.id) ?? undefined,
                     color: resolvedColor,
                 };
             }
@@ -1485,7 +1507,26 @@ export async function fetchAllEventCategories(eventId: number): Promise<string[]
 
     if (error) throw error;
     const divisions = [...new Set((data ?? []).map((h) => h.division))];
-    return divisions.sort();
+
+    if (divisions.length > 0) {
+        return divisions.sort();
+    }
+
+    // Fallback: If no heats exist, fetch categories from the event table
+    const { data: eventData, error: eventError } = await supabase!
+        .from('events')
+        .select('categories')
+        .eq('id', eventId)
+        .maybeSingle();
+
+    if (eventError) throw eventError;
+
+    if (eventData?.categories && Array.isArray(eventData.categories)) {
+        const eventCategories = eventData.categories.map(c => typeof c === 'string' ? c : String(c)).filter(Boolean);
+        return [...new Set(eventCategories)].sort();
+    }
+
+    return [];
 }
 
 export async function fetchAllEventHeats(eventId: number): Promise<Record<string, RoundSpec[]>> {

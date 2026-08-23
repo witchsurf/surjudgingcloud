@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getHeatRoundLabel, getHeatSeriesLabel } from '../heat';
+import { getHeatRoundLabel, getHeatSeriesLabel, ensurePersistedHeatId, ensureHeatId, normalizeHeatId, buildHeatId } from '../heat';
 
 describe('heat display labels', () => {
   it('renders the last round as Finale when a tournament has multiple rounds', () => {
@@ -15,5 +15,23 @@ describe('heat display labels', () => {
   it('does not force Finale when the structure has a single round', () => {
     expect(getHeatRoundLabel(1, 1)).toBe('R1');
     expect(getHeatSeriesLabel(1, 1, 1)).toBe('R1 H1');
+  });
+});
+
+describe('opaque heat ID preservation vs synthetic normalization', () => {
+  const opaqueDbHeatId = 'p38-test2-disposable_open_r1_h1';
+
+  it('ensurePersistedHeatId preserves hyphenated opaque DB heat ID byte-for-byte', () => {
+    expect(ensurePersistedHeatId(opaqueDbHeatId)).toBe('p38-test2-disposable_open_r1_h1');
+    expect(ensurePersistedHeatId(opaqueDbHeatId)).not.toBe('p38_test2_disposable_open_r1_h1');
+    expect(ensurePersistedHeatId('  p38-test2-disposable_open_r1_h1  ')).toBe('p38-test2-disposable_open_r1_h1');
+    expect(ensurePersistedHeatId(null)).toBe('');
+    expect(ensurePersistedHeatId(undefined)).toBe('');
+  });
+
+  it('ensureHeatId and normalizeHeatId preserve legacy synthetic generation behavior', () => {
+    expect(ensureHeatId(opaqueDbHeatId)).toBe('p38_test2_disposable_open_r1_h1');
+    expect(normalizeHeatId(opaqueDbHeatId)).toBe('p38_test2_disposable_open_r1_h1');
+    expect(buildHeatId('P38 Test2 Disposable', 'OPEN', 1, 1)).toBe('p38_test2_disposable_open_r1_h1');
   });
 });

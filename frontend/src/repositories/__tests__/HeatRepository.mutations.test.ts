@@ -18,17 +18,21 @@ vi.mock('../../api/modules/runtimeHeatConfig.api', () => runtimeConfigApi);
 
 import { HeatRepository } from '../HeatRepository';
 
-type TestRepository = HeatRepository & {
+type TestRepository = {
   supabase: unknown;
   execute: <T>(operation: () => Promise<T>, fallback?: () => T | Promise<T>) => Promise<T>;
   ensureHeatEntries: (heatId: string, config: unknown) => Promise<void>;
   ensureEventLastConfigSnapshot: (heatId: string, config: unknown, assignments: unknown[]) => Promise<void>;
+  saveHeatConfig: (heatId: string, config: any) => Promise<void>;
+  createRuntime: (request: any) => Promise<void>;
 };
 
 const asTestRepository = (repository: HeatRepository) => repository as unknown as TestRepository;
 
 describe('HeatRepository non-destructive mutation boundary', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it.each([3, 5])('saveConfiguration preserves the canonical panel %s payload', async (judgeCount) => {
     const repository = new HeatRepository();
@@ -73,7 +77,7 @@ describe('HeatRepository non-destructive mutation boundary', () => {
     });
     expect(order).toEqual(['heat_configs', 'heat_judge_assignments', 'heat_entries', 'event_snapshot']);
     expect(runtimeConfigApi.upsertRuntimeHeatConfig).toHaveBeenCalledWith(repository.supabase, {
-      heat_id: 'heat_1', judges: ['J1', 'J2', 'J3'], surfers: ['ROUGE'],
+      heat_id: 'heat-1', judges: ['J1', 'J2', 'J3'], surfers: ['ROUGE'],
       judge_names: { J1: 'One', J2: 'Two', J3: 'Three' }, waves: 15,
       tournament_type: 'elimination',
     });
@@ -93,7 +97,7 @@ describe('HeatRepository non-destructive mutation boundary', () => {
       'heat_configs', 'heat_judge_assignments', '__heat_config_repair__',
     ]);
     expect(supabaseLib.saveOffline.mock.calls[0][0]).toMatchObject({
-      action: 'upsert', payload: { rows: { heat_id: 'heat_1', surfers: ['ROUGE'] } },
+      action: 'upsert', payload: { rows: { heat_id: 'heat-1', surfers: ['ROUGE'] } },
     });
   });
 

@@ -4,7 +4,7 @@ import { replayOfflineQueues } from '../lib/offlineSyncCoordinator';
 import { getLocalRuntimeSchemaReplayReadiness } from '../lib/offlineOperations';
 import type { Score, Heat, ScoreOverrideLog } from '../types';
 import type { AppConfig, HeatTimer } from '../types';
-import { ensureHeatId, buildHeatId } from '../utils/heat';
+import { ensurePersistedHeatId, buildHeatId } from '../utils/heat';
 import { heatRepository, panelRepository, timerRepository, scoreRepository } from '../repositories';
 import { upsertHeatRealtimeConfig } from '../api/modules/heats.api';
 import { recordScoreOverrideSecure } from '../api/modules/scoring.api';
@@ -14,7 +14,7 @@ export const normalizePersistedScores = (scores: Score[], idGenerator?: () => st
   scores.map((score) => ({
     ...score,
     id: isUuidV4(score.id) ? score.id : (idGenerator ? idGenerator() : score.id),
-    heat_id: ensureHeatId(score.heat_id),
+    heat_id: ensurePersistedHeatId(score.heat_id),
   }));
 
 interface SyncStatus {
@@ -54,7 +54,7 @@ export function useSupabaseSync() {
       const parsed = JSON.parse(raw) as LocalOverrideLog[];
       return parsed.map((log) => ({
         ...log,
-        heat_id: ensureHeatId(log.heat_id),
+        heat_id: ensurePersistedHeatId(log.heat_id),
       }));
     } catch (error) {
       console.error('❌ Erreur lecture override logs locaux:', error);
@@ -66,7 +66,7 @@ export function useSupabaseSync() {
     try {
       const normalizedLogs = logs.map((log) => ({
         ...log,
-        heat_id: ensureHeatId(log.heat_id),
+        heat_id: ensurePersistedHeatId(log.heat_id),
       }));
       localStorage.setItem(OVERRIDE_LOGS_KEY, JSON.stringify(normalizedLogs));
     } catch (error) {
@@ -244,7 +244,7 @@ export function useSupabaseSync() {
     heatId: string,
     config: AppConfig & { podiumId?: string },
   ) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
     const eventId = eventIdRaw ? parseInt(eventIdRaw, 10) : null;
 
@@ -278,7 +278,7 @@ export function useSupabaseSync() {
 
   // Charger la configuration d'un heat
   const loadHeatConfig = useCallback(async (heatId: string) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!canReachSupabase() || !isSupabaseConfigured()) return null;
 
     try {
@@ -316,7 +316,7 @@ export function useSupabaseSync() {
 
   // Charger l'état du timer
   const loadTimerState = useCallback(async (heatId: string) => {
-    const normalizedHeatId = ensureHeatId(heatId);
+    const normalizedHeatId = ensurePersistedHeatId(heatId);
     if (!canReachSupabase() || !isSupabaseConfigured()) return null;
 
     try {
