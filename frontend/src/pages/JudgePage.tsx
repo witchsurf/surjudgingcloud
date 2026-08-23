@@ -10,6 +10,7 @@ import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
 import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useHeatManager } from '../hooks/useHeatManager';
+import { useAuthoritativeHeatId } from '../hooks/useAuthoritativeHeatId';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isLocalSupabaseMode, isSupabaseConfigured } from '../lib/supabase';
 import { fetchOrderedHeatSequence, upsertHeatRealtimeConfig } from '../api/modules/heats.api';
@@ -38,26 +39,6 @@ export default function JudgePage() {
     latestConfigRef.current = config;
     latestConfigSavedRef.current = configSaved;
 
-    const currentHeatId = useMemo(
-        () =>
-            getHeatIdentifiers(
-                config.competition,
-                config.division,
-                config.round,
-                config.heatId
-            ).normalized,
-        [config.competition, config.division, config.round, config.heatId]
-    );
-    const currentSeriesLabel = useMemo(
-        () => {
-            const finalRoundNumber = divisionHeatSequence.length > 0
-                ? Math.max(...divisionHeatSequence.map((row) => Number(row.round) || 0))
-                : Number(config.totalRounds) || 0;
-            return getHeatSeriesLabel(config.round, config.heatId, finalRoundNumber);
-        },
-        [divisionHeatSequence, config.round, config.heatId, config.totalRounds]
-    );
-
     const searchParams = new URLSearchParams(window.location.search);
     const judgeIdFromUrl = searchParams.get('judge_id');
     const rawPosition = searchParams.get('position');
@@ -68,6 +49,24 @@ export default function JudgePage() {
     const judgeSessionEventId = Number.isFinite(numericEventIdFromUrl)
         ? numericEventIdFromUrl
         : activeEventId ?? undefined;
+
+    const { heatId: authoritativeJudgeHeatId } = useAuthoritativeHeatId({
+        eventId: judgeSessionEventId,
+        division: config.division,
+        round: config.round,
+        heatNumber: config.heatId,
+        podiumId,
+    });
+    const currentHeatId = authoritativeJudgeHeatId;
+    const currentSeriesLabel = useMemo(
+        () => {
+            const finalRoundNumber = divisionHeatSequence.length > 0
+                ? Math.max(...divisionHeatSequence.map((row) => Number(row.round) || 0))
+                : Number(config.totalRounds) || 0;
+            return getHeatSeriesLabel(config.round, config.heatId, finalRoundNumber);
+        },
+        [divisionHeatSequence, config.round, config.heatId, config.totalRounds]
+    );
 
     useEffect(() => {
         if (!currentJudge || !judgeSessionEventId) return;
@@ -241,7 +240,7 @@ export default function JudgePage() {
 
     // Subscribe to realtime timer/config for the current heat
     useEffect(() => {
-        if (!configSaved || !config.competition || configLoading) {
+        if (!configSaved || !config.competition || configLoading || !currentHeatId) {
             // Return a no-op cleanup function to prevent React error #310
             return () => { };
         }
@@ -530,6 +529,7 @@ export default function JudgePage() {
     return (
         <JudgeInterface
             config={config}
+            heatId={currentHeatId}
             judgeId={currentJudge?.id}
             judgeName={currentJudge?.name}
             onScoreSubmit={(score) => handleScoreSubmit(score, currentHeatId)}

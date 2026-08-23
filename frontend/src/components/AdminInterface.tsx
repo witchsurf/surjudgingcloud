@@ -7,7 +7,7 @@ import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, Ov
 import { sanitizeScoreInput, validateScore } from '../utils/scoring';
 import { buildJudgeDeviationDetails, calculateJudgeAccuracy } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
-import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
+import { ensurePersistedHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { reconcileRoundHeat } from '../utils/reconcileRoundHeat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
@@ -22,7 +22,7 @@ import type { HeatRow, HeatJudgeAssignmentRow, HeatEntriesWithParticipantRow, He
 import {
   fetchHeatScores, fetchPreferredScoresForEvent, fetchEventJudgeAssignmentCoverage,
   fetchEventJudgeAccuracySummary, fetchHeatCloseValidation, fetchHeatCloseReadiness,
-  fetchHeatMissingScoreSlots, fetchAllInterferenceCallsForEvent, fetchInterferenceCalls,
+  fetchAllInterferenceCallsForEvent, fetchInterferenceCalls,
   upsertInterferenceCall, deleteInterferenceCall, applyScoreCorrectionSecure, deleteScoreSecure,
 } from '../api/modules/scoring.api';
 import type { EventJudgeAssignmentCoverageRow, EventJudgeAccuracySummaryRow } from '../api/modules/scoring.api';
@@ -31,7 +31,7 @@ import { judgeRepository } from '../repositories/JudgeRepository';
 import type { JudgeRecord, ParticipantRecord } from '../repositories/contracts';
 import { supabase, isSupabaseConfigured, getSupabaseMode } from '../lib/supabase';
 import { TimerAudio } from '../utils/audioUtils';
-import { canonicalizeScores, getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId } from '../api/modules/scoring.api';
+import { canonicalizeScores, getScoreJudgeStation } from '../api/modules/scoring.api';
 import { inferImplicitMappingsForHeat } from '../utils/heatSlotMappingInference';
 import { getScoresByHeatIDB } from '../lib/idbStorage';
 import { DEFAULT_PODIUM_ID, normalizePodiumId } from '../utils/podium';
@@ -41,7 +41,6 @@ import AdminHeatResultSnapshotPanel from './AdminHeatResultSnapshotPanel';
 import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
 import { panelRepository } from '../repositories/PanelRepository';
 import { heatRepository } from '../repositories/HeatRepository';
-import { heatLifecycleRepository } from '../repositories/HeatLifecycleRepository';
 import { qualificationRecoveryRepository } from '../repositories/QualificationRecoveryRepository';
 import type { PanelContext } from '../domain/scoring/panelContext';
 import { resolveConsumerHeatSnapshot } from '../domain/scoring/overlaySnapshot';
@@ -176,7 +175,7 @@ const formatOverrideContext = (heatId: string, score?: Partial<Score>) => {
 
 const fetchHeatContext = (heatId: string, score?: Partial<Score>) => {
   const parsed = (() => {
-    const match = ensureHeatId(heatId).match(/^(.+)_([^_]+)_r(\d+)_h(\d+)$/i);
+    const match = ensurePersistedHeatId(heatId).match(/^(.+)_([^_]+)_r(\d+)_h(\d+)$/i);
     if (!match) return null;
     return {
       division: match[2].toUpperCase(),
@@ -255,6 +254,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   onRealtimeTimerReset,
   availableDivisions = [],
   loadState = 'loaded',
+  loadError = null,
   loadedFromDb = false,
   activeEventId,
   onReconnectToDb,
@@ -309,17 +309,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [eventPdfPending, setEventPdfPending] = useState(false);
   const [rankingPdfPending, setRankingPdfPending] = useState(false);
   const [finalistsPdfPending, setFinalistsPdfPending] = useState(false);
-  const [eventPdfMeta, setEventPdfMeta] = useState<{ organizer: string; startDate: string }>(() => {
-    try {
-      const data = JSON.parse(localStorage.getItem('eventData') || '{}');
-      return {
-        organizer: String(data.organizerDisplayName || data.organizer_display_name || data.organizer || ''),
-        startDate: String(data.startDateOverride || data.start_date_override || data.start_date || ''),
-      };
-    } catch {
-      return { organizer: '', startDate: '' };
-    }
-  });
+  const [eventPdfMeta, setEventPdfMeta] = useState<{ organizer: string; startDate: string }>({ organizer: '', startDate: '' });
   const [rebuildPending, setRebuildPending] = useState(false);
   const [offlineAdminPin] = useState(() => {
     try {
@@ -523,7 +513,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const buildIdentityAssignmentMap = useCallback((assignments: HeatJudgeAssignmentRow[]) => {
     return assignments.reduce<Map<string, { judgeId: string; judgeName: string }>>((acc, assignment) => {
-      const heatId = ensureHeatId(assignment.heat_id);
+      const heatId = ensurePersistedHeatId(assignment.heat_id);
       const station = (assignment.station || '').trim().toUpperCase();
       const judgeId = (assignment.judge_id || '').trim();
       if (!heatId || !station || !judgeId) return acc;
@@ -545,7 +535,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         };
       }
       const station = (score.judge_station || score.judge_id || '').trim().toUpperCase();
-      const key = `${ensureHeatId(score.heat_id)}::${station}`;
+      const key = `${ensurePersistedHeatId(score.heat_id)}::${station}`;
       const identity = identityMap.get(key);
       if (!identity) return score;
       return {
@@ -566,7 +556,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         };
       }
       const station = (log.judge_station || log.judge_id || '').trim().toUpperCase();
-      const key = `${ensureHeatId(log.heat_id)}::${station}`;
+      const key = `${ensurePersistedHeatId(log.heat_id)}::${station}`;
       const identity = identityMap.get(key);
       if (!identity) return log;
       return {
@@ -654,7 +644,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       try {
         const [assignments, coverage] = await Promise.all([
           panelRepository.listEventAssignments(activeEventId).then((rows) => rows.map((row) => ({
-            heat_id: row.heatId,
+            heat_id: row.heatId ?? '',
             event_id: row.eventId,
             station: row.station,
             judge_id: row.judgeId,
@@ -717,7 +707,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       }
       if (!cancelled && data) {
         authoritativeHeatStatusRef.current = new Map(
-          data.map((row) => [ensureHeatId(row.id), String(row.status || '')])
+          data.map((row) => [ensurePersistedHeatId(row.id), String(row.status || '')])
         );
         setAllEventHeatsMeta(data);
       }
@@ -755,20 +745,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => { cancelled = true; };
   }, [activeEventId, selectedPodiumId, podiumAssignStatus, config.heatId]);
 
-  const fallbackHeatId = React.useMemo(
-    () =>
-      getHeatIdentifiers(
-        config.competition,
-        config.division,
-        config.round,
-        config.heatId
-      ).normalized,
-    [config.competition, config.division, config.round, config.heatId]
-  );
-
   const heatId = React.useMemo(
-    () => ensureHeatId(canonicalHeatId || fallbackHeatId),
-    [canonicalHeatId, fallbackHeatId]
+    () => (canonicalHeatId ? ensurePersistedHeatId(canonicalHeatId) : ''),
+    [canonicalHeatId]
   );
 
   const hasCanonicalHeatContext = React.useMemo(
@@ -777,10 +756,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       configSaved &&
       (config.competition || '').trim() &&
       (config.division || '').trim() &&
-      heatId &&
-      heatId !== 'r1_h1'
+      canonicalHeatId &&
+      canonicalHeatId !== 'r1_h1'
     ),
-    [loadedFromDb, configSaved, config.competition, config.division, heatId]
+    [loadedFromDb, configSaved, config.competition, config.division, canonicalHeatId]
   );
 
   const resolveEventIdForCurrentHeat = useCallback(async (): Promise<number | null> => {
@@ -834,7 +813,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const allScores = [...(scores || []), ...(dbHeatScores || [])];
 
     allScores.forEach((score) => {
-      const key = `${ensureHeatId(score.heat_id)}::${getScoreJudgeStation(score)}::${normalizeJerseyLabel(score.surfer)}::${Number(score.wave_number)}`;
+      const key = `${ensurePersistedHeatId(score.heat_id)}::${getScoreJudgeStation(score)}::${normalizeJerseyLabel(score.surfer)}::${Number(score.wave_number)}`;
       const existing = byLogicalKey.get(key);
       if (!existing) {
         byLogicalKey.set(key, score);
@@ -853,7 +832,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const currentHeatResultScores = React.useMemo(() =>
     [...(scores || []), ...(dbHeatScores || [])]
-      .filter((score) => ensureHeatId(score.heat_id) === heatId)
+      .filter((score) => ensurePersistedHeatId(score.heat_id) === heatId)
       .map((score) => ({ ...score, surfer: normalizeJerseyLabel(score.surfer) || score.surfer })),
   [dbHeatScores, heatId, scores]);
 
@@ -1072,7 +1051,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const resolvedJudgeId = safeIdentities[selectedJudge.trim().toUpperCase()] || selectedJudge;
     return mergedScores
       .filter(score => {
-        if (ensureHeatId(score.heat_id) !== heatId) return false;
+        if (ensurePersistedHeatId(score.heat_id) !== heatId) return false;
         if (normalizeJerseyLabel(score.surfer) !== selectedSurferKey) return false;
         if (score.wave_number !== Number(selectedWave)) return false;
         // Match by UUID (judge_id) OR by station (judge_station) as fallback
@@ -1088,7 +1067,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       try {
         const raw = localStorage.getItem('surfJudgingScores');
         if (!raw) return [] as Score[];
-        return (JSON.parse(raw) as Score[]).filter((score) => ensureHeatId(score.heat_id) === heatId);
+        return (JSON.parse(raw) as Score[]).filter((score) => ensurePersistedHeatId(score.heat_id) === heatId);
       } catch {
         return [] as Score[];
       }
@@ -1591,11 +1570,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     setOverridePending(true);
     try {
-      // Build heat ID for the override
-      const heatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+      if (!canonicalHeatId) {
+        setOverrideStatus({ type: 'error', message: 'Chargement du heat planifié…' });
+        return;
+      }
+      const overrideHeatId = canonicalHeatId;
 
       const result = await onScoreOverride({
-        heatId,
+        heatId: overrideHeatId,
         competition: config.competition,
         division: config.division,
         round: config.round,
@@ -1645,7 +1627,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const resolvedJudgeIdMove = safeIdentitiesMove[selectedJudge.trim().toUpperCase()] || selectedJudge;
     const destinationExistingScore = mergedScores.find(
       (score) =>
-        ensureHeatId(score.heat_id) === heatId &&
+        ensurePersistedHeatId(score.heat_id) === heatId &&
         (score.judge_id === resolvedJudgeIdMove || score.judge_station === selectedJudge || score.judge_id === selectedJudge) &&
         normalizeJerseyLabel(score.surfer) === moveTargetSurferKey &&
         score.wave_number === Number(moveTargetWave) &&
@@ -1787,7 +1769,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         judge_id: selectedJudge,
         judge_name: config.judgeNames[selectedJudge] || selectedJudge,
         judge_station: selectedJudge,
-        judge_identity_id: config.judgeIdentities?.[selectedJudge] || null,
+        judge_identity_id: config.judgeIdentities?.[selectedJudge] || undefined,
         surfer: selectedSurferKey,
         wave_number: Number(selectedWave),
         call_type: interferenceType,
@@ -2241,21 +2223,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       // so revisiting a division remains passive and deterministic.
       const activeHeatIds = new Set(
         activePodiumPointers
-          .map((pointer) => ensureHeatId(pointer.active_heat_id || ''))
+          .map((pointer) => ensurePersistedHeatId(pointer.active_heat_id || ''))
           .filter(Boolean)
       );
       // During a division switch the current podium pointer may still be
       // loading asynchronously. Never auto-select the currently viewed heat
       // as the next destination; manual viewing/editing remains available.
-      const currentHeatKey = ensureHeatId(heatId || config.heatId);
+      const currentHeatKey = ensurePersistedHeatId(heatId || config.heatId);
       if (currentHeatKey) activeHeatIds.add(currentHeatKey);
       const available = planned.find((heat) =>
-        !isLockedStatus(authoritativeHeatStatusRef.current.get(ensureHeatId(heat.id)) || heat.status)
-        && !activeHeatIds.has(ensureHeatId(heat.id))
+        !isLockedStatus(authoritativeHeatStatusRef.current.get(ensurePersistedHeatId(heat.id)) || heat.status)
+        && !activeHeatIds.has(ensurePersistedHeatId(heat.id))
       );
       const selected = available || planned.find((heat) =>
-        !isLockedStatus(authoritativeHeatStatusRef.current.get(ensureHeatId(heat.id)) || heat.status)
-        && !activeHeatIds.has(ensureHeatId(heat.id))
+        !isLockedStatus(authoritativeHeatStatusRef.current.get(ensurePersistedHeatId(heat.id)) || heat.status)
+        && !activeHeatIds.has(ensurePersistedHeatId(heat.id))
       );
       if (selected) {
         divisionSelectionRef.current = {
@@ -2275,7 +2257,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       });
       return;
     }
-    const isHeatSelectionField = field === 'division' || field === 'round' || field === 'heatId';
+    const isHeatSelectionField = field === 'round' || field === 'heatId';
     const nextConfig = {
       ...config,
       [field]: value,
@@ -2592,11 +2574,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const currentHeatScoreCount = React.useMemo(
     () =>
       mergedScores.filter(
-        (score) => ensureHeatId(score.heat_id) === heatId && Number(score.score) > 0
+        (score) => ensurePersistedHeatId(score.heat_id) === heatId && Number(score.score) > 0
       ).length,
     [heatId, mergedScores]
   );
-  const currentHeatHasScores = currentHeatScoreCount > 0;
 
   const floatingTimeLeft = React.useMemo(
     () => getRemainingTimerSeconds(timer, floatingTimerTick),
@@ -2628,15 +2609,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   const activeOtherPodiumJudgeAssignments = React.useMemo(() => {
     const selectedPodium = normalizePodiumId(selectedPodiumId);
-    const currentHeatId = ensureHeatId(heatId);
+    const currentHeatId = ensurePersistedHeatId(heatId);
     const otherActiveHeatIds = new Set(
       activePodiumPointers
         .filter((pointer) =>
           pointer.active_heat_id &&
-          ensureHeatId(pointer.active_heat_id) !== currentHeatId &&
+          ensurePersistedHeatId(pointer.active_heat_id) !== currentHeatId &&
           normalizePodiumId(pointer.podium_id) !== selectedPodium
         )
-        .map((pointer) => ensureHeatId(pointer.active_heat_id || ''))
+        .map((pointer) => ensurePersistedHeatId(pointer.active_heat_id || ''))
     );
 
     if (otherActiveHeatIds.size === 0) return new Map<string, HeatJudgeAssignmentRow & { podiumId: string }>();
@@ -2644,11 +2625,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const podiumByHeatId = new Map(
       activePodiumPointers
         .filter((pointer) => pointer.active_heat_id)
-        .map((pointer) => [ensureHeatId(pointer.active_heat_id || ''), normalizePodiumId(pointer.podium_id)])
+        .map((pointer) => [ensurePersistedHeatId(pointer.active_heat_id || ''), normalizePodiumId(pointer.podium_id)])
     );
 
     return eventJudgeAssignments.reduce<Map<string, HeatJudgeAssignmentRow & { podiumId: string }>>((acc, assignment) => {
-      const assignmentHeatId = ensureHeatId(assignment.heat_id);
+      const assignmentHeatId = ensurePersistedHeatId(assignment.heat_id);
       const judgeIdentityId = (assignment.judge_id || '').trim();
       if (!otherActiveHeatIds.has(assignmentHeatId) || !isOfficialJudgeIdentityId(judgeIdentityId)) {
         return acc;
@@ -2764,7 +2745,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
 
     const selectedHeat = allEventHeatsMeta.find(
-      (row) => ensureHeatId(row.id) === ensureHeatId(heatId)
+      (row) => ensurePersistedHeatId(row.id) === ensurePersistedHeatId(heatId)
     );
     if (!selectedHeat) return;
 
@@ -2775,7 +2756,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const heatAlreadyUsedElsewhere = activePodiumPointers.some(
       (pointer) =>
         normalizePodiumId(pointer.podium_id) !== podiumId
-        && ensureHeatId(pointer.active_heat_id || '') === ensureHeatId(heatId)
+        && ensurePersistedHeatId(pointer.active_heat_id || '') === ensurePersistedHeatId(heatId)
     );
     if (heatAlreadyUsedElsewhere) {
       setPodiumAssignStatus({
@@ -2793,7 +2774,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const fingerprint = JSON.stringify({
       eventId: activeEventId,
       podiumId,
-      heatId: ensureHeatId(heatId),
+      heatId: ensurePersistedHeatId(heatId),
       assignments,
     });
     const currentPodiumPointer = activePodiumPointers.find(
@@ -2801,7 +2782,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     );
     if (
       currentPodiumPointer
-      && ensureHeatId(currentPodiumPointer.active_heat_id || '') === ensureHeatId(heatId)
+      && ensurePersistedHeatId(currentPodiumPointer.active_heat_id || '') === ensurePersistedHeatId(heatId)
     ) {
       // Loading or revisiting the admin must remain passive. The automatic
       // transition is only needed after the operator selects a different heat.
@@ -2861,7 +2842,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const eventAssignmentCoverage = React.useMemo(() => {
     if (assignmentCoverageRows.length > 0) {
       return assignmentCoverageRows.map((row) => {
-        const heatAssignments = eventJudgeAssignments.filter((assignment) => ensureHeatId(assignment.heat_id) === ensureHeatId(row.heat_id));
+        const heatAssignments = eventJudgeAssignments.filter((assignment) => ensurePersistedHeatId(assignment.heat_id) === ensurePersistedHeatId(row.heat_id));
         return {
           heatId: row.heat_id,
           division: row.division,
@@ -2892,7 +2873,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
 
     const assignmentsByHeat = eventJudgeAssignments.reduce<Map<string, Map<string, HeatJudgeAssignmentRow>>>((acc, assignment) => {
-      const heatId = ensureHeatId(assignment.heat_id);
+      const heatId = ensurePersistedHeatId(assignment.heat_id);
       const station = (assignment.station || '').trim().toUpperCase();
       if (!heatId || !station) return acc;
       if (!acc.has(heatId)) {
@@ -2904,12 +2885,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     return allEventHeatsMeta
       .map((heat) => {
-        const heatId = getHeatIdentifiers(
-          config.competition,
-          heat.division,
-          heat.round,
-          heat.heat_number
-        ).normalized;
+        const heatId = heat.id;
         const assignments = assignmentsByHeat.get(heatId) ?? new Map<string, HeatJudgeAssignmentRow>();
         const missingStations = expectedStations.filter((station) => {
           const assignment = assignments.get(station);
@@ -2974,10 +2950,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       visibleRoundOptions,
       heats: allEventHeatsMeta,
       authoritativeStatuses: new Map(allEventHeatsMeta.map((row) => [
-        ensureHeatId(row.id),
-        authoritativeHeatStatusRef.current.get(ensureHeatId(row.id)) || row.status || '',
+        ensurePersistedHeatId(row.id),
+        authoritativeHeatStatusRef.current.get(ensurePersistedHeatId(row.id)) || row.status || '',
       ])),
-      activeHeatIds: new Set(activePodiumPointers.map((pointer) => ensureHeatId(pointer.active_heat_id || '')).filter(Boolean)),
+      activeHeatIds: new Set(activePodiumPointers.map((pointer) => ensurePersistedHeatId(pointer.active_heat_id || '')).filter(Boolean)),
       pending: pendingDivisionSelection,
       showClosedHeats,
     });
@@ -3018,6 +2994,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
 
   const handleSaveConfig = async () => {
+    if (!canonicalHeatId) {
+      alert('Chargement du heat planifié…');
+      return;
+    }
     if (!judgeAssignmentStatus.isReady) {
       alert(`Affectations juges incomplètes. ${judgeAssignmentErrorMessage}`);
       return;
@@ -3045,6 +3025,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleTimerStart = async () => {
+    if (!canonicalHeatId) {
+      setSyncError('Chargement du heat planifié…');
+      return;
+    }
     if (!judgeAssignmentStatus.isReady) {
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
       return;
@@ -3064,7 +3048,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     // Publier en temps réel via Supabase seulement si configuré
     if (onRealtimeTimerStart && configSaved) {
-      onRealtimeTimerStart(heatId, config, newTimer.duration)
+      onRealtimeTimerStart(canonicalHeatId, config, newTimer.duration)
         .then(() => {
           console.log('🚀 ADMIN: Timer START publié en temps réel');
         })
@@ -3182,6 +3166,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, []);
 
   const ensureHeatCanStart = useCallback(async () => {
+    if (!canonicalHeatId) {
+      setSyncError('Chargement du heat planifié…');
+      return false;
+    }
     if (!isSupabaseConfigured() || !supabase) {
       setHeatStartBlockers([]);
       return true;
@@ -3189,7 +3177,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     setHeatStartDependencyChecking(true);
     try {
-      const dependencyCheck = await validateHeatStartDependencies(heatId);
+      const dependencyCheck = await validateHeatStartDependencies(canonicalHeatId);
       if (!dependencyCheck.ok) {
         const blockers = dependencyCheck.blockers || [];
         setHeatStartBlockers(blockers);
@@ -3212,7 +3200,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     } finally {
       setHeatStartDependencyChecking(false);
     }
-  }, [formatHeatStartDependencyError, heatId]);
+  }, [canonicalHeatId, formatHeatStartDependencyError]);
 
   const handleTimerStartImpl = async () => {
     if (!configSaved || heatRejudgeProtected || (isCurrentHeatLocked && !rejudgeOverrideActive)) return;
@@ -3370,7 +3358,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const normalizeText = (value?: string) => (value || '').trim().toUpperCase();
 
     const exactHeatScores = (mergedScores || []).filter(
-      (score) => ensureHeatId(score.heat_id) === heatId && Number(score.score) > 0
+      (score) => ensurePersistedHeatId(score.heat_id) === heatId && Number(score.score) > 0
     );
 
     const fallbackByMetaScores = (mergedScores || []).filter((score) => {
@@ -3599,12 +3587,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleCloseHeat = async () => {
+    if (!canonicalHeatId) {
+      alert('Chargement du heat planifié…');
+      return;
+    }
     let forceClose = false;
     let forceReason = '';
     let strictValidationAvailable = false;
 
     try {
-      const readiness = await fetchHeatCloseReadiness(heatId);
+      const readiness = await fetchHeatCloseReadiness(canonicalHeatId);
       strictValidationAvailable = true;
 
       if (!readiness.can_close) {
@@ -3685,9 +3677,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       if (eventId) {
         // Optional external workflow hook (disabled by default to avoid cross-division side effects).
         const enableExternalHeatSync = import.meta.env.VITE_ENABLE_HEAT_SYNC_WEBHOOK === 'true';
-        if (enableExternalHeatSync) {
+        if (enableExternalHeatSync && canonicalHeatId) {
           try {
-            const currentHeatId = `${config.competition}_${config.division}_R${config.round}_H${config.heatId}`;
+            const currentHeatId = canonicalHeatId;
             console.log('🔄 Calling heat-sync for:', currentHeatId);
 
             if (!supabase) throw new Error("Supabase client not initialized");
@@ -3751,7 +3743,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         if (normalizeJerseyLabel(s.surfer) !== selectedSurferKey) return false;
         if (Number(s.score) <= 0) return false;
         // Primary: exact heat_id match
-        if (ensureHeatId(s.heat_id) === heatId) return true;
+        if (ensurePersistedHeatId(s.heat_id) === heatId) return true;
         // Fallback: match by competition+division+round meta (for offline/synced scores)
         const sameComp = (s.competition || '').trim().toUpperCase() === (config.competition || '').trim().toUpperCase();
         const sameDiv = (s.division || '').trim().toUpperCase() === (config.division || '').trim().toUpperCase();
@@ -3901,7 +3893,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       return sameName || Boolean(sameEmail);
     });
 
-    const attachJudgeToStation = (judge: Judge, generatedCode?: string) => {
+    const attachJudgeToStation = (judge: JudgeRecord, generatedCode?: string) => {
       onConfigChange({
         ...config,
         judgeIdentities: {
@@ -4039,7 +4031,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
 
     const hasScoresForColor = mergedScores.some((score) =>
-      ensureHeatId(score.heat_id) === heatId &&
+      ensurePersistedHeatId(score.heat_id) === heatId &&
       normalizeJerseyLabel(score.surfer) === normalizeJerseyLabel(color)
     );
 
@@ -4144,8 +4136,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     })();
     const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem(ACTIVE_EVENT_STORAGE_KEY) : null;
     const eventId =
-      activeEventId
-      ?? (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null)
+      (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null)
+      ?? activeEventId
       ?? (eventIdRaw ? Number(eventIdRaw) : NaN);
     if (!eventId || Number.isNaN(eventId)) {
       alert('Aucun événement actif trouvé. Chargez un événement avant export.');
@@ -4255,8 +4247,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     const eventIdRaw = localStorage.getItem('activeEventId') || localStorage.getItem('eventId');
     const eventIdFromUrl = Number(new URLSearchParams(window.location.search).get('eventId'));
     const eventId =
-      activeEventId
-      ?? (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null)
+      (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null)
+      ?? activeEventId
       ?? (eventIdRaw ? Number(eventIdRaw) : NaN);
 
     if (!eventId || Number.isNaN(eventId)) {
@@ -6302,12 +6294,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                         Statut: {String(beforeStatus ?? '—')} → {String(afterStatus ?? '—')}
                       </div>
                     )}
-                    {callType && (
+                    {Boolean(callType) && (
                       <div className="mt-1 font-bold text-amber-300">
                         {String(callType)} · {String(auditValue(entry.metadata, 'surfer') || '')} · V{String(auditValue(entry.metadata, 'wave_number') || '')}
                       </div>
                     )}
-                    {(auditValue(entry.metadata, 'reason') || auditValue(entry.metadata, 'comment')) && (
+                    {Boolean(auditValue(entry.metadata, 'reason') || auditValue(entry.metadata, 'comment')) && (
                       <div className="mt-2 rounded-lg border border-white/5 bg-black/20 p-2 text-[10px] italic text-slate-400">
                         {[auditValue(entry.metadata, 'reason'), auditValue(entry.metadata, 'comment')].filter(Boolean).map(String).join(' — ')}
                       </div>

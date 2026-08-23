@@ -16,7 +16,7 @@ describe('P2.7.31 — division destination eligibility', () => {
 
   it('skips every active pointer, including the current podium heat', () => {
     expect(block).toContain('activeHeatIds');
-    expect(block).toContain('!activeHeatIds.has(ensureHeatId(heat.id))');
+    expect(block).toContain('!activeHeatIds.has(ensurePersistedHeatId(heat.id))');
   });
 
   it('has no unsafe fallback to the first planned heat', () => {

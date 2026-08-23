@@ -62,7 +62,11 @@ vi.mock('../../api/modules/events.api', () => ({
   updateEventConfiguration: vi.fn(async () => undefined),
   saveEventConfigSnapshot: vi.fn(async () => undefined),
 }));
-vi.mock('../../api/modules/heats.api', () => ({ fetchOrderedHeatSequence: vi.fn(async () => []) }));
+vi.mock('../../api/modules/heats.api', () => ({
+  fetchOrderedHeatSequence: vi.fn(async () => []),
+  fetchHeatBySchedule: vi.fn(async () => ({ id: 'heat_1' })),
+  fetchHeatMetadata: vi.fn(async () => ({ id: 'heat_1' })),
+}));
 vi.mock('../../lib/supabase', () => ({ isSupabaseConfigured: () => true, canUseSupabaseConnection: () => true }));
 vi.mock('../../utils/secureStorage', () => ({
   getSafeLocalStorage: () => ({ getItem: () => null, setItem: () => {}, removeItem: () => {} }),

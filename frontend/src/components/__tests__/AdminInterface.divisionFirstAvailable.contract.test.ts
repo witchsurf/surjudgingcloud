@@ -24,7 +24,7 @@ describe('P2.7.22 — division selects first planned available heat', () => {
     const start = source.indexOf('const handleConfigChange = (field: keyof AppConfig');
     const end = source.indexOf('useEffect(() => {', start);
     const block = source.slice(start, end);
-    expect(block).toContain('const currentHeatKey = ensureHeatId(heatId || config.heatId)');
+    expect(block).toContain('const currentHeatKey = ensurePersistedHeatId(heatId || config.heatId)');
     expect(block).toContain('activeHeatIds.add(currentHeatKey)');
   });
 });

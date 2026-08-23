@@ -27,6 +27,7 @@ if (import.meta.env.VITE_SENTRY_DSN && !import.meta.env.DEV && !isLocalSupabaseM
 import { SyncProvider } from './contexts/SyncContext';
 import { AuthGuard } from './components/AuthGuard';
 import FieldEventContextGuard from './components/FieldEventContextGuard';
+
 import OverlayPage from './pages/OverlayPage';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));

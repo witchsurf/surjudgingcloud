@@ -6,6 +6,7 @@ import { useJudgingStore } from '../stores/judgingStore';
 import { getHeatIdentifiers } from '../utils/heat';
 import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { useAuthoritativeHeatId } from '../hooks/useAuthoritativeHeatId';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { parseActiveHeatId } from '../utils/activeHeatId';
@@ -24,17 +25,6 @@ export default function PriorityJudgePage() {
     const [configLoading, setConfigLoading] = useState(true);
     const prevHeatIdRef = useRef<string | null>(null);
 
-    const currentHeatId = useMemo(
-        () =>
-            getHeatIdentifiers(
-                config.competition,
-                config.division,
-                config.round,
-                config.heatId
-            ).normalized,
-        [config.competition, config.division, config.round, config.heatId]
-    );
-
     const searchParams = new URLSearchParams(window.location.search);
     const eventIdFromUrl = searchParams.get('eventId');
     const podiumId = getPodiumIdFromSearch(window.location.search);
@@ -43,6 +33,15 @@ export default function PriorityJudgePage() {
         ? numericEventIdFromUrl
         : activeEventId ?? undefined;
     const isPriorityJudgeSession = currentJudge?.id === 'priority-judge';
+
+    const { heatId: authoritativePriorityHeatId } = useAuthoritativeHeatId({
+        eventId: prioritySessionEventId,
+        division: config.division,
+        round: config.round,
+        heatNumber: config.heatId,
+        podiumId,
+    });
+    const currentHeatId = authoritativePriorityHeatId;
 
     useEffect(() => {
         if (!currentJudge || !prioritySessionEventId) return;
@@ -111,7 +110,7 @@ export default function PriorityJudgePage() {
     }, [eventIdFromUrl, loadConfigFromDb, loadKioskConfig, setActiveEventId, podiumId]);
 
     useEffect(() => {
-        if (!configSaved || !config.competition || configLoading) {
+        if (!configSaved || !config.competition || configLoading || !currentHeatId) {
             return () => { };
         }
 
@@ -216,6 +215,7 @@ export default function PriorityJudgePage() {
     return (
         <JudgeInterface
             config={config}
+            heatId={currentHeatId}
             judgeId={currentJudge?.id}
             judgeName={currentJudge?.name}
             configSaved={configSaved}

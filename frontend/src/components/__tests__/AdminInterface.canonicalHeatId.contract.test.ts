@@ -9,18 +9,19 @@ const readAdminPage = () =>
   readFileSync(resolve(process.cwd(), 'src/pages/AdminPage.tsx'), 'utf8');
 
 describe('AdminInterface canonical heat id contract', () => {
-  it('accepts a canonicalHeatId prop and prefers it over the fallback UI heat key', () => {
+  it('accepts a canonicalHeatId prop and strictly uses it without synthetic fallback', () => {
     const source = readAdminInterface();
 
     expect(source).toContain('canonicalHeatId?: string;');
-    expect(source).toContain("() => ensureHeatId(canonicalHeatId || fallbackHeatId)");
+    expect(source).toContain("() => (canonicalHeatId ? ensurePersistedHeatId(canonicalHeatId) : '')");
+    expect(source).not.toContain('fallbackHeatId');
   });
 
   it('blocks premature heat-scoped DB reads when the admin context is not canonical yet', () => {
     const source = readAdminInterface();
 
     expect(source).toContain('const hasCanonicalHeatContext = React.useMemo(');
-    expect(source).toContain("heatId !== 'r1_h1'");
+    expect(source).toContain("canonicalHeatId !== 'r1_h1'");
     expect(source).toContain('if (!hasCanonicalHeatContext) {');
   });
 
@@ -35,6 +36,6 @@ describe('AdminInterface canonical heat id contract', () => {
     const source = readAdminPage();
 
     expect(source).toContain('<AdminInterface');
-    expect(source).toContain('canonicalHeatId={currentHeatId}');
+    expect(source).toContain('canonicalHeatId={canonicalHeatId}');
   });
 });

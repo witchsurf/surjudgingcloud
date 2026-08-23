@@ -10,9 +10,8 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useScoreManager } from '../hooks/useScoreManager';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
-import { getHeatIdentifiers } from '../utils/heat';
 import { resolveEventIdForHeat } from '../utils/heatWorkflow';
-import { fetchHeatMetadata, fetchOrderedHeatSequence } from '../api/modules/heats.api';
+import { fetchHeatMetadata, fetchOrderedHeatSequence, fetchHeatBySchedule } from '../api/modules/heats.api';
 import { normalizePodiumId } from '../utils/podium';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { AppConfig } from '../types';
@@ -30,15 +29,25 @@ const JERSEY_COLOR_ALIASES: Record<string, string> = {
     BLACK: 'NOIR',
 };
 
-const normalizeJerseyColor = (value: string) => {
-    const normalized = value.trim().toUpperCase();
-    return JERSEY_COLOR_ALIASES[normalized] ?? normalized;
+const normalizeJerseyColor = (color: string) => {
+    const raw = (color || '').toUpperCase().trim();
+    return JERSEY_COLOR_ALIASES[raw] || raw;
 };
 
-const shallowJerseyArrayEqual = (left: string[] = [], right: string[] = []) =>
-    left.length === right.length && left.every(
-        (value, index) => normalizeJerseyColor(value) === normalizeJerseyColor(right[index]),
-    );
+const shallowJerseyArrayEqual = (left: string[] = [], right: string[] = []) => {
+    if (left.length !== right.length) return false;
+    return left.every((value, index) => normalizeJerseyColor(value) === normalizeJerseyColor(right[index]));
+};
+
+const shallowRecordEqual = (
+    left: Record<string, string> = {},
+    right: Record<string, string> = {}
+) => {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every((key) => left[key] === right[key]);
+};
 
 const shallowJerseyRecordEqual = (
     left: Record<string, string> = {},
@@ -53,13 +62,6 @@ const shallowJerseyRecordEqual = (
     const leftEntries = Object.entries(normalizedLeft);
     if (leftEntries.length !== Object.keys(normalizedRight).length) return false;
     return leftEntries.every(([key, value]) => normalizedRight[key] === value);
-};
-
-const shallowRecordEqual = (left: Record<string, string> = {}, right: Record<string, string> = {}) => {
-    const leftEntries = Object.entries(left);
-    const rightEntries = Object.entries(right);
-    if (leftEntries.length !== rightEntries.length) return false;
-    return leftEntries.every(([key, value]) => right[key] === value);
 };
 
 const getPersistedAdminPodium = () => {
@@ -86,14 +88,19 @@ export default function AdminPage() {
         judgeWorkCount,
         setJudgeWorkCount,
         overrideLogs,
-        heatStatus
+        heatStatus,
     } = useJudgingStore();
 
+    const { timer, setTimer, setDuration } = useCompetitionTimer();
+    const { closeHeat } = useHeatManager();
     const {
-        timer,
-        setTimer,
-        setDuration
-    } = useCompetitionTimer();
+        publishConfigUpdate,
+        publishTimerStart,
+        publishTimerPause,
+        publishTimerReset
+    } = useRealtimeSync();
+    const { handleScoreOverride } = useScoreManager();
+    const { saveHeatConfig } = useSupabaseSync();
 
     // Restore judge work count from localStorage on mount
     React.useEffect(() => {
@@ -111,51 +118,75 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const { closeHeat } = useHeatManager();
-    const {
-        publishConfigUpdate,
-        publishTimerStart,
-        publishTimerPause,
-        publishTimerReset
-    } = useRealtimeSync();
-    const { handleScoreOverride } = useScoreManager();
-    const { saveHeatConfig } = useSupabaseSync();
-
     // Local UI state for loading feedback
     const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'empty' | 'error'>('loaded');
     const [loadError, setLoadError] = useState<string | null>(null);
     const initialAdminContextRef = React.useRef('');
 
-    const currentHeatId = getHeatIdentifiers(
-        config.competition,
-        config.division,
-        config.round,
-        config.heatId
-    ).normalized;
+    const [canonicalHeatId, setCanonicalHeatId] = useState<string>('');
+    const eventIdFromUrl = Number(searchParams.get('eventId'));
+
+    useEffect(() => {
+        let isMounted = true;
+        const targetEventId = (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null) ?? activeEventId;
+
+        if (!targetEventId || !config.division || !config.round || !config.heatId) {
+            if (isMounted) {
+                setCanonicalHeatId('');
+                setLoadState('empty');
+            }
+            return;
+        }
+
+        setCanonicalHeatId('');
+        setLoadState('loading');
+        setLoadError(null);
+        void fetchHeatBySchedule(targetEventId, config.division, Number(config.round), Number(config.heatId))
+            .then(heat => {
+                if (isMounted) {
+                    if (heat?.id) {
+                        setCanonicalHeatId(heat.id);
+                        setLoadState('loaded');
+                        setLoadError(null);
+                    } else {
+                        setCanonicalHeatId('');
+                        setLoadState('error');
+                        setLoadError(`Heat planifié introuvable`);
+                    }
+                }
+            })
+            .catch(error => {
+                if (isMounted) {
+                    setCanonicalHeatId('');
+                    setLoadState('error');
+                    setLoadError(error instanceof Error ? error.message : `Heat planifié introuvable`);
+                }
+            });
+
+        return () => { isMounted = false; };
+    }, [activeEventId, eventIdFromUrl, config.division, config.round, config.heatId]);
 
     const hasCanonicalHeatContext = Boolean(
         loadedFromDb
         && configSaved
         && (config.competition || '').trim()
         && (config.division || '').trim()
-        && currentHeatId
-        && currentHeatId !== 'r1_h1'
+        && canonicalHeatId
+        && canonicalHeatId !== 'r1_h1'
     );
-
-    const eventIdFromUrl = Number(searchParams.get('eventId'));
 
     const resolveEventIdForCurrentHeat = useCallback(
         async (): Promise<number | null> => resolveEventIdForHeat({
-            activeEventId: activeEventId ?? (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null),
+            activeEventId: (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null) ?? activeEventId,
             competition: config.competition,
-            heatId: currentHeatId,
+            heatId: canonicalHeatId,
         }),
-        [activeEventId, config.competition, currentHeatId, eventIdFromUrl]
+        [activeEventId, config.competition, canonicalHeatId, eventIdFromUrl]
     );
 
     // Load participant names for current heat
     const { participants: heatParticipants } = useHeatParticipants(
-        hasCanonicalHeatContext ? currentHeatId : ''
+        hasCanonicalHeatContext ? canonicalHeatId : ''
     );
 
     useEffect(() => {
@@ -244,8 +275,8 @@ export default function AdminPage() {
         setConfigSaved(false);
 
         const targetEventId = await resolveEventIdForCurrentHeat();
-        if (!targetEventId) {
-            const error = new Error(`Événement introuvable pour le heat planifié ${currentHeatId}.`);
+        if (!targetEventId || !canonicalHeatId) {
+            const error = new Error(`Événement introuvable pour le heat planifié.`);
             setLoadError(error.message);
             throw error;
         }
@@ -266,7 +297,7 @@ export default function AdminPage() {
         try {
             // Admin SAVE configures an existing planning heat. Recreating it here
             // would overwrite status, created_at and other planning metadata.
-            const plannedHeat = await fetchHeatMetadata(currentHeatId);
+            const plannedHeat = await fetchHeatMetadata(canonicalHeatId);
             const plannedHeatMatches = Boolean(
                 plannedHeat
                 && Number(plannedHeat.event_id) === Number(targetEventId)
@@ -276,22 +307,22 @@ export default function AdminPage() {
             );
 
             if (!plannedHeatMatches) {
-                throw new Error(`Heat planifié introuvable ou incohérent : ${currentHeatId}.`);
+                throw new Error(`Heat planifié introuvable ou incohérent : ${canonicalHeatId}.`);
             }
 
             // HeatRepository owns the canonical order:
             // config RPC -> assignments -> entries -> podium A event snapshot.
-            await saveHeatConfig(currentHeatId, { ...config, podiumId });
+            await saveHeatConfig(canonicalHeatId, { ...config, podiumId });
 
             setConfigSaved(true);
             setLoadState('loaded');
             setLoadError(null);
-            console.log('✅ Configuration canonique du heat sauvegardée:', currentHeatId);
+            console.log('✅ Configuration canonique du heat sauvegardée:', canonicalHeatId);
         } catch (error) {
             setConfigSaved(false);
             setLoadError(error instanceof Error ? error.message : 'Persistance du heat impossible.');
             console.error('❌ Persistance heat impossible', {
-                heatId: currentHeatId,
+                heatId: canonicalHeatId,
                 podiumId,
                 code: (error as { code?: string })?.code,
                 message: (error as { message?: string })?.message,
@@ -301,10 +332,10 @@ export default function AdminPage() {
 
         // Realtime publication is secondary and follows canonical persistence.
         try {
-            await publishConfigUpdate(currentHeatId, config);
+            await publishConfigUpdate(canonicalHeatId, config);
         } catch (error) {
             console.warn('⚠️ Publication realtime de la config échouée (persistance DB conservée)', {
-                heatId: currentHeatId,
+                heatId: canonicalHeatId,
                 podiumId,
                 error,
             });
@@ -318,7 +349,7 @@ export default function AdminPage() {
         setConfigSaved,
         saveHeatConfig,
         publishConfigUpdate,
-        currentHeatId,
+        canonicalHeatId,
         persistConfig,
         resolveEventIdForCurrentHeat
     ]);
@@ -367,13 +398,13 @@ export default function AdminPage() {
         // heatStatus is global Zustand state. Clear it as soon as the selected
         // heat changes, even before that heat has been saved, so a closed
         // previous heat cannot lock the new heat in the Admin UI.
-        if (!currentHeatId) return;
+        if (!canonicalHeatId) return;
         setHeatStatus('waiting');
         if (!configSaved || !config.competition) return;
 
-        console.log('📡 Admin: subscribing to own heat timer:', currentHeatId);
+        console.log('📡 Admin: subscribing to own heat timer:', canonicalHeatId);
 
-        const unsubscribe = subscribeToHeat(currentHeatId, (nextTimer, _nextConfig, status) => {
+        const unsubscribe = subscribeToHeat(canonicalHeatId, (nextTimer, _nextConfig, status) => {
             setLocalTimer(nextTimer);
             if (status) {
                 setHeatStatus(status);
@@ -387,7 +418,7 @@ export default function AdminPage() {
         });
 
         return unsubscribe;
-    }, [configSaved, currentHeatId, subscribeToHeat, setLocalTimer, setHeatStatus, config.competition]);
+    }, [configSaved, canonicalHeatId, subscribeToHeat, setLocalTimer, setHeatStatus, config.competition]);
 
     // Wrapper for timer change to match interface
     const handleTimerChange = (newTimer: any) => {
@@ -459,7 +490,7 @@ export default function AdminPage() {
     return (
         <AdminInterface
             config={config}
-            canonicalHeatId={currentHeatId}
+            canonicalHeatId={canonicalHeatId}
             onConfigChange={handleConfigChange}
             onConfigSaved={handleConfigSaved}
             configSaved={configSaved}
@@ -472,7 +503,7 @@ export default function AdminPage() {
             scores={scores}
             overrideLogs={overrideLogs}
             heatStatus={heatStatus}
-            onScoreOverride={(req) => handleScoreOverride(req, currentHeatId)}
+            onScoreOverride={(req) => handleScoreOverride(req, canonicalHeatId)}
             onRealtimeTimerStart={publishTimerStart}
             onRealtimeTimerPause={publishTimerPause}
             onRealtimeTimerReset={publishTimerReset}

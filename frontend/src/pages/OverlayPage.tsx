@@ -13,7 +13,7 @@ import { subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { DEFAULT_TIMER_DURATION } from '../utils/constants';
-import { ensureHeatId, getHeatIdentifiers } from '../utils/heat';
+import { ensureHeatId, ensurePersistedHeatId, getHeatIdentifiers } from '../utils/heat';
 import { getPodiumIdFromSearch } from '../utils/podium';
 import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
 import type { PanelContext } from '../domain/scoring/panelContext';
@@ -184,7 +184,7 @@ export default function OverlayPage() {
   const [interferenceState, setInterferenceState] = useState<{ key: string; values: EffectiveInterference[] }>({ key: '', values: [] });
 
   const podiumId = getPodiumIdFromSearch(searchParams.toString());
-  const displayHeatId = useMemo(() => activeHeatId || getHeatIdentifiers(
+  const displayHeatId = useMemo(() => activeHeatId ? ensurePersistedHeatId(activeHeatId) : getHeatIdentifiers(
     config.competition,
     config.division,
     config.round,
@@ -193,7 +193,7 @@ export default function OverlayPage() {
   const runtimePanelSnapshotKey = runtimePanelJudges?.join('|') || '';
 
   const applyActiveHeat = useCallback(async (heatIdInput: string) => {
-    const heatId = ensureHeatId(heatIdInput);
+    const heatId = ensurePersistedHeatId(heatIdInput);
     if (!heatId || !isSupabaseConfigured()) return;
 
     const [metadata, entries, fetchedScores] = await Promise.all([

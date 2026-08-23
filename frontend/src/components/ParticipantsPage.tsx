@@ -35,18 +35,57 @@ const ParticipantsPage = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('participants');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setParticipants(parsed);
+    let cancelled = false;
+
+    const loadParticipants = async () => {
+      if (!previewEventId) {
+        // Fallback to local storage if no event ID
+        try {
+          const saved = localStorage.getItem('participants');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && !cancelled) {
+              setParticipants(parsed);
+            }
+          }
+        } catch {
+          // ignore
         }
+        return;
       }
-    } catch {
-      // ignore
-    }
-  }, []);
+
+      try {
+        const { data, error } = await supabase
+          .from('participants')
+          .select('*')
+          .eq('event_id', previewEventId)
+          .order('seed', { ascending: true });
+
+        if (!error && data && data.length > 0 && !cancelled) {
+          setParticipants(data);
+          // Sync local storage for offline support
+          localStorage.setItem('participants', JSON.stringify(data));
+        } else if ((!data || data.length === 0) && !cancelled) {
+          // Fallback to local storage
+          const saved = localStorage.getItem('participants');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              setParticipants(parsed);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not load participants from db', err);
+      }
+    };
+
+    void loadParticipants();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [previewEventId]);
 
   useEffect(() => {
     let cancelled = false;

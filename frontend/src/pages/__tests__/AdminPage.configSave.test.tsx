@@ -92,6 +92,7 @@ const eventsApiMock = vi.hoisted(() => ({
 
 const heatsApiMock = vi.hoisted(() => ({
   fetchOrderedHeatSequence: vi.fn(async () => []),
+  fetchHeatBySchedule: vi.fn(async () => ({ id: 'mamelles_open_r1_h1' })),
   fetchHeatMetadata: vi.fn(async (): Promise<HeatMetadataFixture | null> => ({
     id: 'mamelles_open_r1_h1',
     event_id: 10,

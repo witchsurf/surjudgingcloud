@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { heatPlanningRepository } from '../repositories/HeatPlanningRepository';
 import { participantRepository } from '../repositories/ParticipantRepository';
+import { categoryPlanningPolicyRepository } from '../repositories/CategoryPlanningPolicyRepository';
 import type { ParticipantRecord } from '../repositories/contracts';
 import {
   generatePreviewHeats,
@@ -158,6 +159,21 @@ const GenerateHeatsPage = () => {
             console.warn('Impossible de charger le contexte événement:', error);
             setWorkflowState({ eventId: null, persisted: false, paymentStatus: 'unpaid' });
           }
+        }
+
+        try {
+          const serverPolicies = await categoryPlanningPolicyRepository.list(numericEventId);
+          if (serverPolicies && serverPolicies.length > 0) {
+            const momRounds: Record<string, number> = {};
+            serverPolicies.forEach((pol) => {
+              if (pol.transition_round && pol.transition_format === 'man_on_man') {
+                momRounds[pol.category] = pol.transition_round;
+              }
+            });
+            setCategoryManOnManRounds((prev) => ({ ...prev, ...momRounds }));
+          }
+        } catch (policyErr) {
+          console.warn('Impossible de charger les politiques par catégorie:', policyErr);
         }
 
         return;
@@ -332,6 +348,21 @@ const GenerateHeatsPage = () => {
       }
 
       for (const categoryPreview of previewData) {
+        // Save category planning policy if configured
+        const momRound = categoryManOnManRounds[categoryPreview.category] || 0;
+        try {
+          await categoryPlanningPolicyRepository.upsert({
+            event_id: numericId,
+            category: categoryPreview.category,
+            base_format: selectedFormat,
+            transition_round: momRound > 0 ? momRound : null,
+            transition_format: momRound > 0 ? 'man_on_man' : null,
+            version: 1,
+          });
+        } catch (policyErr) {
+          console.warn('Erreur sauvegarde politique catégorie:', policyErr);
+        }
+
         // Build participants map for the API
         const participantsBySeed = new Map<number, any>();
         categoryPreview.participants.forEach((p: any) => {
@@ -447,7 +478,7 @@ const GenerateHeatsPage = () => {
         setActiveEventId(numericId);
         setConfig(configPayload);
         setConfigSaved(true);
-        // Sync to cloud so Display page/Judges see the names immediately
+        // Persist initial runtime configuration using the authoritative persisted heat ID
         await saveConfigToDb(numericId, configPayload);
       }
 

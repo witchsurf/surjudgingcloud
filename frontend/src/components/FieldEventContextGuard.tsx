@@ -20,7 +20,8 @@ export default function FieldEventContextGuard({
   mode = getDeploymentMode(),
 }: FieldEventContextGuardProps) {
   const [searchParams] = useSearchParams();
-  const redirect = resolveFieldEventContextRedirect(mode, searchParams.get('eventId'));
+  const rawEventId = searchParams.get('eventId') || searchParams.get('event');
+  const redirect = resolveFieldEventContextRedirect(mode, rawEventId);
 
   if (redirect) {
     return <Navigate to={redirect} replace />;
