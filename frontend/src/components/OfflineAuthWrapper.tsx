@@ -21,32 +21,33 @@ import {
 } from '../lib/offlineAuth';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Lock, ShieldAlert, Waves } from 'lucide-react';
-import { getDeploymentMode } from '../domain/deploymentMode';
+import { getDeploymentMode, isFieldRuntime } from '../domain/deploymentMode';
 
 interface OfflineAuthWrapperProps {
   children: (user: User | null, isOfflineMode: boolean) => React.ReactNode;
 }
 
 export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
+  const isField = isFieldRuntime();
   const deploymentMode = getDeploymentMode();
   const [user, setUser] = useState<User | null>(null);
-  const [isOfflineMode, setIsOfflineMode] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
+  const [isOfflineMode, setIsOfflineMode] = useState(isField);
+  const [isLoading, setIsLoading] = useState(!isField);
+  const [initialized, setInitialized] = useState(isField);
   const [pinRequired, setPinRequired] = useState(false);
   const [pinValue, setPinValue] = useState('');
   const [pinError, setPinError] = useState(false);
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(isField);
 
   useEffect(() => {
     // Prevent re-initialization
-    if (initialized) return;
+    if (initialized && !isField) return;
 
     let mounted = true;
 
     async function initAuth() {
       // Field uses the local database without requiring a Cloud identity.
-      if (deploymentMode === 'field') {
+      if (isField) {
         const fieldUser = getDevUser() ?? ({
           id: 'field-operator',
           email: 'operator@surfjudging.local',
@@ -60,6 +61,7 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
           setIsOfflineMode(true);
           setIsLoading(false);
           setInitialized(true);
+          setIsUnlocked(true);
         }
         return;
       }
@@ -201,9 +203,9 @@ export function OfflineAuthWrapper({ children }: OfflineAuthWrapperProps) {
 
   // Separate effect for auth listener
   useEffect(() => {
-    if (!initialized || (deploymentMode === 'field' && isDevMode())) return;
+    if (!initialized || isField) return;
 
-    // Listen for auth state changes (online mode only, NOT in dev mode)
+    // Listen for auth state changes (online mode only, NOT in field mode)
     if (supabase && isSupabaseConfigured()) {
       const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
         setUser(session?.user ?? null);

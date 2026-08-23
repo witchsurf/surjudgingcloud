@@ -17,3 +17,6 @@ export const getDeploymentMode = (): DeploymentMode =>
 export const allowsCloudAuth = (mode: DeploymentMode): boolean => mode === 'cloud';
 export const allowsPayment = (mode: DeploymentMode): boolean => mode === 'cloud';
 export const allowsCloudSync = (mode: DeploymentMode): boolean => mode === 'cloud';
+
+export const isFieldRuntime = (): boolean => getDeploymentMode() === 'field';
+export const isCloudRuntime = (): boolean => getDeploymentMode() === 'cloud';

@@ -10,7 +10,7 @@ import { processMagicLinkCallback } from './utils/magicLink';
 import { installOfflineSyncCoordinator } from './lib/offlineSyncCoordinator';
 
 import { isLocalNetworkHost } from './lib/networkDetection';
-import { getDeploymentMode } from './domain/deploymentMode';
+import { getDeploymentMode, isFieldRuntime } from './domain/deploymentMode';
 
 const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 const isPublicDisplayHost = hostname === 'display.surfjudging.cloud';
@@ -47,7 +47,7 @@ async function bootstrap() {
   // CRITICAL: Wait for magic-link callback to establish the session BEFORE rendering.
   // Without this, the app renders with user=null, effects fire, and navigation redirects
   // the user away from /my-events before the session is ready.
-  if (deploymentMode === 'cloud' && !isLocalLanHost) {
+  if (!isFieldRuntime() && deploymentMode === 'cloud' && !isLocalLanHost) {
     try {
       await processMagicLinkCallback();
     } catch (err) {

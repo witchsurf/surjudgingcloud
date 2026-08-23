@@ -14,7 +14,7 @@ import { isDevMode, saveOfflineCredentials, loginAsOfflineAdmin, hasOfflinePin }
 import { syncEventsFromCloud, getLastSyncTime, needsCloudSync, getCloudClient } from '../utils/syncCloudEvents';
 import { OfflineSettingsModal } from '../components/OfflineSettingsModal';
 import { competitionAdminRoute, ownedEventFilter } from '../domain/eventWorkflow';
-import { allowsCloudSync, getDeploymentMode } from '../domain/deploymentMode';
+import { allowsCloudSync, getDeploymentMode, isFieldRuntime } from '../domain/deploymentMode';
 import { getSafeLocalStorage } from '../utils/secureStorage';
 
 
@@ -276,8 +276,8 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   useEffect(() => {
     setUser(initialUser);
 
-    if (initialUser?.id) {
-      loadEvents(initialUser.id);
+    if (isFieldRuntime() || initialUser?.id) {
+      loadEvents(initialUser?.id || 'field-operator');
       // Load last sync time
       setLastSync(getLastSyncTime());
     } else {
@@ -290,7 +290,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
 
   // Force login route when online auth is required
   useEffect(() => {
-    if (isOfflineMode || user || isLoginRoute) return;
+    if (isFieldRuntime() || isOfflineMode || user || isLoginRoute) return;
     navigate(loginRedirectTarget, { replace: true });
   }, [isOfflineMode, user?.id, isLoginRoute, loginRedirectTarget, navigate]);
 

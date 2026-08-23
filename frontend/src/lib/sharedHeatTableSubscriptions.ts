@@ -1,5 +1,5 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { ensureHeatId } from '../utils/heat';
+import { ensurePersistedHeatId } from '../utils/heat';
 import { isLocalSupabaseMode, supabase } from './supabase';
 import { reportRealtimeDiagnostic } from './offlineOperations';
 import { computeReconnectDelay } from './realtimeBackoff';
@@ -404,7 +404,8 @@ const subscribe = (
   listener: Listener,
   options?: { mode?: SubscriptionMode }
 ) => {
-  const normalizedHeatId = ensureHeatId(heatId);
+  const normalizedHeatId = ensurePersistedHeatId(heatId);
+  if (!normalizedHeatId) return () => {};
   const state = ensureState(normalizedHeatId);
   const listenerId = `heat-signal-${listenerSequence += 1}`;
 

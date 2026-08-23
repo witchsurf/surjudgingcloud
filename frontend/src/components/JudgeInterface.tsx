@@ -9,7 +9,7 @@ import { fetchHeatMetadata } from '../api/modules/heats.api';
 import { fetchHeatScores, fetchInterferenceCalls, upsertInterferenceCall, deleteInterferenceCall } from '../api/modules/scoring.api';
 import { judgeRepository } from '../repositories/JudgeRepository';
 import { isSupabaseConfigured } from '../lib/supabase';
-import { getHeatIdentifiers, ensureHeatId, getHeatSeriesLabel } from '../utils/heat';
+import { getHeatIdentifiers, ensurePersistedHeatId, getHeatSeriesLabel } from '../utils/heat';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
 import { buildEqualPriorityState, getPriorityLabels, normalizePriorityState, promoteOpeningToOrdered, removePrioritySurfer, returnPrioritySurfer, setPriorityOrder } from '../utils/priority';
@@ -18,6 +18,7 @@ import { canonicalizeScores } from '../api/modules/scoring.api';
 
 interface JudgeInterfaceProps {
   config?: AppConfig;
+  heatId?: string;
   judgeId?: string;
   judgeName?: string;
   onScoreSubmit?: (scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp'>) => Promise<Score | void>;
@@ -62,6 +63,7 @@ function JudgeInterface({
     totalHeats: 8,
     totalRounds: 4
   },
+  heatId,
   judgeId = 'CHIEF',
   judgeName,
   onScoreSubmit = async () => { },
@@ -242,15 +244,17 @@ function JudgeInterface({
     }
   };
 
-  const { normalized: currentHeatId } = useMemo(
+  const currentHeatId = useMemo(
     () =>
-      getHeatIdentifiers(
-        config.competition,
-        config.division,
-        config.round,
-        config.heatId
-      ),
-    [config.competition, config.division, config.round, config.heatId]
+      heatId
+        ? ensurePersistedHeatId(heatId)
+        : getHeatIdentifiers(
+            config.competition,
+            config.division,
+            config.round,
+            config.heatId
+          ).normalized,
+    [heatId, config.competition, config.division, config.round, config.heatId]
   );
 
   const resolveCurrentEventId = useCallback(async (): Promise<number | null> => {
@@ -287,7 +291,7 @@ function JudgeInterface({
       return canonicalizeScores(parsedScores.filter((score) => {
         const sameJudge = score.judge_id === judgeId;
         const sameStation = (score.judge_station || score.judge_id) === judgeStation;
-        const sameHeat = currentHeatId ? ensureHeatId(score.heat_id) === currentHeatId : false;
+        const sameHeat = currentHeatId ? ensurePersistedHeatId(score.heat_id) === currentHeatId : false;
         return sameJudge && sameStation && sameHeat;
       }));
     } catch (error) {
@@ -303,7 +307,7 @@ function JudgeInterface({
       const parsed = JSON.parse(savedScores) as Score[];
       return parsed.map((score) => ({
         ...score,
-        heat_id: ensureHeatId(score.heat_id),
+        heat_id: ensurePersistedHeatId(score.heat_id),
       }));
     } catch (error) {
       console.error('Erreur lecture cache scores:', error);
@@ -314,7 +318,7 @@ function JudgeInterface({
   const persistScoresToStorage = useCallback((scores: Score[]) => {
     const normalized = scores.map(score => ({
       ...score,
-      heat_id: ensureHeatId(score.heat_id),
+      heat_id: ensurePersistedHeatId(score.heat_id),
     }));
     localStorage.setItem('surfJudgingScores', JSON.stringify(normalized));
   }, []);
@@ -332,7 +336,7 @@ function JudgeInterface({
       const dbScores = await fetchHeatScores(currentHeatId);
       const myScores = dbScores.filter(s => 
         (s.judge_id === judgeId || (s.judge_station || s.judge_id) === judgeStation) &&
-        ensureHeatId(s.heat_id) === ensureHeatId(currentHeatId)
+        ensurePersistedHeatId(s.heat_id) === ensurePersistedHeatId(currentHeatId)
       );
       const nextSignature = canonicalizeScores(myScores)
         .map((score) => `${score.id || 'no-id'}:${score.wave_number}:${score.score}:${score.timestamp}`)
@@ -365,7 +369,7 @@ function JudgeInterface({
   useEffect(() => {
     const handleOverride = (e: any) => {
       const { heatId: targetHeatId } = e.detail || {};
-      if (ensureHeatId(targetHeatId) === ensureHeatId(currentHeatId)) {
+      if (ensurePersistedHeatId(targetHeatId) === ensurePersistedHeatId(currentHeatId)) {
         refetchJudgeScores('override');
       }
     };
@@ -375,8 +379,8 @@ function JudgeInterface({
 
   const mergeRealtimeScore = useCallback((incoming: Score) => {
     if (!currentHeatId) return;
-    const currentId = ensureHeatId(currentHeatId);
-    const incomingId = ensureHeatId(incoming.heat_id);
+    const currentId = ensurePersistedHeatId(currentHeatId);
+    const incomingId = ensurePersistedHeatId(incoming.heat_id);
     if (incomingId !== currentId) return;
 
     const normalised = { ...incoming, heat_id: incomingId };
@@ -503,7 +507,7 @@ function JudgeInterface({
         // 4. Update UI
         // Filter for current heat & judge (Case Insensitive)
         const displayScores = finalScores.filter((score) =>
-          ensureHeatId(score.heat_id) === currentHeatId &&
+          ensurePersistedHeatId(score.heat_id) === currentHeatId &&
           (score.judge_station || score.judge_id)?.toLowerCase() === judgeStation?.toLowerCase()
         );
 

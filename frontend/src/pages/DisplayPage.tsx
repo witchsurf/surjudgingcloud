@@ -21,7 +21,8 @@ import { getScoreJudgeStation } from '../api/modules/scoring.api';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useSupabaseSync } from '../hooks/useSupabaseSync';
 import { useHeatParticipants } from '../hooks/useHeatParticipants';
-import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
+import { useAuthoritativeHeatId } from '../hooks/useAuthoritativeHeatId';
+import { getHeatSeriesLabel } from '../utils/heat';
 import { calculateShadowHeatResult } from '../domain/scoring/shadow';
 import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
 import type { PanelContext } from '../domain/scoring/panelContext';
@@ -1129,16 +1130,14 @@ export default function DisplayPage() {
 
 
     // -- LIVE MODE LOGIC --
-    const currentHeatId = useMemo(
-        () =>
-            getHeatIdentifiers(
-                config.competition,
-                config.division,
-                config.round,
-                config.heatId
-            ).normalized,
-        [config.competition, config.division, config.round, config.heatId]
-    );
+    const { heatId: authoritativeLiveHeatId } = useAuthoritativeHeatId({
+        eventId: activeEventId,
+        division: config.division,
+        round: config.round,
+        heatNumber: config.heatId,
+        podiumId,
+    });
+    const currentHeatId = authoritativeLiveHeatId;
     const liveFinalRoundNumber = useMemo(() => {
         const divisionKey = Object.keys(historyHeats).find(
             (key) => key.trim().toUpperCase() === config.division.trim().toUpperCase()
@@ -1376,7 +1375,7 @@ export default function DisplayPage() {
 
     // Subscribe to realtime heat timer/config and scores
     useEffect(() => {
-        if (viewMode !== 'live' || !configSaved || !config.competition) {
+        if (viewMode !== 'live' || !currentHeatId) {
             // Return a no-op cleanup function to prevent React error #310
             return () => { };
         }
@@ -1575,6 +1574,7 @@ export default function DisplayPage() {
                             eventTopScoresLoading={eventTopScoresLoading}
                             onToggleEventTopScores={activeEventId ? handleToggleEventTopScores : undefined}
                             panelContext={livePanelContext}
+                            authoritativeHeatId={currentHeatId}
                         />
                     ) : (
                         <div className="space-y-6">
@@ -1596,6 +1596,7 @@ export default function DisplayPage() {
                                         heatSeriesLabel={historySeriesLabel}
                                         heatStatus="finished"
                                         panelContext={historyPanelContext}
+                                        authoritativeHeatId={selectedHistoryHeatId || undefined}
                                     />
                                 </div>
                             )}

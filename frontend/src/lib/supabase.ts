@@ -93,11 +93,12 @@ export const getSupabaseConfig = () => {
   const deploymentMode = getDeploymentMode();
   const mode: SupabaseMode = deploymentMode === 'field' ? 'local' : 'cloud';
 
-  const isLocalDevice = typeof window !== 'undefined' && isLocalNetworkHost();
+  const isBrowser = typeof window !== 'undefined';
+  const isLocalDevice = isBrowser && isLocalNetworkHost();
 
-  const dynamicLocalUrl = isLocalDevice
-    ? `http://${window.location.hostname}:8000`
-    : (resolveEnv('VITE_SUPABASE_URL_LAN') || resolveEnv('VITE_SUPABASE_URL_LOCAL'));
+  const dynamicLocalUrl = isBrowser
+    ? window.location.origin
+    : (resolveEnv('VITE_SUPABASE_URL_LAN') || resolveEnv('VITE_SUPABASE_URL_LOCAL') || 'http://127.0.0.1:8000');
 
   const urlFromMode =
     mode === 'local'
@@ -109,12 +110,15 @@ export const getSupabaseConfig = () => {
       ? resolveEnv('VITE_SUPABASE_ANON_KEY_LAN') || resolveEnv('VITE_SUPABASE_ANON_KEY_LOCAL')
       : resolveEnv('VITE_SUPABASE_ANON_KEY_CLOUD');
 
+  // In field mode running in browser, window.location.origin is always the exact authoritative endpoint
   const supabaseUrl = mode === 'local'
-    ? ((overrideUrl && isLocalNetworkUrl(overrideUrl) ? overrideUrl : undefined) || urlFromMode)
+    ? (deploymentMode === 'field' && isBrowser
+        ? window.location.origin
+        : ((overrideUrl && isLocalNetworkUrl(overrideUrl) ? overrideUrl : undefined) || urlFromMode))
     : (urlFromMode || resolveEnv('VITE_SUPABASE_URL'));
 
   const supabaseAnonKey = mode === 'local'
-    ? ((overrideUrl && isLocalNetworkUrl(overrideUrl) ? overrideAnon : undefined) || anonFromMode)
+    ? ((deploymentMode !== 'field' && overrideUrl && isLocalNetworkUrl(overrideUrl) ? overrideAnon : undefined) || anonFromMode)
     : (anonFromMode || resolveEnv('VITE_SUPABASE_ANON_KEY'));
 
   return {

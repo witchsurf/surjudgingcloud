@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { isDevMode, isOfflineAdmin } from '../lib/offlineAuth';
+import { isFieldRuntime } from '../domain/deploymentMode';
 
 interface AuthGuardProps {
     children: React.ReactNode;
@@ -9,9 +10,10 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
+    const isField = isFieldRuntime();
     const navigate = useNavigate();
-    const [isChecking, setIsChecking] = useState(true);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isChecking, setIsChecking] = useState(!isField);
+    const [isAuthenticated, setIsAuthenticated] = useState(isField);
     const [offlinePinAvailable, setOfflinePinAvailable] = useState(false);
     const [offlinePinInput, setOfflinePinInput] = useState('');
     const [offlinePinError, setOfflinePinError] = useState<string | null>(null);
@@ -49,6 +51,12 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
     const hasEmergencyOfflineAdmin = () => isOfflineAdmin();
 
     useEffect(() => {
+        if (isField) {
+            setIsAuthenticated(true);
+            setIsChecking(false);
+            return;
+        }
+
         setOfflinePinAvailable(Boolean(getOfflinePin()));
 
         if (isDevMode()) {
@@ -69,7 +77,8 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
         // Check authentication
         const checkAuth = async () => {
             try {
-                const { data: { session } } = await client.auth.getSession();
+                const sessionRes = await client?.auth?.getSession?.();
+                const session = sessionRes?.data?.session;
 
                 if (requireAuth && !session) {
                     if (hasEmergencyOfflineAdmin()) {
@@ -112,7 +121,7 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
         checkAuth();
 
         // Subscribe to auth changes
-        const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+        const authRes = client?.auth?.onAuthStateChange?.((_event, session) => {
             setIsAuthenticated(!!session);
 
             if (requireAuth && !session) {
@@ -128,7 +137,7 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
         });
 
         return () => {
-            subscription.unsubscribe();
+            authRes?.data?.subscription?.unsubscribe?.();
         };
     }, [navigate, requireAuth]);
 
