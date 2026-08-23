@@ -180,6 +180,7 @@ export async function walPutAll(mutations: OfflineMutation[]): Promise<void> {
   if (db) {
     try {
       const tx = db.transaction(WAL_STORE, 'readwrite');
+      await tx.store.clear();
       await Promise.all([
         ...mutations.map((m) => tx.store.put(m)),
         tx.done,

@@ -5,6 +5,7 @@ const api = vi.hoisted(() => ({
   fetchHeatEntriesWithParticipants: vi.fn(), fetchHeatEntriesWithParticipantsBatch: vi.fn(),
   fetchHeatMetadata: vi.fn(), fetchHeatSlotMappings: vi.fn(), fetchHeatSlotMappingsBatch: vi.fn(),
   fetchOrderedHeatSequence: vi.fn(), replaceHeatEntries: vi.fn(), adminOverrideHeatEntry: vi.fn(),
+  setPodiumJudgePanel: vi.fn(async () => 3),
   activateHeatOnPodium: vi.fn(async () => ({})),
 }));
 const supabaseLib = vi.hoisted(() => ({
@@ -67,6 +68,8 @@ describe('HeatRepository non-destructive mutation boundary', () => {
       }),
     };
     runtimeConfigApi.upsertRuntimeHeatConfig.mockImplementationOnce(async () => { order.push('heat_configs'); });
+    api.setPodiumJudgePanel.mockImplementationOnce(async () => { order.push('podium_judge_assignments'); return 3; });
+    api.activateHeatOnPodium.mockImplementationOnce(async () => { order.push('active_heat_pointer'); return {}; });
     repository.ensureHeatEntries = vi.fn(async () => { order.push('heat_entries'); });
     repository.ensureEventLastConfigSnapshot = vi.fn(async () => { order.push('event_snapshot'); });
 
@@ -75,7 +78,14 @@ describe('HeatRepository non-destructive mutation boundary', () => {
       judge_names: { J1: 'One', J2: 'Two', J3: 'Three' },
       judge_identities: { J1: 'one', J2: 'two', J3: 'three' }, podiumId: 'A',
     });
-    expect(order).toEqual(['heat_configs', 'heat_judge_assignments', 'heat_entries', 'event_snapshot']);
+    expect(order).toEqual([
+      'heat_configs',
+      'heat_judge_assignments',
+      'podium_judge_assignments',
+      'active_heat_pointer',
+      'heat_entries',
+      'event_snapshot',
+    ]);
     expect(runtimeConfigApi.upsertRuntimeHeatConfig).toHaveBeenCalledWith(repository.supabase, {
       heat_id: 'heat-1', judges: ['J1', 'J2', 'J3'], surfers: ['ROUGE'],
       judge_names: { J1: 'One', J2: 'Two', J3: 'Three' }, waves: 15,

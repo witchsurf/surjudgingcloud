@@ -36,6 +36,7 @@ import {
     fetchOrderedHeatSequence as readHeatSequence,
     replaceHeatEntries,
     adminOverrideHeatEntry,
+    setPodiumJudgePanel,
     activateHeatOnPodium,
 } from '../api/modules/heats.api';
 import { upsertRuntimeHeatConfig } from '../api/modules/runtimeHeatConfig.api';
@@ -436,6 +437,16 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
                     if (assignmentError) throw assignmentError;
                 }
                 if (podiumId && config.event_id) {
+                    await setPodiumJudgePanel({
+                        eventId: Number(config.event_id),
+                        podiumId,
+                        assignments: assignmentPayload.map((assignment) => ({
+                            station: assignment.station,
+                            judgeId: assignment.judge_id,
+                            judgeName: assignment.judge_name,
+                        })),
+                        assignedBy: 'admin',
+                    });
                     await activateHeatOnPodium({
                         eventId: Number(config.event_id),
                         podiumId,

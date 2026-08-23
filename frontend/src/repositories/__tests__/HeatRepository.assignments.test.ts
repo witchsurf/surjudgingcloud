@@ -5,6 +5,7 @@ const api = vi.hoisted(() => ({
   fetchHeatEntriesWithParticipants: vi.fn(), fetchHeatEntriesWithParticipantsBatch: vi.fn(),
   fetchHeatMetadata: vi.fn(), fetchHeatSlotMappings: vi.fn(), fetchHeatSlotMappingsBatch: vi.fn(),
   fetchOrderedHeatSequence: vi.fn(), replaceHeatEntries: vi.fn(), adminOverrideHeatEntry: vi.fn(),
+  setPodiumJudgePanel: vi.fn(async () => 3),
   activateHeatOnPodium: vi.fn(async () => ({})),
 }));
 const supabaseLib = vi.hoisted(() => ({
@@ -129,6 +130,20 @@ describe('HeatRepository — persistance des affectations juges', () => {
         { heat_id: heatId, event_id: 10, station: 'J3', judge_id: 'c724401b-46ba-4b3e-8227-d8c46110eb2e', judge_name: 'JKHADIJA' },
       ]);
 
+      // Le panel de podium doit exister avant l'activation atomique du heat.
+      expect(api.setPodiumJudgePanel).toHaveBeenCalledWith({
+        eventId: 10,
+        podiumId: 'A',
+        assignments: [
+          { station: 'J1', judgeId: '5164895e-51e9-42f2-9583-80a3e36cc435', judgeName: 'CHARLES' },
+          { station: 'J2', judgeId: '442df135-52cb-4037-895f-5a174de825ca', judgeName: 'J1MAIMOUNA' },
+          { station: 'J3', judgeId: 'c724401b-46ba-4b3e-8227-d8c46110eb2e', judgeName: 'JKHADIJA' },
+        ],
+        assignedBy: 'admin',
+      });
+      expect(api.setPodiumJudgePanel.mock.invocationCallOrder[0])
+        .toBeLessThan(api.activateHeatOnPodium.mock.invocationCallOrder[0]);
+
       // aucune écriture offline, aucune suppression
       expect(supabaseLib.saveOffline).not.toHaveBeenCalled();
 
@@ -158,6 +173,24 @@ describe('HeatRepository — persistance des affectations juges', () => {
       expect(ensureHeatEntries).not.toHaveBeenCalled();
       expect(ensureSnapshot).not.toHaveBeenCalled();
       expect(supabaseLib.saveOffline).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('TEST E — un panel podium manquant bloque l’activation', () => {
+    it('setPodiumJudgePanel échoue → activateHeatOnPodium n’est jamais appelé', async () => {
+      const repository = asTestRepository(new HeatRepository());
+      repository.execute = async (operation) => operation();
+      const supabaseMock = buildSupabaseMock();
+      repository.supabase = { from: supabaseMock.from };
+      repository.ensureHeatEntries = vi.fn(async () => undefined);
+      repository.ensureEventLastConfigSnapshot = vi.fn(async () => undefined);
+      api.setPodiumJudgePanel.mockRejectedValueOnce({ code: '23514', message: 'panel rejected' });
+
+      await expect(repository.saveConfiguration(heatId, buildRequest(10, 'A')))
+        .rejects.toMatchObject({ code: '23514' });
+
+      expect(api.activateHeatOnPodium).not.toHaveBeenCalled();
+      expect(repository.ensureHeatEntries).not.toHaveBeenCalled();
     });
   });
 });

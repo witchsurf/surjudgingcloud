@@ -3314,10 +3314,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   };
 
   const handleTimerReset = () => {
+    const fullDuration = Math.max(1, plannedTimerDuration || timer.duration || 20);
     const newTimer = {
       ...timer,
       isRunning: false,
-      startTime: null
+      startTime: null,
+      duration: fullDuration
     };
 
     onTimerChange(newTimer);
