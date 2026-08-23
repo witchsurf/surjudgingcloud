@@ -1,8 +1,19 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { fetchEventConfigSnapshot } from '../api/modules/events.api';
 import { activeHeatPointerRepository } from '../repositories/ActiveHeatPointerRepository';
-import { supabase } from './supabase';
+import * as supabaseModule from './supabase';
 import { reportRealtimeDiagnostic } from './offlineOperations';
+
+const getClient = () => {
+  try {
+    if (typeof supabaseModule.getSupabaseClient === 'function') {
+      return supabaseModule.getSupabaseClient();
+    }
+    return supabaseModule.supabase ?? null;
+  } catch {
+    return null;
+  }
+};
 
 type Listener<T> = (payload: T) => void;
 
@@ -105,10 +116,11 @@ const addListener = <K extends RegistryKey, T>(
       stopPolling(state);
     }
 
-    if (state.channel && supabase) {
+    const client = getClient();
+    if (state.channel && client && typeof (client as any).removeChannel === 'function') {
       try {
         state.channel.unsubscribe();
-        supabase.removeChannel(state.channel);
+        (client as any).removeChannel(state.channel);
       } catch (error) {
         console.warn('⚠️ Failed to release shared realtime channel', key, error);
       }
@@ -302,12 +314,13 @@ export const subscribeToActiveHeatPointer = (
   if (shouldInitialRefresh) {
     void refresh();
   }
-  if (allowPollingFallback && !supabase) {
+  const client = getClient();
+  if (allowPollingFallback && (!client || typeof (client as any).channel !== 'function')) {
     startPolling(state, refresh, ACTIVE_HEAT_POINTER_POLL_INTERVAL_MS);
   }
 
-  if (supabase) {
-    state.channel = supabase
+  if (client && typeof (client as any).channel === 'function') {
+    state.channel = (client as any)
       .channel(`shared-active-heat-${key}`)
       .on(
         'postgres_changes',

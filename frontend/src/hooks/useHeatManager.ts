@@ -50,7 +50,7 @@ const getFallbackColorForPosition = (position: number): string | null => {
 };
 
 export function useHeatManager() {
-    const { config, setConfig, setConfigSaved, persistConfig, activeEventId, setActiveEventId } = useConfigStore();
+    const { config, setConfig, setConfigSaved, persistConfig, activeEventId, setActiveEventId, loadConfigFromDb } = useConfigStore();
     const {
         scores,
         timer,
@@ -205,6 +205,17 @@ export function useHeatManager() {
         // transactionally by activate_heat_on_podium.
         if (atomicCloseSucceeded) {
             console.log(`✅ Qualification base terminée: ${atomicQualifierSlots} slot(s) traités.`);
+            if (resolvedEventId && isSupabaseConfigured()) {
+                try {
+                    await loadConfigFromDb(resolvedEventId, {
+                        force: true,
+                        includeCategories: false,
+                        podiumId,
+                    });
+                } catch (error) {
+                    console.warn('⚠️ Impossible de recharger la config active après auto-advance:', error);
+                }
+            }
             return;
         }
 

@@ -198,6 +198,8 @@ export const rebuildSupabaseClient = (url?: string, anonKey?: string) => {
 // Initial rebuild
 rebuildSupabaseClient();
 
+export const getSupabaseClient = (): SupabaseClient<SupabaseDatabase> | null => currentClient;
+
 // Dynamic client proxy
 export const supabase = new Proxy({}, {
   get(_target, prop) {

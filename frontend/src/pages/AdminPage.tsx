@@ -14,6 +14,8 @@ import { resolveEventIdForHeat } from '../utils/heatWorkflow';
 import { fetchHeatMetadata, fetchOrderedHeatSequence, fetchHeatBySchedule } from '../api/modules/heats.api';
 import { normalizePodiumId } from '../utils/podium';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
+import { parseActiveHeatId } from '../utils/activeHeatId';
 import type { AppConfig } from '../types';
 import { getSafeLocalStorage } from '../utils/secureStorage';
 
@@ -189,6 +191,8 @@ export default function AdminPage() {
         hasCanonicalHeatContext ? canonicalHeatId : ''
     );
 
+    const [selectedPodiumId, setSelectedPodiumId] = useState<string>(getPersistedAdminPodium());
+
     useEffect(() => {
         const targetEventId = Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0
             ? eventIdFromUrl
@@ -202,7 +206,7 @@ export default function AdminPage() {
             setActiveEventId(targetEventId);
         }
 
-        const persistedPodiumId = getPersistedAdminPodium();
+        const persistedPodiumId = normalizePodiumId(selectedPodiumId);
         const contextKey = `${targetEventId}:${persistedPodiumId}`;
         if (
             initialAdminContextRef.current !== contextKey
@@ -215,7 +219,53 @@ export default function AdminPage() {
                 podiumId: persistedPodiumId,
             });
         }
-    }, [eventIdFromUrl, activeEventId, loadedFromDb, loadConfigFromDb, setActiveEventId]);
+    }, [eventIdFromUrl, activeEventId, loadedFromDb, loadConfigFromDb, setActiveEventId, selectedPodiumId]);
+
+    // Live auto-advance subscription: switch Admin when active_heat_pointer changes on the active podium
+    useEffect(() => {
+        const targetEventId = Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0
+            ? eventIdFromUrl
+            : activeEventId;
+
+        if (!isSupabaseConfigured() || !targetEventId) return;
+
+        const expectedEvent = normalizeEventRealtimeKey(config.competition);
+        const podiumId = normalizePodiumId(selectedPodiumId);
+
+        const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
+            if (!row?.active_heat_id) return;
+
+            const eventName = (row.event_name || '').trim();
+            if (expectedEvent && normalizeEventRealtimeKey(eventName) !== expectedEvent) return;
+
+            const parsed = parseActiveHeatId(row.active_heat_id);
+            if (!parsed) return;
+
+            const currentDivision = (config.division || '').trim().toUpperCase();
+            const sameHeat =
+                currentDivision === parsed.division.trim().toUpperCase() &&
+                Number(config.round) === Number(parsed.round) &&
+                Number(config.heatId) === Number(parsed.heatNumber);
+
+            if (!sameHeat) {
+                console.log('🔄 AdminPage: Heat change detected via active_heat_pointer, reloading DB config', {
+                    from: `${config.division} R${config.round}H${config.heatId}`,
+                    to: `${parsed.division} R${parsed.round}H${parsed.heatNumber}`,
+                    podiumId,
+                });
+
+                void loadConfigFromDb(targetEventId, {
+                    force: true,
+                    includeCategories: false,
+                    podiumId,
+                });
+            }
+        };
+
+        return subscribeToActiveHeatPointer(targetEventId, config.competition, (row) => {
+            applyActiveHeatPointer(row);
+        }, { initialRefresh: false, podiumId });
+    }, [activeEventId, eventIdFromUrl, config.competition, config.division, config.round, config.heatId, loadConfigFromDb, selectedPodiumId]);
 
     const handleConfigChange = useCallback((newConfig: AppConfig) => {
         setConfig(newConfig);
@@ -360,6 +410,7 @@ export default function AdminPage() {
 
     const handlePodiumSwitch = useCallback(async (podiumIdInput: string) => {
         const podiumId = normalizePodiumId(podiumIdInput);
+        setSelectedPodiumId(podiumId);
         const targetEventId = await resolveEventIdForCurrentHeat();
         if (!targetEventId) {
             throw new Error('Événement introuvable pour charger le podium.');
