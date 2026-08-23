@@ -46,6 +46,52 @@ export const ensurePersistedHeatId = (raw: unknown): string => {
   return String(raw).trim();
 };
 
+export interface IsFinalHeatContext {
+  round: number;
+  heatNumber?: number;
+  totalRounds?: number;
+  division?: string;
+  heats?: ReadonlyArray<{ division?: string; round?: number; heat_number?: number }>;
+  heatMetadata?: { round_name?: string; is_final?: boolean } | null;
+  roundName?: string;
+}
+
+export const isFinalHeat = (context: IsFinalHeatContext): boolean => {
+  const round = Number(context.round);
+  if (!Number.isFinite(round) || round < 1) return false;
+
+  // 1. Explicit metadata / names
+  const explicitRoundName = context.roundName || context.heatMetadata?.round_name;
+  if (explicitRoundName && /final|finale/i.test(explicitRoundName)) {
+    return true;
+  }
+  if (context.heatMetadata?.is_final === true) {
+    return true;
+  }
+
+  // 2. Total rounds from category policy / config
+  const totalRounds = Number(context.totalRounds);
+  if (Number.isFinite(totalRounds) && totalRounds >= 1) {
+    return round >= totalRounds;
+  }
+
+  // 3. Planning heats structure
+  if (Array.isArray(context.heats) && context.heats.length > 0) {
+    const divisionHeats = context.division
+      ? context.heats.filter(
+          (h) => (h.division || '').trim().toLowerCase() === context.division!.trim().toLowerCase()
+        )
+      : context.heats;
+
+    if (divisionHeats.length > 0) {
+      const maxRound = Math.max(...divisionHeats.map((h) => Number(h.round) || 1));
+      return round >= maxRound;
+    }
+  }
+
+  return false;
+};
+
 export const getHeatRoundLabel = (round: number, finalRoundNumber?: number): string => {
   const parsedFinalRound = Number(finalRoundNumber);
   if (Number.isFinite(parsedFinalRound) && parsedFinalRound > 1 && round === parsedFinalRound) {

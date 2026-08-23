@@ -1,11 +1,14 @@
+import { useMemo } from 'react';
 import type { HeatResultSnapshot } from '../domain/scoring/contracts';
 import type { OverlayScoringIssue } from '../domain/scoring/overlaySnapshot';
+import { computeNeededScores, type SurferStats } from '../utils/scoring';
 
 interface AdminHeatResultSnapshotPanelProps {
   snapshot: HeatResultSnapshot | null;
   issue: OverlayScoringIssue | null;
   message: string | null;
   surferNames?: Readonly<Record<string, string>>;
+  isFinal?: boolean;
 }
 
 export default function AdminHeatResultSnapshotPanel({
@@ -13,7 +16,35 @@ export default function AdminHeatResultSnapshotPanel({
   issue,
   message,
   surferNames = {},
+  isFinal = false,
 }: AdminHeatResultSnapshotPanelProps) {
+  const neededScores = useMemo(() => {
+    if (!snapshot) return {};
+    const surferStats: SurferStats[] = snapshot.competitors.map((c) => ({
+      surfer: c.lycraColor,
+      rank: c.rank,
+      total: c.total,
+      bestTwo: c.total,
+      waves: c.waves.map((w) => ({
+        waveNumber: w.waveNumber,
+        score: w.average,
+        average: w.average,
+        isComplete: w.complete,
+        complete: w.complete,
+        judgeScores: w.judgeScores,
+      })),
+      bestWaves: [],
+      interferenceType: c.interferenceType,
+      interferenceCount: c.interferenceCount,
+      hasInterference: Boolean(c.interferenceType),
+      disqualified: c.disqualified,
+    }));
+    return computeNeededScores(surferStats, {
+      isFinal,
+      qualificationCount: snapshot.competitors.length <= 2 ? 1 : 2,
+    });
+  }, [snapshot, isFinal]);
+
   return (
     <section data-admin-heat-result className="neon-card overflow-hidden rounded-2xl border border-white/5 bg-slate-950/40 shadow-2xl">
       <header className="border-b border-white/5 bg-slate-950/80 px-4 py-3">
@@ -41,12 +72,14 @@ export default function AdminHeatResultSnapshotPanel({
                 <th className="px-4 py-2">Vagues</th>
                 <th className="px-4 py-2">Best two</th>
                 <th className="px-4 py-2">Total</th>
+                <th className="px-4 py-2">Need</th>
                 <th className="px-4 py-2">Pénalité</th>
               </tr>
             </thead>
             <tbody>
               {snapshot.competitors.map((competitor) => {
                 const waveByNumber = new Map(competitor.waves.map((wave) => [wave.waveNumber, wave]));
+                const needInfo = neededScores[competitor.lycraColor];
                 return (
                   <tr
                     key={competitor.lycraColor}
@@ -70,6 +103,9 @@ export default function AdminHeatResultSnapshotPanel({
                       {competitor.bestWaveNumbers.map((waveNumber) => waveByNumber.get(waveNumber)?.average.toFixed(2) || '--').join(' + ') || '--'}
                     </td>
                     <td className="px-4 py-3 font-mono text-lg font-black">{competitor.total.toFixed(2)}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-amber-300">
+                      {needInfo ? `${needInfo.isCombo ? 'Combo ' : ''}${needInfo.needed.toFixed(2)} ${needInfo.label}` : '--'}
+                    </td>
                     <td className="px-4 py-3 font-bold">
                       {competitor.disqualified
                         ? 'DISQUALIFIÉ'

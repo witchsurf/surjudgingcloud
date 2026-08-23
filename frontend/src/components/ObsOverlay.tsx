@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { SURFER_COLORS } from '../utils/constants';
 import type { CompetitorHeatResult, HeatResultSnapshot } from '../domain/scoring/contracts';
 import type { AppConfig, HeatTimer } from '../types';
+import { computeNeededScores, type SurferStats } from '../utils/scoring';
+import { isFinalHeat } from '../utils/heat';
 
 interface ObsOverlayProps {
   config: AppConfig;
@@ -51,19 +53,6 @@ const getTextColorForJersey = (surfer: string): string => {
   return normalized === 'BLANC' || normalized === 'JAUNE' ? '#07111f' : '#ffffff';
 };
 
-const getNeedsScore = (stat: CompetitorHeatResult, standings: readonly CompetitorHeatResult[]): number | null => {
-  if (stat.rank <= 2) return null;
-
-  const secondPlace = standings.find((item) => item.rank === 2);
-  if (!secondPlace) return null;
-
-  const bestCurrentWaveNumber = stat.bestWaveNumbers[0];
-  const bestCurrentWave = stat.waves.find((wave) => wave.waveNumber === bestCurrentWaveNumber)?.average || 0;
-
-  const needed = secondPlace.total - bestCurrentWave + 0.01;
-  return needed > 0 ? Math.round(needed * 100) / 100 : 0.01;
-};
-
 export default function ObsOverlay({
   config,
   timer,
@@ -89,17 +78,51 @@ export default function ObsOverlay({
 
   const standings = snapshot?.competitors || [];
 
+  const neededScores = useMemo(() => {
+    const surferStats: SurferStats[] = standings.map((c) => ({
+      surfer: c.lycraColor,
+      rank: c.rank,
+      total: c.total,
+      bestTwo: c.total,
+      waves: c.waves.map((w) => ({
+        waveNumber: w.waveNumber,
+        score: w.average,
+        average: w.average,
+        isComplete: w.complete,
+        complete: w.complete,
+        judgeScores: w.judgeScores,
+      })),
+      bestWaves: [],
+      interferenceType: c.interferenceType,
+      interferenceCount: c.interferenceCount,
+      hasInterference: Boolean(c.interferenceType),
+      disqualified: c.disqualified,
+    }));
+
+    const isFinal = isFinalHeat({
+      round: config.round,
+      heatNumber: config.heatId,
+      totalRounds: config.totalRounds,
+      division: config.division,
+    });
+
+    return computeNeededScores(surferStats, {
+      isFinal,
+      qualificationCount: standings.length <= 2 ? 1 : 2,
+    });
+  }, [standings, config.round, config.heatId, config.totalRounds, config.division]);
+
   const rows: OverlayRow[] = useMemo(
     () =>
       standings.map((stat) => ({
         ...stat,
         latestWave: stat.waves.filter((wave) => Object.keys(wave.judgeScores).length > 0).slice(-1)[0]?.waveNumber,
-        needsScore: getNeedsScore(stat, standings),
+        needsScore: neededScores[stat.lycraColor]?.needed ?? null,
         bestScores: stat.bestWaveNumbers.map((waveNumber) =>
           stat.waves.find((wave) => wave.waveNumber === waveNumber)?.average.toFixed(2) || '--'
         ),
       })),
-    [standings]
+    [standings, neededScores]
   );
 
   if (!config.competition) {

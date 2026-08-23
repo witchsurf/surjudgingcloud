@@ -336,6 +336,80 @@ export function calculateSurfRequirement(
   };
 }
 
+export interface NeededScoreInfo {
+  needed: number;
+  targetRank: number;
+  label: 'to 1st' | 'to ADV';
+  isCombo: boolean;
+}
+
+export interface ComputeNeededScoresOptions {
+  isFinal?: boolean;
+  qualificationCount?: number;
+}
+
+export function computeNeededScores(
+  stats: SurferStats[],
+  options?: ComputeNeededScoresOptions
+): Record<string, NeededScoreInfo> {
+  const result: Record<string, NeededScoreInfo> = {};
+  if (!stats || !stats.length) return result;
+
+  const isFinal = Boolean(options?.isFinal);
+  const qualificationCount = options?.qualificationCount ?? (stats.length <= 2 ? 1 : 2);
+
+  const ordered = [...stats]
+    .filter((s) => typeof s.rank === 'number')
+    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
+
+  const leader = ordered.find((s) => s.rank === 1);
+  const cutoffCompetitor = ordered.find((s) => s.rank === qualificationCount);
+
+  const computeFor = (
+    surfer: SurferStats,
+    target: SurferStats | undefined,
+    targetRank: number
+  ) => {
+    if (!target) return;
+
+    const targetTotal = target.bestTwo ?? target.total ?? 0;
+    const requirement = calculateSurfRequirement(surfer, targetTotal);
+
+    if (requirement && requirement.value > 0) {
+      result[surfer.surfer] = {
+        needed: requirement.value,
+        targetRank,
+        label: targetRank === 1 ? 'to 1st' : 'to ADV',
+        isCombo: requirement.isCombo,
+      };
+    }
+  };
+
+  ordered.forEach((surfer) => {
+    const rank = surfer.rank ?? 99;
+    if (rank === 1) {
+      // Leader: no Need
+      return;
+    }
+
+    if (isFinal) {
+      // In Finale: everyone (2nd, 3rd, 4th...) targets 1st place (leader)
+      computeFor(surfer, leader, 1);
+    } else {
+      // In Non-Final rounds:
+      if (rank > qualificationCount) {
+        // Below cutoff: need to reach the qualifying position
+        computeFor(surfer, cutoffCompetitor, qualificationCount);
+      } else {
+        // Within qualifying position (e.g. 2nd place): need to reach 1st place
+        computeFor(surfer, leader, 1);
+      }
+    }
+  });
+
+  return result;
+}
+
 export interface JudgeAccuracyStats {
   judgeId: string;
   scoredWaves: number;

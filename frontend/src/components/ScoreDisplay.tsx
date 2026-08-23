@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react';
 import { Users, Trophy, FileText } from 'lucide-react';
 import HeatTimer from './HeatTimer';
-import { calculateSurfRequirement } from '../utils/scoring';
+import { calculateSurfRequirement, computeNeededScores, type NeededScoreInfo } from '../utils/scoring';
 import { calculateShadowHeatResult } from '../domain/scoring/shadow';
 import { exportHeatScorecardPdf } from '../utils/pdfExport';
 import { fetchInterferenceCalls } from '../api/modules/scoring.api';
 import { computeEffectiveInterferences } from '../utils/interference';
-import { getHeatIdentifiers, getHeatSeriesLabel, ensurePersistedHeatId } from '../utils/heat';
+import { getHeatIdentifiers, getHeatSeriesLabel, ensurePersistedHeatId, isFinalHeat } from '../utils/heat';
 import { subscribeToHeatInterference } from '../lib/sharedHeatTableSubscriptions';
 import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 import { colorLabelMap, type HeatColor } from '../utils/colorUtils';
@@ -91,56 +91,6 @@ function getPriorityBadgeTextStyle(label?: string): CSSProperties {
   };
 }
 
-type NeededScoreInfo = {
-  needed: number;
-  targetRank: number;
-  label: 'to 1st' | 'to ADV';
-  isCombo: boolean;
-};
-
-function computeNeededScores(stats: SurferStats[]): Record<string, NeededScoreInfo> {
-  const result: Record<string, NeededScoreInfo> = {};
-  if (!stats.length) return result;
-
-  const ordered = [...stats]
-    .filter((s) => typeof s.rank === 'number')
-    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
-
-  const leader = ordered.find((s) => s.rank === 1);
-  const second = ordered.find((s) => s.rank === 2);
-
-  const computeFor = (
-    surfer: SurferStats,
-    target: SurferStats | undefined,
-    targetRank: number
-  ) => {
-    if (!target) return;
-
-    const targetTotal = target.bestTwo ?? 0;
-    const requirement = calculateSurfRequirement(surfer, targetTotal);
-
-    if (requirement && requirement.value > 0) {
-      result[surfer.surfer] = {
-        needed: requirement.value,
-        targetRank,
-        label: targetRank === 1 ? 'to 1st' : 'to ADV',
-        isCombo: requirement.isCombo,
-      };
-    }
-  };
-
-  ordered.forEach((surfer) => {
-    if (surfer.rank === 2) {
-      // 2e cherche à passer 1er
-      computeFor(surfer, leader, 1);
-    } else if ((surfer.rank ?? 99) > 2) {
-      // 3e, 4e… cherchent à se qualifier (passer 2e)
-      computeFor(surfer, second, 2);
-    }
-  });
-
-  return result;
-}
 
 function getWinByDiff(stats: SurferStats[]): number | null {
   if (!stats.length) return null;
@@ -333,7 +283,18 @@ export default function ScoreDisplay({
     1
   );
 
-  const neededScores = computeNeededScores(surferStats);
+  const isFinal = isFinalHeat({
+    round: config.round,
+    heatNumber: config.heatId,
+    totalRounds: config.totalRounds,
+    division: config.division,
+    roundName: heatSeriesLabel,
+  });
+
+  const neededScores = computeNeededScores(surferStats, {
+    isFinal,
+    qualificationCount: (config.surfers || []).length <= 2 ? 1 : 2,
+  });
   const winBy = getWinByDiff(surferStats);
   const fallbackRows = (config.surfers || []).map((surfer) => ({
     surfer,

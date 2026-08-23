@@ -7,7 +7,7 @@ import type { AppConfig, HeatTimer as HeatTimerType, Score, ScoreOverrideLog, Ov
 import { sanitizeScoreInput, validateScore } from '../utils/scoring';
 import { buildJudgeDeviationDetails, calculateJudgeAccuracy } from '../utils/scoring';
 import { computeEffectiveInterferences } from '../utils/interference';
-import { ensurePersistedHeatId, getHeatSeriesLabel } from '../utils/heat';
+import { ensurePersistedHeatId, getHeatSeriesLabel, isFinalHeat } from '../utils/heat';
 import { reconcileRoundHeat } from '../utils/reconcileRoundHeat';
 import { SURFER_COLORS as SURFER_COLOR_MAP } from '../utils/constants';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
@@ -4390,6 +4390,13 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         issue={adminHeatResultState.issue}
         message={adminHeatResultState.message}
         surferNames={config.surferNames}
+        isFinal={isFinalHeat({
+          round: config.round,
+          heatNumber: config.heatId,
+          totalRounds: config.totalRounds,
+          division: config.division,
+          heats: allEventHeatsMeta,
+        })}
       />
       {/* Statut de la base de données & Contexte - Collapsible */}
       <details className="group neon-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-slate-950/40" open>
