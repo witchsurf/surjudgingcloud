@@ -38,7 +38,15 @@ const judgesCandidate = (
 ): Candidate => {
   if (value === undefined || value === null) return { source, present: false, count: null };
   if (!Array.isArray(value)) return { source, present: true, count: null, invalidReason: `${source}: liste de juges invalide` };
-  const normalized = value.map((judge) => String(judge || '').trim().toUpperCase()).filter(Boolean);
+  if (value.length === 0) return { source, present: false, count: null };
+  const normalized = value.map((judge) => {
+    if (judge && typeof judge === 'object') {
+      const candidateObj = judge as Record<string, unknown>;
+      const idVal = candidateObj.id ?? candidateObj.station ?? candidateObj.name;
+      return String(idVal || '').trim().toUpperCase();
+    }
+    return String(judge || '').trim().toUpperCase();
+  }).filter(Boolean);
   const unique = new Set(normalized);
   if (normalized.length !== value.length || unique.size !== normalized.length) {
     return { source, present: true, count: null, invalidReason: `${source}: stations vides ou dupliquées` };

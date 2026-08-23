@@ -611,11 +611,9 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
             async () => {
                 this.ensureSupabase();
 
-                const { data, error } = await this.supabase!
-                    .from('score_overrides')
-                    .select('*')
-                    .eq('heat_id', normalizedHeatId)
-                    .order('created_at', { ascending: false });
+                const { data, error } = await this.supabase!.rpc('get_heat_score_overrides', {
+                    p_heat_id: normalizedHeatId
+                });
 
                 if (error) throw error;
 

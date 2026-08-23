@@ -963,11 +963,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           .select('*')
           .eq('heat_id', heatId)
           .order('created_at', { ascending: true }),
-        supabase
-          .from('score_overrides')
-          .select('*')
-          .eq('heat_id', heatId)
-          .order('created_at', { ascending: false }),
+        supabase.rpc('get_heat_score_overrides', { p_heat_id: heatId }),
         supabase
           .from('competition_audit_log')
           .select('*')
@@ -1484,14 +1480,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
         let nextOverrides: ScoreOverrideLog[] = [];
         if (heatIds.length > 0) {
-          const { data: overrideRows, error: overridesError } = await supabase
-            .from('score_overrides')
-            .select('*')
-            .in('heat_id', heatIds)
-            .order('created_at', { ascending: false });
-
-          if (overridesError) throw overridesError;
-          nextOverrides = (overrideRows || []) as ScoreOverrideLog[];
+          const overrideResults = await Promise.all(
+            heatIds.map(hId => supabase.rpc('get_heat_score_overrides', { p_heat_id: hId }))
+          );
+          nextOverrides = overrideResults.flatMap(r => (r.data || []) as ScoreOverrideLog[]);
         }
 
         if (!cancelled) {

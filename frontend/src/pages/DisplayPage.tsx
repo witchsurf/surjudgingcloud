@@ -1168,7 +1168,9 @@ export default function DisplayPage() {
         liveHeatIdRef.current = currentHeatId;
     }, [currentHeatId]);
 
-    const liveJudgeSnapshotKey = config.judges.join('|');
+    const liveJudgeSnapshotKey = Array.isArray(config.judges)
+        ? config.judges.map((j) => (j && typeof j === 'object' ? String((j as { id?: string; station?: string; name?: string }).id ?? (j as { name?: string }).name ?? '') : String(j || ''))).join('|')
+        : '';
     useEffect(() => {
         let cancelled = false;
         if (!configSaved || !currentHeatId) {

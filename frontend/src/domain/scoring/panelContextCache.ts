@@ -15,8 +15,14 @@ const snapshotFor = (snapshots: RuntimePanelSnapshots | undefined, heatId: strin
   return snapshots instanceof Map ? snapshots.get(heatId) : snapshots[heatId];
 };
 
-const cacheKey = (heatId: string, snapshot?: readonly string[]) =>
-  `${heatId}::${(snapshot || []).map((station) => station.trim().toUpperCase()).join(',')}`;
+const cacheKey = (heatId: string, snapshot?: readonly unknown[]) =>
+  `${heatId}::${(snapshot || []).map((station) => {
+    if (station && typeof station === 'object') {
+      const s = station as Record<string, unknown>;
+      return String(s.id ?? s.station ?? s.name ?? '').trim().toUpperCase();
+    }
+    return String(station || '').trim().toUpperCase();
+  }).join(',')}`;
 
 export async function getCachedPanelContexts(
   heatIds: readonly string[],
