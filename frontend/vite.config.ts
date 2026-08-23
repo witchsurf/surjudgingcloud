@@ -38,6 +38,14 @@ export default defineConfig({
     'import.meta.env.VITE_APP_BUILD': JSON.stringify(releaseId),
     'import.meta.env.VITE_EXPECTED_SCHEMA_VERSION': JSON.stringify(resolveExpectedSchemaVersion()),
     'import.meta.env.VITE_DEPLOYMENT_MODE': JSON.stringify(deploymentMode),
+    ...(deploymentMode === 'field' ? {
+      'import.meta.env.VITE_SUPABASE_URL': '""',
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY || ''),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY_LOCAL': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY_LOCAL || process.env.VITE_SUPABASE_ANON_KEY || ''),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY_LAN': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY_LAN || process.env.VITE_SUPABASE_ANON_KEY || ''),
+      'import.meta.env.VITE_SUPABASE_URL_CLOUD': '""',
+      'import.meta.env.VITE_SUPABASE_ANON_KEY_CLOUD': '""'
+    } : {}),
   },
   plugins: [
     react(),
@@ -53,6 +61,8 @@ export default defineConfig({
             codeRevision,
             expectedSchemaVersion: resolveExpectedSchemaVersion(),
             cloudTestActivationSupported: deploymentMode === 'cloud',
+            publicApiUrl: process.env.VITE_SUPABASE_URL_LAN || process.env.VITE_SUPABASE_URL_LOCAL || null,
+            publicFrontendPort: process.env.VITE_FRONTEND_PORT || null,
           }, null, 2),
         })
       },

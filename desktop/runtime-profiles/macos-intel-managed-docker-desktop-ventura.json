@@ -1,0 +1,51 @@
+{
+  "profileVersion": "1",
+  "profileId": "macos-intel-managed-docker-desktop-ventura",
+  "hostOS": "darwin",
+  "hostArch": "x86_64",
+  "minimumOSVersion": "13.3",
+  "maximumOSMajor": 13,
+  "dockerDesktopVersion": "4.48.0",
+  "dockerDesktopBuild": "207573",
+  "containerArchitecture": "linux/amd64",
+  "installer": {
+    "filename": "Docker.dmg",
+    "url": "https://desktop.docker.com/mac/main/amd64/207573/Docker.dmg",
+    "sizeBytes": 611682395,
+    "downloadDate": "2026-08-16",
+    "sha256": "fac73a1edc91e6bce5a449e83e3d0b537f19df74c5f51af4705e479cf0d32515",
+    "sha512": "555a7fa0b81e29a110a3a42c2e0b79fdebcd17daa6445830738253c478af9a9362a4b775d5c5058f87d1c6037d7e0e89b7b65c56c122bd739916eb2324539a5d",
+    "officialChecksumUrl": "https://desktop.docker.com/mac/main/amd64/207573/checksums.txt",
+    "sha256Status": "MATCH_OFFICIAL_CHECKSUM"
+  },
+  "signature": {
+    "codesign": "PASS",
+    "developerId": "Docker Inc",
+    "teamId": "9BNSXJN65R",
+    "bundleId": "com.docker.docker",
+    "architecture": "x86_64",
+    "notarization": "NOT_INDEPENDENTLY_VERIFIED"
+  },
+  "staticBackendEvidence": ["com.docker.hyperkit", "linuxkit/kernel", "linuxkit/boot.img"],
+  "deliveryMode": "external-verified-installer",
+  "engineRequirements": {
+    "dockerDesktop": true,
+    "kubernetes": false,
+    "offlineFirstRun": true,
+    "networkPulls": false
+  },
+  "resourceRequirements": {
+    "ramGiBMinimum": 4,
+    "ramGiBRecommended": 3,
+    "ramGiBMaximum": 4,
+    "cpus": 2,
+    "freeDiskGiBMinimum": 20
+  },
+  "certificationStatus": "PREPARED_NOT_CERTIFIED",
+  "certificationBlockers": [
+    "Installer SHA-256 and official checksum must be recorded before download acceptance",
+    "Actual Intel Ventura VM backend and offline first-run must be verified on the target",
+    "Docker Desktop licensing and redistribution terms require review; installer is not bundled"
+  ],
+  "adapter": "macos-intel-managed-docker-desktop-ventura"
+}

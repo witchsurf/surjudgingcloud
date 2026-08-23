@@ -1,0 +1,19 @@
+{
+  "baseline_sha256": "062dd28561e7dcc0c364cc3d2148c4415bb2f37f961674ee6f712bf5ae5e7ea5",
+  "services": ["postgres","auth","rest","kong","storage","realtime","frontend"],
+  "ports": {"api":"parameter","frontend":"parameter"},
+  "migrations": [
+    {"order":1,"path":"backend/supabase/migrations/20260821120000_p38_category_format_policy_and_progression_edges.sql","sha256":"050e47cf9a418f1643ba6affe967d4fb2077f5f8d81b5c356e0914e8eef4e778","required":true},
+    {"order":2,"path":"backend/supabase/migrations/20260821123000_p38_category_policy_guards.sql","sha256":"645e66145ed655a2b12b1c09b01a0a0b999628df2fc274e7759a722fd4df06c7","required":true},
+    {"order":3,"path":"backend/supabase/migrations/20260821140000_p38_atomic_planning_v3.sql","sha256":"c6653a5c617eb101b97aa31940877f2e180ee12de49b493af13186fa55617bfd","required":true},
+    {"order":4,"path":"backend/supabase/migrations/20260821150000_p38_atomic_planning_minimal_v4.sql","sha256":"ed79f170e9f72f0ea371e32199bf10e10b5b78b25447a14399eecbe7492d9edb","required":true},
+    {"order":5,"path":"backend/supabase/migrations/20260821151000_p38_atomic_planning_minimal_v4_grant_fix.sql","sha256":"1b1ac6a22f02f0eb65fe268c372a98b717d63b38a967a4d874883e7fbbed55fa","required":true},
+    {"order":6,"path":"backend/supabase/migrations/20260821152000_p38_v4_mapping_source_validation.sql","sha256":"789e1645d1c904bf29a3f1231e66d49db7729be479c8f365e58bdc1089f38308","required":true},
+    {"order":7,"path":"backend/supabase/migrations/20260821160000_p38_v4_source_validation_wrapper.sql","sha256":"770c33ca2943b962f40cc83ee190f2c32d797d29693b3d94b280be657d428d81","required":true},
+    {"order":8,"path":"backend/supabase/migrations/20260821170000_p38_v4_duplicate_source_validation.sql","sha256":"4eaef4d3e41da151229c83f798df155ea87aa363bb680110f5b1a0728f23bec4","required":true},
+    {"order":9,"path":"backend/supabase/migrations/20260821180000_p38_v4_legacy_recursion_fix.sql","sha256":"f49fa88da54a2b743f63df141c9644449bd95436a435f380d1d278f13eae18a4","required":true}
+  ],
+  "secret_tooling": {"legacy":"docker/utils/generate-keys.sh","new_keys":"docker/utils/add-new-auth-keys.sh","source":"supabase/supabase official repository","legacy_generate_keys_sha256":"6299efc24ce94d771ca4abb8ac96b67624cc4ac9a4b13ee0c2a8f0071aa3d619","new_auth_keys_sha256":"34c4635ff895a1ac991a11a54a6723cca946f05d1f60524b2ba57d8e4b499ee3"},
+  "auth_mode": "LEGACY_HS256",
+  "secret_policy": {"postgres_password":"GENERATED_BY_OFFICIAL_SCRIPT","jwt_secret":"GENERATED_BY_OFFICIAL_SCRIPT","anon_key":"DERIVED_BY_OFFICIAL_SCRIPT","service_role_key":"DERIVED_BY_OFFICIAL_SCRIPT","secret_key_base":"GENERATED_BY_OFFICIAL_SCRIPT","realtime_db_enc_key":"GENERATED_BY_OFFICIAL_SCRIPT","kong_credentials":"STATIC_NON_SECRET_OR_COMPOSE_DEFINED","storage_keys":"GENERATED_BY_OFFICIAL_SCRIPT","accepted_runtime_secrets":"DO_NOT_COPY"}
+}

@@ -1,0 +1,21 @@
+{
+  "name": "surfjudging-desktop-prototype",
+  "version": "0.3.0-p3.3",
+  "private": true,
+  "description": "Read-only SurfJudging Field control center prototype",
+  "main": "src/main/main.cjs",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "electron": "^38.1.0"
+  },
+  "allowScripts": {
+    "electron@38.8.6": true
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

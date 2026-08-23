@@ -8,6 +8,8 @@
     "build": "node scripts/build-deployment.mjs",
     "build:cloud": "node scripts/build-deployment.mjs cloud",
     "build:field": "node scripts/build-deployment.mjs field",
+    "field:build": "node scripts/build-field-runtime.mjs",
+    "field:test2": "node scripts/build-field-runtime.mjs surfjudging_p38_manonman_test2",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",

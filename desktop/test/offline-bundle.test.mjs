@@ -1,0 +1,8 @@
+import test from 'node:test'; import assert from 'node:assert/strict';
+import {createBundleManifest,verifyBundleManifest,requiredServices,excludedServices,offlineFirstRun} from '../src/shared/offline-bundle.js';
+import {nextFirstRun} from '../src/shared/first-run.js';
+test('bundle manifest is deterministic and verifies payloads',()=>{const p={path:'runtime.yml',size:3,digest:'abc'};const m=createBundleManifest({desktopVersion:'p3.7',architecture:'arm64',runtimeVersion:'0.1',frontend:{releaseId:'r',sourceRevision:'s'},images:{},runtimeDefinitionDigest:'d',migrationsDigest:'m',expectedSchema:'v',payloads:[p]});assert.equal(verifyBundleManifest(m,{'runtime.yml':p}).ok,true);assert.equal(verifyBundleManifest(m,{'runtime.yml':{...p,digest:'bad'}}).ok,false);});
+test('service reduction excludes developer services',()=>{assert.deepEqual(requiredServices(),['frontend','postgres','rest','realtime','auth','kong','storage']);assert.ok(excludedServices().includes('studio'));});
+test('offline gate rejects missing or external dependencies',()=>{assert.equal(offlineFirstRun({preloadedBundle:true}).ready,true);assert.equal(offlineFirstRun({preloadedBundle:true,npm:true}).ready,false);});
+test('first-run existing Field stops before initialization',()=>{const x=nextFirstRun({platformOk:true,archOk:true,virtualizationOk:true,diskOk:true,bundleOk:true,existingField:true});assert.equal(x.state,'EXISTING_FIELD_FOUND');});
+test('first-run clean isolated target can reach ready gate',()=>{assert.equal(nextFirstRun({platformOk:true,archOk:true,virtualizationOk:true,diskOk:true,bundleOk:true,existingField:false,schemaOk:true}).state,'READY');});

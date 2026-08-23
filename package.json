@@ -5,7 +5,9 @@
     "stripe": "^20.0.0"
   },
   "scripts": {
-    "webhook": "node src/stripe-webhook.js"
+    "webhook": "node src/stripe-webhook.js",
+    "field:build": "node scripts/build-field-runtime.mjs",
+    "field:test2": "node scripts/build-field-runtime.mjs surfjudging_p38_manonman_test2"
   },
   "devDependencies": {
     "@types/react": "^19.2.7",

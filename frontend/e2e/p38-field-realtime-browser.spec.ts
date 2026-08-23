@@ -33,6 +33,11 @@ test.describe('P3.8 — Real Browser Realtime Forensic & Field Same-Origin Verif
       wsUrls.push(ws.url());
     });
 
+    // Step 1: Visit Admin to ensure heat is saved/active
+    await page.goto(`${BASE_URL}/admin?eventId=10004&podium=A`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+
+    // Step 2: Visit Display
     const targetUrl = `${BASE_URL}/display?eventId=10004&podium=A`;
     const response = await page.goto(targetUrl, { waitUntil: 'networkidle' });
 

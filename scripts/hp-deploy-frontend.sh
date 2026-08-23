@@ -17,19 +17,20 @@ CONTAINER_NAME="${SURF_HP_WEB_CONTAINER:-surfjudging}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 
-echo "==> Building frontend locally"
-cd "$FRONTEND_DIR"
-npm run build
+RUNTIME_TARGET="${1:-${SURF_RUNTIME_NAME:-surfjudging_p38_manonman_test2}}"
 
-LOCAL_BUNDLE="$(grep -oE '/assets/index-[^"]+\.js' dist/index.html | head -n 1 | sed 's#^/assets/##')"
+echo "==> Building frontend locally with authoritative runtime: ${RUNTIME_TARGET}"
+node "$ROOT_DIR/scripts/build-field-runtime.mjs" "$RUNTIME_TARGET"
+
+LOCAL_BUNDLE="$(grep -oE '/assets/index-[^"]+\.js' "$FRONTEND_DIR/dist-field/index.html" | head -n 1 | sed 's#^/assets/##')"
 
 if [[ -z "$LOCAL_BUNDLE" ]]; then
-  echo "Unable to detect local frontend bundle from dist/index.html" >&2
+  echo "Unable to detect local frontend bundle from dist-field/index.html" >&2
   exit 1
 fi
 
-echo "==> Syncing dist to ${HP_USER}@${HP_HOST}:${HP_DIST_STAGING}"
-rsync -az --delete "$FRONTEND_DIR/dist/" "${HP_USER}@${HP_HOST}:${HP_DIST_STAGING}/"
+echo "==> Syncing dist-field to ${HP_USER}@${HP_HOST}:${HP_DIST_STAGING}"
+rsync -az --delete "$FRONTEND_DIR/dist-field/" "${HP_USER}@${HP_HOST}:${HP_DIST_STAGING}/"
 
 echo "==> Updating container ${CONTAINER_NAME}"
 ssh "${HP_USER}@${HP_HOST}" "docker cp '${HP_DIST_STAGING}/.' '${CONTAINER_NAME}:/usr/share/nginx/html/' && docker exec '${CONTAINER_NAME}' nginx -s reload >/dev/null"

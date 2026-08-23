@@ -1,0 +1,22 @@
+{
+  "bundleVersion": "0.1.0",
+  "desktopVersion": "<compatible-desktop-version>",
+  "platform": "darwin",
+  "architecture": "arm64-or-x64",
+  "runtimeVersion": "0.1.0",
+  "frontend": {"releaseId":"<field-release>","sourceRevision":"<git-sha>"},
+  "images": {
+    "postgres":"<pinned-image@sha256>",
+    "rest":"<pinned-image@sha256>",
+    "realtime":"<pinned-image@sha256>",
+    "auth":"<pinned-image@sha256>",
+    "kong":"<pinned-image@sha256>",
+    "storage":"<pinned-image@sha256>"
+  },
+  "runtimeDefinitionDigest":"<sha256>",
+  "migrationsDigest":"<sha256>",
+  "expectedSchema":"<schema-version>",
+  "files":[],
+  "signature":{"algorithm":"sha256","keyId":null,"value":null},
+  "bundleDigest":"<sha256>"
+}
