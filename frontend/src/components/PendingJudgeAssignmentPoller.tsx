@@ -1,7 +1,7 @@
 /**
  * PendingJudgeAssignmentPoller
  *
- * Polls heat_realtime_config / event_last_config every 2s to detect when
+ * Polls the canonical podium judge assignments every 2s to detect when
  * the admin has assigned an official judge to this position. When the
  * assignment is complete, calls onReady() so the parent can reload/proceed.
  *
@@ -10,14 +10,14 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { panelRepository } from '../repositories/PanelRepository';
 import { normalizePodiumId } from '../utils/podium';
 
 interface Props {
   /** The judge position to watch, e.g. "J1" */
   position: string;
-  /** Active event id, used to query event_last_config */
+  /** Active event id, used to query the canonical podium panel. */
   eventId?: number | null;
   /** Podium whose permanent panel owns this station. */
   podiumId?: string | null;
@@ -32,7 +32,7 @@ export function PendingJudgeAssignmentPoller({ position, eventId, podiumId, onRe
   onReadyRef.current = onReady;
 
   useEffect(() => {
-    if (!isSupabaseConfigured() || !supabase) return;
+    if (!isSupabaseConfigured() || !getSupabaseClient()) return;
 
     const normalizedPos = position.trim().toUpperCase();
     const normalizedPodium = normalizePodiumId(podiumId);
@@ -40,7 +40,7 @@ export function PendingJudgeAssignmentPoller({ position, eventId, podiumId, onRe
 
     const checkAssignment = async () => {
       try {
-        // Prefer event_last_config (config snapshot saved by admin)
+        // The podium panel is the canonical assignment source.
         if (eventId) {
           const panel = await panelRepository.getPodiumPanel(eventId, normalizedPodium);
           const assignment = panel?.assignments.find(
@@ -51,37 +51,11 @@ export function PendingJudgeAssignmentPoller({ position, eventId, podiumId, onRe
             return;
           }
 
-          // Legacy fallback is only valid for podium A. event_last_config is
-          // global and must never provide podium A judges to podium B.
-          if (normalizedPodium !== 'A') return;
-
-          const { data } = await supabase!
-            .from('event_last_config')
-            .select('config_data')
-            .eq('event_id', eventId)
-            .maybeSingle();
-
-          if (data?.config_data) {
-            const cfg = data.config_data as {
-              judgeNames?: Record<string, string>;
-              judgeIdentities?: Record<string, string>;
-            };
-            const safeNames = Object.fromEntries(
-              Object.entries(cfg.judgeNames || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
-            );
-            const safeIds = Object.fromEntries(
-              Object.entries(cfg.judgeIdentities || {}).map(([k, v]) => [k.trim().toUpperCase(), v])
-            );
-            if (safeNames[normalizedPos]?.trim() && safeIds[normalizedPos]?.trim()) {
-              if (active) onReadyRef.current();
-              return;
-            }
-          }
         }
 
-        // Fallback: look in heat_realtime_config (in case admin only published via realtime)
-        // We can't easily know the heat_id here, so we rely on event_last_config only.
-        // If neither source has the data, we wait for the next poll.
+        // If the canonical panel has no complete assignment yet, wait for the
+        // next poll. event_last_config has no config_data column and is global
+        // to podium A, so it cannot safely answer this podium-scoped question.
       } catch (err) {
         console.warn('⚠️ PendingJudgeAssignmentPoller: poll error', err);
       }

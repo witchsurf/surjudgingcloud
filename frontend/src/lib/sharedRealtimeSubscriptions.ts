@@ -185,12 +185,13 @@ export const subscribeToEventConfig = (
   if (shouldInitialRefresh) {
     void refresh();
   }
-  if (!supabase) {
+  const client = getClient();
+  if (!client || typeof (client as any).channel !== 'function') {
     startPolling(state, refresh, EVENT_CONFIG_POLL_INTERVAL_MS);
   }
 
-  if (supabase) {
-    state.channel = supabase
+  if (client && typeof (client as any).channel === 'function') {
+    state.channel = (client as any)
       .channel(`shared-event-config-${eventId}`)
       .on(
         'postgres_changes',
