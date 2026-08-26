@@ -108,7 +108,7 @@ async function runVerification() {
 
     // Check schema version
     const schemaVersion = runSql('select schema_version from public.app_runtime_schema_version limit 1;');
-    if (!schemaVersion.startsWith('20260825233000')) {
+    if (!schemaVersion.startsWith('20260826120000')) {
       throw new Error(`Version de schéma incorrecte: ${schemaVersion}`);
     }
     log(`✓ Version schéma DB: ${schemaVersion}`);

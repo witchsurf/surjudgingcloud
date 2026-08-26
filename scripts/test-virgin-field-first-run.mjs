@@ -103,7 +103,7 @@ async function runVirginFirstRunAudit() {
     log(`  ✓ Mode DB autoritaire : ${dbMode}`);
 
     const schemaVersion = runSql('SELECT schema_version FROM public.app_runtime_schema_version LIMIT 1;');
-    if (!schemaVersion.startsWith('20260825233000')) {
+    if (!schemaVersion.startsWith('20260826120000')) {
       throw new Error(`Version de schéma incorrecte: ${schemaVersion}`);
     }
     log(`  ✓ Version schéma DB : ${schemaVersion}`);
