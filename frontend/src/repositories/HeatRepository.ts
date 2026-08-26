@@ -429,13 +429,6 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
                 // the old heat on this podium before validating the new panel;
                 // cross-podium conflicts remain enforced by the database.
                 const podiumId = (config?.podiumId || '').toString().trim().toUpperCase();
-                if (assignmentPayload.length > 0) {
-                    const { error: assignmentError } = await this.supabase!
-                        .from('heat_judge_assignments')
-                        .upsert(assignmentPayload, { onConflict: 'heat_id,station' });
-
-                    if (assignmentError) throw assignmentError;
-                }
                 if (podiumId && config.event_id) {
                     await setPodiumJudgePanel({
                         eventId: Number(config.event_id),
@@ -453,6 +446,16 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
                         heatId: normalizedHeatId,
                         assignedBy: 'admin',
                     });
+                } else if (assignmentPayload.length > 0) {
+                    // Scheduled Cloud heats are persisted through the podium
+                    // RPCs above. A second anonymous table write is correctly
+                    // rejected by Cloud RLS and must not turn SAVE into a false
+                    // failure. Keep this only for Field/no-podium compatibility.
+                    const { error: assignmentError } = await this.supabase!
+                        .from('heat_judge_assignments')
+                        .upsert(assignmentPayload, { onConflict: 'heat_id,station' });
+
+                    if (assignmentError) throw assignmentError;
                 }
                 await this.ensureHeatEntries(normalizedHeatId, config);
                 if ((config?.podiumId || 'A').toString().trim().toUpperCase() === 'A') {

@@ -54,7 +54,7 @@ vi.mock('../../hooks/useRealtimeSync', () => ({
 }));
 vi.mock('../../hooks/useScoreManager', () => ({ useScoreManager: () => ({ handleScoreOverride: vi.fn(async () => undefined) }) }));
 vi.mock('../../hooks/useSupabaseSync', () => ({
-  useSupabaseSync: () => ({ createHeat: vi.fn(async () => ({})), saveHeatConfig: vi.fn(async () => undefined) }),
+  useSupabaseSync: () => ({ createHeat: vi.fn(async () => ({})), saveHeatConfig: vi.fn(async () => undefined), loadHeatConfig: vi.fn(async () => null) }),
 }));
 vi.mock('../../hooks/useHeatParticipants', () => ({ useHeatParticipants: () => ({ participants: {} }) }));
 vi.mock('../../utils/heatWorkflow', () => ({ resolveEventIdForHeat: vi.fn(async () => 10) }));

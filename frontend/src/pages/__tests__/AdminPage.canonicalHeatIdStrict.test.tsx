@@ -70,6 +70,7 @@ const scoreManagerMock = vi.hoisted(() => ({ handleScoreOverride: vi.fn(async ()
 const supabaseSyncMock = vi.hoisted(() => ({
   createHeat: vi.fn(async () => ({ id: 'p38-test2-disposable_open_r1_h1' })),
   saveHeatConfig: vi.fn(async () => undefined),
+  loadHeatConfig: vi.fn(async () => null),
 }));
 
 let resolveSchedulePromise: ((value: any) => void) | null = null;

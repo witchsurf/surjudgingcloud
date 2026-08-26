@@ -83,6 +83,7 @@ const scoreManagerMock = vi.hoisted(() => ({ handleScoreOverride: vi.fn(async ()
 const supabaseSyncMock = vi.hoisted(() => ({
   createHeat: vi.fn(async () => ({ id: 'mamelles_open_benjamin_r1_h1' })),
   saveHeatConfig: vi.fn(async () => undefined),
+  loadHeatConfig: vi.fn(async () => null),
 }));
 
 const eventsApiMock = vi.hoisted(() => ({
@@ -239,6 +240,31 @@ describe('TEST A — AdminPage.handleConfigSaved ne laisse jamais configSaved=tr
     expect(supabaseSyncMock.saveHeatConfig).not.toHaveBeenCalled();
     expect(realtimeSyncMock.publishConfigUpdate).not.toHaveBeenCalled();
     expect(configStoreMock.persistConfig).not.toHaveBeenCalled();
+  });
+
+  it('sélection manuelle d’un heat existant → hydrate sa configuration canonique, sans dépendre de event_last_config', async () => {
+    supabaseSyncMock.loadHeatConfig.mockResolvedValueOnce({
+      heat_id: 'mamelles_open_r1_h1',
+      judges: ['J1', 'J2', 'J3'],
+      surfers: ['ROUGE', 'BLANC', 'JAUNE'],
+      judge_names: { J1: 'Charles', J2: 'Maimouna', J3: 'Khadija' },
+      judge_identities: { J1: 'judge-1', J2: 'judge-2', J3: 'judge-3' },
+      waves: 15,
+      tournament_type: 'elimination',
+    });
+
+    await renderAdmin();
+    await act(async () => { await Promise.resolve(); });
+
+    expect(supabaseSyncMock.loadHeatConfig).toHaveBeenCalledWith('mamelles_open_r1_h1');
+    expect(configStoreMock.setConfigSaved).toHaveBeenCalledWith(true);
+    const update = configStoreMock.setConfig.mock.calls[0]?.[0] as (current: AppConfig) => AppConfig;
+    expect(update(configStoreMock.config)).toEqual(expect.objectContaining({
+      judges: ['J1', 'J2', 'J3'],
+      surfers: ['ROUGE', 'BLANC', 'JAUNE'],
+      judgeNames: { J1: 'Charles', J2: 'Maimouna', J3: 'Khadija' },
+      judgeIdentities: { J1: 'judge-1', J2: 'judge-2', J3: 'judge-3' },
+    }));
   });
 
   it('refresh canonique RED/WHITE/YELLOW → normalisation UI ROUGE/BLANC/JAUNE ne rend pas la config dirty', async () => {

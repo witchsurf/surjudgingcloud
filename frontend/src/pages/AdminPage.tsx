@@ -66,6 +66,15 @@ const shallowJerseyRecordEqual = (
     return leftEntries.every(([key, value]) => normalizedRight[key] === value);
 };
 
+const asStringRecord = (value: unknown): Record<string, string> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+            .map(([key, item]) => [key, String(item ?? '').trim()])
+            .filter(([key, item]) => key.trim() && item),
+    );
+};
+
 const getPersistedAdminPodium = () => {
     return normalizePodiumId(getSafeLocalStorage()?.getItem('surfJudgingSelectedPodiumId'));
 };
@@ -102,7 +111,7 @@ export default function AdminPage() {
         publishTimerReset
     } = useRealtimeSync();
     const { handleScoreOverride } = useScoreManager();
-    const { saveHeatConfig } = useSupabaseSync();
+    const { saveHeatConfig, loadHeatConfig } = useSupabaseSync();
 
     // Restore judge work count from localStorage on mount
     React.useEffect(() => {
@@ -126,6 +135,7 @@ export default function AdminPage() {
     const initialAdminContextRef = React.useRef('');
 
     const [canonicalHeatId, setCanonicalHeatId] = useState<string>('');
+    const hydratedManualHeatRef = React.useRef('');
     const eventIdFromUrl = Number(searchParams.get('eventId'));
 
     useEffect(() => {
@@ -185,6 +195,60 @@ export default function AdminPage() {
         }),
         [activeEventId, config.competition, canonicalHeatId, eventIdFromUrl]
     );
+
+    // A manual division/round/heat selection must load its own canonical
+    // configuration. event_last_config only represents the last podium-A heat
+    // and must never make another existing heat look unsaved.
+    useEffect(() => {
+        const targetEventId = (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null) ?? activeEventId;
+        if (!targetEventId || !canonicalHeatId || configSaved) return;
+
+        const hydrationKey = `${targetEventId}:${canonicalHeatId}`;
+        if (hydratedManualHeatRef.current === hydrationKey) return;
+
+        let cancelled = false;
+        void loadHeatConfig(canonicalHeatId)
+            .then((storedConfig) => {
+                if (cancelled) return;
+                hydratedManualHeatRef.current = hydrationKey;
+                if (!storedConfig) return;
+
+                const stored = storedConfig as Record<string, unknown>;
+                const judges = Array.isArray(stored.judges)
+                    ? stored.judges.map((judge) => String(judge ?? '').trim()).filter(Boolean)
+                    : [];
+                const surfers = Array.isArray(stored.surfers)
+                    ? stored.surfers.map((surfer) => String(surfer ?? '').trim()).filter(Boolean)
+                    : [];
+                const waves = Number(stored.waves);
+                const tournamentType = typeof stored.tournament_type === 'string'
+                    ? stored.tournament_type
+                    : undefined;
+
+                setConfig((current) => ({
+                    ...current,
+                    judges: judges.length > 0 ? judges : current.judges,
+                    surfers: surfers.length > 0 ? surfers : current.surfers,
+                    judgeNames: Object.keys(asStringRecord(stored.judge_names)).length > 0
+                        ? asStringRecord(stored.judge_names)
+                        : current.judgeNames,
+                    judgeIdentities: Object.keys(asStringRecord(stored.judge_identities)).length > 0
+                        ? asStringRecord(stored.judge_identities)
+                        : current.judgeIdentities,
+                    waves: Number.isFinite(waves) && waves > 0 ? waves : current.waves,
+                    tournamentType: tournamentType || current.tournamentType,
+                }));
+                setConfigSaved(true);
+                setLoadError(null);
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                hydratedManualHeatRef.current = hydrationKey;
+                setLoadError(error instanceof Error ? error.message : 'Impossible de lire la configuration du heat sélectionné.');
+            });
+
+        return () => { cancelled = true; };
+    }, [activeEventId, canonicalHeatId, configSaved, eventIdFromUrl, loadHeatConfig, setConfig, setConfigSaved]);
 
     // Load participant names for current heat
     const { participants: heatParticipants } = useHeatParticipants(

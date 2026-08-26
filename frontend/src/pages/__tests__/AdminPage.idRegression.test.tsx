@@ -63,6 +63,7 @@ const scoreManagerMock = vi.hoisted(() => ({ handleScoreOverride: vi.fn(async ()
 const supabaseSyncMock = vi.hoisted(() => ({
   createHeat: vi.fn(async () => ({ id: 'new_heat_id' })),
   saveHeatConfig: vi.fn(async () => undefined),
+  loadHeatConfig: vi.fn(async () => null),
 }));
 
 const heatsApiMock = vi.hoisted(() => ({

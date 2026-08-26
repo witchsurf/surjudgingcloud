@@ -102,7 +102,7 @@ describe('HeatRepository — persistance des affectations juges', () => {
   });
 
   describe('TEST C — happy path complet événement 10', () => {
-    it('chaîne RPC → heat_judge_assignments.upsert → entries → event snapshot (podium A)', async () => {
+    it('chaîne RPC → panel/pointeur podium → entries → event snapshot (podium A), sans écriture RLS directe', async () => {
       const repository = asTestRepository(new HeatRepository());
       repository.execute = async (operation) => operation();
       const supabaseMock = buildSupabaseMock();
@@ -121,14 +121,9 @@ describe('HeatRepository — persistance des affectations juges', () => {
         expect.objectContaining({ heat_id: heatId }),
       );
 
-      // 1 seul upsert heat_judge_assignments avec exactement 3 lignes officielles
-      expect(supabaseMock.assignmentPayloads).toHaveLength(1);
-      const rows = supabaseMock.assignmentPayloads[0];
-      expect(rows).toEqual([
-        { heat_id: heatId, event_id: 10, station: 'J1', judge_id: '5164895e-51e9-42f2-9583-80a3e36cc435', judge_name: 'CHARLES' },
-        { heat_id: heatId, event_id: 10, station: 'J2', judge_id: '442df135-52cb-4037-895f-5a174de825ca', judge_name: 'J1MAIMOUNA' },
-        { heat_id: heatId, event_id: 10, station: 'J3', judge_id: 'c724401b-46ba-4b3e-8227-d8c46110eb2e', judge_name: 'JKHADIJA' },
-      ]);
+      // Les RPC portent les affectations : pas d'écriture directe qui serait
+      // rejetée par la RLS Cloud anonyme.
+      expect(supabaseMock.assignmentPayloads).toHaveLength(0);
 
       // Le panel de podium doit exister avant l'activation atomique du heat.
       expect(api.setPodiumJudgePanel).toHaveBeenCalledWith({
