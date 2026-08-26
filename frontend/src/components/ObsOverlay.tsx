@@ -205,14 +205,14 @@ export default function ObsOverlay({
 
                 <div className="flex min-w-0 items-center gap-3 py-2 pr-2">
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center font-black shadow-inner ring-1 ring-white/40"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center text-sm font-black shadow-inner ring-1 ring-white/40"
                     style={{ backgroundColor: jerseyColor, color: textColor }}
                   >
                     {COLOR_LABELS[jersey] ?? jersey.slice(0, 1)}
                   </span>
 
                   <div className="min-w-0">
-                    <div className="truncate text-base font-black uppercase leading-5">
+                    <div className="break-words text-sm font-black uppercase leading-4">
                       {displayName}
                     </div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
