@@ -2261,7 +2261,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         : {}),
     };
     if (isHeatSelectionField) {
-      divisionSelectionRef.current = null;
+      // Manual round/heat navigation is an operator decision. Keep it latched
+      // through the asynchronous planning reconciliation; otherwise an active
+      // heat is filtered out as ineligible and the UI silently jumps to the
+      // next heat before the operator can save or reopen the intended one.
+      divisionSelectionRef.current = {
+        division: config.division.toLowerCase(),
+        round: nextConfig.round,
+        heatId: nextConfig.heatId,
+      };
     }
     onConfigChange(nextConfig);
   };
@@ -2419,7 +2427,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           Number(currentConfig.heatId) === Number(config.heatId);
 
         if (!sameHeat) return;
-        if (configSaved) return;
+
+        // Heat entries are canonical sporting data.  They may arrive after an
+        // Admin save (for example after qualifier hydration or a reconnect),
+        // so do not leave an already-saved configuration with an empty lineup.
+        // The parent deliberately does not mark this names/colours hydration
+        // as an unsaved structural configuration change.
 
         onConfigChange({
           ...currentConfig,

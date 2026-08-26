@@ -36,6 +36,26 @@ describe('P2.7.31 — controlled writer decision model (no runtime instrumentati
     expect(reconciliation).not.toContain('divisionSelectionRef.current = null;');
   });
 
+  it('latches an operator-selected round/heat instead of allowing reconciliation to jump to the next heat', () => {
+    const start = source.indexOf('const handleConfigChange = (field: keyof AppConfig');
+    const end = source.indexOf('useEffect(() => {', start);
+    const block = source.slice(start, end);
+    expect(block).toContain("const isHeatSelectionField = field === 'round' || field === 'heatId';");
+    expect(block).toContain('Manual round/heat navigation is an operator decision.');
+    expect(block).toContain('divisionSelectionRef.current = {');
+    expect(block).toContain('round: nextConfig.round');
+    expect(block).toContain('heatId: nextConfig.heatId');
+  });
+
+  it('hydrates a canonical lineup even after the configuration was saved', () => {
+    const start = source.indexOf('const loadSelectedHeatLineup = async () =>');
+    const end = source.indexOf('void loadSelectedHeatLineup();', start);
+    const block = source.slice(start, end);
+    expect(block).toContain('Heat entries are canonical sporting data.');
+    expect(block).not.toContain('if (configSaved) return;');
+    expect(block).toContain('onConfigChange({');
+  });
+
   it('records the deterministic division transition against authoritative Mamelles metadata', () => {
     const calls: Array<{ division: string; round: number; heatId: number }> = [];
     const planned = [

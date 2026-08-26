@@ -8,6 +8,17 @@ const pointerBranch = source.slice(source.indexOf('const applyActiveHeatPointer'
 describe('P2.7.18 display active heat switch', () => {
   it('forces hydration when the active pointer changes', () => {
     expect(pointerBranch).toContain('loadConfigFromDb(activeEventId, { force: true, podiumId });');
+    expect(pointerBranch).toContain('setActivePointerHeatId(row.active_heat_id);');
+  });
+
+  it('uses the canonical pointer heat ID for Display reads during a transition', () => {
+    expect(source).toContain("const [activePointerHeatId, setActivePointerHeatId] = useState('');");
+    expect(source).toContain('const currentHeatId = activePointerHeatId || authoritativeLiveHeatId;');
+  });
+
+  it('renders only the canonical entry colors after a smaller downstream heat is hydrated', () => {
+    expect(source).toContain("const canonicalHeatSurfers = heatParticipantsSource === 'entries'");
+    expect(source).toContain('surfers: canonicalHeatSurfers');
   });
 
   it('keeps the old heat out of the live hydration path', () => {

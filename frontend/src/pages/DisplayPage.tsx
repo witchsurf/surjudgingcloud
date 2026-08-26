@@ -694,6 +694,10 @@ export default function DisplayPage() {
     const [debugRealtimeSnapshot, setDebugRealtimeSnapshot] = useState<Record<string, unknown> | null>(null);
     const [lastScoresRefreshAt, setLastScoresRefreshAt] = useState<Date | null>(null);
     const [lastRealtimeScoreAt, setLastRealtimeScoreAt] = useState<Date | null>(null);
+    // The pointer carries the exact persisted (and potentially opaque) heat ID.
+    // Keep it through a live transition rather than rebuilding an ID from the
+    // schedule and briefly rendering the previous heat's lineup.
+    const [activePointerHeatId, setActivePointerHeatId] = useState('');
     const configRef = useRef(config);
     const countriesRef = useRef(liveHeatCountries);
     const liveHeatIdRef = useRef('');
@@ -761,6 +765,8 @@ export default function DisplayPage() {
         const expectedEvent = normalizeEventRealtimeKey(config.competition);
         const applyActiveHeatPointer = (row: { event_name?: string; active_heat_id?: string } | null) => {
             if (!row?.active_heat_id) return;
+
+            setActivePointerHeatId(row.active_heat_id);
 
             const eventName = (row.event_name || '').trim();
             if (expectedEvent && normalizeEventRealtimeKey(eventName) !== expectedEvent) return;
@@ -1137,7 +1143,7 @@ export default function DisplayPage() {
         heatNumber: config.heatId,
         podiumId,
     });
-    const currentHeatId = authoritativeLiveHeatId;
+    const currentHeatId = activePointerHeatId || authoritativeLiveHeatId;
     const liveFinalRoundNumber = useMemo(() => {
         const divisionKey = Object.keys(historyHeats).find(
             (key) => key.trim().toUpperCase() === config.division.trim().toUpperCase()
@@ -1197,10 +1203,15 @@ export default function DisplayPage() {
     const { participants: heatParticipants, source: heatParticipantsSource } = useHeatParticipants(currentHeatId);
 
     const liveDisplayConfig = useMemo(() => {
+        const canonicalHeatSurfers = heatParticipantsSource === 'entries'
+            ? Object.entries(heatParticipants)
+                .filter(([, name]) => Boolean(String(name || '').trim()))
+                .map(([color]) => normalizeColorCode(color) || color)
+            : config.surfers;
         const mergedNames = mergeLiveHeatNames(
             config.surferNames,
             heatParticipants,
-            config.surfers,
+            canonicalHeatSurfers,
             heatParticipantsSource
         );
         const countries = Object.keys(liveHeatCountries).length > 0
@@ -1209,6 +1220,7 @@ export default function DisplayPage() {
 
         return normalizeConfig({
             ...config,
+            surfers: canonicalHeatSurfers,
             surferNames: mergedNames,
             surferCountries: countries,
         } as AppConfig);

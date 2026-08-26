@@ -18,6 +18,14 @@ describe('P2.7.32 W5 reconciliation decision', () => {
     expect(reconcileRoundHeat({ ...base, pending: { division: 'OPEN', round: 3, heatId: 2 } }))
       .toEqual({ round: 3, heatId: 2 });
   });
+  it('preserves an explicitly selected active heat while the operator is editing it', () => {
+    expect(reconcileRoundHeat({
+      ...base,
+      currentRound: 2,
+      currentHeatId: 3,
+      pending: { division: 'OPEN', round: 2, heatId: 3 },
+    })).toEqual({ round: 2, heatId: 3 });
+  });
   it('selects first valid target heat when current selection is invalid', () => {
     expect(reconcileRoundHeat({ ...base, currentRound: 3, currentHeatId: 1, pending: null }))
       .toEqual({ round: 3, heatId: 2 });

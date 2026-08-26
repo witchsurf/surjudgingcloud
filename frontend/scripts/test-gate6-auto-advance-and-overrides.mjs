@@ -8,7 +8,7 @@ const env = parseEnvFile('../artifacts/runtimes/surfjudging_p38_manonman_test2/.
 const anonKey = env.ANON_KEY;
 const supabase = createClient('http://localhost:18400', anonKey);
 
-const BASE = 'http://192.168.1.107:18480';
+const BASE = process.env.P38_BASE_URL || 'http://192.168.1.107:18480';
 const EVENT_ID = 10004;
 const H1_ID = 'p38-test2-disposable_open_r1_h1';
 const H2_ID = 'p38-test2-disposable_open_r1_h2';

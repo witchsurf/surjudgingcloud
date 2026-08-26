@@ -15,7 +15,8 @@
     {"order":10,"path":"backend/supabase/migrations/20260823090000_preserve_timer_pause_precision.sql","sha256":"ae4353036a28cb7c73b7cdc6cae32f653aa48a10e9205ff559712e4a79529736","required":true},
     {"order":11,"path":"backend/supabase/migrations/20260823180000_score_overrides_read_and_auto_advance.sql","sha256":"540653d561a164527a24ba4e7632bd2bbc19fe6d4c9aab2b469462a7da89be4c","required":true},
     {"order":12,"path":"backend/supabase/migrations/20260825233000_p38_edges_authoritative_qualifier_propagation.sql","sha256":"84e19833b6da9d2640ca1f72189803b9acf079651ad5a68388ad5c4018f3146f","required":true},
-    {"order":13,"path":"backend/supabase/migrations/20260826120000_align_runtime_schema_version_after_p38_edges.sql","sha256":"242feaca4566cacfa35adcc1f6a4a951b8f5cde58ec6a0614f1748013326f22e","required":true}
+    {"order":13,"path":"backend/supabase/migrations/20260826120000_align_runtime_schema_version_after_p38_edges.sql","sha256":"242feaca4566cacfa35adcc1f6a4a951b8f5cde58ec6a0614f1748013326f22e","required":true},
+    {"order":14,"path":"backend/supabase/migrations/20260826210000_align_runtime_schema_version_after_progression_guard.sql","sha256":"b9cf99f325e95f15addbf652bbcd2480a4a88e557a951f1571e8d3e8658c4326","required":true}
   ],
   "secret_tooling": {"legacy":"docker/utils/generate-keys.sh","new_keys":"docker/utils/add-new-auth-keys.sh","source":"supabase/supabase official repository","legacy_generate_keys_sha256":"6299efc24ce94d771ca4abb8ac96b67624cc4ac9a4b13ee0c2a8f0071aa3d619","new_auth_keys_sha256":"34c4635ff895a1ac991a11a54a6723cca946f05d1f60524b2ba57d8e4b499ee3"},
   "auth_mode": "LEGACY_HS256",

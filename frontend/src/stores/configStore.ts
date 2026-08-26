@@ -390,6 +390,8 @@ export const useConfigStore = create<ConfigStore>()(
                             }
                         }
 
+                        let authoritativeHeatId: string | null = null;
+
                         // Fallback: enrich snapshot with lineup names if missing
                         if (snapshot) {
                             try {
@@ -399,7 +401,8 @@ export const useConfigStore = create<ConfigStore>()(
                                     snapshot.round,
                                     snapshot.heat_number
                                 );
-                                const heatKey = authoritativeHeat?.id ?? ensureHeatId(
+                                authoritativeHeatId = authoritativeHeat?.id ?? null;
+                                const heatKey = authoritativeHeatId ?? ensureHeatId(
                                     `${snapshot.event_name}_${snapshot.division}_R${snapshot.round}_H${snapshot.heat_number}`
                                 );
                                 const [entries, heatMeta, slotMappings] = await Promise.all([
@@ -480,7 +483,7 @@ export const useConfigStore = create<ConfigStore>()(
                         if (snapshot) {
                             logger.info('ConfigStore', 'Snapshot found, building config');
                             const baseConfig = buildConfigFromSnapshot(snapshot);
-                            const heatKey = ensureHeatId(
+                            const heatKey = authoritativeHeatId ?? ensureHeatId(
                                 `${snapshot.event_name}_${snapshot.division}_R${snapshot.round}_H${snapshot.heat_number}`
                             );
                             const heatConfig = await applyHeatJudgeAssignments(baseConfig, heatKey);
