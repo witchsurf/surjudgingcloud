@@ -6,6 +6,7 @@ import ParticipantsStructure from './pages/ParticipantsStructure';
 import EventsApp from './events/EventsApp';
 import LegacyApp from './App.tsx';
 import OverlayPage from './pages/OverlayPage';
+import LiveOverlayPage from './pages/LiveOverlayPage';
 
 export default function RootRouter() {
   return (
@@ -17,6 +18,7 @@ export default function RootRouter() {
         <Route path="/events/participants" element={<ParticipantsStructure />} />
         <Route path="/events/*" element={<EventsApp />} />
         <Route path="/overlay" element={<OverlayPage />} />
+        <Route path="/live-overlay" element={<LiveOverlayPage />} />
         <Route path="/app/*" element={<LegacyApp />} />
         <Route path="/*" element={<LegacyApp />} />
       </Routes>

@@ -29,6 +29,7 @@ import { AuthGuard } from './components/AuthGuard';
 import FieldEventContextGuard from './components/FieldEventContextGuard';
 
 import OverlayPage from './pages/OverlayPage';
+import LiveOverlayPage from './pages/LiveOverlayPage';
 
 const AdminLayout = lazy(() => import('./layouts/AdminLayout'));
 const JudgeLayout = lazy(() => import('./layouts/JudgeLayout'));
@@ -55,6 +56,7 @@ function App() {
                 <Router>
                     <Routes>
                         <Route path="/overlay" element={<OverlayPage />} />
+                        <Route path="/live-overlay" element={<LiveOverlayPage />} />
                         <Route path="/fix" element={<FixScores />} />
                         <Route
                             path="/"

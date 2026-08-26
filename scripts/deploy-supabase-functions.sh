@@ -61,5 +61,9 @@ supabase functions deploy heat-sync
 supabase functions deploy kiosk-bootstrap
 supabase functions deploy stripe-webhook
 supabase functions deploy health-check
+# This endpoint authenticates Field workers with its signed HMAC contract.
+# Supabase JWT verification must therefore be disabled for this function only.
+supabase functions deploy live-ingest --no-verify-jwt
+supabase functions deploy live-overlay --no-verify-jwt
 
 echo "Deployment complete."

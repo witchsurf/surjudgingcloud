@@ -1539,6 +1539,10 @@ export type Database = {
       }
     }
     Functions: {
+      get_live_publication_status: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       activate_heat_on_podium: {
         Args: {
           p_assigned_by?: string
