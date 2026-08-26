@@ -8,7 +8,7 @@ const env = parseEnvFile('../artifacts/runtimes/surfjudging_p38_manonman_test2/.
 const anonKey = env.ANON_KEY;
 const supabase = createClient('http://localhost:18400', anonKey);
 
-const BASE = 'http://192.168.1.107:18480';
+const BASE = process.env.P38_BASE_URL || 'http://192.168.1.107:18480';
 const EVENT_ID = 10004;
 const H1_ID = 'p38-test2-disposable_open_r1_h1';
 
@@ -21,7 +21,7 @@ async function runGate3() {
   console.log('\n[SETUP] Initializing H1 as active heat on Podium A...');
   execSync(`docker exec surfjudging_p38_manonman_test2_postgres psql -U postgres -d postgres -c "DELETE FROM scores WHERE heat_id = '${H1_ID}';"`);
 
-  await supabase.from('heats').update({ status: 'open', is_active: true }).eq('id', H1_ID);
+  execSync(`docker exec surfjudging_p38_manonman_test2_postgres psql -U postgres -d postgres -c "UPDATE public.heats SET status = 'open', is_active = true WHERE id = '${H1_ID}';"`);
   await supabase.rpc('upsert_active_heat_pointer', {
     p_event_id: EVENT_ID,
     p_event_name: 'P38-Test2-Disposable',
