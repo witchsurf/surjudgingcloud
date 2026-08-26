@@ -22,10 +22,10 @@ jobs:
     env:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER }}
-      RELEASE_ID: surfjudging-2026.08.26-live-bc53950
-      RELEASE_COMMIT: bc53950b414cea162e626b3c1b1ab89d4e1e41bc
-      ARCHIVE_NAME: surfjudging-2026.08.26-live-bc53950-frontend.tar.gz
-      ARCHIVE_SHA256: 4fc6bbcde24c8f99b9ab9cb5b189468fd37e7649b185e673b8b0de9d183bc8a6
+      RELEASE_ID: surfjudging-2026.08.26-needs-0df6488
+      RELEASE_COMMIT: 0df64882ca4ac6740d5f1f6c03bbc1d34f495b5c
+      ARCHIVE_NAME: surfjudging-2026.08.26-needs-0df6488-frontend.tar.gz
+      ARCHIVE_SHA256: 02bdb9991563a638f74e2b1c8535398b4415d9fb7dddcfd7e6954fc64943a665
 
     steps:
       - name: Checkout deployment metadata and immutable artifact
