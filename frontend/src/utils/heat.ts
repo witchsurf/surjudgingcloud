@@ -69,13 +69,9 @@ export const isFinalHeat = (context: IsFinalHeatContext): boolean => {
     return true;
   }
 
-  // 2. Total rounds from category policy / config
-  const totalRounds = Number(context.totalRounds);
-  if (Number.isFinite(totalRounds) && totalRounds >= 1) {
-    return round >= totalRounds;
-  }
-
-  // 3. Planning heats structure
+  // 2. Planning heats structure. It is the authoritative fallback for
+  // legacy events: their saved totalRounds can be stale (often 1) even when
+  // the division contains later rounds.
   if (Array.isArray(context.heats) && context.heats.length > 0) {
     const divisionHeats = context.division
       ? context.heats.filter(
@@ -87,6 +83,12 @@ export const isFinalHeat = (context: IsFinalHeatContext): boolean => {
       const maxRound = Math.max(...divisionHeats.map((h) => Number(h.round) || 1));
       return round >= maxRound;
     }
+  }
+
+  // 3. Total rounds from category policy / config when no planning is known.
+  const totalRounds = Number(context.totalRounds);
+  if (Number.isFinite(totalRounds) && totalRounds >= 1) {
+    return round >= totalRounds;
   }
 
   return false;

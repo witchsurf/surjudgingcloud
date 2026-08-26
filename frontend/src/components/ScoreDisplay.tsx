@@ -36,6 +36,7 @@ interface ScoreDisplayProps {
   onToggleEventTopScores?: () => void;
   panelContext: PanelContext;
   authoritativeHeatId?: string;
+  planningHeats?: ReadonlyArray<{ division?: string; round?: number; heat_number?: number }>;
 }
 
 // Couleurs officielles
@@ -134,6 +135,7 @@ export default function ScoreDisplay({
   onToggleEventTopScores,
   panelContext,
   authoritativeHeatId,
+  planningHeats,
 }: ScoreDisplayProps) {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [surferStats, setSurferStats] = useState<SurferStats[]>([]);
@@ -288,6 +290,7 @@ export default function ScoreDisplay({
     heatNumber: config.heatId,
     totalRounds: config.totalRounds,
     division: config.division,
+    heats: planningHeats,
     roundName: heatSeriesLabel,
   });
 

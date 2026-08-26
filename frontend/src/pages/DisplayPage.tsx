@@ -1214,6 +1214,17 @@ export default function DisplayPage() {
         } as AppConfig);
     }, [config, heatParticipants, liveHeatCountries, heatParticipantsSource]);
 
+    const planningHeats = useMemo(
+        () => Object.entries(historyHeats).flatMap(([division, rounds]) =>
+            rounds.flatMap((round) => round.heats.map((heat) => ({
+                division,
+                round: round.roundNumber,
+                heat_number: heat.heatNumber,
+            })))
+        ),
+        [historyHeats]
+    );
+
     useEffect(() => {
         let cancelled = false;
 
@@ -1577,6 +1588,7 @@ export default function DisplayPage() {
                             onToggleEventTopScores={activeEventId ? handleToggleEventTopScores : undefined}
                             panelContext={livePanelContext}
                             authoritativeHeatId={currentHeatId}
+                            planningHeats={planningHeats}
                         />
                     ) : (
                         <div className="space-y-6">
@@ -1599,6 +1611,7 @@ export default function DisplayPage() {
                                         heatStatus="finished"
                                         panelContext={historyPanelContext}
                                         authoritativeHeatId={selectedHistoryHeatId || undefined}
+                                        planningHeats={planningHeats}
                                     />
                                 </div>
                             )}

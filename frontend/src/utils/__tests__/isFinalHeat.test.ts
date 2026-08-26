@@ -24,6 +24,16 @@ describe('isFinalHeat authoritative final detection', () => {
     expect(isFinalHeat({ round: 1, division: 'Junior', heats })).toBe(true);
   });
 
+  it('uses the division planning before a stale legacy totalRounds value', () => {
+    const heats = [
+      { division: 'Cadet', round: 1, heat_number: 1 },
+      { division: 'Cadet', round: 2, heat_number: 1 },
+    ];
+
+    expect(isFinalHeat({ round: 1, totalRounds: 1, division: 'Cadet', heats })).toBe(false);
+    expect(isFinalHeat({ round: 2, totalRounds: 1, division: 'Cadet', heats })).toBe(true);
+  });
+
   it('identifies final from roundName or heat metadata', () => {
     expect(isFinalHeat({ round: 1, roundName: 'Grande Finale' })).toBe(true);
     expect(isFinalHeat({ round: 2, heatMetadata: { round_name: 'Final' } })).toBe(true);
