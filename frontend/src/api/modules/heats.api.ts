@@ -307,6 +307,25 @@ export async function createHeatsWithEntries(
         return { placeholder: normalized, sourceRound: null, sourceHeat: null, sourcePosition: null };
     };
 
+    const plannedSchedules = new Set(
+        rounds.flatMap((round) => round.heats.map((heat) => `${round.roundNumber}:${heat.heatNumber}`))
+    );
+    const unresolvedProgressionSlots = rounds.flatMap((round) => round.heats.flatMap((heat) =>
+        round.roundNumber <= 1
+            ? []
+            : heat.slots.map((slot, index) => ({ slot, index })).filter(({ slot }) => Boolean(slot.placeholder))
+                .flatMap(({ slot, index }) => {
+                    const source = parsePlaceholder(slot.placeholder);
+                    return source.sourceRound != null && source.sourceHeat != null && source.sourcePosition != null
+                        && plannedSchedules.has(`${source.sourceRound}:${source.sourceHeat}`)
+                        ? []
+                        : [`R${round.roundNumber} H${heat.heatNumber} slot ${index + 1}`];
+                })
+    ));
+    if (unresolvedProgressionSlots.length > 0) {
+        throw new Error(`Planning refusé : progression explicite manquante pour ${unresolvedProgressionSlots.join(', ')}.`);
+    }
+
     const participantsPayload = Array.from(participantsBySeed.values()).map((participant) => ({
         event_id: eventId,
         category: category,
@@ -396,6 +415,50 @@ export async function createHeatsWithEntries(
         throw new Error(`Participants manquants: ${missingList}`);
     }
 
+    // A future heat must never depend on a heuristic inferred at close time.
+    // Compile every standard Rn-Hn-Pn placeholder into an immutable sporting
+    // edge while the complete bracket is still known.
+    const heatIdBySchedule = new Map(
+        heatRows.map((heat) => [`${heat.round}:${heat.heat_number}`, heat.id] as const)
+    );
+    const generatedProgressionEdges = slotMappings.flatMap((mapping) => {
+        if (
+            mapping.source_round == null ||
+            mapping.source_heat == null ||
+            mapping.source_position == null
+        ) return [];
+        const sourceHeatId = heatIdBySchedule.get(`${mapping.source_round}:${mapping.source_heat}`);
+        if (!sourceHeatId) {
+            throw new Error(`Source de qualification introuvable pour ${mapping.heat_id}, slot ${mapping.position}.`);
+        }
+        return [{
+            event_id: eventId,
+            category,
+            target_heat_id: mapping.heat_id,
+            target_position: mapping.position,
+            source_round: mapping.source_round,
+            source_heat: sourceHeatId,
+            source_position: mapping.source_position,
+            progression_type: 'COMPETITION_RESULT',
+        }];
+    });
+    const progressionByTarget = new Map<string, Record<string, unknown>>();
+    [...generatedProgressionEdges, ...(options.progressionEdges ?? [])].forEach((edge) => {
+        const targetHeatId = String(edge.target_heat_id ?? '').trim();
+        const targetPosition = Number(edge.target_position);
+        if (targetHeatId && Number.isInteger(targetPosition) && targetPosition > 0) {
+            progressionByTarget.set(`${targetHeatId}:${targetPosition}`, edge);
+        }
+    });
+    const unresolvedFutureEntries = entryRows.filter((entry) => {
+        const targetRound = heatRows.find((heat) => heat.id === entry.heat_id)?.round ?? 1;
+        return targetRound > 1 && entry.participant_id == null && !progressionByTarget.has(`${entry.heat_id}:${entry.position}`);
+    });
+    if (unresolvedFutureEntries.length > 0) {
+        const slots = unresolvedFutureEntries.map((entry) => `${entry.heat_id}#${entry.position}`).join(', ');
+        throw new Error(`Planning refusé : progression explicite manquante pour ${slots}.`);
+    }
+
     await persistPlanning({
         eventId,
         category,
@@ -406,7 +469,7 @@ export async function createHeatsWithEntries(
         mappings: slotMappings as any,
         participants: participantsPayload,
         heatConfigs: heatConfigRows,
-        progressionEdges: options.progressionEdges,
+        progressionEdges: Array.from(progressionByTarget.values()),
     });
 
     return { heats: heatRows, entries: entryRows };

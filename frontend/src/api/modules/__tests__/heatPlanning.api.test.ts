@@ -99,6 +99,40 @@ describe('heat planning safe adapter', () => {
     expect(state.operations.some((operation) => operation.table === 'heats')).toBe(false);
   });
 
+  it('compiles every downstream qualifier placeholder into an explicit edge', async () => {
+    state.responses.push(
+      { error: null },
+      { data: [{ id: 101, seed: 1 }, { id: 102, seed: 2 }, { id: 103, seed: 3 }], error: null },
+    );
+    const persistPlanning = vi.fn(async () => undefined);
+    const twoRounds = [
+      { name: 'Round 1', roundNumber: 1, heats: [{ heatNumber: 1, slots: [{ seed: 1 }, { seed: 2 }] }] },
+      { name: 'Finale', roundNumber: 2, heats: [{ heatNumber: 1, slots: [
+        { placeholder: 'Qualifié R1-H1 (P1)' },
+        { placeholder: 'Qualifié R1-H1 (P2)' },
+      ] }] },
+    ];
+
+    await createHeatsWithEntries(7, 'Open', 'Open Men', twoRounds, participants(), {}, persistPlanning);
+
+    expect(persistPlanning).toHaveBeenCalledWith(expect.objectContaining({
+      progressionEdges: expect.arrayContaining([
+        expect.objectContaining({ target_position: 1, source_heat: 'open_open_men_r1_h1', source_position: 1 }),
+        expect.objectContaining({ target_position: 2, source_heat: 'open_open_men_r1_h1', source_position: 2 }),
+      ]),
+    }));
+  });
+
+  it('refuses a future unresolved placeholder before writing participants', async () => {
+    const invalidRounds = [
+      { name: 'Round 1', roundNumber: 1, heats: [{ heatNumber: 1, slots: [{ seed: 1 }, { seed: 2 }] }] },
+      { name: 'Finale', roundNumber: 2, heats: [{ heatNumber: 1, slots: [{ placeholder: 'Meilleur 2e R1' }] }] },
+    ];
+
+    await expect(createHeatsWithEntries(7, 'Open', 'Open Men', invalidRounds, participants())).rejects.toThrow('Planning refusé');
+    expect(state.operations).toEqual([]);
+  });
+
   it('propagates the bulk RPC error and does not create heat_configs afterwards', async () => {
     state.responses.push(
       { error: null },

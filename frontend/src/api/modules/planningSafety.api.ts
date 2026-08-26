@@ -67,7 +67,7 @@ export async function fetchPlanningSafetyInventory(input: {
 export async function persistSafePlanningRpc(input: SafePlanningPersistenceRequest): Promise<void> {
   ensureSupabase();
   if (input.progressionEdges?.length || input.policies?.length) {
-    const { error } = await supabase!.rpc('bulk_upsert_heats_safe_v3', {
+    const { error } = await supabase!.rpc('bulk_upsert_heats_safe_v5', {
       p_event_id: input.eventId,
       p_category: input.category,
       p_overwrite: input.overwrite,
