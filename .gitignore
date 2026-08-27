@@ -59,3 +59,7 @@ frontend/dist-cloud/
 frontend/dist-test2/
 frontend/playwright-report/
 frontend/test-results/
+
+# Desktop installer build outputs and assembled offline payloads
+/desktop/dist-installers/
+/desktop/field-runtime/

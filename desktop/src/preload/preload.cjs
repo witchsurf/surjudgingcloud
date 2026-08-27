@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('surfJudgingDesktop', Object.freeze({
   canStopField: () => ipcRenderer.invoke('field:stop-check'),
   stopField: (confirmed) => ipcRenderer.invoke('field:stop', confirmed),
   getFieldLogs: () => ipcRenderer.invoke('field:logs'),
+  getLivePublicationStatus: () => ipcRenderer.invoke('live-publication:status'),
   getCompetitionSafety: () => ipcRenderer.invoke('field:competition-safety'),
   getDiskStatus: () => ipcRenderer.invoke('field:disk'),
   generateQr: (url) => ipcRenderer.invoke('field:qr', url),

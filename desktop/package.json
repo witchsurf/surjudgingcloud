@@ -1,21 +1,61 @@
 {
-  "name": "surfjudging-desktop-prototype",
-  "version": "0.3.0-p3.3",
+  "name": "surfjudging-field",
+  "version": "0.4.0",
   "private": true,
-  "description": "Read-only SurfJudging Field control center prototype",
+  "description": "SurfJudging Field desktop operator application",
   "main": "src/main/main.cjs",
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "verify:package-input": "node scripts/verify-package-inputs.mjs",
+    "package:dir": "npm run verify:package-input && electron-builder --dir",
+    "package:mac": "npm run verify:package-input && electron-builder --mac dmg --x64 --arm64",
+    "package:win": "npm run verify:package-input && electron-builder --win nsis --x64"
   },
   "devDependencies": {
-    "electron": "^38.1.0"
+    "electron": "^38.1.0",
+    "electron-builder": "^26.1.0"
   },
   "allowScripts": {
     "electron@38.8.6": true
   },
   "dependencies": {
     "qrcode": "^1.5.4"
+  },
+  "build": {
+    "appId": "org.surfsenegal.surfjudging.field",
+    "productName": "SurfJudging Field",
+    "directories": {
+      "output": "dist-installers",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "field-runtime",
+        "to": "field-runtime",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": false,
+      "perMachine": false
+    }
   }
 }
