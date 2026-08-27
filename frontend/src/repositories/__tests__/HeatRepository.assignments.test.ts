@@ -28,6 +28,8 @@ type TestRepository = {
   ensureEventLastConfigSnapshot: (heatId: string, config: unknown, assignments: unknown[]) => Promise<void>;
   saveConfiguration: HeatRepository['saveConfiguration'];
   saveHeatConfig: HeatRepository['saveHeatConfig'];
+  ensureHeatEntries: (heatId: string, config: unknown) => Promise<void>;
+  fetchHeatEntriesWithParticipantsRaw: (heatId: string) => Promise<Array<{ participant_id: number | null }>>;
 };
 
 const asTestRepository = (repository: HeatRepository) => repository as unknown as TestRepository;
@@ -98,6 +100,23 @@ describe('HeatRepository — persistance des affectations juges', () => {
       rows.forEach((row) => {
         expect(row.event_id).toBeNull();
       });
+    });
+  });
+
+  describe('TEST B2 — un slot futur vide est une donnée de progression, pas une panne à réparer au SAVE', () => {
+    it('ne réécrit jamais heat_entries lorsqu’un heat planifié possède déjà ses slots, même sans participant qualifié', async () => {
+      const repository = asTestRepository(new HeatRepository());
+      const supabaseMock = buildSupabaseMock();
+      repository.supabase = { from: supabaseMock.from };
+      repository.fetchHeatEntriesWithParticipantsRaw = vi.fn(async () => [
+        { participant_id: null },
+        { participant_id: null },
+      ]);
+
+      await repository.ensureHeatEntries(heatId, buildRequest(10, 'A'));
+
+      expect(repository.fetchHeatEntriesWithParticipantsRaw).toHaveBeenCalledWith(heatId);
+      expect(supabaseMock.from).not.toHaveBeenCalled();
     });
   });
 

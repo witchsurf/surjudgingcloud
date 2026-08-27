@@ -763,15 +763,18 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   );
 
   const resolveEventIdForCurrentHeat = useCallback(async (): Promise<number | null> => {
-    if (activeEventId) {
-      return activeEventId;
-    }
-
-    if (hasCanonicalHeatContext && heatId) {
+    // The selected canonical heat is authoritative. The in-memory event and
+    // localStorage can still describe the event previously opened by the
+    // operator, especially after a manual category/heat change.
+    if (heatId) {
       const heatMetadata = await fetchHeatMetadata(heatId);
       if (heatMetadata?.event_id) {
         return heatMetadata.event_id;
       }
+    }
+
+    if (activeEventId) {
+      return activeEventId;
     }
 
     try {
@@ -789,7 +792,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
 
     return null;
-  }, [activeEventId, config.competition, hasCanonicalHeatContext, heatId]);
+  }, [activeEventId, config.competition, heatId]);
 
   useEffect(() => {
     setPlannedTimerDuration(timer.duration);
@@ -4136,6 +4139,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       alert('Supabase n\'est pas configuré pour exporter l\'événement.');
       return;
     }
+    const canonicalHeatEvent = canonicalHeatId
+      ? await fetchHeatMetadata(ensurePersistedHeatId(canonicalHeatId)).catch(() => null)
+      : null;
     const eventIdFromUrl = (() => {
       if (typeof window === 'undefined') return NaN;
       const raw = new URLSearchParams(window.location.search).get('eventId');
@@ -4143,6 +4149,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     })();
     const eventIdRaw = typeof window !== 'undefined' ? window.localStorage.getItem(ACTIVE_EVENT_STORAGE_KEY) : null;
     const eventId =
+      canonicalHeatEvent?.event_id
+      ??
       (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null)
       ?? activeEventId
       ?? (eventIdRaw ? Number(eventIdRaw) : NaN);
@@ -4169,7 +4177,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       let organizer: string | undefined;
       let eventDate: string | undefined;
       let organizerLogoDataUrl: string | undefined;
-      let resolvedEventName = config.competition || 'Compétition';
+      let resolvedEventName = canonicalHeatEvent?.competition || config.competition || 'Compétition';
 
       if (supabase) {
         const { data: dbEventData } = await supabase
@@ -4179,7 +4187,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           .single();
 
         const localEventData = JSON.parse(localStorage.getItem('eventData') || '{}');
-        const eventData = { ...localEventData, ...(dbEventData || {}) };
+        const localEventId = Number(localEventData.id ?? localEventData.event_id ?? 0);
+        const eventData = {
+          ...(localEventId === eventId ? localEventData : {}),
+          ...(dbEventData || {}),
+        };
 
         if (dbEventData || localEventData.id) {
           if (typeof eventData.name === 'string' && eventData.name.trim()) {

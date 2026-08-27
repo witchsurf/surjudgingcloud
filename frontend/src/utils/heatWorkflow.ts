@@ -22,6 +22,21 @@ type ResolveEventIdInput = {
 };
 
 export async function resolveEventIdForHeat(input: ResolveEventIdInput): Promise<number | null> {
+    // A canonical heat ID is the strongest identity available. Resolve it
+    // before any Zustand/localStorage context, which can belong to a previous
+    // event after the operator manually switches category or heat.
+    const normalizedHeatId = input.heatId ? ensurePersistedHeatId(input.heatId) : '';
+    if (normalizedHeatId) {
+        try {
+            const metadata = await fetchHeatMetadata(normalizedHeatId);
+            if (metadata?.event_id) {
+                return metadata.event_id;
+            }
+        } catch {
+            // Keep the compatible fallbacks for offline/legacy runtimes.
+        }
+    }
+
     if (Number.isFinite(input.activeEventId) && (input.activeEventId ?? 0) > 0) {
         return Number(input.activeEventId);
     }
@@ -35,18 +50,6 @@ export async function resolveEventIdForHeat(input: ResolveEventIdInput): Promise
             }
         } catch {
             // Ignore storage access failures and keep falling back.
-        }
-    }
-
-    const normalizedHeatId = input.heatId ? ensurePersistedHeatId(input.heatId) : '';
-    if (normalizedHeatId) {
-        try {
-            const metadata = await fetchHeatMetadata(normalizedHeatId);
-            if (metadata?.event_id) {
-                return metadata.event_id;
-            }
-        } catch {
-            // Ignore metadata lookup errors and keep falling back.
         }
     }
 

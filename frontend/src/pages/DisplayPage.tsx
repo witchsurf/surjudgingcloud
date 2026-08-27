@@ -945,6 +945,54 @@ export default function DisplayPage() {
                 }
             }
 
+            // Use the same canonical resolver as the live view. Historical
+            // future heats often retain placeholder entries by design; their
+            // displayed names must come from the scored source heats, not from
+            // a browser-side write back to heat_entries.
+            if (needsQualifierResolution && activeEventId) {
+                const divisionKey = Object.keys(historyHeats).find(
+                    (key) => normalizeDivision(key) === normalizeDivision(metadata.division)
+                );
+                const divisionRounds = divisionKey ? historyHeats[divisionKey] : [];
+                const historicalHeatIds = divisionRounds
+                    .flatMap((round) => round.heats.map((heat) => heat.heatId))
+                    .filter(Boolean) as string[];
+
+                if (divisionKey && historicalHeatIds.length > 0) {
+                    const [groupedScores, interferenceCallsByHeat, entriesByHeat, slotMappingsByHeat, realtimeLineupsByHeat, panelContexts] = await Promise.all([
+                        fetchPreferredScoresForEvent(activeEventId),
+                        fetchAllInterferenceCallsForEvent(activeEventId),
+                        fetchHeatEntriesWithParticipantsBatch(historicalHeatIds),
+                        fetchHeatSlotMappingsBatch(historicalHeatIds),
+                        fetchRealtimeLineupsByHeat(historicalHeatIds),
+                        getCachedPanelContexts(historicalHeatIds),
+                    ]);
+                    const resolvedLineups = buildResolvedLineupsByHeat({
+                        historyHeats: { [divisionKey]: divisionRounds },
+                        entriesByHeat,
+                        slotMappingsByHeat,
+                        realtimeLineupsByHeat,
+                        interferenceCallsByHeat,
+                        groupedScores,
+                        panelContexts,
+                    });
+                    const selectedLineup = resolvedLineups.get(heatId) || {};
+
+                    entries.forEach((entry) => {
+                        const color = normalizeColorCode(entry.color || '') || entry.color;
+                        if (!color) return;
+                        const resolved = selectedLineup[color];
+                        if (!resolved?.name) return;
+                        if (!surferNames[color] || isLikelyPlaceholder(surferNames[color])) {
+                            surferNames[color] = resolved.name;
+                        }
+                        if (resolved.country && !surferCountries[color]) {
+                            surferCountries[color] = resolved.country;
+                        }
+                    });
+                }
+            }
+
             // 3. Fetch scores
             const rawScores = await fetchHeatScores(heatId);
             const selectedPanelContexts = await selectedPanelPromise;

@@ -689,14 +689,14 @@ export class HeatRepository extends BaseRepository implements HeatReadRepository
 
     private async ensureHeatEntries(heatId: string, config: LegacyHeatConfiguration): Promise<void> {
         const existingEntries = await this.fetchHeatEntriesWithParticipantsRaw(heatId);
-        
-        // If we have existing entries, let's check if any entry is missing its participant_id mapping.
-        // If so, we bypass the early return to resolve and update the database with active participant IDs.
-        const hasMissingParticipantIds = existingEntries.length > 0 && existingEntries.some(
-            (entry) => !entry.participant_id
-        );
 
-        if (existingEntries.length > 0 && !hasMissingParticipantIds) {
+        // A planned heat already owns its entry rows, including future slots
+        // deliberately empty until the qualifier workflow hydrates them. SAVE
+        // only persists panel/configuration; it must never try to "repair" a
+        // historical or future bracket through a direct browser table write.
+        // That write is rejected in Cloud and, worse, could overwrite the
+        // authoritative progression lineage.
+        if (existingEntries.length > 0) {
             return;
         }
 
