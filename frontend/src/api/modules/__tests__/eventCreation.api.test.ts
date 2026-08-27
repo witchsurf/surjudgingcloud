@@ -62,6 +62,12 @@ describe('secure dual-mode event creation adapter', () => {
     expect(rpc).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects missing dates before calling the database', async () => {
+    await expect(createEventSecure({ ...request, startDate: '', endDate: '' }))
+      .rejects.toThrow('Les dates de début et de fin sont requises.');
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it('rejects an unsafe or missing canonical ID', async () => {
     rpc.mockResolvedValue({
       data: [{ ...request, id: 'not-a-bigint', start_date: request.startDate, end_date: request.endDate,

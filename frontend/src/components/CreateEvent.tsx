@@ -6,6 +6,10 @@ import EventStatus from './EventStatus';
 import { eventRepository } from '../repositories/EventRepository';
 import { parseCanonicalEventId } from '../domain/eventWorkflow';
 import { getDeploymentMode } from '../domain/deploymentMode';
+import {
+  resolveEventCreationSubmission,
+  validateEventCreationSubmission,
+} from '../domain/eventCreationSubmission';
 
 interface EventFormData {
   name: string;
@@ -99,16 +103,20 @@ const CreateEvent = () => {
     event.preventDefault();
     setSubmitError(null);
 
-    if (!formData.name.trim() || !formData.organizer.trim()) {
-      setSubmitError('Nom et organisateur sont requis.');
+    // Read the browser-owned values at submit time. Some Safari/WebKit date
+    // interactions can update the native control before React state catches up.
+    const submission = resolveEventCreationSubmission(new FormData(event.currentTarget), formData);
+    const validationError = validateEventCreationSubmission(submission);
+    if (validationError) {
+      setSubmitError(validationError);
       return;
     }
 
     const eventData: Record<string, unknown> = {
-      name: formData.name.trim(),
-      organizer: formData.organizer.trim(),
-      startDate: formData.startDate,
-      endDate: formData.endDate,
+      name: submission.name,
+      organizer: submission.organizer,
+      startDate: submission.startDate,
+      endDate: submission.endDate,
       organizerLogoDataUrl: logoDataUrl,
       createdAt: new Date().toISOString()
     };
@@ -127,10 +135,10 @@ const CreateEvent = () => {
       }
       try {
           const created = await eventRepository.create({
-            name: formData.name.trim(),
-            organizer: formData.organizer.trim(),
-            startDate: formData.startDate,
-            endDate: formData.endDate,
+            name: submission.name,
+            organizer: submission.organizer,
+            startDate: submission.startDate,
+            endDate: submission.endDate,
             price: 0,
             currency: 'XOF',
             categories: [],
@@ -168,7 +176,7 @@ const CreateEvent = () => {
       localStorage.setItem('surfJudgingActiveEventId', activeId);
 
       const defaultConfig = {
-        competition: formData.name.trim(),
+        competition: submission.name,
         division: 'OPEN',
         round: 1,
         heatId: 1,
@@ -187,7 +195,7 @@ const CreateEvent = () => {
       setFormData(INITIAL_FORM);
       navigate(deploymentMode === 'cloud'
         ? '/payment'
-        : `/participants?eventId=${canonicalId}&eventName=${encodeURIComponent(formData.name.trim())}`);
+        : `/participants?eventId=${canonicalId}&eventName=${encodeURIComponent(submission.name)}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -234,6 +242,7 @@ const CreateEvent = () => {
               Nom de l'événement
             </label>
             <input
+              name="name"
               type="text"
               value={formData.name}
               onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
@@ -247,6 +256,7 @@ const CreateEvent = () => {
               Organisateur
             </label>
             <input
+              name="organizer"
               type="text"
               value={formData.organizer}
               onChange={(e) => setFormData((prev) => ({ ...prev, organizer: e.target.value }))}
@@ -283,6 +293,7 @@ const CreateEvent = () => {
                 Date de début
               </label>
               <input
+                name="startDate"
                 type="date"
                 value={formData.startDate}
                 onChange={(e) => setFormData((prev) => ({ ...prev, startDate: e.target.value }))}
@@ -295,6 +306,7 @@ const CreateEvent = () => {
                 Date de fin
               </label>
               <input
+                name="endDate"
                 type="date"
                 value={formData.endDate}
                 onChange={(e) => setFormData((prev) => ({ ...prev, endDate: e.target.value }))}

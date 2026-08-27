@@ -38,7 +38,10 @@ import { DEFAULT_PODIUM_ID, normalizePodiumId } from '../utils/podium';
 import { buildDeploymentAwareUrl, encodeDeploymentAwareQr, type InternalAccessRoute } from '../domain/deploymentLinks';
 import { generateUuidV4 } from '../lib/uuid';
 import AdminHeatResultSnapshotPanel from './AdminHeatResultSnapshotPanel';
-import { getRepositoryPanelContexts as getCachedPanelContexts } from '../repositories/panelContextCache';
+import {
+  clearPanelContextCache,
+  getRepositoryPanelContexts as getCachedPanelContexts,
+} from '../repositories/panelContextCache';
 import { panelRepository } from '../repositories/PanelRepository';
 import { heatRepository } from '../repositories/HeatRepository';
 import { qualificationRecoveryRepository } from '../repositories/QualificationRecoveryRepository';
@@ -351,7 +354,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
   useEffect(() => {
     if (configSaved) divisionSelectionRef.current = null;
-  }, [configSaved, config.division, config.round, config.heatId]);
+  }, [configSaved]);
   const [lineupRows, setLineupRows] = useState<HeatEntriesWithParticipantRow[]>([]);
   const [lineupParticipantOptions, setLineupParticipantOptions] = useState<ParticipantRecord[]>([]);
   const [lineupDrafts, setLineupDrafts] = useState<Record<number, LineupOverrideDraft>>({});
@@ -365,6 +368,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     issue: 'panel_unknown',
     message: 'Panel inconnu : résolution admin en attente.',
   });
+  const [panelContextRevision, setPanelContextRevision] = useState(0);
+  const panelConfigurationReady = resultPanelContext.judgeCount != null && !resultPanelContext.issue;
   const [resultInterferenceState, setResultInterferenceState] = useState<{
     key: string;
     values: ReturnType<typeof computeEffectiveInterferences>;
@@ -885,7 +890,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         }
       });
     return () => { cancelled = true; };
-  }, [configSaved, heatId, resultPanelSnapshotKey]);
+  }, [configSaved, heatId, resultPanelSnapshotKey, panelContextRevision]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1599,7 +1604,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           message: `Note mise à jour à ${validation.value.toFixed(2)} (${reasonLabels[result.reason]})`
         });
       } else {
-        setOverrideStatus({ type: 'success', message: 'Note mise à jour.' });
+        setOverrideStatus({ type: 'error', message: 'Aucune correction n’a été confirmée par la base.' });
       }
     } catch (error) {
       console.error('❌ Override erreur:', error);
@@ -2214,6 +2219,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const handleConfigChange = (field: keyof AppConfig, value: any) => {
     if (field === 'division') {
       const nextDivision = String(value || '').trim();
+      // Round/heat options belong to the previous division until the async
+      // sequence fetch completes. Clear them in the same operator action so a
+      // controlled <select> cannot coerce R1H1 into an old division's first
+      // visible option (for example R2H1 after finishing a two-round category).
+      setDivisionHeatSequence([]);
       const planned = allEventHeatsMeta
         .filter((heat) => heat.division.trim().toLowerCase() === nextDivision.toLowerCase())
         .sort((a, b) => a.round - b.round || a.heat_number - b.heat_number);
@@ -2955,6 +2965,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     // Reconciliation is only for an operator's unsaved navigation; otherwise it
     // can replace the hydrated active heat with the first merely eligible heat.
     if (configSaved && !pendingDivisionSelection) return;
+    // The heat assigned to this podium remains a valid editing target. Only a
+    // heat owned by the other podium is a conflict. Filtering out the current
+    // pointer here made an unrelated edit (for example changing judge count)
+    // silently jump the Admin to the next heat while Judge followed the pointer.
+    const otherPodiumActiveHeatIds = new Set(
+      activePodiumPointers
+        .filter((pointer) => normalizePodiumId(pointer.podium_id) !== normalizePodiumId(selectedPodiumId))
+        .map((pointer) => ensurePersistedHeatId(pointer.active_heat_id || ''))
+        .filter(Boolean)
+    );
     const decision = reconcileRoundHeat({
       division: config.division,
       currentRound: config.round,
@@ -2965,7 +2985,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         ensurePersistedHeatId(row.id),
         authoritativeHeatStatusRef.current.get(ensurePersistedHeatId(row.id)) || row.status || '',
       ])),
-      activeHeatIds: new Set(activePodiumPointers.map((pointer) => ensurePersistedHeatId(pointer.active_heat_id || '')).filter(Boolean)),
+      activeHeatIds: otherPodiumActiveHeatIds,
       pending: pendingDivisionSelection,
       showClosedHeats,
     });
@@ -3019,6 +3039,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       // The parent owns the authoritative persistence chain and saved state.
       await onConfigSaved(true, normalizePodiumId(selectedPodiumId));
 
+      // A panel mismatch may have been cached while the next heat still had
+      // its planning-time default (3 judges). Re-read the canonical config and
+      // assignments after SAVE before allowing the timer to start.
+      clearPanelContextCache();
+      setPanelContextRevision((revision) => revision + 1);
+
       // Keep the recovery snapshot only after the authoritative save resolves.
       localStorage.setItem('surfJudgingConfigSaved', 'true');
       localStorage.setItem('surfJudgingConfig', JSON.stringify(config));
@@ -3043,6 +3069,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
     if (!judgeAssignmentStatus.isReady) {
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
+      return;
+    }
+    if (!panelConfigurationReady) {
+      setSyncError(resultPanelContext.message || 'Panel canonique non résolu : sauvegardez la configuration du heat.');
       return;
     }
     if (!(await ensureHeatCanStart())) return;
@@ -3218,6 +3248,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     if (!configSaved || heatRejudgeProtected || (isCurrentHeatLocked && !rejudgeOverrideActive)) return;
     if (!judgeAssignmentStatus.isReady) {
       setSyncError(`Affectations juges incomplètes: ${judgeAssignmentErrorMessage}`);
+      return;
+    }
+    if (!panelConfigurationReady) {
+      setSyncError(resultPanelContext.message || 'Panel canonique non résolu : sauvegardez la configuration du heat.');
       return;
     }
     if (!(await ensureHeatCanStart())) return;
@@ -4870,15 +4904,15 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                     </div>
                     <button
                       onClick={handleSaveConfig}
-                      disabled={configSaved || loadState === 'loading' || !judgeAssignmentStatus.isReady}
-                      className={`w-full py-3 px-4 rounded-xl font-bebas text-xl tracking-widest transition-all shadow-lg flex justify-center items-center gap-2 border border-white/5 ${configSaved
+                      disabled={(configSaved && panelConfigurationReady) || loadState === 'loading' || !judgeAssignmentStatus.isReady}
+                      className={`w-full py-3 px-4 rounded-xl font-bebas text-xl tracking-widest transition-all shadow-lg flex justify-center items-center gap-2 border border-white/5 ${configSaved && panelConfigurationReady
                         ? 'bg-emerald-950/40 text-emerald-400 cursor-not-allowed opacity-80'
                         : !judgeAssignmentStatus.isReady
                           ? 'bg-amber-950/40 text-amber-400 cursor-not-allowed opacity-90'
                           : 'bg-cyan-600 hover:bg-cyan-500 text-white font-medium hover:-translate-y-0.5 active:translate-y-0 shadow-cyan-900/20'
                         }`}
                     >
-                      {configSaved ? (
+                      {configSaved && panelConfigurationReady ? (
                         <>
                           <CheckCircle className="w-5 h-5 text-emerald-400" /> SAUVEGARDÉE
                         </>
@@ -4909,7 +4943,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                       <button
                         type="button"
                         onClick={timer.isRunning ? handleTimerPause : handleTimerResume}
-                        disabled={!configSaved || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
+                        disabled={!configSaved || !panelConfigurationReady || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
                         className={`rounded-lg px-3 py-2 text-xs font-black uppercase tracking-wider transition-all border ${timer.isRunning
                           ? 'bg-rose-600 hover:bg-rose-500 border-rose-500/30 text-white'
                           : 'bg-emerald-600 hover:bg-emerald-500 border-emerald-500/30 text-white'
@@ -4920,7 +4954,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                       <button
                         type="button"
                         onClick={handleTimerRestartFull}
-                        disabled={!configSaved || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
+                        disabled={!configSaved || !panelConfigurationReady || heatRejudgeProtected || heatStartDependencyChecking || !judgeAssignmentStatus.isReady}
                         className="rounded-lg border border-amber-500/30 bg-amber-600 px-3 py-2 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         Recommencer

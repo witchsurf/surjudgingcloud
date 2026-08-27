@@ -14,6 +14,10 @@ import { persistPlanningImportSafely } from '../services/persistPlanningImportSa
 import { categoryPlanningPolicyRepository, type CategoryPlanningFormat, type CategoryPlanningPolicy } from '../repositories/CategoryPlanningPolicyRepository';
 import { competitionAdminRoute } from '../domain/eventWorkflow';
 import { planningStatusRepository, type ServerPlanningSummary } from '../repositories/PlanningStatusRepository';
+import {
+  assertPlanningPolicyPreview,
+  computeOptionsForPlanningPolicy,
+} from '../domain/planningPolicyCompute';
 
 type ImportUiState = 'IDLE' | 'PARSING' | 'VALID' | 'INVALID' | 'PREVIEW_READY' | 'ERROR';
 type LocalFileType = 'CSV' | 'XLSX';
@@ -267,7 +271,13 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
       categories.forEach(category => {
         const participants = participantGroups.get(category) ?? [];
         const safeParticipants = participants.map(p => ({ ...p, country: p.country ?? undefined }));
-        newPreviews[category] = computeHeats(safeParticipants, { format, preferredHeatSize: 'auto', variant: 'V1' });
+        const policy = policyFor(category);
+        const preview = computeHeats(
+          safeParticipants,
+          computeOptionsForPlanningPolicy(policy, format),
+        );
+        assertPlanningPolicyPreview(policy, preview);
+        newPreviews[category] = preview;
       });
       
       setPreviews(newPreviews);
@@ -321,7 +331,7 @@ export default function PlanningImportPanel({ eventId = null, eventName, onPersi
           eventId,
           eventName,
           category,
-          format,
+          format: computeOptionsForPlanningPolicy(policyFor(category), format).format,
           overwrite,
         });
       }

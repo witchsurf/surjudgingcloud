@@ -1,16 +1,7 @@
 import { supabase } from '../lib/supabase';
+import type { CategoryPlanningFormat, CategoryPlanningPolicy } from '../domain/planningPolicy';
 
-export type CategoryPlanningFormat = 'elimination' | 'repechage' | 'man_on_man';
-export interface CategoryPlanningPolicy {
-  event_id: number;
-  category: string;
-  base_format: CategoryPlanningFormat;
-  transition_round: number | null;
-  transition_format: CategoryPlanningFormat | null;
-  version: number;
-  created_at?: string;
-  updated_at?: string;
-}
+export type { CategoryPlanningFormat, CategoryPlanningPolicy } from '../domain/planningPolicy';
 
 const TABLE = 'event_category_planning_config' as never;
 

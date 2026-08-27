@@ -17,7 +17,7 @@ import {
     markScoresSyncedIDB,
     getAllScoresIDB
 } from '../lib/idbStorage';
-import { canonicalizeScores, recordScoreOverrideSecure, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
+import { applyScoreCorrectionSecure, canonicalizeScores, normalizeScoreSurfer, recordScoreOverrideSecure, toParsedScore, type RawScoreRow } from '../api/modules/scoring.api';
 import { fetchHeatMetadata } from '../api/modules/heats.api';
 import type {
     OverrideScoreRequest as CanonicalOverrideScoreRequest,
@@ -491,34 +491,35 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
                 ensurePersistedHeatId(score.heat_id) === normalizedHeatId &&
                 (score.judge_station || score.judge_id) === (request.judgeStation || request.judgeId) &&
                 score.wave_number === request.waveNumber &&
-                score.surfer === request.surfer
+                normalizeScoreSurfer(score.surfer) === normalizeScoreSurfer(request.surfer)
         );
         let existingScore = matchingScores.sort(
             (a, b) => new Date(b.timestamp || b.created_at || 0).getTime() - new Date(a.timestamp || a.created_at || 0).getTime()
         )[0];
 
-        // Admin corrections may target a score loaded from the canonical DB
-        // before IndexedDB has been hydrated (fresh browser, another tablet,
-        // or a restored Field runtime). Never turn that into an unaudited
-        // "new" score with previous_score=null: resolve the canonical row first.
-        if (!existingScore && this.isOnline) {
+        // IndexedDB may contain a pending/failed correction identity that was
+        // never committed by the Field DB. Whenever the DB is reachable,
+        // resolve the canonical row even if a local match exists; otherwise a
+        // closed-heat correction can target a phantom score id.
+        if (this.isOnline) {
             const canonicalScores = await this.fetchScores(normalizedHeatId);
-            existingScore = canonicalScores
+            const canonicalExistingScore = canonicalScores
                 .filter(
                     score =>
                         (score.judge_station || score.judge_id) === (request.judgeStation || request.judgeId) &&
                         score.wave_number === request.waveNumber &&
-                        score.surfer === request.surfer
+                        normalizeScoreSurfer(score.surfer) === normalizeScoreSurfer(request.surfer)
                 )
                 .sort(
                     (a, b) => new Date(b.timestamp || b.created_at || 0).getTime() - new Date(a.timestamp || a.created_at || 0).getTime()
                 )[0];
+            if (canonicalExistingScore) existingScore = canonicalExistingScore;
         }
 
         if (!existingScore) {
             throw new Error(`Note canonique introuvable pour ${request.judgeStation || request.judgeId} ${request.surfer} V${request.waveNumber}.`);
         }
-        const updatedScoreId = this.generateId();
+        const updatedScoreId = existingScore.id!;
         const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
         const derivedEventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
 
@@ -564,35 +565,19 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
             // Online operation
             async () => {
                 this.ensureSupabase();
-                const resolvedEventId = await this.resolveEventIdForHeat(
-                    normalizedHeatId,
-                    existingScore?.event_id ?? derivedEventId ?? null
-                );
 
-                // Save score
-                await this.upsertScoreSecure({
-                    ...updatedScore,
-                    event_id: resolvedEventId ?? updatedScore.event_id,
-                });
-
-                // Save override log
-                await recordScoreOverrideSecure({
-                    id: overrideLog.id,
-                    heat_id: overrideLog.heat_id,
-                    score_id: overrideLog.score_id,
-                    judge_id: overrideLog.judge_id,
-                    judge_name: overrideLog.judge_name,
-                    judge_station: overrideLog.judge_station,
-                    judge_identity_id: overrideLog.judge_identity_id,
-                    surfer: overrideLog.surfer,
-                    wave_number: overrideLog.wave_number,
-                    previous_score: overrideLog.previous_score,
-                    new_score: overrideLog.new_score,
-                    reason: overrideLog.reason,
-                    comment: overrideLog.comment,
-                    overridden_by: overrideLog.overridden_by,
-                    overridden_by_name: overrideLog.overridden_by_name,
-                    created_at: overrideLog.created_at,
+                // Closed heats deliberately reject ordinary score writes. The
+                // audited correction RPC opens the narrow transaction-local
+                // bypass and persists the score plus its override log atomically.
+                await applyScoreCorrectionSecure({
+                    score_id: existingScore.id!,
+                    heat_id: normalizedHeatId,
+                    score: request.newScore,
+                    timestamp: updatedScore.timestamp,
+                    override_log: {
+                        ...overrideLog,
+                        score_id: existingScore.id!,
+                    },
                 });
 
                 // Update IndexedDB & local logs

@@ -19,13 +19,13 @@ interface OverrideRequest {
 }
 
 export function useScoreManager() {
-    const { config, configSaved, activeEventId } = useConfigStore();
+    const { config, activeEventId } = useConfigStore();
     const { setScores, setOverrideLogs } = useJudgingStore();
 
     const handleScoreSubmit = useCallback(async (
         scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp' | 'synced'>,
         heatId: string
-    ): Promise<Score | undefined> => {
+    ): Promise<Score> => {
         try {
             // Use ScoreRepository instead of useSupabaseSync
             const scoreRecord = await scoreRepository.save({
@@ -51,14 +51,15 @@ export function useScoreManager() {
             return newScore;
         } catch (error) {
             console.error('❌ Erreur sauvegarde score:', error);
-            return undefined;
+            // The judge UI must never acknowledge a score that neither the
+            // Field database nor the durable offline WAL accepted.
+            throw error;
         }
     }, [setScores, activeEventId]);
 
     const handleScoreOverride = useCallback(async (request: OverrideRequest, heatId: string): Promise<ScoreOverrideLog | undefined> => {
-        if (!configSaved || !config.competition) {
-            console.warn('⚠️ Override ignoré: configuration non sauvegardée');
-            return undefined;
+        if (!config.competition || !ensurePersistedHeatId(heatId)) {
+            throw new Error('Override impossible: contexte de heat canonique incomplet.');
         }
 
         try {
@@ -128,9 +129,9 @@ export function useScoreManager() {
             return log;
         } catch (error) {
             console.error('❌ Erreur override score:', error);
-            return undefined;
+            throw error;
         }
-    }, [config, configSaved, setScores, setOverrideLogs]);
+    }, [config, setScores, setOverrideLogs]);
 
     const handleScoreSync = useCallback(async (heatId: string) => {
         try {

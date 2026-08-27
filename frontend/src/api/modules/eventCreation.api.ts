@@ -45,6 +45,13 @@ const mapCreatedEvent = (row: CreatedEventRpcRow): CreatedEventRecord => ({
 
 export async function createEventSecure(request: CreateEventRequest): Promise<CreatedEventRecord> {
   if (!supabase || !isSupabaseConfigured()) throw new Error('Supabase est indisponible.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(request.startDate)
+      || !/^\d{4}-\d{2}-\d{2}$/.test(request.endDate)) {
+    throw new Error('Les dates de début et de fin sont requises.');
+  }
+  if (request.endDate < request.startDate) {
+    throw new Error('La date de fin doit être postérieure ou égale à la date de début.');
+  }
   const rpcBody = {
     p_name: request.name,
     p_organizer: request.organizer,

@@ -205,13 +205,21 @@ export default function AdminPage() {
 
         const hydrationKey = `${targetEventId}:${canonicalHeatId}`;
         if (hydratedManualHeatRef.current === hydrationKey) return;
+        // This ref is an in-flight guard, not a permanent "already hydrated"
+        // latch. A later structural reconciliation can legitimately mark the
+        // same archived heat unsaved again; in that case its canonical config
+        // must be re-read instead of leaving Admin in a false panel-unknown
+        // state.
+        hydratedManualHeatRef.current = hydrationKey;
 
         let cancelled = false;
         void loadHeatConfig(canonicalHeatId)
             .then((storedConfig) => {
                 if (cancelled) return;
-                hydratedManualHeatRef.current = hydrationKey;
-                if (!storedConfig) return;
+                if (!storedConfig) {
+                    setLoadError('Configuration canonique du heat sélectionné introuvable.');
+                    return;
+                }
 
                 const stored = storedConfig as Record<string, unknown>;
                 const judges = Array.isArray(stored.judges)
@@ -243,8 +251,12 @@ export default function AdminPage() {
             })
             .catch((error) => {
                 if (cancelled) return;
-                hydratedManualHeatRef.current = hydrationKey;
                 setLoadError(error instanceof Error ? error.message : 'Impossible de lire la configuration du heat sélectionné.');
+            })
+            .finally(() => {
+                if (hydratedManualHeatRef.current === hydrationKey) {
+                    hydratedManualHeatRef.current = null;
+                }
             });
 
         return () => { cancelled = true; };

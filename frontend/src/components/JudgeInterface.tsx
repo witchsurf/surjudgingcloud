@@ -21,7 +21,7 @@ interface JudgeInterfaceProps {
   heatId?: string;
   judgeId?: string;
   judgeName?: string;
-  onScoreSubmit?: (scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp'>) => Promise<Score | void>;
+  onScoreSubmit?: (scoreData: Omit<Score, 'id' | 'created_at' | 'heat_id' | 'timestamp'>) => Promise<Score>;
   configSaved?: boolean;
   heatSeriesLabel?: string;
   timer?: HeatTimerType;
@@ -66,7 +66,7 @@ function JudgeInterface({
   heatId,
   judgeId = 'CHIEF',
   judgeName,
-  onScoreSubmit = async () => { },
+  onScoreSubmit = async () => { throw new Error('Service de notation indisponible.'); },
   configSaved = false,
   heatSeriesLabel,
   timer = { startTime: null, duration: 20, isRunning: false },
@@ -289,16 +289,16 @@ function JudgeInterface({
     try {
       const parsedScores: Score[] = JSON.parse(savedScores);
       return canonicalizeScores(parsedScores.filter((score) => {
-        const sameJudge = score.judge_id === judgeId;
-        const sameStation = (score.judge_station || score.judge_id) === judgeStation;
+        const sameStation = (score.judge_station || score.judge_id)?.trim().toUpperCase()
+          === judgeStation?.trim().toUpperCase();
         const sameHeat = currentHeatId ? ensurePersistedHeatId(score.heat_id) === currentHeatId : false;
-        return sameJudge && sameStation && sameHeat;
+        return sameStation && sameHeat;
       }));
     } catch (error) {
       console.error('Erreur chargement scores juge:', error);
       return [];
     }
-  }, [judgeId, currentHeatId]);
+  }, [judgeStation, currentHeatId]);
 
   const readAllScoresFromStorage = useCallback((): Score[] => {
     const savedScores = localStorage.getItem('surfJudgingScores');
@@ -322,6 +322,16 @@ function JudgeInterface({
     }));
     localStorage.setItem('surfJudgingScores', JSON.stringify(normalized));
   }, []);
+  const replaceJudgeHeatScoresInStorage = useCallback((judgeScores: Score[]) => {
+    if (!currentHeatId) return;
+    const normalizedHeatId = ensurePersistedHeatId(currentHeatId);
+    const normalizedStation = judgeStation?.trim().toUpperCase();
+    const retained = readAllScoresFromStorage().filter((score) => {
+      const scoreStation = (score.judge_station || score.judge_id)?.trim().toUpperCase();
+      return ensurePersistedHeatId(score.heat_id) !== normalizedHeatId || scoreStation !== normalizedStation;
+    });
+    persistScoresToStorage([...retained, ...judgeScores]);
+  }, [currentHeatId, judgeStation, persistScoresToStorage, readAllScoresFromStorage]);
   const refetchJudgeScores = useCallback(async (reason: 'override' | 'shared_update' = 'shared_update') => {
     if (!currentHeatId || !judgeId) return;
     const now = Date.now();
@@ -353,18 +363,19 @@ function JudgeInterface({
       
       if (myScores.length > 0) {
         setSubmittedScores(canonicalizeScores(myScores));
-        persistScoresToStorage(myScores);
+        replaceJudgeHeatScoresInStorage(myScores);
       } else {
-        // If all my scores were moved away, clear local
+        // Clear only this station/heat partition. Other judges may use the
+        // same browser origin (multi-kiosk rehearsal or recovery console).
         setSubmittedScores([]);
-        persistScoresToStorage([]);
+        replaceJudgeHeatScoresInStorage([]);
       }
     } catch (err) {
       console.warn('Failed to refetch scores after override:', err);
     } finally {
       scoreRefreshInFlightRef.current = false;
     }
-  }, [currentHeatId, judgeId, judgeStation, persistScoresToStorage]);
+  }, [currentHeatId, judgeId, judgeStation, replaceJudgeHeatScoresInStorage]);
 
   useEffect(() => {
     const handleOverride = (e: any) => {
@@ -390,10 +401,11 @@ function JudgeInterface({
       : [...existing, normalised];
     persistScoresToStorage(merged);
     setSubmittedScores(canonicalizeScores(
-      merged.filter(score => score.heat_id === currentId && score.judge_id === judgeId)
-        .filter(score => (score.judge_station || score.judge_id) === judgeStation)
+      merged.filter(score => score.heat_id === currentId)
+        .filter(score => (score.judge_station || score.judge_id)?.trim().toUpperCase()
+          === judgeStation?.trim().toUpperCase())
     ));
-  }, [currentHeatId, judgeId, judgeStation, persistScoresToStorage, readAllScoresFromStorage]);
+  }, [currentHeatId, judgeStation, persistScoresToStorage, readAllScoresFromStorage]);
   void mergeRealtimeScore;
 
   const refreshInterferenceCalls = useCallback(async () => {
@@ -708,31 +720,32 @@ function JudgeInterface({
         score: scoreValue
       });
 
-      if (savedScore) {
-        const sanitizedScore = {
-          ...savedScore,
-          heat_id: savedScore.heat_id || currentHeatId,
-          judge_id: savedScore.judge_id || judgeId,
-          judge_station: savedScore.judge_station || judgeStation,
-          judge_identity_id: savedScore.judge_identity_id || judgeIdentityId
-        };
+      if (!savedScore?.id) {
+        throw new Error('La sauvegarde n\'a fourni aucun accusé de réception durable.');
+      }
 
-        if (!currentHeatId || sanitizedScore.heat_id === currentHeatId) {
-          // CRITICAL FIX: Persist to localStorage FIRST
-          const allScores = readAllScoresFromStorage();
-          const updatedScores = allScores.some((score) => score.id === sanitizedScore.id)
-            ? allScores.map((score) => (score.id === sanitizedScore.id ? sanitizedScore : score))
-            : [...allScores, sanitizedScore];
-          persistScoresToStorage(updatedScores);
+      const sanitizedScore = {
+        ...savedScore,
+        heat_id: savedScore.heat_id || currentHeatId,
+        judge_id: savedScore.judge_id || judgeId,
+        judge_station: savedScore.judge_station || judgeStation,
+        judge_identity_id: savedScore.judge_identity_id || judgeIdentityId
+      };
 
-          // THEN update state
-          setSubmittedScores(prev => {
-            const nextScores = prev.some((score) => score.id === sanitizedScore.id)
-              ? prev.map((score) => (score.id === sanitizedScore.id ? sanitizedScore : score))
-              : [...prev, sanitizedScore];
-            return canonicalizeScores(nextScores);
-          });
-        }
+      if (!currentHeatId || sanitizedScore.heat_id === currentHeatId) {
+        // Persist the acknowledged fact before rendering success.
+        const allScores = readAllScoresFromStorage();
+        const updatedScores = allScores.some((score) => score.id === sanitizedScore.id)
+          ? allScores.map((score) => (score.id === sanitizedScore.id ? sanitizedScore : score))
+          : [...allScores, sanitizedScore];
+        persistScoresToStorage(updatedScores);
+
+        setSubmittedScores(prev => {
+          const nextScores = prev.some((score) => score.id === sanitizedScore.id)
+            ? prev.map((score) => (score.id === sanitizedScore.id ? sanitizedScore : score))
+            : [...prev, sanitizedScore];
+          return canonicalizeScores(nextScores);
+        });
       }
 
       // Haptic + visual feedback

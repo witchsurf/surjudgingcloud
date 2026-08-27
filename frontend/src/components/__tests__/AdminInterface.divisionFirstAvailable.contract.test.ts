@@ -17,7 +17,9 @@ describe('P2.7.22 — division selects first planned available heat', () => {
   it('does not carry the previous division round/heat', () => {
     const start = source.indexOf('const handleConfigChange = (field: keyof AppConfig');
     const end = source.indexOf('useEffect(() => {', start);
-    expect(source.slice(start, end)).toContain("field === 'division'");
+    const block = source.slice(start, end);
+    expect(block).toContain("field === 'division'");
+    expect(block).toContain('setDivisionHeatSequence([]);');
   });
 
   it('excludes the current podium heat even while pointer metadata is loading', () => {

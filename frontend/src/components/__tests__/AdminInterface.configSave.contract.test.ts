@@ -30,4 +30,21 @@ describe('AdminInterface — contrat localStorage après SAVE canonique', () => 
     expect(handler).toContain('setSyncError(message)');
     expect(handler).toContain('alert(`Sauvegarde impossible : ${message}`)');
   });
+
+  it('invalide le cache de panel après SAVE et bloque START tant que le panel canonique diverge', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/components/AdminInterface.tsx'), 'utf8');
+    const saveHandler = source.slice(
+      source.indexOf('const handleSaveConfig = async () =>'),
+      source.indexOf('const handleTimerStart = async () =>'),
+    );
+    const timerHandler = source.slice(
+      source.indexOf('const handleTimerStartImpl = async () =>'),
+      source.indexOf('const handleTimerRestartFull'),
+    );
+
+    expect(saveHandler).toContain('clearPanelContextCache()');
+    expect(saveHandler).toContain('setPanelContextRevision');
+    expect(timerHandler).toContain('if (!panelConfigurationReady)');
+    expect(source).toContain('!configSaved || !panelConfigurationReady || heatRejudgeProtected');
+  });
 });
