@@ -190,17 +190,14 @@ export default function JudgePage() {
                     to: `${row.division} R${row.round}H${row.heat_number}`
                 });
 
-                setConfig((prev) => applyHeatScopedConfig(prev, {
-                    competition: resolveEventDisplayName(row.event_name, prev.competition),
-                    division: row.division || prev.division,
-                    round: row.round ?? prev.round,
-                    heatId: row.heat_number ?? prev.heatId
-                }));
-
+                // event_last_config is a legacy, event-global signal. It may
+                // lag behind a podium-specific active_heat_pointer. Let the
+                // config store arbitrate the two timestamps before changing
+                // what judges see; never paint the legacy heat optimistically.
                 void loadConfigFromDb(targetEventId, {
                     force: true,
                     includeCategories: false,
-                    preferActivePointer: false,
+                    podiumId,
                 });
             }
         }, { initialRefresh: false });
