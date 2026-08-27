@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createFrontendManifest, createImageIndex, normalizeCompose, normalizeFieldEnv } from '../scripts/assemble-field-payload.mjs';
 
 test('normalizes disposable runtime names and host ports', () => {
@@ -40,4 +42,10 @@ test('creates a deterministic Docker image archive index', () => {
     format: 'docker-save-v1',
     images: ['a_image_2.tar', 'z_image_1.tar'],
   });
+});
+
+test('installs a top-level PostgreSQL entrypoint launcher for fresh volumes', () => {
+  const dockerfile = fs.readFileSync(path.resolve('runtime-template/database/Dockerfile'), 'utf8');
+  assert.match(dockerfile, /COPY init\/zz-surfjudging-field\.sh \/docker-entrypoint-initdb\.d\/zz-surfjudging-field\.sh/);
+  assert.match(dockerfile, /chmod 0755 \/docker-entrypoint-initdb\.d\/zz-surfjudging-field\.sh/);
 });
