@@ -7,5 +7,7 @@ COPY init/ /docker-entrypoint-initdb.d/surfjudging-field/
 # The Supabase/PostgreSQL entrypoint only executes top-level .sql/.sh files.
 # Keep the data files grouped, but expose one deterministic top-level launcher.
 COPY init/zz-surfjudging-field.sh /docker-entrypoint-initdb.d/zz-surfjudging-field.sh
+COPY healthcheck.sh /usr/local/bin/surfjudging-field-healthcheck.sh
 RUN chmod 0755 /docker-entrypoint-initdb.d/zz-surfjudging-field.sh \
-  /docker-entrypoint-initdb.d/surfjudging-field/*.sh
+  /docker-entrypoint-initdb.d/surfjudging-field/*.sh \
+  /usr/local/bin/surfjudging-field-healthcheck.sh

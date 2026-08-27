@@ -13,6 +13,8 @@ const required = [
   'compose/compose.yaml',
   'compose/.env',
   'frontend/dist/deployment-manifest.json',
+  'database/init/service-roles.sql',
+  'database/healthcheck.sh',
   'images/index.json',
   'scripts/live-outbox-worker.mjs',
   'scripts/start-surfjudging-field-mac.sh',

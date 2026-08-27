@@ -23,15 +23,25 @@ export function normalizeCompose(text, sourceRuntime) {
     .replace(/(["'])\d+:8000\1/g, (_match, quote) => `${quote}8000:8000${quote}`)
     .replace(/(["'])\d+:80\1/g, (_match, quote) => `${quote}8080:80${quote}`)
     .replace('image: supabase/postgres:15.1.0.147', 'image: surfjudging_field_postgres_img:latest')
-    .replace(/image:\s+surfjudging_field_frontend_img(?::latest)?/g, 'image: surfjudging_field_frontend_img:latest');
+    .replace(/test:\s*\["CMD-SHELL",\s*"pg_isready -U postgres -d postgres"\]/g,
+      'test: ["CMD-SHELL", "/usr/local/bin/surfjudging-field-healthcheck.sh"]')
+    .replace(/image:\s+surfjudging_field_frontend_img(?::latest)?/g, 'image: surfjudging_field_frontend_img:latest')
+    .replace(/(\n  frontend:\n[\s\S]*?\n    restart: unless-stopped)(\n    ports:)/,
+      '$1\n    depends_on:\n      kong:\n        condition: service_healthy$2');
 }
 
-export function normalizeFieldEnv(text) {
+export function normalizeFieldEnv(text, postgresPassword) {
+  if (typeof postgresPassword !== 'string' || !/^[a-f0-9]{64}$/.test(postgresPassword)) {
+    throw new Error('Field PostgreSQL password must be a generated 256-bit hex secret');
+  }
   const replace = (key, value, input) => {
     const line = new RegExp(`^${key}=.*$`, 'm');
     return line.test(input) ? input.replace(line, `${key}=${value}`) : `${input.trimEnd()}\n${key}=${value}\n`;
   };
-  return replace('SITE_URL', 'http://localhost:8080', replace('API_EXTERNAL_URL', 'http://localhost:8000', text));
+  return replace('SITE_URL', 'http://localhost:8080',
+    replace('API_EXTERNAL_URL', 'http://localhost:8000',
+      replace('REALTIME_TENANT_ID', 'surfjudging_field_realtime',
+        replace('POSTGRES_PASSWORD', postgresPassword, text))));
 }
 
 export function createFrontendManifest(sourceManifest, expectedSchema) {
@@ -93,7 +103,10 @@ fs.writeFileSync(path.join(frontendRoot, 'Dockerfile'), 'FROM nginx:alpine\nCOPY
 fs.mkdirSync(path.join(output, 'compose'), { recursive: true });
 const compose = normalizeCompose(fs.readFileSync(path.join(source, 'docker-compose.yml'), 'utf8'), runtimeName);
 fs.writeFileSync(path.join(output, 'compose', 'compose.yaml'), compose);
-fs.writeFileSync(path.join(output, 'compose', '.env'), normalizeFieldEnv(fs.readFileSync(path.join(source, '.env'), 'utf8')));
+fs.writeFileSync(path.join(output, 'compose', '.env'), normalizeFieldEnv(
+  fs.readFileSync(path.join(source, '.env'), 'utf8'),
+  crypto.randomBytes(32).toString('hex'),
+));
 fs.writeFileSync(path.join(output, 'compose', 'kong.yml'), fs.readFileSync(path.join(source, 'kong.yml'), 'utf8').replaceAll(runtimeName, 'surfjudging_field'));
 
 const init = path.join(output, 'database', 'init');
@@ -103,6 +116,8 @@ fs.mkdirSync(path.join(init, 'migrations'), { recursive: true });
 for (const migration of manifest.migrations) fs.copyFileSync(path.join(repo, migration.path), path.join(init, 'migrations', path.basename(migration.path)));
 const modeSql = path.join(init, 'field-mode.sql');
 fs.writeFileSync(modeSql, fs.readFileSync(modeSql, 'utf8').replace('__SURFJUDGING_SCHEMA_VERSION__', schema));
+const healthcheck = path.join(output, 'database', 'healthcheck.sh');
+fs.writeFileSync(healthcheck, fs.readFileSync(healthcheck, 'utf8').replace('__SURFJUDGING_SCHEMA_VERSION__', schema));
 
 run('docker', ['build', '-t', 'surfjudging_field_postgres_img:latest', path.join(output, 'database')]);
 run('docker', ['build', '-t', 'surfjudging_field_frontend_img:latest', frontendRoot]);
@@ -115,6 +130,8 @@ fs.writeFileSync(path.join(output, 'images', 'index.json'), JSON.stringify(creat
 const files = [
   'compose/compose.yaml', 'compose/.env', 'compose/kong.yml',
   'frontend/dist/deployment-manifest.json', 'database/init/baseline.sql', 'database/init/field-mode.sql',
+  'database/init/service-roles.sql',
+  'database/healthcheck.sh',
   'scripts/live-outbox-worker.mjs', 'scripts/start-surfjudging-field-mac.sh', 'scripts/start-surfjudging-field-windows.ps1',
   'images/index.json',
 ];
