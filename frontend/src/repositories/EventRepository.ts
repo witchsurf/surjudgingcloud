@@ -76,7 +76,7 @@ export interface SaveSnapshotRequest {
  */
 export class EventRepository extends BaseRepository implements EventRepositoryContract {
     constructor() {
-        super('events');
+        super('events', { contextName: 'EventRepository' });
     }
 
     async create(request: CreateEventRequest): Promise<CreatedEventRecord> {

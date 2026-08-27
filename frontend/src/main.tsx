@@ -11,6 +11,7 @@ import { installOfflineSyncCoordinator } from './lib/offlineSyncCoordinator';
 
 import { isLocalNetworkHost } from './lib/networkDetection';
 import { getDeploymentMode, isFieldRuntime } from './domain/deploymentMode';
+import { shouldAutoApplyPwaUpdate } from './lib/pwaUpdatePolicy';
 
 const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
 const isPublicDisplayHost = hostname === 'display.surfjudging.cloud';
@@ -18,10 +19,40 @@ const isLocalLanHost = isLocalNetworkHost();
 const deploymentMode = getDeploymentMode();
 
 if (deploymentMode === 'cloud' && !isLocalLanHost && !isPublicDisplayHost) {
+  const pendingUpdateKey = 'surfjudging-pwa-update-pending';
+  let safeUpdatePoll: number | null = null;
+
+  const applyWaitingUpdateWhenSafe = () => {
+    if (!shouldAutoApplyPwaUpdate(window.location.pathname)) {
+      try {
+        sessionStorage.setItem(pendingUpdateKey, 'true');
+      } catch { /* best effort diagnostic */ }
+
+      if (safeUpdatePoll === null) {
+        safeUpdatePoll = window.setInterval(() => {
+          if (shouldAutoApplyPwaUpdate(window.location.pathname)) {
+            window.clearInterval(safeUpdatePoll!);
+            safeUpdatePoll = null;
+            try {
+              sessionStorage.removeItem(pendingUpdateKey);
+            } catch { /* best effort diagnostic */ }
+            void updateSW(true);
+          }
+        }, 1000);
+      }
+      console.info('🔄 Nouvelle version prête — activation différée pour protéger l’écran opérationnel');
+      return;
+    }
+
+    try {
+      sessionStorage.removeItem(pendingUpdateKey);
+    } catch { /* best effort diagnostic */ }
+    void updateSW(true);
+  };
+
   const updateSW = registerSW({
     onNeedRefresh() {
-      console.log('🔄 New version available – applying update now');
-      updateSW(true);
+      applyWaitingUpdateWhenSafe();
     },
     onOfflineReady() {
       console.log('✅ App ready to work offline');
@@ -30,7 +61,6 @@ if (deploymentMode === 'cloud' && !isLocalLanHost && !isPublicDisplayHost) {
   if (import.meta.hot) {
     import.meta.hot.accept();
   }
-  void updateSW;
 } else {
   console.log('📴 Service worker disabled on local/LAN or public display host');
   if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {

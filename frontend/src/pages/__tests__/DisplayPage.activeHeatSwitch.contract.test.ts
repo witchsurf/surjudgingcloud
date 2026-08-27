@@ -34,4 +34,10 @@ describe('P2.7.18 display active heat switch', () => {
     expect(source).toContain('}, { podiumId });');
     expect(source).toContain('[activeEventId, configSaved, config.competition');
   });
+
+  it('recovers a cancelled participant-country read without reloading the Display', () => {
+    expect(source).toContain('retryReadAfterAbort(');
+    expect(source).toContain('Lecture des pays annulée, nouvelle tentative');
+    expect(source).not.toContain('window.location.reload');
+  });
 });

@@ -26,4 +26,12 @@ describe('P2.7.17B — podium B event context contract', () => {
     expect(text).toContain('const configLoadSequence = new Map<string, number>();');
     expect(text).toContain('configLoadSequence.get(loadKey) === requestSequence');
   });
+
+  it('retries only cancelled snapshot reads while the request is still current', () => {
+    const text = source();
+    expect(text).toContain('retryReadAfterAbort(');
+    expect(text).toContain('Snapshot read cancelled; retrying');
+    expect(text).toContain('DB fetch cancelled after bounded recovery');
+    expect(text).toContain('latestRequestedConfigLoadKey === loadKey');
+  });
 });

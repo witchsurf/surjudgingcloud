@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { colorLabelMap, getColorSet, type HeatColor } from '../utils/colorUtils';
 import { getPodiumIdFromSearch, normalizePodiumId, shouldPreferActivePointer } from '../utils/podium';
 import { parseActiveHeatId } from '../utils/activeHeatId';
+import { isAbortLikeError, retryReadAfterAbort } from '../lib/requestErrors';
 // Secure storage imports removed (no longer needed)
 
 interface ConfigStore {
@@ -311,7 +312,24 @@ export const useConfigStore = create<ConfigStore>()(
 
                     try {
                         // Use EventRepository instead of supabaseClient
-                        let snapshot = await eventRepository.fetchEventConfigSnapshot(eventId);
+                        let snapshot = await retryReadAfterAbort(
+                            () => eventRepository.fetchEventConfigSnapshot(eventId),
+                            {
+                                retries: 2,
+                                baseDelayMs: 300,
+                                shouldContinue: () => (
+                                    latestRequestedConfigLoadKey === loadKey
+                                    && configLoadSequence.get(loadKey) === requestSequence
+                                ),
+                                onRetry: (_error, attempt) => {
+                                    logger.warn('ConfigStore', 'Snapshot read cancelled; retrying', {
+                                        eventId,
+                                        podiumId,
+                                        attempt,
+                                    });
+                                },
+                            },
+                        );
 
                         // event_last_config is global legacy state owned by podium A.
                         // Resolve an explicit podium pointer before enriching the heat,
@@ -543,7 +561,14 @@ export const useConfigStore = create<ConfigStore>()(
                             }
                         }
                     } catch (error) {
-                        logger.error('ConfigStore', 'DB fetch error', error);
+                        if (isAbortLikeError(error)) {
+                            logger.warn('ConfigStore', 'DB fetch cancelled after bounded recovery', {
+                                eventId,
+                                podiumId,
+                            });
+                        } else {
+                            logger.error('ConfigStore', 'DB fetch error', error);
+                        }
                         if (latestRequestedConfigLoadKey === loadKey && configLoadSequence.get(loadKey) === requestSequence) {
                             set({ loadedFromDb: false });
                         }

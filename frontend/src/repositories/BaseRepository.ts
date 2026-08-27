@@ -10,10 +10,12 @@ import { supabase, isSupabaseConfigured, canUseSupabaseConnection } from '../lib
 import { logger } from '../lib/logger';
 import { retryWithBackoff } from '../lib/retryWithBackoff';
 import { generateUuidV4 } from '../lib/uuid';
+import { isAbortLikeError } from '../lib/requestErrors';
 
 export interface RepositoryOptions {
     enableOffline?: boolean;
     tableName?: string;
+    contextName?: string;
 }
 
 /**
@@ -24,11 +26,13 @@ export abstract class BaseRepository {
     protected supabase: SupabaseClient | null;
     protected tableName: string;
     protected enableOffline: boolean;
+    protected contextName: string;
 
     constructor(tableName: string, options: RepositoryOptions = {}) {
         this.supabase = supabase;
         this.tableName = tableName;
         this.enableOffline = options.enableOffline ?? true;
+        this.contextName = options.contextName ?? `${tableName || 'Data'}Repository`;
     }
 
     /**
@@ -50,7 +54,7 @@ export abstract class BaseRepository {
         fallback?: () => T | Promise<T>,
         operationName: string = 'operation'
     ): Promise<T> {
-        const repoName = this.constructor.name;
+        const repoName = this.contextName;
 
         try {
             // If offline and fallback provided, use fallback
@@ -75,6 +79,14 @@ export abstract class BaseRepository {
             return result;
 
         } catch (error) {
+            if (isAbortLikeError(error)) {
+                // Browser lifecycle cancellations are expected during a tab
+                // transition or a deferred PWA activation. They are not an
+                // application failure and must not create a Sentry incident.
+                logger.warn(repoName, `${operationName} - Cancelled`, error);
+                throw error;
+            }
+
             logger.error(repoName, `${operationName} - Failed`, error);
 
             // Try fallback on transient/offline errors only. Constraint and
@@ -102,6 +114,7 @@ export abstract class BaseRepository {
      */
     protected shouldRetry(error: unknown): boolean {
         if (!error) return false;
+        if (isAbortLikeError(error)) return false;
 
         const maybeError = error as { code?: string; message?: string; status?: number; name?: string };
         const code = (maybeError.code || '').toString().toUpperCase();
@@ -123,6 +136,9 @@ export abstract class BaseRepository {
 
     protected shouldFallback(error: unknown): boolean {
         if (!error) return false;
+        // Never queue a mutation after an aborted response: the server may have
+        // committed it even though the browser did not receive the response.
+        if (isAbortLikeError(error)) return false;
 
         const maybeError = error as { code?: string; message?: string; status?: number; name?: string };
         const code = (maybeError.code || '').toString().toUpperCase();

@@ -28,6 +28,7 @@ import { getRepositoryPanelContexts as getCachedPanelContexts } from '../reposit
 import type { PanelContext } from '../domain/scoring/panelContext';
 import { computeEffectiveInterferences } from '../utils/interference';
 import { resolveEventDisplayName } from '../utils/eventName';
+import { retryReadAfterAbort } from '../lib/requestErrors';
 import { colorLabelMap } from '../utils/colorUtils';
 import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { getPodiumIdFromSearch } from '../utils/podium';
@@ -1290,7 +1291,20 @@ export default function DisplayPage() {
 
         const loadLiveHeatCountries = async () => {
             try {
-                const entries = await fetchHeatEntriesWithParticipants(currentHeatId);
+                const entries = await retryReadAfterAbort(
+                    () => fetchHeatEntriesWithParticipants(currentHeatId),
+                    {
+                        retries: 2,
+                        baseDelayMs: 300,
+                        shouldContinue: () => !cancelled,
+                        onRetry: (_error, attempt) => {
+                            console.info('Lecture des pays annulée, nouvelle tentative', {
+                                heatId: currentHeatId,
+                                attempt,
+                            });
+                        },
+                    },
+                );
                 if (cancelled) return;
 
                 const countries = entries.reduce<Record<string, string>>((acc, entry) => {

@@ -68,12 +68,20 @@ export default defineConfig({
       },
     },
     VitePWA({
-      registerType: 'autoUpdate',
+      // Field is an autonomous LAN runtime and must never install a browser
+      // service worker. Its assets are already served by the local runtime;
+      // generating a dormant worker would only create an accidental future
+      // registration path and make Cloud/Field artifacts harder to audit.
+      disable: deploymentMode === 'field',
+      // Never force-reload Admin/Judge/Display while a heat is running. The
+      // application explicitly activates a waiting release only on a passive
+      // route; otherwise it activates naturally after all tabs are closed.
+      registerType: 'prompt',
       // Use the existing manifest.json in /public
       manifest: false,
       workbox: {
-        skipWaiting: true,
-        clientsClaim: true,
+        skipWaiting: false,
+        clientsClaim: false,
         cleanupOutdatedCaches: true,
         // Cache all built assets (JS, CSS, HTML)
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
