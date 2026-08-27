@@ -90,6 +90,25 @@ describe('computeHeats (heatGeneration engine)', () => {
 
     const r1Byes = round1.heats.flatMap(h => h.slots).filter(s => s.bye);
     expect(r1Byes).toHaveLength(0);
+
+    expect(result.progressionEdges).toEqual([
+      { targetRound: 2, targetHeat: 1, targetPosition: 1, sourceRound: 1, sourceHeat: 1, sourcePosition: 1, type: 'COMPETITION_RESULT' },
+      { targetRound: 2, targetHeat: 1, targetPosition: 2, sourceRound: 1, sourceHeat: 1, sourcePosition: 2, type: 'COMPETITION_RESULT' },
+      { targetRound: 2, targetHeat: 1, targetPosition: 3, sourceRound: 1, sourceHeat: 2, sourcePosition: 1, type: 'COMPETITION_RESULT' },
+      { targetRound: 2, targetHeat: 1, targetPosition: 4, sourceRound: 1, sourceHeat: 2, sourcePosition: 2, type: 'COMPETITION_RESULT' },
+    ]);
+  });
+
+  it('6 participants — every final slot has an explicit immutable qualifier source', () => {
+    const participants = buildParticipants(6);
+    const result = computeHeats(participants, { format: 'single-elim', preferredHeatSize: 4 });
+
+    expect(result.progressionEdges).toEqual([
+      { targetRound: 2, targetHeat: 1, targetPosition: 1, sourceRound: 1, sourceHeat: 1, sourcePosition: 1, type: 'COMPETITION_RESULT' },
+      { targetRound: 2, targetHeat: 1, targetPosition: 2, sourceRound: 1, sourceHeat: 1, sourcePosition: 2, type: 'COMPETITION_RESULT' },
+      { targetRound: 2, targetHeat: 1, targetPosition: 3, sourceRound: 1, sourceHeat: 2, sourcePosition: 1, type: 'COMPETITION_RESULT' },
+      { targetRound: 2, targetHeat: 1, targetPosition: 4, sourceRound: 1, sourceHeat: 2, sourcePosition: 2, type: 'COMPETITION_RESULT' },
+    ]);
   });
 
   // ─────────────────────────────────────────────────────────────────

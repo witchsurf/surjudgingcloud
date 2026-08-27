@@ -76,6 +76,16 @@ const isBracketPlaceholderName = (value?: string | null) => {
   );
 };
 
+const parseProgressionSource = (value?: string | null) => {
+  const match = (value ?? '').trim().match(/R(\d+)\s*-\s*H(\d+)\s*(?:\(\s*P(\d+)\s*\)|\s+P(\d+))/i);
+  if (!match) return null;
+  return {
+    sourceRound: Number(match[1]),
+    sourceHeat: Number(match[2]),
+    sourcePosition: Number(match[3] ?? match[4]),
+  };
+};
+
 export function computeHeats(participants: ParticipantSeed[], options: ComputeOptions): ComputeResult {
   const { preferredHeatSize = 'auto', format } = options;
   const seriesSize = preferredHeatSize === 'auto' ? 4 : (typeof preferredHeatSize === 'number' ? preferredHeatSize : 4);
@@ -94,7 +104,7 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
     { manOnManFromRound: options.manOnManFromRound, promoteBestSecond: options.promoteBestSecond }
   );
 
-  let progressionEdges: ComputeResult['progressionEdges'] = [];
+  const progressionEdges: NonNullable<ComputeResult['progressionEdges']> = [];
   // Mixed-format transitions deliberately use the existing production
   // generator above. No parallel bracket or BYE semantics are introduced.
 
@@ -106,11 +116,21 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
         return {
           heatNumber: heat.heat_number,
           roundRef: `R${heat.round}-H${heat.heat_number}`,
-          slots: heat.surfers.map(surfer => {
+          slots: heat.surfers.map((surfer, slotIndex) => {
             const isPlaceholder = isBracketPlaceholderName(surfer.name);
             const slotColor = surfer.color?.toUpperCase() as HeatColor;
 
             if (isPlaceholder) {
+              const source = parseProgressionSource(surfer.name);
+              if (source) {
+                progressionEdges.push({
+                  targetRound: plan.round,
+                  targetHeat: heat.heat_number,
+                  targetPosition: slotIndex + 1,
+                  ...source,
+                  type: 'COMPETITION_RESULT',
+                });
+              }
               return {
                 placeholder: surfer.name,
                 color: slotColor,

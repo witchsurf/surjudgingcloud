@@ -31,7 +31,7 @@ describe('P3.8 authoritative progression edges from-zero contract', () => {
     const actualHash = createHash('sha256').update(source).digest('hex');
 
     expect(entry).toEqual({ order: 13, path: runtimeMarkerMigrationPath, sha256: actualHash, required: true });
-    expect(Math.max(...manifest.migrations.map((migration) => migration.order))).toBe(13);
+    expect(manifest.migrations.some((migration) => migration.order > entry!.order)).toBe(true);
     expect(source.toString()).toContain("to_regclass('public.heat_progression_edges')");
     expect(source.toString()).toContain("fn_propagate_qualifiers_for_source_heat");
     expect(source.toString()).toContain("'20260826120000_align_runtime_schema_version_after_p38_edges'");

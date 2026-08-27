@@ -80,7 +80,6 @@ describe('HeatRepository non-destructive mutation boundary', () => {
     });
     expect(order).toEqual([
       'heat_configs',
-      'heat_judge_assignments',
       'podium_judge_assignments',
       'active_heat_pointer',
       'heat_entries',

@@ -5,6 +5,7 @@ import { colorLabelMap } from '../../utils/colorUtils';
 import { ensurePersistedHeatId } from '../../utils/heat';
 import { parseActiveHeatId } from '../../utils/activeHeatId';
 import { isStrictHeatCloseRpcUnavailable } from '../../utils/heatCloseErrors';
+import { isAbortLikeError } from '../../lib/requestErrors';
 import type { RoundSpec, HeatSlotSpec } from '../../utils/bracket';
 import type { ParticipantRecord } from '../../repositories/contracts/participants';
 import type { SafePlanningPersistenceRequest } from '../../repositories/contracts/planningSafety';
@@ -71,6 +72,8 @@ export interface PodiumHeatTransitionResult {
     round?: number;
     heat_number?: number;
     panel_size?: number;
+    forced?: boolean;
+    readiness?: Record<string, unknown>;
     qualifier_slots_updated?: number;
     division_slots_rebuilt?: number;
     next?: PodiumHeatTransitionResult | null;
@@ -1211,6 +1214,35 @@ export async function closeHeatOnPodium(input: {
             p_next_heat_id: (input.nextHeatId ? ensurePersistedHeatId(input.nextHeatId) : null) as unknown as string | undefined,
             p_closed_by: input.closedBy || 'admin',
         }));
+    }
+
+    if (error && isAbortLikeError(error)) {
+        // An aborted browser request is ambiguous for a write: the database
+        // may have committed the transaction even though the response never
+        // reached the Admin UI. Reconcile the authoritative heat state instead
+        // of retrying a non-idempotent close operation.
+        const normalizedHeatId = ensurePersistedHeatId(input.heatId);
+        const { data: reconciledHeat, error: reconciliationError } = await supabase!
+            .from('heats')
+            .select('id, event_id, division, round, heat_number, status')
+            .eq('id', normalizedHeatId)
+            .eq('event_id', input.eventId)
+            .maybeSingle();
+
+        if (!reconciliationError && reconciledHeat?.status === 'closed') {
+            return {
+                event_id: Number(reconciledHeat.event_id),
+                podium_id: podiumId,
+                closed_heat_id: normalizedHeatId,
+                division: reconciledHeat.division,
+                round: Number(reconciledHeat.round),
+                heat_number: Number(reconciledHeat.heat_number),
+                forced: Boolean(input.force),
+                qualifier_slots_updated: 0,
+                division_slots_rebuilt: 0,
+                next: null,
+            };
+        }
     }
 
     if (error) throw error;

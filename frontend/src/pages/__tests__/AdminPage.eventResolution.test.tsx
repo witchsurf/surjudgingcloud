@@ -3,8 +3,6 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AdminPage from '../AdminPage';
-import { useConfigStore } from '../../stores/configStore';
-import { useJudgingStore } from '../../stores/judgingStore';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -74,10 +72,12 @@ vi.mock('../../api/modules/heats.api', () => ({
   fetchAllEventCategories: vi.fn(async () => ['OPEN', 'BENJAMIN']),
   fetchHeatBySchedule: vi.fn(async () => null),
   fetchHeatEntriesWithParticipants: vi.fn(async () => []),
+  fetchEventJudgeAssignments: vi.fn(async () => []),
+  fetchHeatJudgeAssignments: vi.fn(async () => []),
   fetchHeatMetadata: vi.fn(async () => null),
   fetchHeatSlotMappings: vi.fn(async () => []),
   fetchOrderedHeatSequence: vi.fn(async () => []),
-  fetchPodiumJudgePanel: vi.fn(async () => null),
+  fetchPodiumJudgePanel: vi.fn(async () => []),
   upsertHeatRealtimeConfig: vi.fn(async () => undefined),
 }));
 

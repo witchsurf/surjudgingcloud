@@ -348,6 +348,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const [assignmentCoverageRows, setAssignmentCoverageRows] = useState<EventJudgeAssignmentCoverageRow[]>([]);
   const [activePodiumPointers, setActivePodiumPointers] = useState<ActivePodiumPointerRow[]>([]);
   const [eventJudgeAccuracySummary, setEventJudgeAccuracySummary] = useState<EventJudgeAccuracySummaryRow[]>([]);
+
+  useEffect(() => {
+    if (configSaved) divisionSelectionRef.current = null;
+  }, [configSaved, config.division, config.round, config.heatId]);
   const [lineupRows, setLineupRows] = useState<HeatEntriesWithParticipantRow[]>([]);
   const [lineupParticipantOptions, setLineupParticipantOptions] = useState<ParticipantRecord[]>([]);
   const [lineupDrafts, setLineupDrafts] = useState<Record<number, LineupOverrideDraft>>({});
@@ -5114,7 +5118,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   void unused;
                   return `J${index + 1}`;
                 });
-                const judgeNames = judgeIds.reduce((acc, id) => ({ ...acc, [id]: id }), {} as Record<string, string>);
+                const judgeNames = judgeIds.reduce((acc, id) => {
+                  const identityId = config.judgeIdentities?.[id];
+                  const linkedOfficial = availableOfficialJudges.find((judge) => judge.id === identityId);
+                  acc[id] = linkedOfficial?.name || config.judgeNames?.[id] || id;
+                  return acc;
+                }, {} as Record<string, string>);
                 const judgeIdentities = judgeIds.reduce((acc, id) => {
                   const existingIdentity = config.judgeIdentities?.[id];
                   if (existingIdentity) {

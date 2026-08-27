@@ -245,10 +245,10 @@ const buildSixPersonBracket = (participants: any[]): HeatPlan[] => {
   }
 
   const final = createHeat(2, 1, [
-    placeholderFrom(1, 1, 0, 'Qualifié'),
-    placeholderFrom(1, 1, 1, 'Qualifié'),
-    placeholderFrom(1, 2, 2, 'Qualifié'),
-    placeholderFrom(1, 2, 3, 'Qualifié')
+    placeholderFrom(1, 1, 0, 'Qualifié', 1),
+    placeholderFrom(1, 1, 1, 'Qualifié', 2),
+    placeholderFrom(1, 2, 2, 'Qualifié', 1),
+    placeholderFrom(1, 2, 3, 'Qualifié', 2)
   ]);
 
   return [
@@ -270,10 +270,10 @@ const buildEightPersonBracket = (participants: any[]): HeatPlan[] => {
   }
 
   const final = createHeat(2, 1, [
-    placeholderFrom(1, 1, 0, 'Qualifié'),
-    placeholderFrom(1, 1, 1, 'Qualifié'),
-    placeholderFrom(1, 2, 2, 'Qualifié'),
-    placeholderFrom(1, 2, 3, 'Qualifié')
+    placeholderFrom(1, 1, 0, 'Qualifié', 1),
+    placeholderFrom(1, 1, 1, 'Qualifié', 2),
+    placeholderFrom(1, 2, 2, 'Qualifié', 1),
+    placeholderFrom(1, 2, 3, 'Qualifié', 2)
   ]);
 
   return [

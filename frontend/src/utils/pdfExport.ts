@@ -1014,8 +1014,15 @@ export async function exportFullCompetitionPDF({
   // Event name — large hero text
   doc.setTextColor(...DS.white);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(32);
-  doc.text(eventName.toUpperCase(), MARGIN + 8, logoEndY + 40);
+  const coverTitle = eventName.toUpperCase();
+  const coverTitleMaxWidth = pageW - (MARGIN + 8) * 2;
+  let coverTitleFontSize = 32;
+  doc.setFontSize(coverTitleFontSize);
+  while (coverTitleFontSize > 18 && doc.getTextWidth(coverTitle) > coverTitleMaxWidth) {
+    coverTitleFontSize -= 1;
+    doc.setFontSize(coverTitleFontSize);
+  }
+  doc.text(coverTitle, MARGIN + 8, logoEndY + 40);
 
   // Divider line under event name
   doc.setDrawColor(...DS.violet);
@@ -1579,17 +1586,23 @@ async function exportRankingDocument(payload: FinalRankingExportPayload, finalis
     ? Math.max(10, Math.min(22, ((availableH - finalEstimate) / Math.max(1, Math.ceil(sections.length / 2))) * 0.45))
     : Math.max(0, Math.min(18, ((availableH - finalEstimate) / Math.max(1, sections.length)) * 0.6));
 
-  const baseColStyles = (colW: number) => ({
-    0: { halign: 'center' as const, cellWidth: finalistsOnly ? 38 : 28 },
+  const baseColStyles = (colW: number) => {
+    const rankWidth = finalistsOnly ? 38 : 28;
+    const countryWidth = finalistsOnly ? 62 : 72;
+    const pointsWidth = finalistsOnly ? 0 : 48;
+
+    return ({
+    0: { halign: 'center' as const, cellWidth: rankWidth },
     1: {
       fontStyle: 'bold' as const,
-      cellWidth: Math.max(150, colW - ((finalistsOnly ? 38 : 28) + (finalistsOnly ? 62 : 34) + (finalistsOnly ? 0 : 48))),
+      cellWidth: Math.max(70, colW - (rankWidth + countryWidth + pointsWidth)),
     },
-    2: { halign: 'center' as const, cellWidth: finalistsOnly ? 62 : 34 },
+    2: { halign: 'center' as const, cellWidth: countryWidth },
     ...(finalistsOnly ? {} : {
-      3: { halign: 'right' as const, cellWidth: 48, fontStyle: 'bold' as const },
+      3: { halign: 'right' as const, cellWidth: pointsWidth, fontStyle: 'bold' as const },
     }),
   });
+  };
 
   const renderSection = (x: number, y: number, colW: number, divisionName: string, body: Array<(string | number)[]>) => {
     doc.setFont('helvetica', 'bold');
@@ -1605,7 +1618,7 @@ async function exportRankingDocument(payload: FinalRankingExportPayload, finalis
     autoTable(doc, {
       head: [finalistsOnly
         ? ['RANG', 'FINALISTE', 'CLUB/PAYS']
-        : ['#', 'NOM', 'NOC', 'PTS']],
+        : ['#', 'NOM', 'PAYS', 'PTS']],
       body,
       startY: y + 6,
       margin: { left: x, right: pageW - (x + colW) },

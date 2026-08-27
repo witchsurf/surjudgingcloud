@@ -1,10 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const rpc = vi.hoisted(() => vi.fn());
+const apiMocks = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  maybeSingle: vi.fn(),
+}));
 vi.mock('../../../lib/supabase', () => ({
-  supabase: { rpc },
+  supabase: {
+    rpc: apiMocks.rpc,
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          eq: vi.fn(() => ({ maybeSingle: apiMocks.maybeSingle })),
+        })),
+      })),
+    })),
+  },
   isSupabaseConfigured: () => true,
 }));
+
+const rpc = apiMocks.rpc;
 
 import { closeHeatOnPodium } from '../heats.api';
 
@@ -87,5 +101,45 @@ describe('closeHeatOnPodium strict/legacy adapter', () => {
       p_event_id: 7, p_podium_id: 'A', p_heat_id: 'h1', p_next_heat_id: null,
       p_closed_by: 'admin', p_force: false, p_force_reason: null,
     });
+  });
+
+  it('reconciles an ambiguous aborted response when the canonical heat is closed', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'AbortError: The operation was aborted.' },
+    });
+    apiMocks.maybeSingle.mockResolvedValue({
+      data: {
+        id: request.heatId,
+        event_id: request.eventId,
+        division: 'OPEN',
+        round: 1,
+        heat_number: 1,
+        status: 'closed',
+      },
+      error: null,
+    });
+
+    await expect(closeHeatOnPodium(request)).resolves.toMatchObject({
+      event_id: 7,
+      podium_id: 'B',
+      closed_heat_id: request.heatId,
+      division: 'OPEN',
+      round: 1,
+      heat_number: 1,
+    });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the original abort when reconciliation does not prove closure', async () => {
+    const abort = { message: 'AbortError: The operation was aborted.' };
+    rpc.mockResolvedValue({ data: null, error: abort });
+    apiMocks.maybeSingle.mockResolvedValue({
+      data: { id: request.heatId, event_id: request.eventId, status: 'running' },
+      error: null,
+    });
+
+    await expect(closeHeatOnPodium(request)).rejects.toBe(abort);
+    expect(rpc).toHaveBeenCalledTimes(1);
   });
 });

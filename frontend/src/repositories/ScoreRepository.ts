@@ -493,9 +493,31 @@ export class ScoreRepository extends BaseRepository implements ScoreRepositoryCo
                 score.wave_number === request.waveNumber &&
                 score.surfer === request.surfer
         );
-        const existingScore = matchingScores.sort(
+        let existingScore = matchingScores.sort(
             (a, b) => new Date(b.timestamp || b.created_at || 0).getTime() - new Date(a.timestamp || a.created_at || 0).getTime()
         )[0];
+
+        // Admin corrections may target a score loaded from the canonical DB
+        // before IndexedDB has been hydrated (fresh browser, another tablet,
+        // or a restored Field runtime). Never turn that into an unaudited
+        // "new" score with previous_score=null: resolve the canonical row first.
+        if (!existingScore && this.isOnline) {
+            const canonicalScores = await this.fetchScores(normalizedHeatId);
+            existingScore = canonicalScores
+                .filter(
+                    score =>
+                        (score.judge_station || score.judge_id) === (request.judgeStation || request.judgeId) &&
+                        score.wave_number === request.waveNumber &&
+                        score.surfer === request.surfer
+                )
+                .sort(
+                    (a, b) => new Date(b.timestamp || b.created_at || 0).getTime() - new Date(a.timestamp || a.created_at || 0).getTime()
+                )[0];
+        }
+
+        if (!existingScore) {
+            throw new Error(`Note canonique introuvable pour ${request.judgeStation || request.judgeId} ${request.surfer} V${request.waveNumber}.`);
+        }
         const updatedScoreId = this.generateId();
         const eventIdRaw = localStorage.getItem('surfJudgingActiveEventId') || localStorage.getItem('eventId');
         const derivedEventId = eventIdRaw ? parseInt(eventIdRaw, 10) : undefined;
