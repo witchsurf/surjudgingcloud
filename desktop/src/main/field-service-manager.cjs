@@ -5,7 +5,7 @@ const { promisify } = require('node:util');
 
 const execFileAsync = promisify(execFile);
 const STATES = Object.freeze(['STOPPED','CHECKING_RUNTIME','RUNTIME_UNAVAILABLE','STARTING','WAITING_DB','WAITING_API','WAITING_FRONTEND','VERIFYING_IDENTITY','DISCOVERING_LAN','READY','DEGRADED','STOP_CHECK','STOPPING','ERROR']);
-const SERVICES = Object.freeze(['surfjudging','surfjudging_postgres','surfjudging_auth','surfjudging_realtime','surfjudging_storage','surfjudging_rest','surfjudging_kong']);
+const SERVICES = Object.freeze(['surfjudging_field_frontend','surfjudging_field_postgres','surfjudging_field_auth','surfjudging_field_realtime','surfjudging_field_storage','surfjudging_field_rest','surfjudging_field_kong']);
 
 function launcherFor(platform, rootDir) {
   if (platform === 'win32') return { command:'powershell.exe', args:['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(rootDir, 'scripts', 'start-surfjudging-field-windows.ps1')] };
