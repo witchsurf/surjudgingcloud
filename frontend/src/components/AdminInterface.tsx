@@ -771,7 +771,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
     void loadActivePodiumPointers();
     return () => { cancelled = true; };
-  }, [activeEventId, selectedPodiumId, podiumAssignStatus, config.heatId]);
+  }, [activeEventId, selectedPodiumId, podiumAssignStatus, config.heatId, configSaved]);
 
   const heatId = React.useMemo(
     () => (canonicalHeatId ? ensurePersistedHeatId(canonicalHeatId) : ''),
