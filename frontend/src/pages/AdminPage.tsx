@@ -136,6 +136,7 @@ export default function AdminPage() {
 
     const [canonicalHeatId, setCanonicalHeatId] = useState<string>('');
     const hydratedManualHeatRef = React.useRef('');
+    const operatorDirtyHeatRef = React.useRef('');
     const eventIdFromUrl = Number(searchParams.get('eventId'));
 
     useEffect(() => {
@@ -203,6 +204,10 @@ export default function AdminPage() {
         const targetEventId = (Number.isFinite(eventIdFromUrl) && eventIdFromUrl > 0 ? eventIdFromUrl : null) ?? activeEventId;
         if (!targetEventId || !canonicalHeatId || configSaved) return;
 
+        // configSaved=false is also the normal editing state. Never let this
+        // effect overwrite an explicit operator change on the current heat.
+        if (operatorDirtyHeatRef.current === canonicalHeatId) return;
+
         const hydrationKey = `${targetEventId}:${canonicalHeatId}`;
         if (hydratedManualHeatRef.current === hydrationKey) return;
         // This ref is an in-flight guard, not a permanent "already hydrated"
@@ -247,6 +252,7 @@ export default function AdminPage() {
                     tournamentType: tournamentType || current.tournamentType,
                 }));
                 setConfigSaved(true);
+                operatorDirtyHeatRef.current = '';
                 setLoadError(null);
             })
             .catch((error) => {
@@ -360,11 +366,12 @@ export default function AdminPage() {
             (config.secretKey || '') === (newConfig.secretKey || '');
 
         if (configSaved && !structurallySameConfig) {
+            operatorDirtyHeatRef.current = canonicalHeatId;
             setConfigSaved(false);
         }
 
         persistConfig(newConfig);
-    }, [config, configSaved, setConfig, setConfigSaved, persistConfig]);
+    }, [canonicalHeatId, config, configSaved, setConfig, setConfigSaved, persistConfig]);
 
     // Sync heat participants into config when they load
     useEffect(() => {
@@ -441,6 +448,7 @@ export default function AdminPage() {
             await saveHeatConfig(canonicalHeatId, { ...config, podiumId });
 
             setConfigSaved(true);
+            operatorDirtyHeatRef.current = '';
             setLoadState('loaded');
             setLoadError(null);
             console.log('✅ Configuration canonique du heat sauvegardée:', canonicalHeatId);

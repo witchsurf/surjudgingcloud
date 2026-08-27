@@ -26,7 +26,7 @@ vi.mock('jspdf', () => ({
   },
 }));
 
-import { exportHeatScorecardPdf } from '../pdfExport';
+import { exportHeatScorecardPdf, shouldStartHeatTableOnFreshPage } from '../pdfExport';
 
 const config: AppConfig = {
   competition: 'P2 PDF', division: 'OPEN', round: 1, heatId: 1,
@@ -96,5 +96,12 @@ describe('P2.4 canonical heat scorecard export', () => {
     expect(() => exportHeatScorecardPdf({ config, snapshot: null })).toThrow('Résultat canonique indisponible');
     expect(autoTableMock).not.toHaveBeenCalled();
     expect(saveMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('full competition PDF page safety', () => {
+  it('moves a heat to a fresh page when its whole table cannot fit above the footer', () => {
+    expect(shouldStartHeatTableOnFreshPage(750, 842, 3)).toBe(true);
+    expect(shouldStartHeatTableOnFreshPage(120, 842, 5)).toBe(false);
   });
 });

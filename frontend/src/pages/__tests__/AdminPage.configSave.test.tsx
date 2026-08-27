@@ -291,4 +291,28 @@ describe('TEST A — AdminPage.handleConfigSaved ne laisse jamais configSaved=tr
 
     expect(configStoreMock.setConfigSaved).not.toHaveBeenCalledWith(false);
   });
+
+  it('édition opérateur du panel juge → ne réhydrate pas immédiatement l’ancienne configuration du même heat', async () => {
+    configStoreMock.configSaved = true;
+    await renderAdmin();
+    await act(async () => { await Promise.resolve(); });
+    expect(supabaseSyncMock.loadHeatConfig).not.toHaveBeenCalled();
+
+    const editedConfig = {
+      ...configStoreMock.config,
+      judges: ['J1', 'J2', 'J3', 'J4', 'J5'],
+      judgeNames: { ...configStoreMock.config.judgeNames, J4: 'J4', J5: 'J5' },
+    };
+    act(() => adminInterfaceMock.props!.onConfigChange(editedConfig));
+    expect(configStoreMock.setConfigSaved).toHaveBeenCalledWith(false);
+
+    configStoreMock.config = editedConfig;
+    configStoreMock.configSaved = false;
+    await act(async () => {
+      root.render(<AdminPage />);
+      await Promise.resolve();
+    });
+
+    expect(supabaseSyncMock.loadHeatConfig).not.toHaveBeenCalled();
+  });
 });

@@ -29,7 +29,7 @@ describe('category planning policy computation', () => {
     expect(() => assertPlanningPolicyPreview(policy, preview)).not.toThrow();
   });
 
-  it('fails closed when a round-1 man-on-man policy would create a solo heat', () => {
+  it('builds a seeded bye-aware round-1 man-on-man bracket without a solo heat', () => {
     const roundOnePolicy = {
       ...policy,
       base_format: 'man_on_man' as const,
@@ -38,8 +38,21 @@ describe('category planning policy computation', () => {
     };
     const preview = computeHeats(participants, computeOptionsForPlanningPolicy(roundOnePolicy, 'single-elim'));
 
-    expect(() => assertPlanningPolicyPreview(roundOnePolicy, preview))
-      .toThrow(/heat de 1 surfeur/);
+    expect(() => assertPlanningPolicyPreview(roundOnePolicy, preview)).not.toThrow();
+    expect(preview.rounds.map((round) => round.heats.length)).toEqual([5, 4, 2, 1]);
+    expect(preview.rounds.flatMap((round) => round.heats)
+      .every((heat) => heat.slots.length === 2)).toBe(true);
+    expect(preview.progressionEdges?.filter((edge) => edge.type === 'AUTO_ADVANCE_BYE')).toHaveLength(3);
+    expect(preview.progressionEdges?.filter((edge) => edge.type === 'COMPETITION_RESULT')).toHaveLength(11);
+
+    const directSeeds = preview.rounds.flatMap((round) => round.heats)
+      .flatMap((heat) => heat.slots)
+      .flatMap((slot) => slot.seed == null ? [] : [slot.seed])
+      .sort((a, b) => a - b);
+    expect(directSeeds).toEqual(Array.from({ length: 13 }, (_, index) => index + 1));
+    expect(preview.rounds[1].heats.flatMap((heat) => heat.slots)
+      .flatMap((slot) => slot.seed == null ? [] : [slot.seed])
+      .sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 
   it('maps repechage without activating man-on-man', () => {
@@ -52,5 +65,31 @@ describe('category planning policy computation', () => {
       format: 'repechage',
       manOnManFromRound: undefined,
     });
+  });
+
+  it('preserves non-contiguous imported seeds while assigning byes by category rank', () => {
+    const importedSeeds = [8, 9, 80, 10, 11, 12, 13, 14, 15, 16, 17, 18, 23];
+    const importedParticipants = participants.map((participant, index) => ({
+      ...participant,
+      seed: importedSeeds[index],
+    }));
+    const roundOnePolicy = {
+      ...policy,
+      base_format: 'man_on_man' as const,
+      transition_round: null,
+      transition_format: null,
+    };
+
+    const preview = computeHeats(importedParticipants, computeOptionsForPlanningPolicy(roundOnePolicy, 'single-elim'));
+    const directSeeds = preview.rounds.flatMap((round) => round.heats)
+      .flatMap((heat) => heat.slots)
+      .flatMap((slot) => slot.seed == null ? [] : [slot.seed])
+      .sort((a, b) => a - b);
+
+    expect(directSeeds).toEqual([...importedSeeds].sort((a, b) => a - b));
+    expect(preview.rounds[1].heats.flatMap((heat) => heat.slots)
+      .flatMap((slot) => slot.seed == null ? [] : [slot.seed])
+      .sort((a, b) => a - b)).toEqual([8, 9, 10]);
+    expect(() => assertPlanningPolicyPreview(roundOnePolicy, preview)).not.toThrow();
   });
 });

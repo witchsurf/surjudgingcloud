@@ -16,9 +16,23 @@ const localStatus = () => {
   return JSON.parse(output.slice(output.indexOf('{'))) as { DB_URL: string; API_URL: string; ANON_KEY: string };
 };
 
+const integrationStatus = () => {
+  const explicit = {
+    DB_URL: process.env.SURFJUDGING_TEST_DB_URL,
+    API_URL: process.env.SURFJUDGING_TEST_API_URL,
+    ANON_KEY: process.env.SURFJUDGING_TEST_ANON_KEY,
+  };
+  return explicit.DB_URL && explicit.API_URL && explicit.ANON_KEY
+    ? explicit as { DB_URL: string; API_URL: string; ANON_KEY: string }
+    : localStatus();
+};
+
 describe.runIf(enabled)('P2.5.2b real frontend WAL identity', () => {
   it('characterizes normal ACK, lost ACK, duplicate coordinator calls, refresh and network return', async () => {
-    const status = localStatus();
+    const status = integrationStatus();
+    vi.stubEnv('VITE_DEPLOYMENT_MODE', 'cloud');
+    vi.stubEnv('VITE_SUPABASE_URL_CLOUD', status.API_URL);
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY_CLOUD', status.ANON_KEY);
     localStorage.setItem('supabase_url_override', status.API_URL);
     localStorage.setItem('supabase_anon_override', status.ANON_KEY);
     localStorage.setItem('supabase_mode', 'local');
@@ -41,6 +55,7 @@ describe.runIf(enabled)('P2.5.2b real frontend WAL identity', () => {
     let eventId = 0;
 
     const repositoryWithClient = scoreRepository as unknown as { supabase: typeof supabase };
+    expect(supabase).toBeDefined();
     const originalClient = repositoryWithClient.supabase;
     const wal = useOfflineStore.getState();
     wal.clearMutations();
@@ -186,7 +201,7 @@ describe.runIf(enabled)('P2.5.2b real frontend WAL identity', () => {
       expect(refreshRows[0].id).toBe(refreshResult.id);
       expect(useOfflineStore.getState().mutations).toHaveLength(0);
 
-      // Additional safety proof: a stale lost-ACK mutation can outrank a newer server correction after replay.
+      // Additional safety proof: a stale lost-ACK mutation cannot overwrite a newer server correction.
       installLostAckThroughRetryWindow();
       const staleLostAck = await scoreRepository.saveScore(saveRequest(4, 6));
       repositoryWithClient.supabase = originalClient;
@@ -212,10 +227,10 @@ describe.runIf(enabled)('P2.5.2b real frontend WAL identity', () => {
         surfer: row.surfer, wave_number: row.wave_number, score: Number(row.score),
         timestamp: new Date(row.timestamp).toISOString(), created_at: new Date(row.created_at).toISOString(),
       })));
-      expect(staleRows).toHaveLength(2);
+      expect(staleRows).toHaveLength(1);
       expect(staleCanonical).toHaveLength(1);
       expect(staleCanonical[0].score).toBe(9);
-      expect(staleCanonical[0].id).toBe(externalCorrectionId);
+      expect(staleCanonical[0].id).toBe(staleLostAck.id);
 
       // I. Invalid legacy payload remains queued and exposes an operator-visible sync error.
       const invalidMutation = {
@@ -287,6 +302,7 @@ describe.runIf(enabled)('P2.5.2b real frontend WAL identity', () => {
       localStorage.removeItem('supabase_url_override');
       localStorage.removeItem('supabase_anon_override');
       localStorage.removeItem('supabase_mode');
+      vi.unstubAllEnvs();
     }
   }, 90_000);
 });

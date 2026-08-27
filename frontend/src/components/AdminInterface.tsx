@@ -59,6 +59,24 @@ type LineupOverrideDraft = {
   reason: string;
 };
 
+export const reconcileLineupDrafts = (
+  current: Record<number, LineupOverrideDraft>,
+  currentHeatId: string,
+  nextHeatId: string,
+  entries: HeatEntriesWithParticipantRow[],
+): Record<number, LineupOverrideDraft> => {
+  const sameHeat = currentHeatId === nextHeatId;
+  return Object.fromEntries(entries.map((entry) => {
+    const preserved = sameHeat ? current[entry.position] : undefined;
+    return [entry.position, preserved ?? {
+      participantId: entry.participant_id ? String(entry.participant_id) : '',
+      manualName: entry.participant?.name || '',
+      country: entry.participant?.country || '',
+      reason: '',
+    }];
+  }));
+};
+
 type LineupOverrideStatus = {
   type: 'success' | 'error' | 'info';
   message: string;
@@ -380,6 +398,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   const lockedForHeatRef = React.useRef<string>('');
   const configRef = React.useRef(config);
   const lineupLoadRequestRef = React.useRef(0);
+  const lineupDraftHeatIdRef = React.useRef('');
   const autoPodiumSyncFingerprintRef = React.useRef('');
 
   useEffect(() => {
@@ -2355,6 +2374,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     if (!hasCanonicalHeatContext || !isSupabaseConfigured()) {
       setLineupRows([]);
       setLineupParticipantOptions([]);
+      setLineupDrafts({});
+      lineupDraftHeatIdRef.current = '';
       return;
     }
 
@@ -2384,16 +2405,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           )
         );
         setLineupDrafts((current) => {
-          const next = { ...current };
-          entries.forEach((entry) => {
-            if (next[entry.position]) return;
-            next[entry.position] = {
-              participantId: entry.participant_id ? String(entry.participant_id) : '',
-              manualName: entry.participant?.name || '',
-              country: entry.participant?.country || '',
-              reason: '',
-            };
-          });
+          const next = reconcileLineupDrafts(current, lineupDraftHeatIdRef.current, heatId, entries);
+          lineupDraftHeatIdRef.current = heatId;
           return next;
         });
 

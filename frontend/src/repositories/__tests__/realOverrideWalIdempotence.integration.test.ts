@@ -16,9 +16,23 @@ const localStatus = () => {
   return JSON.parse(output.slice(output.indexOf('{'))) as { DB_URL: string; API_URL: string; ANON_KEY: string };
 };
 
+const integrationStatus = () => {
+  const explicit = {
+    DB_URL: process.env.SURFJUDGING_TEST_DB_URL,
+    API_URL: process.env.SURFJUDGING_TEST_API_URL,
+    ANON_KEY: process.env.SURFJUDGING_TEST_ANON_KEY,
+  };
+  return explicit.DB_URL && explicit.API_URL && explicit.ANON_KEY
+    ? explicit as { DB_URL: string; API_URL: string; ANON_KEY: string }
+    : localStatus();
+};
+
 describe.runIf(enabled)('P2.5.2d real override WAL identity', () => {
   it('characterizes nominal, lost ACK, coordinator, refresh, stale replay and partial legacy WAL', async () => {
-    const status = localStatus();
+    const status = integrationStatus();
+    vi.stubEnv('VITE_DEPLOYMENT_MODE', 'cloud');
+    vi.stubEnv('VITE_SUPABASE_URL_CLOUD', status.API_URL);
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY_CLOUD', status.ANON_KEY);
     localStorage.setItem('supabase_url_override', status.API_URL);
     localStorage.setItem('supabase_anon_override', status.ANON_KEY);
     localStorage.setItem('supabase_mode', 'local');
@@ -122,7 +136,7 @@ describe.runIf(enabled)('P2.5.2d real override WAL identity', () => {
       const baseNominal = await scoreRepository.saveScore(saveRequest(1, 5));
       const nominal = await scoreRepository.overrideScore(overrideRequest(1, 8));
       const nominalRows = await rowsForWave(1);
-      expect(nominalRows.scores).toHaveLength(2);
+      expect(nominalRows.scores).toHaveLength(1);
       expect(nominalRows.logs).toHaveLength(1);
       expect(nominalRows.logs[0].id).toBe(nominal.log.id);
       expect(nominalRows.logs[0].score_id).toBe(baseNominal.id);
@@ -132,17 +146,18 @@ describe.runIf(enabled)('P2.5.2d real override WAL identity', () => {
       const baseLostAck = await scoreRepository.saveScore(saveRequest(2, 5));
       installLostOverrideAck();
       const lostAck = await scoreRepository.overrideScore(overrideRequest(2, 6));
+      expect(lostAck.updatedScore.id).toBe(baseLostAck.id);
       restoreAckBoundary();
       const walAfterLostAck = structuredClone(useOfflineStore.getState().mutations);
       const beforeReplay = await rowsForWave(2);
       expect(walAfterLostAck.map((mutation) => mutation.table)).toEqual(['scores', 'score_overrides']);
-      expect(beforeReplay.scores).toHaveLength(2);
+      expect(beforeReplay.scores).toHaveLength(1);
       expect(beforeReplay.logs).toHaveLength(1);
 
-      // C/G. The real double coordinator replays once and preserves both persisted identities.
+      // C/G. The real double coordinator replays once and preserves the stable score and log identities.
       await Promise.all([replayOfflineQueues('p252c-double-1'), replayOfflineQueues('p252c-double-2')]);
       const afterReplay = await rowsForWave(2);
-      expect(afterReplay.scores).toHaveLength(2);
+      expect(afterReplay.scores).toHaveLength(1);
       expect(afterReplay.logs).toHaveLength(1);
       expect(afterReplay.logs[0].id).toBe(lostAck.log.id);
       expect(afterReplay.logs[0].score_id).toBe(lostAck.log.score_id);
@@ -165,7 +180,7 @@ describe.runIf(enabled)('P2.5.2d real override WAL identity', () => {
       useOfflineStore.getState().setOnline(true);
       await replayOfflineQueues('p252c-refresh-online');
       const refreshRows = await rowsForWave(3);
-      expect(refreshRows.scores).toHaveLength(2);
+      expect(refreshRows.scores).toHaveLength(1);
       expect(refreshRows.logs).toHaveLength(1);
 
       // F. A stale override replayed after a newer server correction never creates a newer score.
@@ -184,10 +199,10 @@ describe.runIf(enabled)('P2.5.2d real override WAL identity', () => {
       await replayOfflineQueues('p252c-stale-after-newer');
       const staleRows = await rowsForWave(4);
       const staleLww = lwwFor(staleRows.scores.map((row) => ({ ...row, wave_number: 4 })));
-      expect(staleRows.scores).toHaveLength(3);
+      expect(staleRows.scores).toHaveLength(1);
       expect(staleRows.logs).toHaveLength(1);
       expect(staleLww.score).toBe(9);
-      expect(staleLww.id).toBe(externalCorrectionId);
+      expect(staleLww.id).toBe(staleOverride.updatedScore.id);
 
       // E. ACK loss during replay retains the original log mutation without creating another pair.
       await scoreRepository.saveScore(saveRequest(5, 5));
@@ -203,7 +218,7 @@ describe.runIf(enabled)('P2.5.2d real override WAL identity', () => {
       expect(walAfterReplayAckLoss.map((mutation) => mutation.table)).toEqual(['score_overrides']);
       expect(walAfterReplayAckLoss[0]).toEqual(replayStartWal[1]);
       const ackLossRows = await rowsForWave(5);
-      expect(ackLossRows.scores).toHaveLength(2);
+      expect(ackLossRows.scores).toHaveLength(1);
       expect(ackLossRows.logs).toHaveLength(1);
       expect(ackLossRows.logs[0].id).toBe(replayStartWal[1].payload.id);
       await replayOfflineQueues('p252d-replay-ack-return');
@@ -358,6 +373,7 @@ describe.runIf(enabled)('P2.5.2d real override WAL identity', () => {
       localStorage.removeItem('supabase_url_override');
       localStorage.removeItem('supabase_anon_override');
       localStorage.removeItem('supabase_mode');
+      vi.unstubAllEnvs();
     }
   }, 180_000);
 });

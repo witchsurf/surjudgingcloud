@@ -1,9 +1,11 @@
 #!/usr/bin/env node
+// Run through `npm run p38:certify:test2`: the certification imports the
+// authoritative TypeScript planning modules instead of stale compiled copies.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pg from '../frontend/node_modules/pg/lib/index.js';
-import { generatePreviewHeats } from '../frontend/src/utils/heatGeneration.js';
-import { inferImplicitMappingsForHeat } from '../frontend/src/utils/heatSlotMappingInference.js';
+import { generatePreviewHeats } from '../frontend/src/utils/heatGeneration.ts';
+import { inferImplicitMappingsForHeat } from '../frontend/src/utils/heatSlotMappingInference.ts';
 import { buildCategoryCalls } from './p38-category-dispatcher.mjs';
 
 const { Client } = pg;

@@ -53,6 +53,12 @@ const slugify = (value: string) =>
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+export const shouldStartHeatTableOnFreshPage = (
+  cursorY: number,
+  pageHeight: number,
+  rowCount: number,
+) => cursorY + 7 + 14 + Math.max(rowCount, 1) * 20 + 10 > pageHeight - 26;
+
 const buildHeatTable = (round: RoundSpec, heatIndex: number) => {
   const heat = round.heats[heatIndex];
   const body = heat.slots.map((slot, idx) => [
@@ -1136,17 +1142,21 @@ export async function exportFullCompetitionPDF({
           ? `REPÊCHAGE — ${round.name.toUpperCase()}`
           : round.name.toUpperCase();
 
+        const drawRoundPill = () => {
+          const pillColor = isRepechage ? DS.redDark : DS.navyLight;
+          const pillText = isRepechage ? DS.redFill : DS.white;
+          const pillW = doc.getTextWidth(displayRoundName) + 20;
+          doc.setFillColor(...pillColor);
+          doc.roundedRect(MARGIN, cursorY, pillW, 18, 3, 3, 'F');
+          doc.setTextColor(...pillText);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.text(displayRoundName, MARGIN + 10, cursorY + 12);
+          cursorY += 24;
+        };
+
         // Round title pill
-        const pillColor = isRepechage ? DS.redDark : DS.navyLight;
-        const pillText = isRepechage ? DS.redFill : DS.white;
-        const pillW = doc.getTextWidth(displayRoundName) + 20;
-        doc.setFillColor(...pillColor);
-        doc.roundedRect(MARGIN, cursorY, pillW, 18, 3, 3, 'F');
-        doc.setTextColor(...pillText);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.text(displayRoundName, MARGIN + 10, cursorY + 12);
-        cursorY += 24;
+        drawRoundPill();
 
         round.heats.forEach((heat) => {
           const heatScores = resolveHeatScores(categoryName, round.roundNumber, heat.heatNumber, heat.heatId ?? null);
@@ -1226,6 +1236,15 @@ export async function exportFullCompetitionPDF({
 
           if (hasResults) bodyData.sort((a, b) =>
             (a.canonicalRank ?? Number.MAX_SAFE_INTEGER) - (b.canonicalRank ?? Number.MAX_SAFE_INTEGER));
+
+          // Never let autoTable split a short heat across two pages. A split
+          // detached the continuation from the event/round header and made
+          // official reports ambiguous on paper.
+          if (shouldStartHeatTableOnFreshPage(cursorY, pageH, bodyData.length)) {
+            doc.addPage();
+            cursorY = drawContentHeader();
+            drawRoundPill();
+          }
 
           // Heat sub-header row
           const heatLabel = `  Heat ${heat.heatNumber}  ${hasResults ? '— RÉSULTATS' : '— PRÉVISIONS'}`;
@@ -1331,7 +1350,8 @@ export async function exportFullCompetitionPDF({
             alternateRowStyles: { fillColor: DS.gray50 },
             tableLineColor: DS.gray200,
             tableLineWidth: 0.2,
-            margin: { left: MARGIN, right: MARGIN },
+            margin: { top: 52, bottom: 26, left: MARGIN, right: MARGIN },
+            showHead: 'everyPage',
             didParseCell: (data) => {
               // Lycra colour cell — no word-wrap, centred
               if (data.column.index === 1) {

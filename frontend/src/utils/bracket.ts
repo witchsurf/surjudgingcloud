@@ -1,4 +1,5 @@
 import { generatePreviewHeats } from './heatGeneration';
+import { buildManOnManBracket } from './manOnManBracket';
 import type { HeatColor } from './colorUtils';
 import type { ParticipantSeed } from './seeding';
 
@@ -96,6 +97,78 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
     // ensure seed is passed for distribution
     seed: p.seed
   }));
+
+  if (options.manOnManFromRound === 1) {
+    const graph = buildManOnManBracket(participants.length);
+    const rankedParticipants = [...participants].sort((left, right) => (
+      left.seed - right.seed || left.name.localeCompare(right.name)
+    ));
+    const participantByRank = new Map(rankedParticipants.map((participant, index) => [index + 1, participant]));
+    const heatBySchedule = new Map<string, HeatSpec>();
+    const roundsByNumber = new Map<number, RoundSpec>();
+    const finalRound = Math.max(...graph.matches.map((match) => match.round));
+
+    graph.matches.forEach((match) => {
+      const heat: HeatSpec = {
+        heatNumber: match.heatNumber,
+        roundRef: `R${match.round}-H${match.heatNumber}`,
+        slots: match.round === 1
+          ? match.slots.map((rank, index) => {
+            const participant = participantByRank.get(rank);
+            if (!participant) throw new Error(`Participant de rang ${rank} introuvable`);
+            return {
+              ...participant,
+              participantId: participant.id,
+              color: (index === 0 ? 'ROUGE' : 'BLANC') as HeatColor,
+            };
+          })
+          : Array.from({ length: 2 }, (_, index) => ({
+            color: (index === 0 ? 'ROUGE' : 'BLANC') as HeatColor,
+          })),
+      };
+      heatBySchedule.set(`${match.round}:${match.heatNumber}`, heat);
+      const round = roundsByNumber.get(match.round) ?? {
+        name: match.round === finalRound && finalRound > 1 ? 'Finale' : `Round ${match.round}`,
+        roundNumber: match.round,
+        heats: [],
+      };
+      round.heats.push(heat);
+      roundsByNumber.set(match.round, round);
+    });
+
+    graph.edges.forEach((edge) => {
+      const target = heatBySchedule.get(`${edge.targetRound}:${edge.targetHeat}`);
+      if (!target) throw new Error(`Cible man-on-man R${edge.targetRound}-H${edge.targetHeat} introuvable`);
+      const color = (edge.targetPosition === 1 ? 'ROUGE' : 'BLANC') as HeatColor;
+      if (edge.type === 'AUTO_ADVANCE_BYE') {
+        const participant = participantByRank.get(edge.byeSeed ?? -1);
+        if (!participant) throw new Error(`Exempté de rang ${edge.byeSeed ?? '?'} introuvable`);
+        target.slots[edge.targetPosition - 1] = {
+          ...participant,
+          participantId: participant.id,
+          color,
+        };
+      } else {
+        target.slots[edge.targetPosition - 1] = {
+          placeholder: `Vainqueur R${edge.sourceRound}-H${edge.sourceHeat} (P${edge.sourcePosition})`,
+          color,
+        };
+      }
+    });
+
+    return {
+      rounds: [...roundsByNumber.values()].sort((a, b) => a.roundNumber - b.roundNumber),
+      progressionEdges: graph.edges.map((edge) => ({
+        targetRound: edge.targetRound,
+        targetHeat: edge.targetHeat,
+        targetPosition: edge.targetPosition,
+        sourceRound: edge.sourceRound,
+        sourceHeat: edge.sourceHeat,
+        sourcePosition: edge.sourcePosition,
+        type: edge.type,
+      })),
+    };
+  }
 
   const rawPlan = generatePreviewHeats(
     legacyParticipants, 
