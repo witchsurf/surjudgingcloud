@@ -138,7 +138,7 @@ const files = [
 const runtimeManifest = {
   runtimeVersion: '0.1.0',
   composeVersion: '3.8',
-  desktopVersion: '0.4.0',
+  desktopVersion: JSON.parse(fs.readFileSync(path.join(desktop, 'package.json'), 'utf8')).version,
   frontend: { releaseId: frontendManifest.releaseId, sourceRevision: frontendManifest.sourceRevision },
   services: Object.fromEntries(images.map((image) => [image, { image }])),
   schema: { expectedVersion: schema },

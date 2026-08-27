@@ -20,6 +20,14 @@ contextBridge.exposeInMainWorld('surfJudgingDesktop', Object.freeze({
   generateQr: (url) => ipcRenderer.invoke('field:qr', url),
   requestBackup: () => ipcRenderer.invoke('field:backup-v2'),
   getRuntimeCompatibility: () => ipcRenderer.invoke('runtime:compatibility'),
+  inspectMachinePreparation: () => ipcRenderer.invoke('runtime-preparation:inspect'),
+  installRuntimePrerequisites: (confirmed) => ipcRenderer.invoke('runtime-preparation:install', confirmed),
+  launchDockerDesktop: () => ipcRenderer.invoke('runtime-preparation:launch'),
+  onMachinePreparationProgress: (listener) => {
+    const handler = (_event, progress) => listener(progress);
+    ipcRenderer.on('runtime-preparation:progress', handler);
+    return () => ipcRenderer.removeListener('runtime-preparation:progress', handler);
+  },
   copyDiagnostics: (snapshot) => ipcRenderer.invoke('diagnostics:copy', snapshot),
   openUrl: (url) => ipcRenderer.invoke('open:url', url)
 }));

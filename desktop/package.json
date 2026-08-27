@@ -1,6 +1,6 @@
 {
   "name": "surfjudging-field",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "SurfJudging Field desktop operator application",
   "main": "src/main/main.cjs",

@@ -1,5 +1,5 @@
 const api = window.surfJudgingDesktop;
-const state = { candidates: [], selected: null, health: null, prerequisites: null };
+const state = { candidates: [], selected: null, health: null, prerequisites: null, preparation: null, preparing: false };
 const $ = (id) => document.getElementById(id);
 const actions = document.querySelector('.actions');
 if (actions) { actions.insertAdjacentHTML('afterbegin', '<button id="start">Start Field</button><button id="stop">Stop Field</button>'); }
@@ -12,12 +12,39 @@ function render() {
   $('status').className = `banner ${c ? 'ok' : 'bad'}`;
   setDl('identity', [['Host', c?.host], ['Release', c?.manifest?.releaseId], ['Revision', c?.manifest?.codeRevision], ['Schema', c?.manifest?.expectedSchemaVersion]]);
   setDl('health', Object.entries(state.health ?? {}).map(([k,v]) => [k[0].toUpperCase()+k.slice(1), v]));
-  setDl('prereq', [['Docker CLI', state.prerequisites?.dockerCli ? 'FOUND':'MISSING'], ['Colima', state.prerequisites?.colima ? 'FOUND':'MISSING'], ['Docker daemon', state.prerequisites?.dockerDaemon ? 'REACHABLE':'UNREACHABLE']]);
+  setDl('prereq', [['Application Docker Desktop', state.prerequisites?.dockerDesktop ? 'INSTALLÉE':state.prerequisites?.dockerDaemon ? 'NON REQUISE':'NON INSTALLÉE'], ['Commande Docker', state.prerequisites?.dockerCli ? 'DISPONIBLE':'INTROUVABLE'], ['Moteur Docker compatible', state.prerequisites?.dockerDaemon ? 'PRÊT':'ARRÊTÉ']]);
   const urls = c ? c.urls : {}; $('urls').innerHTML = Object.entries(urls).map(([k,v]) => `<a href="${v}" data-url="${v}">${k.toUpperCase()}<br><small>${v}</small></a>`).join('');
   document.querySelectorAll('[data-url]').forEach((a) => a.onclick = (e) => { e.preventDefault(); api.openUrl(a.dataset.url); });
 }
-async function refresh() { $('status').textContent = 'Recherche du Field local…'; state.candidates = await api.discoverFieldCandidates(); state.selected = state.candidates.length === 1 ? state.candidates[0] : null; state.health = await api.getFieldHealth(state.selected?.host); state.prerequisites = await api.getRuntimePrerequisiteStatus(); render(); const safety=await api.getCompetitionSafety(); $('competition').textContent=safety.runningCount?`RUNNING HEATS = ${safety.runningCount} — STOP FIELD bloqué`:'RUNNING HEATS = 0 — STOP FIELD autorisable après confirmation'; const disk=await api.getDiskStatus(); $('disk').textContent=disk.status==='UNKNOWN'?'UNKNOWN':`${disk.status} — ${Math.round(disk.available/1024/1024/1024)} GB available`; const live=await api.getLivePublicationStatus(); $('live-publication').textContent=live.configured?`${live.state}${live.restartCount?` · relances ${live.restartCount}`:''}${live.lastError?` · ${live.lastError}`:''}`:live.state==='NOT_PROVISIONED'?'Non provisionné — aucune publication externe.':'Désactivé — aucune publication externe.'; if(state.selected){const qr=await api.generateQr(state.selected.urls.admin); $('qr').innerHTML=`<img alt="Admin LAN QR" width="220" src="${qr}">`;}}
+function preparationText(preparation) {
+  if (!preparation) return { summary:'Analyse du système…', detail:'', action:'Analyser' };
+  const machine = `macOS ${preparation.hostVersion} · ${preparation.arch === 'x64' ? 'Intel' : preparation.arch === 'arm64' ? 'Apple Silicon' : preparation.arch}`;
+  if (!preparation.memoryOk) return { summary:'Mémoire insuffisante', detail:`${machine} · 4 Go minimum requis.`, action:'Réessayer' };
+  if (!preparation.diskOk) return { summary:'Espace disque insuffisant', detail:`${machine} · 20 Go libres minimum requis.`, action:'Réessayer' };
+  if (preparation.state === 'READY') return { summary:'Machine prête pour SurfJudging Field', detail:`${machine} · un moteur Docker compatible est opérationnel.`, action:'Vérifié' };
+  if (preparation.state === 'DOCKER_STOPPED') return { summary:'Docker Desktop est installé mais arrêté', detail:`${machine} · aucun téléchargement nécessaire.`, action:'Démarrer Docker' };
+  if (preparation.state === 'DOWNLOAD_REQUIRED') return { summary:'Installation de Docker Desktop requise', detail:`${machine} · version approuvée ${preparation.installer.version} (${Math.round(preparation.installer.sizeBytes/1024/1024)} Mo).`, action:'Préparer cette machine' };
+  return { summary:'Préparation automatique indisponible pour cette machine', detail:`${machine} · aucun profil d’installation approuvé.`, action:'Actualiser' };
+}
+function renderPreparation() { const copy=preparationText(state.preparation); $('preparation-summary').textContent=copy.summary; $('preparation-detail').textContent=copy.detail; $('prepare').textContent=state.preparing?'Préparation en cours…':copy.action; $('prepare').disabled=state.preparing || state.preparation?.state==='READY'; }
+async function refresh() { $('status').textContent = 'Recherche du Field local…'; state.candidates = await api.discoverFieldCandidates(); state.selected = state.candidates.length === 1 ? state.candidates[0] : null; state.health = await api.getFieldHealth(state.selected?.host); state.prerequisites = await api.getRuntimePrerequisiteStatus(); state.preparation=await api.inspectMachinePreparation(); render(); renderPreparation(); const safety=await api.getCompetitionSafety(); $('competition').textContent=safety.runningCount?`RUNNING HEATS = ${safety.runningCount} — STOP FIELD bloqué`:'RUNNING HEATS = 0 — STOP FIELD autorisable après confirmation'; const disk=await api.getDiskStatus(); $('disk').textContent=disk.status==='UNKNOWN'?'UNKNOWN':`${disk.status} — ${Math.round(disk.available/1024/1024/1024)} GB available`; const live=await api.getLivePublicationStatus(); $('live-publication').textContent=live.configured?`${live.state}${live.restartCount?` · relances ${live.restartCount}`:''}${live.lastError?` · ${live.lastError}`:''}`:live.state==='NOT_PROVISIONED'?'Non provisionné — aucune publication externe.':'Désactivé — aucune publication externe.'; if(state.selected){const qr=await api.generateQr(state.selected.urls.admin); $('qr').innerHTML=`<img alt="Admin LAN QR" width="220" src="${qr}">`;}}
 async function diagnostics() { const snapshot = { desktopVersion: await api.getDesktopVersion(), selected: state.selected, candidates: state.candidates, health: state.health, prerequisites: state.prerequisites, generatedAt: new Date().toISOString() }; await api.copyDiagnostics(snapshot); $('status').textContent = 'Diagnostic copié (données non secrètes).'; }
 async function start(){ $('status').textContent='Démarrage contrôlé…'; try{const r=await api.startField(); $('status').textContent=`${r.result||'READY'} — Field`; await refresh()}catch(e){$('status').textContent=`ERROR — ${e.message||e}`;}}
 async function stop(){const gate=await api.canStopField(); if(!gate.allowed){$('status').textContent='STOP DENIED — une heat est en cours.';return} if(!confirm('Arrêter les services Field ? Les données persistantes sont conservées.'))return; const r=await api.stopField(true); $('status').textContent=r.result;}
-$('refresh').onclick = refresh; $('start').onclick=start; $('stop').onclick=stop; $('copy').onclick = diagnostics; refresh();
+async function prepareMachine(){
+  if(state.preparing)return;
+  state.preparation=await api.inspectMachinePreparation(); renderPreparation();
+  if(state.preparation.state==='READY')return;
+  if(['UNSUPPORTED','DISK_INSUFFICIENT'].includes(state.preparation.state)){ $('status').textContent=state.preparation.state==='DISK_INSUFFICIENT'?'Préparation bloquée — libérez au moins 20 Go sur le disque.':'Préparation bloquée — cette version de macOS n’a pas encore de profil approuvé.'; return; }
+  if(state.preparation.state==='DOWNLOAD_REQUIRED'){
+    const size=Math.round(state.preparation.installer.sizeBytes/1024/1024);
+    const accepted=confirm(`SurfJudging va télécharger ${size} Mo depuis le site officiel Docker, vérifier le fichier et sa signature Docker Inc, puis macOS demandera le mot de passe administrateur pour l’installation.\n\nLa licence Docker restera à accepter dans la fenêtre Docker lors du premier démarrage. Continuer ?`);
+    if(!accepted)return;
+  }
+  state.preparing=true; renderPreparation(); $('status').textContent='Préparation sécurisée de la machine…';
+  try{ if(state.preparation.state==='DOCKER_STOPPED')await api.launchDockerDesktop();else await api.installRuntimePrerequisites(true); $('status').textContent='Machine prête — Docker est opérationnel.'; }
+  catch(error){ $('status').textContent=`Préparation interrompue — ${String(error.message||error).replace(/^Error invoking remote method '[^']+': Error: /,'')}`; }
+  finally{state.preparing=false;await refresh();}
+}
+api.onMachinePreparationProgress((progress)=>{const box=$('preparation-progress');box.hidden=false;const value=Number(progress.percent||0);box.querySelector('span').style.width=`${value}%`;const labels={'download-start':'Téléchargement officiel…',download:'Téléchargement officiel…','verified-download':'Téléchargement vérifié.','verified-cache':'Installateur déjà vérifié.','signature-verification':'Vérification de la signature Docker Inc…','admin-installation':'Installation autorisée par macOS…','docker-first-start':'Premier démarrage Docker…','docker-starting':'Démarrage du moteur Docker…'};$('preparation-detail').textContent=labels[progress.phase]||progress.phase;});
+$('refresh').onclick = refresh; $('start').onclick=start; $('stop').onclick=stop; $('prepare').onclick=prepareMachine; $('copy').onclick = diagnostics; refresh();
