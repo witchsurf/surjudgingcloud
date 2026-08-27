@@ -90,4 +90,20 @@ describe('mergeRealtimeConfigPreservingLineup', () => {
     expect(merged.surfers).toEqual(['ROUGE', 'BLANC', 'JAUNE', 'BLEU']);
     expect(merged.surfersPerHeat).toBe(4);
   });
+
+  it('clears the previous lineup when a heat switch arrives before hydration', () => {
+    const prev = baseConfig();
+
+    const merged = mergeRealtimeConfigPreservingLineup(prev, {
+      division: 'ONDINE U16',
+      round: 1,
+      heatId: 1,
+    });
+
+    expect(merged.division).toBe('ONDINE U16');
+    expect(merged.surfers).toEqual([]);
+    expect(merged.surferNames).toEqual({});
+    expect(merged.surferCountries).toEqual({});
+    expect(merged.surfersPerHeat).toBe(0);
+  });
 });

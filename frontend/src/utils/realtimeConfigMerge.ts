@@ -31,6 +31,7 @@ export const mergeRealtimeConfigPreservingLineup = (
   prev: AppConfig,
   next: Partial<AppConfig>
 ): AppConfig => {
+  const heatScopeChanged = !sameHeatScope(prev, next);
   const merged = {
     ...prev,
     ...next,
@@ -44,7 +45,16 @@ export const mergeRealtimeConfigPreservingLineup = (
     },
   } as AppConfig;
 
-  if (!sameHeatScope(prev, next)) {
+  if (heatScopeChanged) {
+    // A pointer/config event can announce the next heat before its hydrated
+    // lineup arrives. Never render competitors from the previous heat under
+    // the new heat identity: an empty lineup is safer and is replaced by the
+    // authoritative DB refresh a moment later.
+    if (!Array.isArray(next.surfers)) {
+      merged.surfers = [];
+      merged.surferNames = next.surferNames || {};
+      merged.surferCountries = next.surferCountries || {};
+    }
     merged.surfersPerHeat = Array.isArray(merged.surfers) ? merged.surfers.length : merged.surfersPerHeat;
     // Clear stale priority when switching heat
     if (!next.priorityState) {
