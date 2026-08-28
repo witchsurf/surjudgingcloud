@@ -6,6 +6,7 @@ import EventStatus from './EventStatus';
 import { eventRepository } from '../repositories/EventRepository';
 import { parseCanonicalEventId } from '../domain/eventWorkflow';
 import { getDeploymentMode } from '../domain/deploymentMode';
+import { loadFieldOrganizationProfile } from '../domain/fieldOrganization';
 import {
   resolveEventCreationSubmission,
   validateEventCreationSubmission,
@@ -87,6 +88,17 @@ const CreateEvent = () => {
   }, [searchParams, participantsReset]);
 
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (deploymentMode !== 'field') return;
+    let cancelled = false;
+    loadFieldOrganizationProfile({ force:true }).then((profile) => {
+      if (cancelled || !profile) return;
+      setFormData((current) => ({...current, organizer:current.organizer || profile.organizationName}));
+      setLogoDataUrl((current) => current || profile.logoDataUrl);
+    });
+    return () => { cancelled = true; };
+  }, [deploymentMode]);
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

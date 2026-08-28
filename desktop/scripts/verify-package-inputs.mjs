@@ -15,11 +15,14 @@ const required = [
   'frontend/dist/deployment-manifest.json',
   'database/init/service-roles.sql',
   'database/healthcheck.sh',
+  'database/expected-schema.txt',
   'images/index.json',
   'images/load-plan.tsv',
   'scripts/live-outbox-worker.mjs',
   'scripts/start-surfjudging-field-mac.sh',
-  'scripts/start-surfjudging-field-windows.ps1'
+  'scripts/start-surfjudging-field-windows.ps1',
+  'scripts/upgrade-field-database-mac.sh',
+  'scripts/upgrade-field-database-windows.ps1'
 ];
 const missing = required.filter((file) => !fs.existsSync(path.join(runtime, file)));
 if (missing.length) throw new Error(`Packaging blocked: Field runtime is incomplete (${missing.join(', ')})`);

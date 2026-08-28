@@ -4451,9 +4451,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     }
   };
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     try {
-      exportHeatScorecardPdf({ config, snapshot: adminHeatResultState.snapshot });
+      await exportHeatScorecardPdf({ config, snapshot: adminHeatResultState.snapshot });
     } catch (error) {
       console.error('Impossible de générer le PDF du heat:', error);
     }

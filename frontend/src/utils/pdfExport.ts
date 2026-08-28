@@ -10,6 +10,7 @@ import type { HeatRow } from '../api/modules/heats.api';
 import type { HeatResultSnapshot } from '../domain/scoring/contracts';
 import { requireCanonicalHeatSnapshots, type CanonicalHeatSnapshotRequest } from '../domain/scoring/canonicalHeatSnapshots';
 import { panelRepository } from '../repositories/PanelRepository';
+import { resolvePdfOrganizationIdentity } from '../domain/fieldOrganization';
 
 interface HeatResultHistoryEntry {
   heatKey: string;
@@ -114,18 +115,22 @@ const applyResultsToRounds = (
   }));
 };
 
-export function exportBracketToPDF(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[], surferNames?: Record<string, string>, eventDetails?: { organizer?: string; date?: string }) {
+export async function exportBracketToPDF(eventName: string, category: string, rounds: RoundSpec[], repechage?: RoundSpec[], surferNames?: Record<string, string>, eventDetails?: { organizer?: string; organizerLogoDataUrl?: string; date?: string }) {
+  const official = await resolvePdfOrganizationIdentity({organizer:eventDetails?.organizer,organizerLogoDataUrl:eventDetails?.organizerLogoDataUrl});
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   const renderRound = (round: RoundSpec) => {
+    if (official.organizerLogoDataUrl?.startsWith('data:image/')) {
+      try { doc.addImage(official.organizerLogoDataUrl, 'PNG', 24, 28, 34, 34); } catch (error) { console.warn('Bracket logo error:', error); }
+    }
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
     doc.text(`${eventName.toUpperCase()} – ${category.toUpperCase()}`, width / 2, 60, { align: 'center' });
 
     let headerY = 90;
-    if (eventDetails?.organizer || eventDetails?.date) {
+    if (official.organizer || eventDetails?.date) {
       doc.setFontSize(10);
-      const subHeader = [eventDetails.organizer, eventDetails.date].filter(Boolean).join(' • ');
+      const subHeader = [official.organizer, eventDetails?.date].filter(Boolean).join(' • ');
       doc.text(subHeader, width / 2, 78, { align: 'center' });
       headerY = 95;
     }
@@ -276,11 +281,19 @@ const buildHeatResultLookup = (history: HeatResultHistory) => {
 };
 
 export async function exportHeatResultsPDF({ eventName, category, config, rounds, history, currentHeatKey }: ExportHeatResultsPayload) {
+  const official = await resolvePdfOrganizationIdentity();
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const width = doc.internal.pageSize.getWidth();
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.text('STRUCTURE DES HEATS', width / 2, 60, { align: 'center' });
+  if (official.organizerLogoDataUrl?.startsWith('data:image/')) {
+    try { doc.addImage(official.organizerLogoDataUrl, 'PNG', 24, 28, 34, 34); } catch (error) { console.warn('Heat structure logo error:', error); }
+  }
+  if (official.organizer) {
+    doc.setFontSize(9);
+    doc.text(official.organizer, width / 2, 76, { align:'center' });
+  }
 
   if (rounds.length) {
     normalizeHistoryWithRounds(history, rounds, currentHeatKey);
@@ -405,7 +418,7 @@ const getSeedPriority = (color: string) => {
 // ============================================================
 //  HEAT SCORECARD PDF (landscape, single heat)
 // ============================================================
-export function exportHeatScorecardPdf({
+export async function exportHeatScorecardPdf({
   config,
   snapshot,
   surferNames,
@@ -427,20 +440,16 @@ export function exportHeatScorecardPdf({
     throw new Error('Résultat canonique indisponible : export PDF bloqué.');
   }
 
+  const official = await resolvePdfOrganizationIdentity({
+    organizer:eventData?.organizer,
+    organizerLogoDataUrl:eventData?.organizerLogoDataUrl || eventData?.logo_url || eventData?.logo || eventData?.organizer_logo_url || eventData?.image_url || eventData?.brand_logo_url || eventData?.config?.organizerLogoDataUrl,
+  });
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const namesMap = surferNames ?? config.surferNames ?? {};
   const countriesMap = surferCountries ?? config.surferCountries ?? {};
-  const logoCandidate = (
-    eventData?.organizerLogoDataUrl ||
-    eventData?.logo_url ||
-    eventData?.logo ||
-    eventData?.organizer_logo_url ||
-    eventData?.image_url ||
-    eventData?.brand_logo_url ||
-    eventData?.config?.organizerLogoDataUrl
-  ) as string | undefined;
+  const logoCandidate = official.organizerLogoDataUrl;
 
   // ── HEADER BAND ──────────────────────────────────────────
   // Dark navy band full width
@@ -475,7 +484,7 @@ export function exportHeatScorecardPdf({
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...DS.gray400);
-  const organizer = eventData?.organizer ? `Organisé par ${eventData.organizer}` : '';
+  const organizer = official.organizer ? `Organisé par ${official.organizer}` : '';
   const dateStr = eventData?.start_date ? new Date(eventData.start_date).toLocaleDateString('fr-FR', { year:'numeric', month:'long', day:'numeric' }) : '';
   const subtitle = [organizer, dateStr].filter(Boolean).join('  •  ');
   if (subtitle) doc.text(subtitle, 24, 52);
@@ -676,6 +685,9 @@ export async function exportFullCompetitionPDF({
   scores,
   interferenceCalls = {},
 }: FullCompetitionExportPayload) {
+  const official = await resolvePdfOrganizationIdentity({organizer,organizerLogoDataUrl});
+  organizer = official.organizer;
+  organizerLogoDataUrl = official.organizerLogoDataUrl;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt' });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -1477,7 +1489,10 @@ export interface FinalRankingExportPayload {
 }
 
 async function exportRankingDocument(payload: FinalRankingExportPayload, finalistsOnly: boolean) {
-  const { eventName, organizer, organizerLogoDataUrl, date, heats, scores, interferenceCalls, participants, divisions } = payload;
+  const { eventName, date, heats, scores, interferenceCalls, participants, divisions } = payload;
+  const official = await resolvePdfOrganizationIdentity({organizer:payload.organizer,organizerLogoDataUrl:payload.organizerLogoDataUrl});
+  const organizer = official.organizer;
+  const organizerLogoDataUrl = official.organizerLogoDataUrl;
   const rankingRequests: CanonicalHeatSnapshotRequest[] = heats.flatMap((heat) => {
     const heatScores = scores[heat.id] || [];
     if (!heat.id || heatScores.length === 0) return [];

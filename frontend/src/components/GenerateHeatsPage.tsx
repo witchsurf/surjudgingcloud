@@ -16,6 +16,7 @@ import { useConfigStore } from '../stores/configStore';
 import { supabase } from '../lib/supabase';
 import { assertPlanningAllowed, canPersistHeats, planningSuccessRoute, resolveEventWorkflowState, type EventWorkflowState } from '../domain/eventWorkflow';
 import { getDeploymentMode } from '../domain/deploymentMode';
+import { resolvePdfOrganizationIdentity } from '../domain/fieldOrganization';
 
 interface Heat {
   round: number;
@@ -508,19 +509,18 @@ const GenerateHeatsPage = () => {
     // --- DATA RETRIEVAL ---
     const eventData = JSON.parse(localStorage.getItem('eventData') || '{}');
     const eventName = eventData.name || 'Compétition de Surf';
-    const organizer = eventData.organizer || 'Fédération de Surf';
+    const official = await resolvePdfOrganizationIdentity({
+      organizer:eventData.organizer,
+      organizerLogoDataUrl:eventData.organizerLogoDataUrl || eventData.image_url || eventData.brand_logo_url || eventData?.config?.organizerLogoDataUrl,
+    });
+    const organizer = official.organizer || 'Fédération de Surf';
     const startDate = eventData.start_date ? new Date(eventData.start_date).toLocaleDateString('fr-FR') : '';
     const endDate = eventData.end_date ? new Date(eventData.end_date).toLocaleDateString('fr-FR') : '';
     const dateRange = startDate ? (endDate && startDate !== endDate ? `${startDate} au ${endDate}` : startDate) : 'Date non définie';
 
     // Logo Retrieval (supporting multiple candidate fields)
     let logoBase64: string | null = null;
-    const logoCandidate = (
-      eventData.organizerLogoDataUrl ||
-      eventData.image_url ||
-      eventData.brand_logo_url ||
-      eventData?.config?.organizerLogoDataUrl
-    ) as string | undefined;
+    const logoCandidate = official.organizerLogoDataUrl;
 
     if (logoCandidate) {
       if (logoCandidate.startsWith('data:image/')) {

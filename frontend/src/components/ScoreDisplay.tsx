@@ -378,7 +378,7 @@ export default function ScoreDisplay({
           </div>
           <button
             type="button"
-            onClick={() => { exportHeatScorecardPdf({ config, snapshot: heatResultSnapshot, heatStatus, eventData }); }}
+            onClick={() => { void exportHeatScorecardPdf({ config, snapshot: heatResultSnapshot, heatStatus, eventData }).catch((error) => console.error('Impossible de générer le PDF scorecard:', error)); }}
             disabled={!heatResultSnapshot}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg border border-cyan-500/50 text-[10px] font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5 shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
           >

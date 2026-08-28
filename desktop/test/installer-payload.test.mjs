@@ -80,3 +80,17 @@ test('installs a top-level PostgreSQL entrypoint launcher for fresh volumes', ()
   assert.match(roles, /CREATE SCHEMA IF NOT EXISTS _realtime AUTHORIZATION supabase_admin/);
   assert.match(healthcheck, /__SURFJUDGING_SCHEMA_VERSION__/);
 });
+
+test('existing Field databases use an ordered fail-closed migration path', () => {
+  const macLauncher = fs.readFileSync(path.resolve('runtime-template/scripts/start-surfjudging-field-mac.sh'), 'utf8');
+  const macUpgrade = fs.readFileSync(path.resolve('runtime-template/scripts/upgrade-field-database-mac.sh'), 'utf8');
+  const windowsLauncher = fs.readFileSync(path.resolve('runtime-template/scripts/start-surfjudging-field-windows.ps1'), 'utf8');
+  const windowsUpgrade = fs.readFileSync(path.resolve('runtime-template/scripts/upgrade-field-database-windows.ps1'), 'utf8');
+  assert.match(macLauncher, /database-upgrade-check/);
+  assert.match(macUpgrade, /Unsupported Field schema upgrade source/);
+  assert.match(macUpgrade, /database-upgrade-complete/);
+  assert.match(macUpgrade, /psql -v ON_ERROR_STOP=1/);
+  assert.match(windowsLauncher, /database-upgrade-check/);
+  assert.match(windowsUpgrade, /Unsupported Field schema upgrade source/);
+  assert.match(windowsUpgrade, /database-upgrade-complete/);
+});

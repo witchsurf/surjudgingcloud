@@ -16,6 +16,7 @@ import { OfflineSettingsModal } from '../components/OfflineSettingsModal';
 import { competitionAdminRoute, ownedEventFilter } from '../domain/eventWorkflow';
 import { allowsCloudSync, getDeploymentMode, isFieldRuntime } from '../domain/deploymentMode';
 import { getSafeLocalStorage } from '../utils/secureStorage';
+import { getCachedFieldOrganizationProfile, loadFieldOrganizationProfile, type FieldOrganizationProfile } from '../domain/fieldOrganization';
 
 
 
@@ -189,6 +190,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [userHasPin, setUserHasPin] = useState(hasOfflinePin());
   const localAutoSyncAttemptedRef = useRef(false);
+  const [fieldOrganization, setFieldOrganization] = useState<FieldOrganizationProfile | null>(() => getCachedFieldOrganizationProfile());
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -272,6 +274,15 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, []);
+
+  useEffect(() => {
+    if (deploymentMode !== 'field') return;
+    let cancelled = false;
+    loadFieldOrganizationProfile({ force:true }).then((profile) => {
+      if (!cancelled) setFieldOrganization(profile);
+    });
+    return () => { cancelled = true; };
+  }, [deploymentMode]);
 
   useEffect(() => {
     setUser(initialUser);
@@ -885,9 +896,14 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       <div className="mx-auto max-w-5xl">
         <div className="mb-8 text-white relative">
           <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm text-blue-300">Bienvenue, {user.email}</p>
+            <div className="flex items-center gap-4">
+              {fieldOrganization?.logoDataUrl && (
+                <img src={fieldOrganization.logoDataUrl} alt={`Logo ${fieldOrganization.organizationName}`} className="h-12 w-12 rounded-xl bg-white object-contain p-1" />
+              )}
+              <div>
+              <p className="text-sm text-blue-300">Bienvenue, {fieldOrganization?.organizationName || user.email}</p>
               <h1 className="mt-2 text-3xl font-bold">Mes événements</h1>
+              </div>
             </div>
             {deploymentMode === 'cloud' && <button
               onClick={() => setIsSettingsOpen(true)}

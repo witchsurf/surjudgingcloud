@@ -58,20 +58,20 @@ const exportedTable = () => autoTableMock.mock.calls[0]?.[1] as { head: string[]
 describe('P2.4 canonical heat scorecard export', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it.each([3, 5] as const)('exports the canonical snapshot for a %i-judge panel', (panel) => {
-    exportHeatScorecardPdf({ config, snapshot: snapshot(panel) });
+  it.each([3, 5] as const)('exports the canonical snapshot for a %i-judge panel', async (panel) => {
+    await exportHeatScorecardPdf({ config, snapshot: snapshot(panel) });
 
     expect(exportedTable().head[0]).toContain('BEST 2');
     expect(exportedTable().body[0]).toEqual(expect.arrayContaining(['8.00', '7.00', '8.00 + 7.00', '15.00']));
     expect(saveMock).toHaveBeenCalledOnce();
   });
 
-  it('keeps an incomplete wave informational and excluded from the canonical total', () => {
+  it('keeps an incomplete wave informational and excluded from the canonical total', async () => {
     const incomplete = competitor({
       waves: [{ waveNumber: 1, judgeScores: { J1: 6, J2: 8 }, retainedScores: [], average: 7, complete: false, countsTowardsTotal: false }],
       bestWaveNumbers: [], total: 0,
     });
-    exportHeatScorecardPdf({ config, snapshot: snapshot(3, [incomplete]) });
+    await exportHeatScorecardPdf({ config, snapshot: snapshot(3, [incomplete]) });
 
     expect(exportedTable().body[0]).toEqual(expect.arrayContaining(['7.00', '--', '0.00']));
   });
@@ -79,21 +79,21 @@ describe('P2.4 canonical heat scorecard export', () => {
   it.each([
     { label: 'interference', result: competitor({ total: 7, interferenceCount: 1, interferenceType: 'INT1', interferenceWaves: [{ waveNumber: 2, type: 'INT1' }] }), expected: 'INT1 (1)' },
     { label: 'disqualification', result: competitor({ total: 0, disqualified: true, interferenceCount: 2, interferenceType: 'INT1' }), expected: 'DSQ' },
-  ])('exports canonical $label state', ({ result, expected }) => {
-    exportHeatScorecardPdf({ config, snapshot: snapshot(3, [result]) });
+  ])('exports canonical $label state', async ({ result, expected }) => {
+    await exportHeatScorecardPdf({ config, snapshot: snapshot(3, [result]) });
     expect(exportedTable().body[0].at(-1)).toBe(expected);
   });
 
-  it('preserves canonical ex-aequo ranks', () => {
-    exportHeatScorecardPdf({
+  it('preserves canonical ex-aequo ranks', async () => {
+    await exportHeatScorecardPdf({
       config,
       snapshot: snapshot(3, [competitor(), competitor({ lycraColor: 'BLANC', rank: 1 })]),
     });
     expect(exportedTable().body.map((row) => row[0])).toEqual([1, 1]);
   });
 
-  it.each(['panel_unknown', 'panel_conflict', 'shadow_divergence'])('blocks export when %s prevented a canonical snapshot', () => {
-    expect(() => exportHeatScorecardPdf({ config, snapshot: null })).toThrow('Résultat canonique indisponible');
+  it.each(['panel_unknown', 'panel_conflict', 'shadow_divergence'])('blocks export when %s prevented a canonical snapshot', async () => {
+    await expect(exportHeatScorecardPdf({ config, snapshot: null })).rejects.toThrow('Résultat canonique indisponible');
     expect(autoTableMock).not.toHaveBeenCalled();
     expect(saveMock).not.toHaveBeenCalled();
   });

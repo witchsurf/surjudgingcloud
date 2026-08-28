@@ -92,13 +92,20 @@ if (fs.existsSync(output)) throw new Error(`Refusing to overwrite payload: ${out
 
 fs.mkdirSync(output, { recursive: true });
 fs.mkdirSync(path.join(output, 'scripts'), { recursive: true });
-for (const script of ['live-outbox-worker.mjs', 'start-surfjudging-field-mac.sh', 'start-surfjudging-field-windows.ps1']) {
+for (const script of [
+  'live-outbox-worker.mjs',
+  'start-surfjudging-field-mac.sh',
+  'start-surfjudging-field-windows.ps1',
+  'upgrade-field-database-mac.sh',
+  'upgrade-field-database-windows.ps1',
+]) {
   const sourceFile = script === 'live-outbox-worker.mjs'
     ? path.join(repo, 'scripts', script)
     : path.join(desktop, 'runtime-template', 'scripts', script);
   fs.copyFileSync(sourceFile, path.join(output, 'scripts', script));
 }
 fs.chmodSync(path.join(output, 'scripts', 'start-surfjudging-field-mac.sh'), 0o755);
+fs.chmodSync(path.join(output, 'scripts', 'upgrade-field-database-mac.sh'), 0o755);
 
 const frontendManifest = createFrontendManifest(
   JSON.parse(fs.readFileSync(path.join(distField, 'deployment-manifest.json'), 'utf8')),
@@ -124,6 +131,8 @@ fs.cpSync(path.join(desktop, 'runtime-template', 'database'), path.join(output, 
 fs.copyFileSync(path.join(repo, 'backend/supabase/p38-canonical-baseline.sql'), path.join(init, 'baseline.sql'));
 fs.mkdirSync(path.join(init, 'migrations'), { recursive: true });
 for (const migration of manifest.migrations) fs.copyFileSync(path.join(repo, migration.path), path.join(init, 'migrations', path.basename(migration.path)));
+fs.cpSync(path.join(init, 'migrations'), path.join(output, 'database', 'migrations'), { recursive: true });
+fs.writeFileSync(path.join(output, 'database', 'expected-schema.txt'), `${schema}\n`);
 const modeSql = path.join(init, 'field-mode.sql');
 fs.writeFileSync(modeSql, fs.readFileSync(modeSql, 'utf8').replace('__SURFJUDGING_SCHEMA_VERSION__', schema));
 const healthcheck = path.join(output, 'database', 'healthcheck.sh');
@@ -143,8 +152,11 @@ const files = [
   'frontend/dist/deployment-manifest.json', 'database/init/baseline.sql', 'database/init/field-mode.sql',
   'database/init/service-roles.sql',
   'database/healthcheck.sh',
+  'database/expected-schema.txt',
   'scripts/live-outbox-worker.mjs', 'scripts/start-surfjudging-field-mac.sh', 'scripts/start-surfjudging-field-windows.ps1',
+  'scripts/upgrade-field-database-mac.sh', 'scripts/upgrade-field-database-windows.ps1',
   'images/index.json', 'images/load-plan.tsv',
+  ...manifest.migrations.map((migration) => `database/migrations/${path.basename(migration.path)}`),
 ];
 const runtimeManifest = {
   runtimeVersion: '0.1.0',

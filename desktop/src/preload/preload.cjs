@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('surfJudgingDesktop', Object.freeze({
   getOrganizationProfile: () => ipcRenderer.invoke('organization:get'),
   chooseOrganizationLogo: () => ipcRenderer.invoke('organization:choose-logo'),
   saveOrganizationProfile: (profile) => ipcRenderer.invoke('organization:save', profile),
+  syncOrganizationProfile: () => ipcRenderer.invoke('organization:sync'),
   onMachinePreparationProgress: (listener) => {
     const handler = (_event, progress) => listener(progress);
     ipcRenderer.on('runtime-preparation:progress', handler);

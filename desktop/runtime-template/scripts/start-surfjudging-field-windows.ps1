@@ -20,6 +20,8 @@ foreach ($line in $plan) {
   if ($LASTEXITCODE -eq 0) { Write-Output "FIELD_STAGE image-ready $current/$($plan.Count) $($parts[1])" }
   else { Write-Output "FIELD_STAGE image-load $current/$($plan.Count) $($parts[1])"; & $docker load -i (Join-Path $root "images/$($parts[0])") | Out-Null }
 }
+Write-Output 'FIELD_STAGE database-upgrade-check'
+& (Join-Path $root 'scripts/upgrade-field-database-windows.ps1')
 Write-Output 'FIELD_STAGE kong-config'
 $kongConfigVolume = 'surfjudging_field_kong_config'
 $kongConfigSeed = 'surfjudging_field_kong_config_seed'

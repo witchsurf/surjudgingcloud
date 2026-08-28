@@ -97,6 +97,27 @@ export type Database = {
         }
         Relationships: []
       }
+      field_organization_profile: {
+        Row: {
+          id: boolean
+          logo_data_url: string
+          organization_name: string
+          updated_at: string
+        }
+        Insert: {
+          id?: boolean
+          logo_data_url: string
+          organization_name: string
+          updated_at?: string
+        }
+        Update: {
+          id?: boolean
+          logo_data_url?: string
+          organization_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       competition_audit_log: {
         Row: {
           action_type: string

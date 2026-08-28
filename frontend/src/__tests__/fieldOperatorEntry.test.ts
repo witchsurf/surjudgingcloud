@@ -25,5 +25,15 @@ describe('Field operator entry contract', () => {
     expect(myEvents).toContain("deploymentMode === 'field'");
     expect(myEvents).toContain(".from('events')");
     expect(myEvents).toContain("deploymentMode === 'cloud'");
+    expect(myEvents).toContain('fieldOrganization?.organizationName || user.email');
+    expect(myEvents).toContain('fieldOrganization.logoDataUrl');
+  });
+
+  it('uses the same Field organization as the default event and PDF identity', () => {
+    const createEvent = source('src/components/CreateEvent.tsx');
+    const pdfExport = source('src/utils/pdfExport.ts');
+    expect(createEvent).toContain('profile.organizationName');
+    expect(createEvent).toContain('profile.logoDataUrl');
+    expect(pdfExport).toContain('resolvePdfOrganizationIdentity');
   });
 });

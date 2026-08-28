@@ -41,6 +41,9 @@ while IFS=$'\t' read -r archive image; do
   fi
 done < "$root/images/load-plan.tsv"
 
+echo "FIELD_STAGE database-upgrade-check"
+SURFJUDGING_DOCKER_BIN="$docker_bin" "$root/scripts/upgrade-field-database-mac.sh"
+
 echo "FIELD_STAGE kong-config"
 kong_config_volume="surfjudging_field_kong_config"
 kong_config_seed="surfjudging_field_kong_config_seed"

@@ -572,10 +572,11 @@ export default function ParticipantsStructure() {
       collectNames(preview.repechage);
 
       // Build event details
-      const eventDetails = selectedEvent.organizer ? {
-        organizer: selectedEvent.organizer,
+      const eventDetails = {
+        organizer: selectedEvent.organizer || undefined,
+        organizerLogoDataUrl: organizerLogoPreviewUrl || undefined,
         date: selectedEvent.start_date ? new Date(selectedEvent.start_date).toLocaleDateString('fr-FR') : undefined,
-      } : undefined;
+      };
 
       void exportBracketToPDF(selectedEvent.name, previewCategory, preview.rounds, preview.repechage, surferNames, eventDetails);
     } else {
