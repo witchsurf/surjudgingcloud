@@ -1,6 +1,7 @@
 import { legacyGetAll, walGetAll } from './idbOfflineStore';
 import { buildFieldNetworkInfo, probeEsp32, type FieldNetworkInfo } from './fieldNetwork';
 import { isLocalNetworkHost } from './networkDetection';
+import { getFieldRuntimeAnonKey } from '../domain/fieldRuntimeConfig';
 import { generateUuidV4 } from './uuid';
 
 export type OfflineQueueName = 'legacy' | 'score_wal' | 'coordinator';
@@ -439,7 +440,8 @@ export async function refreshLocalRuntimeDiagnostics(): Promise<void> {
   }
 
   const supabaseAnonKey =
-    (import.meta.env.VITE_SUPABASE_ANON_KEY_LAN as string | undefined)
+    getFieldRuntimeAnonKey()
+    || (import.meta.env.VITE_SUPABASE_ANON_KEY_LAN as string | undefined)
     || (import.meta.env.VITE_SUPABASE_ANON_KEY_LOCAL as string | undefined)
     || '';
   const supabaseHeaders = supabaseAnonKey

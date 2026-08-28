@@ -9,6 +9,7 @@ import { createReconnectAfterMs } from './realtimeBackoff';
 import { useOfflineStore } from '../stores/offlineStore';
 import { replayLegacyRuntimeHeatConfig } from '../api/modules/runtimeHeatConfig.api';
 import { getDeploymentMode } from '../domain/deploymentMode';
+import { getFieldRuntimeAnonKey } from '../domain/fieldRuntimeConfig';
 
 type SupabaseMode = 'cloud' | 'local' | null;
 
@@ -107,7 +108,7 @@ export const getSupabaseConfig = () => {
 
   const anonFromMode =
     mode === 'local'
-      ? resolveEnv('VITE_SUPABASE_ANON_KEY_LAN') || resolveEnv('VITE_SUPABASE_ANON_KEY_LOCAL')
+      ? getFieldRuntimeAnonKey() || resolveEnv('VITE_SUPABASE_ANON_KEY_LAN') || resolveEnv('VITE_SUPABASE_ANON_KEY_LOCAL')
       : resolveEnv('VITE_SUPABASE_ANON_KEY_CLOUD');
 
   // In field mode running in browser, window.location.origin is always the exact authoritative endpoint

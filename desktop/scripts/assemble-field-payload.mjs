@@ -30,7 +30,9 @@ export function normalizeCompose(text, sourceRuntime) {
       'test: ["CMD-SHELL", "/usr/local/bin/surfjudging-field-healthcheck.sh"]')
     .replace(/image:\s+surfjudging_field_frontend_img(?::latest)?/g, 'image: surfjudging_field_frontend_img:latest')
     .replace(/(\n  frontend:\n[\s\S]*?\n    restart: unless-stopped)(\n    ports:)/,
-      '$1\n    depends_on:\n      kong:\n        condition: service_healthy$2');
+      '$1\n    depends_on:\n      kong:\n        condition: service_healthy$2')
+    .replace(/(\n  frontend:\n[\s\S]*?\n    restart: unless-stopped)/,
+      '$1\n    environment:\n      ANON_KEY: ${ANON_KEY}');
 }
 
 export function normalizeFieldEnv(text, postgresPassword) {
@@ -115,7 +117,8 @@ const frontendRoot = path.join(output, 'frontend');
 fs.cpSync(distField, path.join(frontendRoot, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(frontendRoot, 'dist', 'deployment-manifest.json'), JSON.stringify(frontendManifest, null, 2));
 fs.writeFileSync(path.join(frontendRoot, 'nginx.conf'), fs.readFileSync(path.join(source, 'nginx.conf'), 'utf8').replaceAll(runtimeName, 'surfjudging_field'));
-fs.writeFileSync(path.join(frontendRoot, 'Dockerfile'), 'FROM nginx:alpine\nCOPY nginx.conf /etc/nginx/conf.d/default.conf\nCOPY dist/ /usr/share/nginx/html/\n');
+fs.writeFileSync(path.join(frontendRoot, 'runtime-config.js.template'), 'window.__SURFJUDGING_RUNTIME_CONFIG__ = Object.freeze({ anonKey: "${ANON_KEY}" });\n');
+fs.writeFileSync(path.join(frontendRoot, 'Dockerfile'), 'FROM nginx:alpine\nENV NGINX_ENVSUBST_OUTPUT_DIR=/usr/share/nginx/html\nCOPY nginx.conf /etc/nginx/conf.d/default.conf\nCOPY runtime-config.js.template /etc/nginx/templates/runtime-config.js.template\nCOPY dist/ /usr/share/nginx/html/\n');
 
 fs.mkdirSync(path.join(output, 'compose'), { recursive: true });
 const compose = normalizeCompose(fs.readFileSync(path.join(source, 'docker-compose.yml'), 'utf8'), runtimeName);

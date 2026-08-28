@@ -13,7 +13,17 @@ test('normalizes disposable runtime names and host ports', () => {
   assert.match(result, /image: surfjudging_field_frontend_img:latest/);
   assert.match(result, /surfjudging-field-healthcheck\.sh/);
   assert.match(result, /frontend:[\s\S]*depends_on:\n      kong:\n        condition: service_healthy/);
+  assert.match(result, /frontend:[\s\S]*environment:\n      ANON_KEY: \$\{ANON_KEY\}/);
   assert.doesNotMatch(result, /184(?:00|32|80)/);
+});
+
+test('injects the persistent Field anonymous key at frontend container startup', () => {
+  const assembler = fs.readFileSync(path.resolve('scripts/assemble-field-payload.mjs'), 'utf8');
+  const index = fs.readFileSync(path.resolve('../frontend/index.html'), 'utf8');
+  assert.match(assembler, /runtime-config\.js\.template/);
+  assert.match(assembler, /__SURFJUDGING_RUNTIME_CONFIG__/);
+  assert.match(assembler, /NGINX_ENVSUBST_OUTPUT_DIR=\/usr\/share\/nginx\/html/);
+  assert.match(index, /<script src="\/runtime-config\.js"><\/script>/);
 });
 
 test('stages Kong configuration in a Docker volume without host bind mounts', () => {
