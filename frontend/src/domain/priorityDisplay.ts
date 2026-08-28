@@ -85,20 +85,19 @@ export const resolvePriorityDisplaySignal = (
   const order = normalizeColorList(priority.order);
   const inFlight = normalizeColorList(priority.inFlight);
   const surfers = normalizeColorList(snapshot.surfers);
-  const displayOrder = [...order, ...inFlight];
-  const invalidOrder = order.length === 0
-    || order.some((color) => inFlight.includes(color))
+  const completeLineup = [...order, ...inFlight];
+  const invalidOrder = order.some((color) => inFlight.includes(color))
     || (surfers.length > 0 && (
-      displayOrder.length !== surfers.length
-      || displayOrder.some((color) => !surfers.includes(color))
+      completeLineup.length !== surfers.length
+      || completeLineup.some((color) => !surfers.includes(color))
     ));
   if (invalidOrder) {
     return { colors: [], cssColors: [], reason: 'invalid_priority' };
   }
 
   return {
-    colors: displayOrder,
-    cssColors: displayOrder.map((color) => PRIORITY_DISPLAY_RGB[color] ?? BLACK),
+    colors: order,
+    cssColors: order.map((color) => PRIORITY_DISPLAY_RGB[color] ?? BLACK),
     reason: 'active_priority',
   };
 };

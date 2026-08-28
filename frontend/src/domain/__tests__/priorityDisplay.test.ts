@@ -50,10 +50,26 @@ describe('priority HDMI signal', () => {
     expect(resolvePriorityDisplaySignal(snapshot({ status: 'paused' }), true).colors).toEqual(['ROUGE', 'BLANC']);
   });
 
-  it('keeps every color visible and moves an in-flight surfer to the last displayed priority', () => {
+  it('removes an in-flight surfer from the panel until the priority judge returns it', () => {
     expect(resolvePriorityDisplaySignal(snapshot({
       priority_state: { mode: 'ordered', order: ['BLANC'], inFlight: ['ROUGE'] },
+    }), true).colors).toEqual(['BLANC']);
+  });
+
+  it('shows the surfer at the last rank after the priority judge returns it', () => {
+    expect(resolvePriorityDisplaySignal(snapshot({
+      priority_state: { mode: 'ordered', order: ['BLANC', 'ROUGE'], inFlight: [] },
     }), true).colors).toEqual(['BLANC', 'ROUGE']);
+  });
+
+  it('allows an empty panel while every surfer is explicitly in flight', () => {
+    expect(resolvePriorityDisplaySignal(snapshot({
+      priority_state: { mode: 'ordered', order: [], inFlight: ['ROUGE', 'BLANC'] },
+    }), true)).toEqual({
+      colors: [],
+      cssColors: [],
+      reason: 'active_priority',
+    });
   });
 
   it('fails closed instead of showing an incomplete ordered lineup', () => {
