@@ -16,9 +16,9 @@ foreach ($line in $plan) {
   $parts = $line -split "`t", 2
   if ($parts.Count -ne 2) { throw "Invalid image load plan" }
   $current += 1
-  & $docker image inspect $parts[1] *> $null
-  if ($LASTEXITCODE -eq 0) { Write-Output "FIELD_STAGE image-ready $current/$($plan.Count) $($parts[1])" }
-  else { Write-Output "FIELD_STAGE image-load $current/$($plan.Count) $($parts[1])"; & $docker load -i (Join-Path $root "images/$($parts[0])") | Out-Null }
+  Write-Output "FIELD_STAGE image-load $current/$($plan.Count) $($parts[1])"
+  & $docker load -i (Join-Path $root "images/$($parts[0])") | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "Unable to load the packaged Field image: $($parts[1])" }
 }
 Write-Output 'FIELD_STAGE database-upgrade-check'
 & (Join-Path $root 'scripts/upgrade-field-database-windows.ps1')

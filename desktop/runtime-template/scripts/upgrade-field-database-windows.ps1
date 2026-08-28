@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $docker = if ($env:SURFJUDGING_DOCKER_BIN) { $env:SURFJUDGING_DOCKER_BIN } else { 'docker' }
-$container = 'surfjudging_field_postgres'
+$container = if ($env:SURFJUDGING_POSTGRES_CONTAINER) { $env:SURFJUDGING_POSTGRES_CONTAINER } else { 'surfjudging_field_postgres' }
 $target = (Get-Content (Join-Path $root 'database/expected-schema.txt') -Raw).Trim()
 
 & $docker container inspect $container *> $null

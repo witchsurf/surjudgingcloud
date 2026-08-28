@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 docker_bin="${SURFJUDGING_DOCKER_BIN:-docker}"
-container="surfjudging_field_postgres"
+container="${SURFJUDGING_POSTGRES_CONTAINER:-surfjudging_field_postgres}"
 migration_dir="$root/database/migrations"
 target="$(tr -d '\r\n' < "$root/database/expected-schema.txt")"
 

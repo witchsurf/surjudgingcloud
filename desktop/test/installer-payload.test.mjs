@@ -87,10 +87,16 @@ test('existing Field databases use an ordered fail-closed migration path', () =>
   const windowsLauncher = fs.readFileSync(path.resolve('runtime-template/scripts/start-surfjudging-field-windows.ps1'), 'utf8');
   const windowsUpgrade = fs.readFileSync(path.resolve('runtime-template/scripts/upgrade-field-database-windows.ps1'), 'utf8');
   assert.match(macLauncher, /database-upgrade-check/);
+  assert.doesNotMatch(macLauncher, /image inspect/);
+  assert.match(macLauncher, /docker_bin" load -i/);
   assert.match(macUpgrade, /Unsupported Field schema upgrade source/);
   assert.match(macUpgrade, /database-upgrade-complete/);
   assert.match(macUpgrade, /psql -v ON_ERROR_STOP=1/);
+  assert.match(macUpgrade, /SURFJUDGING_POSTGRES_CONTAINER/);
   assert.match(windowsLauncher, /database-upgrade-check/);
+  assert.doesNotMatch(windowsLauncher, /image inspect/);
+  assert.match(windowsLauncher, /docker load -i/);
   assert.match(windowsUpgrade, /Unsupported Field schema upgrade source/);
   assert.match(windowsUpgrade, /database-upgrade-complete/);
+  assert.match(windowsUpgrade, /SURFJUDGING_POSTGRES_CONTAINER/);
 });

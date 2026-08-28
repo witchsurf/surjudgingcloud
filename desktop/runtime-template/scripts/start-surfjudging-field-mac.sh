@@ -33,12 +33,8 @@ current=0
 while IFS=$'\t' read -r archive image; do
   [[ -z "$archive" || -z "$image" ]] && continue
   current=$((current + 1))
-  if "$docker_bin" image inspect "$image" >/dev/null 2>&1; then
-    echo "FIELD_STAGE image-ready $current/$total $image"
-  else
-    echo "FIELD_STAGE image-load $current/$total $image"
-    "$docker_bin" load -i "$root/images/$archive" >/dev/null
-  fi
+  echo "FIELD_STAGE image-load $current/$total $image"
+  "$docker_bin" load -i "$root/images/$archive" >/dev/null
 done < "$root/images/load-plan.tsv"
 
 echo "FIELD_STAGE database-upgrade-check"
