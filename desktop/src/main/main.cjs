@@ -1,4 +1,4 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, powerSaveBlocker, screen, shell } = require('electron');
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
@@ -15,6 +15,7 @@ const { dataRoot, createBackupService } = require('./backup-service.cjs');
 const { makeRuntimePreparationService } = require('./runtime-preparation-service.cjs');
 const { readOrganizationProfile, saveOrganizationProfile } = require('./organization-profile.cjs');
 const { makeOrganizationPublisher } = require('./organization-publisher.cjs');
+const { makePriorityDisplayController } = require('./priority-display-controller.cjs');
 
 const runtimePreparation = makeRuntimePreparationService({
   execFile: execFileAsync,
@@ -79,6 +80,7 @@ const expectedRuntimeIdentity = {
 };
 const manager=makeManager({rootDir:fieldRuntimeRoot,stateDir:path.join(dataRoot(),'runtime'),expectedIdentity:expectedRuntimeIdentity,platform:process.platform,discover,health,prerequisites:prereq,fetchRunningHeats:runningHeats});
 const organizationPublisher=makeOrganizationPublisher({stateDir:path.join(dataRoot(),'runtime'),discover});
+const priorityDisplayController=makePriorityDisplayController({BrowserWindow,screen,powerSaveBlocker});
 async function syncOrganizationProfile(){const profile=await readOrganizationProfile(organizationRoot);if(!profile.configured)return {status:'NOT_CONFIGURED'};return organizationPublisher.publish({...profile,logoDataUrl:normalizeOrganizationLogoForRuntime(profile.logoDataUrl)});}
 const livePublicationSupervisor=makeLivePublicationSupervisor({configPath:path.join(dataRoot(),'live-publication.env'),workerPath:path.join(fieldRuntimeRoot,'scripts','live-outbox-worker.mjs'),logger:(line)=>console.info(line)});
 ipcMain.handle('field:interfaces',()=>interfaces());ipcMain.handle('field:candidates',()=>discover());ipcMain.handle('field:manifest',(_,h)=>fetchJson(`http://${h}:8080/deployment-manifest.json`));ipcMain.handle('field:health',(_,h)=>health(h));ipcMain.handle('field:prerequisites',()=>prereq());ipcMain.handle('field:urls',(_,h)=>tabletUrls(h));ipcMain.handle('field:qr',(_,url)=>QRCode.toDataURL(url,{margin:1,width:220}));ipcMain.handle('field:competition-safety',()=>competitionSafety());ipcMain.handle('field:disk',()=>diskStatus());ipcMain.handle('field:backup',()=>({ok:false,status:'UNAVAILABLE',reason:'P3.3 local Backup Now locked: existing backup script targets an explicit HP over SSH; no local backup path is proven yet.'}));ipcMain.handle('field:state',()=>manager.getState());ipcMain.handle('field:progress',()=>manager.getProgress());ipcMain.handle('field:logs',()=>manager.getLogs());ipcMain.handle('field:check-runtime',()=>manager.checkRuntime());ipcMain.handle('field:start',async()=>{if(appTranslocated)throw new Error('Installation requise : déplacez SurfJudging Field dans le dossier Applications, puis rouvrez-le.');const result=await manager.startField();await livePublicationSupervisor.start();return result;});ipcMain.handle('field:stop-check',()=>manager.canStopField());ipcMain.handle('field:stop',async(_,confirmed)=>{const result=await manager.stopField({confirmed:Boolean(confirmed)});if(result.result==='STOPPED')livePublicationSupervisor.stop();return result;});ipcMain.handle('live-publication:status',()=>livePublicationSupervisor.getStatus());ipcMain.handle('desktop:version',()=>app.getVersion());ipcMain.handle('diagnostics:copy',(_,s)=>{clipboard.writeText(JSON.stringify(s,null,2));return true});ipcMain.handle('open:url',(_,u)=>/^https?:\/\//.test(u)&&shell.openExternal(u));
@@ -90,7 +92,16 @@ ipcMain.handle('organization:get',()=>readOrganizationProfile(organizationRoot))
 ipcMain.handle('organization:choose-logo',(event)=>chooseOrganizationLogo(BrowserWindow.fromWebContents(event.sender)));
 ipcMain.handle('organization:save',async(_event,input)=>{const profile=await saveOrganizationProfile(organizationRoot,input);return {...profile,runtimeSync:await syncOrganizationProfile()};});
 ipcMain.handle('organization:sync',()=>syncOrganizationProfile());
+ipcMain.handle('priority-display:status',()=>priorityDisplayController.inspectStatus());
+ipcMain.handle('priority-display:open',async(_event,input={})=>{
+  const host=String(input.host||'').trim();
+  if(!isPrivateLanAddress(host))throw new Error('La sortie priorité exige un runtime Field LAN vérifié.');
+  return priorityDisplayController.openLive(host,{podiumId:input.podiumId,eventId:input.eventId});
+});
+ipcMain.handle('priority-display:blackout',()=>priorityDisplayController.blackout());
+ipcMain.handle('priority-display:test',(_event,color)=>priorityDisplayController.testColor(color));
+ipcMain.handle('priority-display:test-order',(_event,count)=>priorityDisplayController.testOrder(count));
 function createWindow(){const w=new BrowserWindow({width:1120,height:780,minWidth:860,minHeight:620,webPreferences:{contextIsolation:true,nodeIntegration:false,preload:path.join(__dirname,'../preload/preload.cjs')}});w.loadFile(path.join(__dirname,'../renderer/index.html'))}
 const backupService = createBackupService({root:dataRoot(),fetchRunningHeats:runningHeats,execFile:execFileAsync,manifest:{desktopVersion:'0.3.0-p3.5',frontend:{releaseId:'runtime-discovered',sourceRevision:'runtime-discovered'},schema:'runtime-discovered',databaseVersion:'runtime-discovered'}});
 ipcMain.handle('field:backup-v2',()=>backupService.backup());
-app.whenReady().then(()=>{app.setAboutPanelOptions({applicationName:'SurfJudging Field',applicationVersion:app.getVersion(),copyright:'Copyright © 2026 René Pierre LARAISE',credits:'Conçu et développé par René Pierre LARAISE\nrplaraise@gmail.com'});createWindow();app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow()})});app.on('before-quit',()=>livePublicationSupervisor.stop());app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
+app.whenReady().then(()=>{app.setAboutPanelOptions({applicationName:'SurfJudging Field',applicationVersion:app.getVersion(),copyright:'Copyright © 2026 René Pierre LARAISE',credits:'Conçu et développé par René Pierre LARAISE\nrplaraise@gmail.com'});createWindow();app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow()})});app.on('before-quit',()=>{livePublicationSupervisor.stop();priorityDisplayController.dispose();});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});

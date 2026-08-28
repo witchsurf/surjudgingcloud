@@ -1,4 +1,4 @@
-export type InternalAccessRoute = '/display' | '/judge' | '/priority';
+export type InternalAccessRoute = '/display' | '/judge' | '/priority' | '/priority-display';
 
 export type AccessLinkParams = Record<string, string | number | null | undefined>;
 

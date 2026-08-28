@@ -37,6 +37,7 @@ const PublicLayout = lazy(() => import('./layouts/PublicLayout'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const JudgePage = lazy(() => import('./pages/JudgePage'));
 const PriorityJudgePage = lazy(() => import('./pages/PriorityJudgePage'));
+const PriorityDisplayPage = lazy(() => import('./pages/PriorityDisplayPage'));
 const DisplayPage = lazy(() => import('./pages/DisplayPage'));
 const MyEventsPage = lazy(() => import('./pages/MyEvents'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
@@ -103,6 +104,9 @@ function App() {
                         <Route path="/priority-judge" element={<JudgeLayout />}>
                             <Route index element={<PriorityJudgePage />} />
                         </Route>
+
+                        {/* Read-only HDMI framebuffer for L2 / Gloshine LED panels */}
+                        <Route path="/priority-display" element={<PriorityDisplayPage />} />
 
                         {/* Public Display Routes */}
                         <Route path="/display" element={<PublicLayout />}>

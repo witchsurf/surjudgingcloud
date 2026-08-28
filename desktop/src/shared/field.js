@@ -23,7 +23,7 @@ export function candidateFromManifest(host, manifest) {
 export function tabletUrls(host) {
   const base = `http://${host}:${FIELD_PORTS.frontend}`;
   return Object.freeze({
-    admin: `${base}/admin`, judge: `${base}/judge`, priority: `${base}/priority`,
+    admin: `${base}/admin`, judge: `${base}/judge`, priority: `${base}/priority`, priorityDisplay: `${base}/priority-display`,
     display: `${base}/display`, overlay: `${base}/overlay`
   });
 }

@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('surfJudgingDesktop', Object.freeze({
   chooseOrganizationLogo: () => ipcRenderer.invoke('organization:choose-logo'),
   saveOrganizationProfile: (profile) => ipcRenderer.invoke('organization:save', profile),
   syncOrganizationProfile: () => ipcRenderer.invoke('organization:sync'),
+  getPriorityDisplayStatus: () => ipcRenderer.invoke('priority-display:status'),
+  openPriorityDisplay: (host, podiumId) => ipcRenderer.invoke('priority-display:open', { host, podiumId }),
+  blackoutPriorityDisplay: () => ipcRenderer.invoke('priority-display:blackout'),
+  testPriorityDisplayColor: (color) => ipcRenderer.invoke('priority-display:test', color),
+  testPriorityDisplayOrder: (count) => ipcRenderer.invoke('priority-display:test-order', count),
   onMachinePreparationProgress: (listener) => {
     const handler = (_event, progress) => listener(progress);
     ipcRenderer.on('runtime-preparation:progress', handler);
