@@ -1,8 +1,13 @@
 {
   "name": "surfjudging-field",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": true,
   "description": "SurfJudging Field desktop operator application",
+  "author": {
+    "name": "René Pierre LARAISE",
+    "email": "rplaraise@gmail.com"
+  },
+  "copyright": "Copyright © 2026 René Pierre LARAISE",
   "main": "src/main/main.cjs",
   "type": "module",
   "scripts": {
@@ -43,11 +48,13 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "src/renderer/assets/surfjudging-field-logo-v2.png",
       "target": [
         { "target": "dmg", "arch": ["x64", "arm64"] }
       ]
     },
     "win": {
+      "icon": "src/renderer/assets/surfjudging-field-logo-v2.png",
       "target": [
         { "target": "nsis", "arch": ["x64"] }
       ]

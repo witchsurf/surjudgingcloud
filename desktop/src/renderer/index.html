@@ -1,1 +1,46 @@
-<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SurfJudging Field</title><link rel="stylesheet" href="./styles.css"></head><body><main><header><div><p class="eyebrow">SURFJUDGING</p><h1>Field Control Center</h1></div><span id="environment">FIELD — LOCAL</span></header><section id="status" class="banner">Recherche du Field local…</section><div class="grid"><section class="card wide preparation"><div><h2>Préparation de cette machine</h2><p id="preparation-summary">Analyse du système et du moteur local…</p><div id="preparation-progress" class="progress" hidden><span></span></div><p id="preparation-detail" class="hint"></p></div><button id="prepare">Analyser</button></section><section class="card"><h2>Runtime identity</h2><dl id="identity"><dt>Host</dt><dd>—</dd><dt>Release</dt><dd>—</dd><dt>Revision</dt><dd>—</dd><dt>Schema</dt><dd>—</dd></dl></section><section class="card"><h2>Services</h2><dl id="health"><dt>Frontend</dt><dd>—</dd><dt>API</dt><dd>—</dd><dt>Realtime</dt><dd>—</dd><dt>Internet</dt><dd>—</dd><dt>Cloud</dt><dd>—</dd></dl></section><section class="card"><h2>Prérequis locaux</h2><dl id="prereq"><dt>Docker Desktop</dt><dd>—</dd><dt>Commande Docker</dt><dd>—</dd><dt>Moteur Docker</dt><dd>—</dd></dl></section><section class="card wide"><h2>Tablet URLs</h2><div id="urls" class="urls"></div></section><section class="card wide actions"><button id="refresh">Actualiser</button><button id="copy">Copier le diagnostic</button><small>Les données de compétition ne sont jamais modifiées par la préparation de la machine.</small></section></div></main><script type="module" src="./renderer.js"></script></body></html>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SurfJudging Field</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand-lockup">
+        <img id="app-logo" class="app-logo" src="./assets/surfjudging-field-logo-v2.png" alt="Logo SurfJudging Field">
+        <div><p id="organization-label" class="eyebrow">SURFJUDGING</p><h1>Field Control Center</h1></div>
+      </div>
+      <div class="header-actions"><button id="organization-settings" class="secondary">Organisation</button><span id="environment">FIELD — LOCAL</span></div>
+    </header>
+    <section id="status" class="banner">Recherche du Field local…</section>
+    <div class="grid">
+      <section class="card wide preparation"><div><h2>Préparation de cette machine</h2><p id="preparation-summary">Analyse du système et du moteur local…</p><div id="preparation-progress" class="progress" hidden><span></span></div><p id="preparation-detail" class="hint"></p></div><button id="prepare">Analyser</button></section>
+      <section class="card"><h2>Runtime identity</h2><dl id="identity"><dt>Host</dt><dd>—</dd><dt>Release</dt><dd>—</dd><dt>Revision</dt><dd>—</dd><dt>Schema</dt><dd>—</dd></dl></section>
+      <section class="card"><h2>Services</h2><dl id="health"><dt>Frontend</dt><dd>—</dd><dt>API</dt><dd>—</dd><dt>Realtime</dt><dd>—</dd><dt>Internet</dt><dd>—</dd><dt>Cloud</dt><dd>—</dd></dl></section>
+      <section class="card"><h2>Prérequis locaux</h2><dl id="prereq"><dt>Docker Desktop</dt><dd>—</dd><dt>Commande Docker</dt><dd>—</dd><dt>Moteur Docker</dt><dd>—</dd></dl></section>
+      <section class="card wide"><h2>Tablet URLs</h2><div id="urls" class="urls"></div></section>
+      <section class="card wide actions"><button id="refresh">Actualiser</button><button id="copy">Copier le diagnostic</button><small>Les données de compétition ne sont jamais modifiées par la préparation de la machine.</small></section>
+    </div>
+  </main>
+  <div id="organization-overlay" class="modal" hidden>
+    <section class="setup-dialog" role="dialog" aria-modal="true" aria-labelledby="organization-title">
+      <button id="organization-close" class="dialog-close" type="button" aria-label="Fermer">×</button>
+      <div class="setup-heading"><img id="organization-logo-preview" src="./assets/surfjudging-field-logo-v2.png" alt="Aperçu du logo"><div><p class="eyebrow">PREMIÈRE INSTALLATION</p><h2 id="organization-title">Identité de l’organisation</h2></div></div>
+      <p>Cette identité reste enregistrée uniquement sur cette machine Field. Elle pourra être modifiée plus tard.</p>
+      <form id="organization-form">
+        <label for="organization-name">Nom de l’organisation</label>
+        <input id="organization-name" name="organizationName" maxlength="120" autocomplete="organization" placeholder="Ex. Fédération Sénégalaise de Surf" required>
+        <label>Logo de l’organisation</label>
+        <button id="organization-logo-choose" class="secondary" type="button">Choisir une image…</button>
+        <p class="hint">PNG, JPG ou WebP. Le fichier est converti et conservé localement.</p>
+        <p id="organization-error" class="form-error" role="alert"></p>
+        <button id="organization-save" type="submit">Enregistrer et continuer</button>
+      </form>
+    </section>
+  </div>
+  <script type="module" src="./renderer.js"></script>
+</body>
+</html>
