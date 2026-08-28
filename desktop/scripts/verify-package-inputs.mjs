@@ -16,6 +16,7 @@ const required = [
   'database/init/service-roles.sql',
   'database/healthcheck.sh',
   'images/index.json',
+  'images/load-plan.tsv',
   'scripts/live-outbox-worker.mjs',
   'scripts/start-surfjudging-field-mac.sh',
   'scripts/start-surfjudging-field-windows.ps1'
@@ -41,5 +42,11 @@ const imageIndex = JSON.parse(fs.readFileSync(path.join(runtime, 'images/index.j
 if (imageIndex.format !== 'docker-save-v1' || !Array.isArray(imageIndex.images) || imageIndex.images.length !== Object.keys(manifest.services || {}).length) throw new Error('Packaging blocked: invalid image index');
 for (const archive of imageIndex.images) {
   if (!/^[A-Za-z0-9_.-]+\.tar$/.test(archive) || !fs.existsSync(path.join(runtime, 'images', archive))) throw new Error(`Packaging blocked: image archive missing (${archive})`);
+}
+const loadPlan = fs.readFileSync(path.join(runtime, 'images/load-plan.tsv'), 'utf8').trim().split('\n');
+if (loadPlan.length !== imageIndex.images.length) throw new Error('Packaging blocked: invalid image load plan length');
+for (const [index, line] of loadPlan.entries()) {
+  const [archive, image, extra] = line.split('\t');
+  if (extra || archive !== imageIndex.images[index] || !manifest.services?.[image]) throw new Error(`Packaging blocked: invalid image load plan entry (${line})`);
 }
 console.log(`PACKAGING INPUT PASS: ${manifest.frontend.releaseId} / schema ${manifest.schema.expectedVersion}`);

@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('surfJudgingDesktop', Object.freeze({
   getRuntimePrerequisiteStatus: () => ipcRenderer.invoke('field:prerequisites'),
   getTabletUrls: (host) => ipcRenderer.invoke('field:urls', host),
   getFieldState: () => ipcRenderer.invoke('field:state'),
+  getFieldProgress: () => ipcRenderer.invoke('field:progress'),
   checkRuntime: () => ipcRenderer.invoke('field:check-runtime'),
   startField: () => ipcRenderer.invoke('field:start'),
   canStopField: () => ipcRenderer.invoke('field:stop-check'),

@@ -19,6 +19,9 @@ export const hashFile = (file) => crypto.createHash('sha256').update(fs.readFile
 export function normalizeCompose(text, sourceRuntime) {
   return text
     .replaceAll(sourceRuntime, 'surfjudging_field')
+    .replace(/\.\/kong\.yml:\/var\/lib\/kong\/kong\.yml:ro/g,
+      'surfjudging_field_kong_config:/var/lib/kong:ro')
+    .replace(/\nvolumes:\n/, '\nvolumes:\n  surfjudging_field_kong_config:\n    external: true\n    name: surfjudging_field_kong_config\n')
     .replace(/(["'])\d+:5432\1/g, (_match, quote) => `${quote}5432:5432${quote}`)
     .replace(/(["'])\d+:8000\1/g, (_match, quote) => `${quote}8000:8000${quote}`)
     .replace(/(["'])\d+:80\1/g, (_match, quote) => `${quote}8080:80${quote}`)
@@ -67,6 +70,13 @@ export function createImageIndex(images) {
     format: 'docker-save-v1',
     images: images.map((image) => `${image.replaceAll(/[/:]/g, '_')}.tar`).sort(),
   };
+}
+
+export function createImageLoadPlan(images) {
+  return images
+    .map((image) => `${image.replaceAll(/[/:]/g, '_')}.tar\t${image}`)
+    .sort()
+    .join('\n') + '\n';
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
@@ -126,6 +136,7 @@ const images = ['surfjudging_field_postgres_img:latest', 'surfjudging_field_fron
 fs.mkdirSync(path.join(output, 'images'), { recursive: true });
 for (const image of images) run('docker', ['save', '-o', path.join(output, 'images', `${image.replaceAll(/[/:]/g, '_')}.tar`), image]);
 fs.writeFileSync(path.join(output, 'images', 'index.json'), JSON.stringify(createImageIndex(images), null, 2));
+fs.writeFileSync(path.join(output, 'images', 'load-plan.tsv'), createImageLoadPlan(images));
 
 const files = [
   'compose/compose.yaml', 'compose/.env', 'compose/kong.yml',
@@ -133,7 +144,7 @@ const files = [
   'database/init/service-roles.sql',
   'database/healthcheck.sh',
   'scripts/live-outbox-worker.mjs', 'scripts/start-surfjudging-field-mac.sh', 'scripts/start-surfjudging-field-windows.ps1',
-  'images/index.json',
+  'images/index.json', 'images/load-plan.tsv',
 ];
 const runtimeManifest = {
   runtimeVersion: '0.1.0',

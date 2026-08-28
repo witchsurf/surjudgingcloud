@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createFrontendManifest, createImageIndex, normalizeCompose, normalizeFieldEnv } from '../scripts/assemble-field-payload.mjs';
+import { createFrontendManifest, createImageIndex, createImageLoadPlan, normalizeCompose, normalizeFieldEnv } from '../scripts/assemble-field-payload.mjs';
 
 test('normalizes disposable runtime names and host ports', () => {
   const result = normalizeCompose(`services:\n  postgres:\n    ports:\n      - "18432:5432"\n    healthcheck:\n      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]\n  api:\n    ports:\n      - "18400:8000"\n  frontend:\n    image: p38_frontend_img\n    container_name: p38_frontend\n    restart: unless-stopped\n    ports:\n      - "18480:80"\n`, 'p38');
@@ -14,6 +14,13 @@ test('normalizes disposable runtime names and host ports', () => {
   assert.match(result, /surfjudging-field-healthcheck\.sh/);
   assert.match(result, /frontend:[\s\S]*depends_on:\n      kong:\n        condition: service_healthy/);
   assert.doesNotMatch(result, /184(?:00|32|80)/);
+});
+
+test('stages Kong configuration in a Docker volume without host bind mounts', () => {
+  const result = normalizeCompose(`services:\n  kong:\n    volumes:\n      - ./kong.yml:/var/lib/kong/kong.yml:ro\nvolumes:\n  postgres-data:\n`, 'p38');
+  assert.match(result, /surfjudging_field_kong_config:\n    external: true\n    name: surfjudging_field_kong_config/);
+  assert.match(result, /- surfjudging_field_kong_config:\/var\/lib\/kong:ro/);
+  assert.doesNotMatch(result, /\.\/kong\.yml/);
 });
 
 test('normalizes URLs, rotates the database secret and preserves JWT identity', () => {
@@ -50,6 +57,10 @@ test('creates a deterministic Docker image archive index', () => {
     format: 'docker-save-v1',
     images: ['a_image_2.tar', 'z_image_1.tar'],
   });
+});
+
+test('creates a deterministic archive-to-image load plan', () => {
+  assert.equal(createImageLoadPlan(['z/image:1', 'a/image:2']), 'a_image_2.tar\ta/image:2\nz_image_1.tar\tz/image:1\n');
 });
 
 test('installs a top-level PostgreSQL entrypoint launcher for fresh volumes', () => {
