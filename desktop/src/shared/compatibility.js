@@ -9,7 +9,7 @@ export const REQUIRED_IMAGES = Object.freeze([
 
 export function classifyPlatform({ platform, arch }) {
   const supportedPlatform = platform === 'darwin' || platform === 'win32';
-  const supportedArch = ['arm64', 'x64'].includes(arch);
+  const supportedArch = platform === 'win32' ? arch === 'x64' : ['arm64', 'x64'].includes(arch);
   return { supportedPlatform, supportedArch, status: supportedPlatform && supportedArch ? 'CANDIDATE' : 'UNSUPPORTED' };
 }
 
