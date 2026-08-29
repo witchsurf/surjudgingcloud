@@ -43,6 +43,45 @@ export interface HeatSlotMappingRow {
     source_position: number | null;
 }
 
+const parsePlanningPlaceholder = (value?: string | null) => {
+    if (!value) return { placeholder: null, sourceRound: null, sourceHeat: null, sourcePosition: null };
+    const normalized = value.trim().toUpperCase();
+    const canonical = normalized.match(/R(P?)(\d+)-H(\d+)-P(\d+)/);
+    if (canonical) {
+        const [, , roundStr, heatStr, posStr] = canonical;
+        return { placeholder: normalized, sourceRound: Number.parseInt(roundStr, 10), sourceHeat: Number.parseInt(heatStr, 10), sourcePosition: Number.parseInt(posStr, 10) };
+    }
+    const spaced = normalized.match(/R(P?)(\d+)\s*-\s*H(\d+)\s*(?:\(\s*P(\d+)\s*\)|\s+P(\d+))/);
+    if (spaced) {
+        const [, , roundStr, heatStr, posA, posB] = spaced;
+        const posStr = posA ?? posB;
+        return { placeholder: normalized, sourceRound: Number.parseInt(roundStr, 10), sourceHeat: Number.parseInt(heatStr, 10), sourcePosition: Number.parseInt(posStr, 10) };
+    }
+    return { placeholder: normalized, sourceRound: null, sourceHeat: null, sourcePosition: null };
+};
+
+/** Fail before any database write when a future slot has no immutable sporting source. */
+export const assertExplicitProgressionPlan = (rounds: RoundSpec[]): void => {
+    const plannedSchedules = new Set(
+        rounds.flatMap((round) => round.heats.map((heat) => `${round.roundNumber}:${heat.heatNumber}`))
+    );
+    const unresolvedProgressionSlots = rounds.flatMap((round) => round.heats.flatMap((heat) =>
+        round.roundNumber <= 1
+            ? []
+            : heat.slots.map((slot, index) => ({ slot, index })).filter(({ slot }) => Boolean(slot.placeholder))
+                .flatMap(({ slot, index }) => {
+                    const source = parsePlanningPlaceholder(slot.placeholder);
+                    return source.sourceRound != null && source.sourceHeat != null && source.sourcePosition != null
+                        && plannedSchedules.has(`${source.sourceRound}:${source.sourceHeat}`)
+                        ? []
+                        : [`R${round.roundNumber} H${heat.heatNumber} slot ${index + 1}`];
+                })
+    ));
+    if (unresolvedProgressionSlots.length > 0) {
+        throw new Error(`Planning refusé : progression explicite manquante pour ${unresolvedProgressionSlots.join(', ')}.`);
+    }
+};
+
 
 export interface HeatJudgeAssignmentRow {
     heat_id: string;
@@ -293,41 +332,7 @@ export async function createHeatsWithEntries(
         : ['J1', 'J2', 'J3'];
     const tournamentType = String(options.tournamentType ?? 'elimination').trim() || 'elimination';
 
-    const parsePlaceholder = (value?: string | null) => {
-        if (!value) return { placeholder: null, sourceRound: null, sourceHeat: null, sourcePosition: null };
-        const normalized = value.trim().toUpperCase();
-        const canonical = normalized.match(/R(P?)(\d+)-H(\d+)-P(\d+)/);
-        if (canonical) {
-            const [, , roundStr, heatStr, posStr] = canonical;
-            return { placeholder: normalized, sourceRound: Number.parseInt(roundStr, 10), sourceHeat: Number.parseInt(heatStr, 10), sourcePosition: Number.parseInt(posStr, 10) };
-        }
-        const spaced = normalized.match(/R(P?)(\d+)\s*-\s*H(\d+)\s*(?:\(\s*P(\d+)\s*\)|\s+P(\d+))/);
-        if (spaced) {
-            const [, , roundStr, heatStr, posA, posB] = spaced;
-            const posStr = posA ?? posB;
-            return { placeholder: normalized, sourceRound: Number.parseInt(roundStr, 10), sourceHeat: Number.parseInt(heatStr, 10), sourcePosition: Number.parseInt(posStr, 10) };
-        }
-        return { placeholder: normalized, sourceRound: null, sourceHeat: null, sourcePosition: null };
-    };
-
-    const plannedSchedules = new Set(
-        rounds.flatMap((round) => round.heats.map((heat) => `${round.roundNumber}:${heat.heatNumber}`))
-    );
-    const unresolvedProgressionSlots = rounds.flatMap((round) => round.heats.flatMap((heat) =>
-        round.roundNumber <= 1
-            ? []
-            : heat.slots.map((slot, index) => ({ slot, index })).filter(({ slot }) => Boolean(slot.placeholder))
-                .flatMap(({ slot, index }) => {
-                    const source = parsePlaceholder(slot.placeholder);
-                    return source.sourceRound != null && source.sourceHeat != null && source.sourcePosition != null
-                        && plannedSchedules.has(`${source.sourceRound}:${source.sourceHeat}`)
-                        ? []
-                        : [`R${round.roundNumber} H${heat.heatNumber} slot ${index + 1}`];
-                })
-    ));
-    if (unresolvedProgressionSlots.length > 0) {
-        throw new Error(`Planning refusé : progression explicite manquante pour ${unresolvedProgressionSlots.join(', ')}.`);
-    }
+    assertExplicitProgressionPlan(rounds);
 
     const participantsPayload = Array.from(participantsBySeed.values()).map((participant) => ({
         event_id: eventId,
@@ -381,7 +386,7 @@ export async function createHeatsWithEntries(
             newHeatIds.push(heatId);
 
             heat.slots.forEach((slot, index) => {
-                const { placeholder, sourceRound, sourceHeat, sourcePosition } = parsePlaceholder(slot.placeholder);
+                const { placeholder, sourceRound, sourceHeat, sourcePosition } = parsePlanningPlaceholder(slot.placeholder);
                 slotMappings.push({
                     heat_id: heatId, position: index + 1, placeholder,
                     source_round: sourceRound, source_heat: sourceHeat, source_position: sourcePosition,
@@ -445,8 +450,40 @@ export async function createHeatsWithEntries(
             progression_type: 'COMPETITION_RESULT',
         }];
     });
+    const providedProgressionEdges = (options.progressionEdges ?? []).map((edge) => {
+        if (String(edge.target_heat_id ?? '').trim()) return edge;
+
+        const targetRound = Number(edge.targetRound ?? edge.target_round);
+        const targetHeat = Number(edge.targetHeat ?? edge.target_heat);
+        const targetPosition = Number(edge.targetPosition ?? edge.target_position);
+        const sourceRound = Number(edge.sourceRound ?? edge.source_round);
+        const sourceHeat = Number(edge.sourceHeat ?? edge.source_heat);
+        const sourcePosition = Number(edge.sourcePosition ?? edge.source_position);
+        const progressionType = String(edge.type ?? edge.progression_type ?? '').trim();
+        const targetHeatId = heatIdBySchedule.get(`${targetRound}:${targetHeat}`);
+        if (!targetHeatId) {
+            throw new Error(`Cible de progression introuvable pour R${targetRound} H${targetHeat} slot ${targetPosition}.`);
+        }
+        const sourceHeatId = progressionType === 'AUTO_ADVANCE_BYE'
+            ? 'BYE'
+            : heatIdBySchedule.get(`${sourceRound}:${sourceHeat}`);
+        if (!sourceHeatId) {
+            throw new Error(`Source de progression introuvable pour R${sourceRound} H${sourceHeat}.`);
+        }
+        return {
+            event_id: eventId,
+            category,
+            target_heat_id: targetHeatId,
+            target_position: targetPosition,
+            target_round: targetRound,
+            source_round: sourceRound,
+            source_heat: sourceHeatId,
+            source_position: progressionType === 'AUTO_ADVANCE_BYE' ? 0 : sourcePosition,
+            progression_type: progressionType,
+        };
+    });
     const progressionByTarget = new Map<string, Record<string, unknown>>();
-    [...generatedProgressionEdges, ...(options.progressionEdges ?? [])].forEach((edge) => {
+    [...generatedProgressionEdges, ...providedProgressionEdges].forEach((edge) => {
         const targetHeatId = String(edge.target_heat_id ?? '').trim();
         const targetPosition = Number(edge.target_position);
         if (targetHeatId && Number.isInteger(targetPosition) && targetPosition > 0) {

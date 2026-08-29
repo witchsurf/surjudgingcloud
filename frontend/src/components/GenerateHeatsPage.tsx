@@ -7,16 +7,22 @@ import { participantRepository } from '../repositories/ParticipantRepository';
 import { categoryPlanningPolicyRepository } from '../repositories/CategoryPlanningPolicyRepository';
 import type { ParticipantRecord } from '../repositories/contracts';
 import {
-  generatePreviewHeats,
   getManOnManRoundOptions,
   type ManOnManRoundOption
 } from '../utils/heatGeneration';
+import { computeHeats, type ComputeResult, type RoundSpec } from '../utils/bracket';
 import EventStatus from './EventStatus';
 import { useConfigStore } from '../stores/configStore';
 import { supabase } from '../lib/supabase';
 import { assertPlanningAllowed, canPersistHeats, planningSuccessRoute, resolveEventWorkflowState, type EventWorkflowState } from '../domain/eventWorkflow';
 import { getDeploymentMode } from '../domain/deploymentMode';
 import { resolvePdfOrganizationIdentity } from '../domain/fieldOrganization';
+import {
+  assertPlanningPolicyPreview,
+  computeOptionsForPlanningPolicy,
+} from '../domain/planningPolicyCompute';
+import type { CategoryPlanningPolicy } from '../domain/planningPolicy';
+import { assertExplicitProgressionPlan } from '../api/modules/heats.api';
 
 interface Heat {
   round: number;
@@ -33,23 +39,11 @@ interface CategoryPreview {
   category: string;
   participants: ParticipantRecord[];
   rounds: { round: number; heats: Heat[] }[];
+  planningRounds: RoundSpec[];
+  progressionEdges: NonNullable<ComputeResult['progressionEdges']>;
+  policy: CategoryPlanningPolicy;
   seriesSize: number;
 }
-
-const isBracketPlaceholderName = (value?: string | null) => {
-  const normalized = (value || '').trim();
-  if (!normalized) return false;
-
-  return (
-    normalized.startsWith('Qualifié') ||
-    normalized.startsWith('Winner') ||
-    normalized.startsWith('Vainqueur') ||
-    normalized.startsWith('Repêchage') ||
-    normalized.startsWith('Finaliste') ||
-    normalized.startsWith('Meilleur 2e') ||
-    /^R\d+\s*-\s*H\d+/i.test(normalized)
-  );
-};
 
 const parsePositiveEventId = (value: unknown): number | null => {
   const numeric = Number.parseInt(String(value ?? ''), 10);
@@ -71,6 +65,29 @@ const readStoredEventDbId = () => {
     return null;
   }
 };
+
+const buildCategoryPlanningPolicy = (
+  eventId: number,
+  category: string,
+  baseFormat: 'elimination' | 'repechage',
+  manOnManRound: number,
+): CategoryPlanningPolicy => manOnManRound === 1
+  ? {
+    event_id: eventId,
+    category,
+    base_format: 'man_on_man',
+    transition_round: null,
+    transition_format: null,
+    version: 1,
+  }
+  : {
+    event_id: eventId,
+    category,
+    base_format: baseFormat,
+    transition_round: manOnManRound > 1 ? manOnManRound : null,
+    transition_format: manOnManRound > 1 ? 'man_on_man' : null,
+    version: 1,
+  };
 
 const GenerateHeatsPage = () => {
   const navigate = useNavigate();
@@ -167,7 +184,9 @@ const GenerateHeatsPage = () => {
           if (serverPolicies && serverPolicies.length > 0) {
             const momRounds: Record<string, number> = {};
             serverPolicies.forEach((pol) => {
-              if (pol.transition_round && pol.transition_format === 'man_on_man') {
+              if (pol.base_format === 'man_on_man') {
+                momRounds[pol.category] = 1;
+              } else if (pol.transition_round && pol.transition_format === 'man_on_man') {
                 momRounds[pol.category] = pol.transition_round;
               }
             });
@@ -257,30 +276,44 @@ const GenerateHeatsPage = () => {
           const selectedRound = allowedRounds.some((option) => option.round === requestedRound)
             ? requestedRound
             : 0;
-          const selectedOption = allowedRounds.find((option) => option.round === selectedRound);
-          const enableBestSecond = Boolean(selectedOption?.requiresBestSecond);
-
-          const rounds = generatePreviewHeats(
-            list,
+          const numericEventId = parsePositiveEventId(eventId);
+          if (!numericEventId) throw new Error(`ID d'événement invalide (${eventId}).`);
+          const policy = buildCategoryPlanningPolicy(
+            numericEventId,
+            category,
             selectedFormat,
-            computedSeriesSize,
-            selectedRound > 0
-              ? {
-                manOnManFromRound: selectedRound,
-                promoteBestSecond: enableBestSecond
-              }
-              : undefined
-          ).map(round => ({
-            round: round.round,
+            selectedRound,
+          );
+          const planning = computeHeats(list, {
+            ...computeOptionsForPlanningPolicy(
+              policy,
+              selectedFormat === 'repechage' ? 'repechage' : 'single-elim',
+            ),
+            preferredHeatSize: computedSeriesSize,
+          });
+          assertPlanningPolicyPreview(policy, planning);
+          assertExplicitProgressionPlan(planning.rounds);
+          const rounds = planning.rounds.map(round => ({
+            round: round.roundNumber,
             heats: round.heats.map(heat => ({
-              ...heat,
-              division: category
+              round: round.roundNumber,
+              heat_number: heat.heatNumber,
+              division: category,
+              surfers: heat.slots.map((slot) => ({
+                color: slot.color ?? '',
+                name: slot.placeholder ?? slot.name ?? '',
+                country: slot.country ?? '',
+                seed: slot.seed,
+              })),
             }))
           }));
           return {
             category,
             participants: list,
             rounds,
+            planningRounds: planning.rounds,
+            progressionEdges: planning.progressionEdges ?? [],
+            policy,
             seriesSize: computedSeriesSize
           };
         })
@@ -348,21 +381,18 @@ const GenerateHeatsPage = () => {
         throw new Error(`ID d'événement invalide (${currentEventId}). Veuillez recharger la page.`);
       }
 
+      // Validate the complete event before the first policy or heat write. A
+      // deterministic error in one category must not partially persist those
+      // that happen to be ordered before it.
+      previewData.forEach((categoryPreview) => {
+        assertPlanningPolicyPreview(categoryPreview.policy, { rounds: categoryPreview.planningRounds });
+        assertExplicitProgressionPlan(categoryPreview.planningRounds);
+      });
+
       for (const categoryPreview of previewData) {
-        // Save category planning policy if configured
-        const momRound = categoryManOnManRounds[categoryPreview.category] || 0;
-        try {
-          await categoryPlanningPolicyRepository.upsert({
-            event_id: numericId,
-            category: categoryPreview.category,
-            base_format: selectedFormat,
-            transition_round: momRound > 0 ? momRound : null,
-            transition_format: momRound > 0 ? 'man_on_man' : null,
-            version: 1,
-          });
-        } catch (policyErr) {
-          console.warn('Erreur sauvegarde politique catégorie:', policyErr);
-        }
+        // The planning policy is authoritative and must succeed before its
+        // corresponding heats are persisted.
+        await categoryPlanningPolicyRepository.upsert(categoryPreview.policy);
 
         // Build participants map for the API
         const participantsBySeed = new Map<number, any>();
@@ -380,32 +410,25 @@ const GenerateHeatsPage = () => {
             return ev?.name || 'Competition';
           })(),
           category: categoryPreview.category,
-          rounds: categoryPreview.rounds.map((r: any) => ({
-            name: `Round ${r.round}`,
-            roundNumber: r.round,
-            heats: r.heats.map((h: any) => ({
-              heatNumber: h.heat_number,
-              slots: h.surfers.map((s: any) => {
-                return {
-                  seed: typeof s.seed === 'number' ? s.seed : null,
-                  name: s.name,
-                  placeholder: isBracketPlaceholderName(s.name) ? s.name : null
-                };
-              })
-            }))
-          })),
+          rounds: categoryPreview.planningRounds,
           participantsBySeed,
           options: {
             overwrite: true,
             defaultJudges: ['J1', 'J2', 'J3'],
             tournamentType: selectedFormat,
+            progressionEdges: categoryPreview.progressionEdges,
           },
         });
       }
 
       const snapshot = {
         eventId,
-        categories: previewData,
+        categories: previewData.map(({ category, participants, rounds, seriesSize }) => ({
+          category,
+          participants,
+          rounds,
+          seriesSize,
+        })),
         metadata: {
           format: selectedFormat,
           categorySeriesSizes,

@@ -353,4 +353,81 @@ describe('P3.8 Planning Save Flow & Sequencing Integration', () => {
     const PLANNING_BEFORE_RUNTIME_CONFIG = true;
     expect(PLANNING_BEFORE_RUNTIME_CONFIG).toBe(true);
   });
+
+  it('Test D — ONDINE U16: round-1 man-on-man uses explicit BYEs and persists an authoritative base policy', async () => {
+    const participants = Array.from({ length: 6 }, (_, index) => ({
+      id: `ondine-${index + 1}`,
+      eventId: 10006,
+      category: 'ONDINE U16',
+      seed: index + 1,
+      name: `Ondine ${index + 1}`,
+      country: 'SN',
+    }));
+    vi.mocked(participantRepository.listByEvent).mockResolvedValue(participants as any);
+    vi.mocked(categoryPlanningPolicyRepository.list).mockResolvedValue([{
+      event_id: 10006,
+      category: 'ONDINE U16',
+      base_format: 'man_on_man',
+      transition_round: null,
+      transition_format: null,
+      version: 1,
+    }]);
+    vi.mocked(categoryPlanningPolicyRepository.upsert).mockResolvedValue({} as any);
+    vi.mocked(heatPlanningRepository.createWithEntries).mockImplementation(async (request) => {
+      mockDbHeats.set('ONDINE U16_R1_H1', {
+        id: 'auth-db-heat-ondine-u16-r1-h1',
+        event_id: request.eventId,
+        competition: "SANDY'S",
+        division: request.category,
+        round: 1,
+        heat_number: 1,
+        heat_size: 2,
+        status: 'open',
+        color_order: ['ROUGE', 'BLANC'],
+      });
+      return { heats: [], entries: [] } as any;
+    });
+
+    await act(async () => {
+      root?.render(
+        <MemoryRouter initialEntries={['/generate-heats?eventId=10006']}>
+          <Routes>
+            <Route path="/generate-heats" element={<GenerateHeatsPage />} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+
+    const confirmButton = Array.from(container?.querySelectorAll('button') || []).find(b =>
+      b.textContent?.includes('Confirmer et écrire dans la base')
+    );
+    await act(async () => {
+      confirmButton?.click();
+    });
+
+    expect(categoryPlanningPolicyRepository.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'ONDINE U16',
+      base_format: 'man_on_man',
+      transition_round: null,
+      transition_format: null,
+    }));
+    expect(heatPlanningRepository.createWithEntries).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'ONDINE U16',
+      rounds: expect.arrayContaining([
+        expect.objectContaining({
+          roundNumber: 2,
+          heats: expect.arrayContaining([
+            expect.objectContaining({ slots: expect.arrayContaining([
+              expect.objectContaining({ seed: 1 }),
+            ]) }),
+          ]),
+        }),
+      ]),
+    }));
+    const request = vi.mocked(heatPlanningRepository.createWithEntries).mock.calls[0][0];
+    expect(request.rounds.flatMap((round) => round.heats).every((heat) => heat.slots.length === 2)).toBe(true);
+    expect(request.rounds.flatMap((round) => round.heats).flatMap((heat) => heat.slots)
+      .some((slot) => slot.placeholder?.startsWith('Meilleur 2e'))).toBe(false);
+    expect(request.options.progressionEdges?.filter((edge) => edge.type === 'AUTO_ADVANCE_BYE')).toHaveLength(2);
+  });
 });

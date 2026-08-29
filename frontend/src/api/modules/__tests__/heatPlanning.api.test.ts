@@ -123,6 +123,45 @@ describe('heat planning safe adapter', () => {
     }));
   });
 
+  it('persists a schedule-based sporting BYE as an explicit audit edge', async () => {
+    state.responses.push(
+      { error: null },
+      { data: [{ id: 101, seed: 1 }, { id: 102, seed: 2 }, { id: 103, seed: 3 }], error: null },
+    );
+    const persistPlanning = vi.fn(async () => undefined);
+    const byeRounds = [
+      { name: 'Round 1', roundNumber: 1, heats: [{ heatNumber: 1, slots: [{ seed: 2 }, { seed: 3 }] }] },
+      { name: 'Finale', roundNumber: 2, heats: [{ heatNumber: 1, slots: [
+        { seed: 1 },
+        { placeholder: 'Vainqueur R1-H1 (P1)' },
+      ] }] },
+    ];
+
+    await createHeatsWithEntries(7, 'Open', 'Open Men', byeRounds, participants(), {
+      progressionEdges: [{
+        targetRound: 2,
+        targetHeat: 1,
+        targetPosition: 1,
+        sourceRound: 1,
+        sourceHeat: 0,
+        sourcePosition: 0,
+        type: 'AUTO_ADVANCE_BYE',
+      }],
+    }, persistPlanning);
+
+    expect(persistPlanning).toHaveBeenCalledWith(expect.objectContaining({
+      progressionEdges: expect.arrayContaining([
+        expect.objectContaining({
+          target_heat_id: 'open_open_men_r2_h1',
+          target_position: 1,
+          source_heat: 'BYE',
+          source_position: 0,
+          progression_type: 'AUTO_ADVANCE_BYE',
+        }),
+      ]),
+    }));
+  });
+
   it('refuses a future unresolved placeholder before writing participants', async () => {
     const invalidRounds = [
       { name: 'Round 1', roundNumber: 1, heats: [{ heatNumber: 1, slots: [{ seed: 1 }, { seed: 2 }] }] },
