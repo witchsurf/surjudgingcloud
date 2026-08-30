@@ -15,9 +15,9 @@ poste pour installer le moteur local. Ce n'est pas une opération quotidienne.
 
 | Artefact | Hôte certifié visé | Moteur local | Statut |
 | --- | --- | --- | --- |
-| `SurfJudging-Field-mac-intel.dmg` | macOS Ventura 13.3 ou plus, Intel x64 | Moteur Intel gelé et validé pour Ventura | À construire et certifier |
-| `SurfJudging-Field-mac-arm64.dmg` | macOS Ventura 13.3 ou plus, Apple Silicon | Moteur Apple Silicon gelé et validé pour Ventura | À construire et certifier |
-| `SurfJudging Field Setup 0.6.6.exe` | Windows 11 23H2+ x64, virtualisation activée | Préparation WSL 2 et Docker Desktop 4.88.1 vérifiée automatiquement | Planification man-on-man et payload corrigés ; installateur à construire et certifier |
+| `SurfJudging Field-0.6.6.dmg` | macOS Ventura 13.3 ou plus, Intel x64 | Moteur Intel gelé et validé pour Ventura | Prérelease construite ; Apple Development seulement, non notarisée, non certifiée |
+| `SurfJudging Field-0.6.6-arm64.dmg` | macOS Ventura 13.3 ou plus, Apple Silicon | Moteur Apple Silicon gelé et validé pour Ventura | Prérelease construite ; Apple Development seulement, non notarisée, non certifiée |
+| `SurfJudging Field Setup 0.6.6.exe` | Windows 11 23H2+ x64, virtualisation activée | Préparation WSL 2 et Docker Desktop 4.88.1 vérifiée automatiquement | Prérelease construite sans signature Authenticode ; test Windows réel requis |
 
 Un Mac qui ne peut pas exécuter macOS Ventura 13.3 n'entre pas dans cette promesse
 générique. Il demande une variante legacy gelée, séparée et testée sur le
