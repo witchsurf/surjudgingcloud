@@ -7,38 +7,160 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <main>
-    <header>
+  <main class="app-shell">
+    <header class="topbar">
       <div class="brand-lockup">
         <img id="app-logo" class="app-logo" src="./assets/surfjudging-field-logo-v2.png" alt="Logo SurfJudging Field">
-        <div><p id="organization-label" class="eyebrow">SURFJUDGING</p><h1>Field Control Center</h1></div>
+        <div>
+          <p id="organization-label" class="eyebrow">SURFJUDGING</p>
+          <h1>Centre de contrôle</h1>
+          <p class="tagline">Votre compétition, disponible localement et sans dépendre d’Internet.</p>
+        </div>
       </div>
-      <div class="header-actions"><button id="organization-settings" class="secondary">Organisation</button><span id="environment">FIELD — LOCAL</span></div>
+      <div class="header-actions">
+        <button id="organization-settings" class="button ghost">Organisation</button>
+        <span id="environment" class="environment-badge"><span></span> FIELD LOCAL</span>
+      </div>
     </header>
-    <section id="status" class="banner">Recherche du Field local…</section>
-    <div class="grid">
-      <section class="card wide preparation"><div><h2>Préparation de cette machine</h2><p id="preparation-summary">Analyse du système et du moteur local…</p><div id="preparation-progress" class="progress" hidden><span></span></div><p id="preparation-detail" class="hint"></p></div><button id="prepare">Analyser</button></section>
-      <section class="card"><h2>Runtime identity</h2><dl id="identity"><dt>Host</dt><dd>—</dd><dt>Release</dt><dd>—</dd><dt>Revision</dt><dd>—</dd><dt>Schema</dt><dd>—</dd></dl></section>
-      <section class="card"><h2>Services</h2><dl id="health"><dt>Frontend</dt><dd>—</dd><dt>API</dt><dd>—</dd><dt>Realtime</dt><dd>—</dd><dt>Internet</dt><dd>—</dd><dt>Cloud</dt><dd>—</dd></dl></section>
-      <section class="card"><h2>Prérequis locaux</h2><dl id="prereq"><dt>Docker Desktop</dt><dd>—</dd><dt>Commande Docker</dt><dd>—</dd><dt>Moteur Docker</dt><dd>—</dd></dl></section>
-      <section class="card wide"><h2>Tablet URLs</h2><div id="urls" class="urls"></div></section>
-      <section class="card wide priority-output"><div><h2>Ordre des priorités — HDMI vers L2</h2><p id="priority-display-status">Recherche de la sortie HDMI L2…</p><p class="hint">Le L2 reçoit les bandes P1, P2, P3… de gauche à droite et les mappe sur les deux panneaux Gloshine.</p></div><div class="priority-control"><label for="priority-display-podium">Podium</label><select id="priority-display-podium"><option value="A">A</option><option value="B">B</option></select><button id="priority-display-open">Activer LIVE</button></div><div class="priority-control"><label for="priority-display-test-color">Test matériel</label><select id="priority-display-test-color"><option value="ORDER_4">ORDRE 4 COULEURS</option><option value="ORDER_6">ORDRE 6 COULEURS</option><option>ROUGE</option><option>BLANC</option><option>JAUNE</option><option>BLEU</option><option>VERT</option><option>NOIR</option></select><button id="priority-display-test" class="secondary">Envoyer la mire test</button></div><button id="priority-display-blackout" class="secondary">Noir sécurité</button></section>
-      <section class="card wide actions"><button id="refresh">Actualiser</button><button id="copy">Copier le diagnostic</button><small>Les données de compétition ne sont jamais modifiées par la préparation de la machine.</small></section>
+
+    <section id="status" class="hero-status" aria-live="polite">
+      <div class="hero-copy">
+        <span class="status-orb" aria-hidden="true"></span>
+        <div>
+          <p class="hero-kicker">ÉTAT DU TERRAIN</p>
+          <h2 id="status-title">Recherche du Field local…</h2>
+          <p id="status-detail">Vérification des services essentiels en cours.</p>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <button id="start" class="button primary">Démarrer le Field</button>
+        <button id="stop" class="button danger-soft">Arrêter</button>
+        <button id="refresh" class="button ghost">Actualiser</button>
+      </div>
+    </section>
+
+    <section class="card preparation">
+      <div class="card-icon preparation-icon" aria-hidden="true">✓</div>
+      <div class="card-body">
+        <p class="section-kicker">PRÉPARATION</p>
+        <h2>Cette machine</h2>
+        <p id="preparation-summary" class="lead">Analyse du système et du moteur local…</p>
+        <div id="preparation-progress" class="progress" hidden><span></span></div>
+        <p id="preparation-detail" class="muted"></p>
+      </div>
+      <button id="prepare" class="button secondary">Analyser</button>
+    </section>
+
+    <section class="section-block">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">ESPACE OPÉRATEUR</p>
+          <h2>Accès rapides</h2>
+        </div>
+        <p>Ouvrez l’interface adaptée sur cet ordinateur ou sur une tablette du réseau local.</p>
+      </div>
+      <div id="urls" class="quick-links" aria-live="polite">
+        <div class="quick-link empty">Initialisation des accès locaux…</div>
+      </div>
+    </section>
+
+    <div class="operator-grid">
+      <section class="card status-card">
+        <div class="card-title-row">
+          <div>
+            <p class="section-kicker">COMPÉTITION</p>
+            <h2>État opérationnel</h2>
+          </div>
+          <span id="competition-badge" class="state-badge neutral">Vérification</span>
+        </div>
+        <div class="status-list">
+          <div class="status-row">
+            <span class="row-icon local" aria-hidden="true">●</span>
+            <div><strong>Sécurité terrain</strong><p id="competition">Lecture de la base locale…</p></div>
+          </div>
+          <div class="status-row">
+            <span class="row-icon live" aria-hidden="true">↗</span>
+            <div><strong>Publication Internet</strong><p id="live-publication">Lecture du worker local…</p></div>
+          </div>
+          <div class="status-row">
+            <span class="row-icon disk" aria-hidden="true">◒</span>
+            <div><strong>Stockage disponible</strong><p id="disk">Vérification…</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card qr-card">
+        <div class="card-title-row">
+          <div>
+            <p class="section-kicker">TABLETTE ADMIN</p>
+            <h2>Connexion rapide</h2>
+          </div>
+          <span class="state-badge local-only">LAN uniquement</span>
+        </div>
+        <div class="qr-content">
+          <div id="qr" class="qr-box"><span>Le QR apparaîtra lorsque le Field sera prêt.</span></div>
+          <div>
+            <p class="lead">Scannez avec la tablette d’administration.</p>
+            <p class="muted">Le QR ouvre uniquement l’Admin du Field détecté sur votre réseau local.</p>
+          </div>
+        </div>
+      </section>
     </div>
+
+    <section class="card priority-output">
+      <div class="priority-copy">
+        <p class="section-kicker">AFFICHAGE HDMI · PANNEAUX GLOSHINE</p>
+        <h2>Ordre des priorités</h2>
+        <p id="priority-display-status" class="lead">Recherche de la sortie HDMI L2…</p>
+        <p class="muted">Les couleurs sont affichées de gauche à droite : priorité 1, puis 2, 3, 4 — et jusqu’à 6 si nécessaire.</p>
+      </div>
+      <div class="priority-actions">
+        <label for="priority-display-podium">Podium</label>
+        <select id="priority-display-podium"><option value="A">A</option><option value="B">B</option></select>
+        <button id="priority-display-open" class="button primary" disabled>Activer l’affichage LIVE</button>
+        <details class="hardware-test">
+          <summary>Tester le matériel</summary>
+          <div class="hardware-test-content">
+            <label for="priority-display-test-color">Mire</label>
+            <select id="priority-display-test-color"><option value="ORDER_4">ORDRE 4 COULEURS</option><option value="ORDER_6">ORDRE 6 COULEURS</option><option>ROUGE</option><option>BLANC</option><option>JAUNE</option><option>BLEU</option><option>VERT</option><option>NOIR</option></select>
+            <button id="priority-display-test" class="button secondary" disabled>Envoyer la mire</button>
+            <button id="priority-display-blackout" class="button danger-soft" disabled>Noir de sécurité</button>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <details class="advanced-panel">
+      <summary>
+        <span><strong>Diagnostic avancé</strong><small>Versions, services et informations utiles au support</small></span>
+        <span class="chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="advanced-content">
+        <section class="diagnostic-card"><h3>Identité du runtime</h3><dl id="identity"><dt>Adresse Field</dt><dd>—</dd><dt>Version</dt><dd>—</dd><dt>Révision</dt><dd>—</dd><dt>Schéma</dt><dd>—</dd></dl></section>
+        <section class="diagnostic-card"><h3>Services</h3><dl id="health"><dt>Interface</dt><dd>—</dd><dt>API</dt><dd>—</dd><dt>Temps réel</dt><dd>—</dd><dt>Internet</dt><dd>—</dd><dt>Cloud</dt><dd>—</dd></dl></section>
+        <section class="diagnostic-card"><h3>Prérequis locaux</h3><dl id="prereq"><dt>Docker Desktop</dt><dd>—</dd><dt>Commande Docker</dt><dd>—</dd><dt>Moteur Docker</dt><dd>—</dd></dl></section>
+        <section class="diagnostic-card"><h3>Adresses locales</h3><div id="technical-urls" class="technical-urls"></div></section>
+        <div class="diagnostic-actions">
+          <button id="copy" class="button secondary">Copier le diagnostic</button>
+          <p>Le diagnostic exclut les secrets et n’altère jamais les données de compétition.</p>
+        </div>
+      </div>
+    </details>
   </main>
+
   <div id="organization-overlay" class="modal" hidden>
     <section class="setup-dialog" role="dialog" aria-modal="true" aria-labelledby="organization-title">
       <button id="organization-close" class="dialog-close" type="button" aria-label="Fermer">×</button>
-      <div class="setup-heading"><img id="organization-logo-preview" src="./assets/surfjudging-field-logo-v2.png" alt="Aperçu du logo"><div><p class="eyebrow">PREMIÈRE INSTALLATION</p><h2 id="organization-title">Identité de l’organisation</h2></div></div>
-      <p>Cette identité reste enregistrée uniquement sur cette machine Field. Elle pourra être modifiée plus tard.</p>
+      <div class="setup-heading"><img id="organization-logo-preview" src="./assets/surfjudging-field-logo-v2.png" alt="Aperçu du logo"><div><p class="eyebrow">IDENTITÉ LOCALE</p><h2 id="organization-title">Votre organisation</h2></div></div>
+      <p>Le nom et le logo apparaissent dans l’application et sur les documents officiels. Ils restent enregistrés sur cette machine Field.</p>
       <form id="organization-form">
         <label for="organization-name">Nom de l’organisation</label>
         <input id="organization-name" name="organizationName" maxlength="120" autocomplete="organization" placeholder="Ex. Fédération Sénégalaise de Surf" required>
         <label>Logo de l’organisation</label>
-        <button id="organization-logo-choose" class="secondary" type="button">Choisir une image…</button>
-        <p class="hint">PNG, JPG ou WebP. Le fichier est converti et conservé localement.</p>
+        <button id="organization-logo-choose" class="button secondary" type="button">Choisir une image…</button>
+        <p class="muted">PNG, JPG ou WebP. Le fichier est converti et conservé localement.</p>
         <p id="organization-error" class="form-error" role="alert"></p>
-        <button id="organization-save" type="submit">Enregistrer et continuer</button>
+        <button id="organization-save" class="button primary" type="submit">Enregistrer et continuer</button>
       </form>
     </section>
   </div>
