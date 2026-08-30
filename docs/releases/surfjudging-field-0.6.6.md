@@ -14,9 +14,9 @@
 
 | Artefact | Cible | Taille | SHA-256 |
 | --- | --- | ---: | --- |
-| `SurfJudging Field Setup 0.6.6.exe` | Windows 11 x64 | 769 448 928 octets | `c197a62c2a496d83ff6af8084250645cac684ea3f15b9183355dd5b45e569b41` |
-| `SurfJudging Field-0.6.6.dmg` | macOS Intel x64 | 793 843 677 octets | `8d11732f2465e90e97bc737498c722171c6d42b25734d5c2dc0cac450c07603c` |
-| `SurfJudging Field-0.6.6-arm64.dmg` | macOS Apple Silicon | 786 071 527 octets | `adf8dc489e43dbd06f5435df79355b31fddd2ad64281359fc6f38300d5560603` |
+| `SurfJudging.Field.Setup.0.6.6.exe` | Windows 11 x64 | 769 448 928 octets | `c197a62c2a496d83ff6af8084250645cac684ea3f15b9183355dd5b45e569b41` |
+| `SurfJudging.Field-0.6.6.dmg` | macOS Intel x64 | 793 843 677 octets | `8d11732f2465e90e97bc737498c722171c6d42b25734d5c2dc0cac450c07603c` |
+| `SurfJudging.Field-0.6.6-arm64.dmg` | macOS Apple Silicon | 786 071 527 octets | `adf8dc489e43dbd06f5435df79355b31fddd2ad64281359fc6f38300d5560603` |
 
 ## Vérifications exécutées
 
