@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import type { HeatResultSnapshot } from '../domain/scoring/contracts';
 import type { OverlayScoringIssue } from '../domain/scoring/overlaySnapshot';
-import { computeNeededScores, type SurferStats } from '../utils/scoring';
+import type { SurferStats } from '../types';
+import { computeNeededScores } from '../utils/scoring';
 
 interface AdminHeatResultSnapshotPanelProps {
   snapshot: HeatResultSnapshot | null;
@@ -22,22 +23,19 @@ export default function AdminHeatResultSnapshotPanel({
     if (!snapshot) return {};
     const surferStats: SurferStats[] = snapshot.competitors.map((c) => ({
       surfer: c.lycraColor,
+      color: c.lycraColor,
       rank: c.rank,
       total: c.total,
       bestTwo: c.total,
       waves: c.waves.map((w) => ({
-        waveNumber: w.waveNumber,
+        wave: w.waveNumber,
         score: w.average,
-        average: w.average,
         isComplete: w.complete,
-        complete: w.complete,
-        judgeScores: w.judgeScores,
+        judgeScores: { ...w.judgeScores },
       })),
-      bestWaves: [],
       interferenceType: c.interferenceType,
       interferenceCount: c.interferenceCount,
-      hasInterference: Boolean(c.interferenceType),
-      disqualified: c.disqualified,
+      isDisqualified: c.disqualified,
     }));
     return computeNeededScores(surferStats, {
       isFinal,
