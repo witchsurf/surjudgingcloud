@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SURFER_COLORS } from '../utils/constants';
 import type { CompetitorHeatResult, HeatResultSnapshot } from '../domain/scoring/contracts';
-import type { AppConfig, HeatTimer } from '../types';
-import { computeNeededScores, type SurferStats } from '../utils/scoring';
+import type { AppConfig, HeatTimer, SurferStats } from '../types';
+import { computeNeededScores } from '../utils/scoring';
 import { isFinalHeat } from '../utils/heat';
 
 interface ObsOverlayProps {
@@ -81,22 +81,19 @@ export default function ObsOverlay({
   const neededScores = useMemo(() => {
     const surferStats: SurferStats[] = standings.map((c) => ({
       surfer: c.lycraColor,
+      color: c.lycraColor,
       rank: c.rank,
       total: c.total,
       bestTwo: c.total,
       waves: c.waves.map((w) => ({
-        waveNumber: w.waveNumber,
+        wave: w.waveNumber,
         score: w.average,
-        average: w.average,
         isComplete: w.complete,
-        complete: w.complete,
-        judgeScores: w.judgeScores,
+        judgeScores: { ...w.judgeScores },
       })),
-      bestWaves: [],
       interferenceType: c.interferenceType,
       interferenceCount: c.interferenceCount,
-      hasInterference: Boolean(c.interferenceType),
-      disqualified: c.disqualified,
+      isDisqualified: c.disqualified,
     }));
 
     const isFinal = isFinalHeat({

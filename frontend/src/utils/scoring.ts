@@ -89,6 +89,7 @@ export function rankSurfers(surferScores: Array<{ surfer: string; best2: number 
 }
 
 import type { EffectiveInterference, Score, ScoreOverrideLog, SurferStats, WaveScore } from '../types';
+export type { EffectiveInterference, Score, ScoreOverrideLog, SurferStats, WaveScore };
 import { SURFER_COLORS } from './constants';
 import { summarizeInterferenceBySurfer } from './interference';
 import { getScoreJudgeIdentity, getScoreJudgeStation, normalizeScoreJudgeId, normalizeScoreSurfer } from '../api/modules/scoring.api';

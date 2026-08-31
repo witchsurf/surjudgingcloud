@@ -125,6 +125,7 @@ export interface SurferStats {
   surfer: string;
   waves: WaveScore[];
   bestTwo: number;
+  total?: number;
   rank: number;
   color: string;
   isDisqualified?: boolean;
