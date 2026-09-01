@@ -60,6 +60,12 @@ const parsePlanningPlaceholder = (value?: string | null) => {
     return { placeholder: normalized, sourceRound: null, sourceHeat: null, sourcePosition: null };
 };
 
+// A best eliminated qualifier is resolved from the completed source round by
+// rank/score, rather than from one fixed heat. Its persisted mapping is the
+// explicit sporting source; it must not be rejected as an unbound slot.
+const isBestEliminatedPlaceholder = (value?: string | null) =>
+    /^MEILLEUR\s+\d+E\s+R\d+$/i.test((value ?? '').trim());
+
 /** Fail before any database write when a future slot has no immutable sporting source. */
 export const assertExplicitProgressionPlan = (rounds: RoundSpec[]): void => {
     const plannedSchedules = new Set(
@@ -71,10 +77,10 @@ export const assertExplicitProgressionPlan = (rounds: RoundSpec[]): void => {
             : heat.slots.map((slot, index) => ({ slot, index })).filter(({ slot }) => Boolean(slot.placeholder))
                 .flatMap(({ slot, index }) => {
                     const source = parsePlanningPlaceholder(slot.placeholder);
-                    return source.sourceRound != null && source.sourceHeat != null && source.sourcePosition != null
+                    return (isBestEliminatedPlaceholder(slot.placeholder) && heat.slots.length === 2)
+                        || (source.sourceRound != null && source.sourceHeat != null && source.sourcePosition != null
                         && plannedSchedules.has(`${source.sourceRound}:${source.sourceHeat}`)
-                        ? []
-                        : [`R${round.roundNumber} H${heat.heatNumber} slot ${index + 1}`];
+                        ) ? [] : [`R${round.roundNumber} H${heat.heatNumber} slot ${index + 1}`];
                 })
     ));
     if (unresolvedProgressionSlots.length > 0) {
@@ -490,9 +496,16 @@ export async function createHeatsWithEntries(
             progressionByTarget.set(`${targetHeatId}:${targetPosition}`, edge);
         }
     });
+    const bestEliminatedTargets = new Set(slotMappings
+        .filter((mapping) => isBestEliminatedPlaceholder(mapping.placeholder))
+        .map((mapping) => `${mapping.heat_id}:${mapping.position}`));
     const unresolvedFutureEntries = entryRows.filter((entry) => {
         const targetRound = heatRows.find((heat) => heat.id === entry.heat_id)?.round ?? 1;
-        return targetRound > 1 && entry.participant_id == null && !progressionByTarget.has(`${entry.heat_id}:${entry.position}`);
+        const target = `${entry.heat_id}:${entry.position}`;
+        const targetHeat = heatRows.find((heat) => heat.id === entry.heat_id);
+        return targetRound > 1 && entry.participant_id == null
+            && !progressionByTarget.has(target)
+            && !(bestEliminatedTargets.has(target) && Number(targetHeat?.heat_size) === 2);
     });
     if (unresolvedFutureEntries.length > 0) {
         const slots = unresolvedFutureEntries.map((entry) => `${entry.heat_id}#${entry.position}`).join(', ');
