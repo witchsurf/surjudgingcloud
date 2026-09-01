@@ -18,7 +18,8 @@ type SlotReference = {
   sourceRound: number;
   heatNumber: number | null;
   position: number | null;
-  bestSecondRound?: number;
+  bestEliminatedRound?: number;
+  bestEliminatedPosition?: number;
 };
 
 type Assignment = {
@@ -39,8 +40,8 @@ const maxAdvancersForHeatSize = (heatSize: number) => {
 };
 
 const makePlaceholder = (ref: SlotReference) =>
-  ref.bestSecondRound
-    ? `Meilleur 2e R${ref.bestSecondRound}`
+  ref.bestEliminatedRound
+    ? `Meilleur ${ref.bestEliminatedPosition ?? 2}e R${ref.bestEliminatedRound}`
     : `R${ref.sourceRound}-H${ref.heatNumber}-P${ref.position}`;
 
 const moveSnakeCursor = (
@@ -141,11 +142,16 @@ const buildLayeredQualifierRefs = (
   }
 
   if (refs.length < totalCurrentRoundSlots && previousRoundHeats.length > 1) {
+    const firstEliminatedPosition = Math.min(
+      ...previousRoundHeats.map((heat) => maxAdvancersForHeatSize(Math.max(0, Number(heat.heat_size) || 0)))
+    ) + 1;
     refs.push({
       sourceRound: Number(previousRoundHeats[0].round),
       heatNumber: null,
       position: null,
-      bestSecondRound: Number(previousRoundHeats[0].round),
+      bestEliminatedRound: Number(previousRoundHeats[0].round),
+      // The first non-qualified place is the fair repêchage candidate.
+      bestEliminatedPosition: firstEliminatedPosition,
     });
   }
 
@@ -195,7 +201,7 @@ export function inferImplicitMappingsForHeat(
     heat_id: targetHeatId,
     position: index + 1,
     placeholder: makePlaceholder(ref),
-    source_round: ref.bestSecondRound ? null : ref.sourceRound,
+    source_round: ref.bestEliminatedRound ? null : ref.sourceRound,
     source_heat: ref.heatNumber,
     source_position: ref.position,
   }));

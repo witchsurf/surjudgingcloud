@@ -112,4 +112,19 @@ describe('inferImplicitMappingsForHeat', () => {
       expect.objectContaining({ source_round: 2, source_heat: 3, source_position: 1 }),
     ]);
   });
+
+  it('uses the best third when two qualifiers normally leave a four-surfer heat', () => {
+    const sequence = [
+      { id: 'open_r1_h1', round: 1, heat_number: 1, heat_size: 4 },
+      { id: 'open_r1_h2', round: 1, heat_number: 2, heat_size: 4 },
+      { id: 'open_r1_h3', round: 1, heat_number: 3, heat_size: 4 },
+      { id: 'open_r2_h1', round: 2, heat_number: 1, heat_size: 2 },
+      { id: 'open_r2_h2', round: 2, heat_number: 2, heat_size: 2 },
+      { id: 'open_r2_h3', round: 2, heat_number: 3, heat_size: 3 },
+    ];
+
+    expect(inferImplicitMappingsForHeat(sequence, 'open_r2_h3')).toContainEqual(
+      expect.objectContaining({ placeholder: 'Meilleur 3e R1', source_round: null })
+    );
+  });
 });

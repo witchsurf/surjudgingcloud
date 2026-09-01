@@ -295,12 +295,12 @@ async function resolveNamesFromMappings(
             ]);
 
             const qualifierMap = new Map<string, string>();
-            const bestSecondByRound = new Map<number, { name: string; score: number }>();
-            const parseBestSecondRound = (text?: string) => {
+            const bestEliminatedByRoundAndPosition = new Map<string, { name: string; score: number }>();
+            const parseBestEliminatedKey = (text?: string) => {
                 if (!text) return null;
                 const normalized = normalizePlaceholderKey(text);
-                const match = normalized.match(/MEILLEUR\s*2E\s*R\s*(\d+)/);
-                return match ? Number(match[1]) : null;
+                const match = normalized.match(/MEILLEUR\s*(\d+)E\s*R\s*(\d+)/);
+                return match ? `${match[2]}:${match[1]}` : null;
             };
 
             const resolveFromPlaceholderText = (text?: string) => {
@@ -317,9 +317,9 @@ async function resolveNamesFromMappings(
                     }
                 }
                 if (!resolved) {
-                    const bestSecondRound = parseBestSecondRound(text);
-                    if (bestSecondRound != null) {
-                        resolved = bestSecondByRound.get(bestSecondRound)?.name;
+                    const bestEliminatedKey = parseBestEliminatedKey(text);
+                    if (bestEliminatedKey != null) {
+                        resolved = bestEliminatedByRoundAndPosition.get(bestEliminatedKey)?.name;
                     }
                 }
                 return resolved;
@@ -384,19 +384,16 @@ async function resolveNamesFromMappings(
                                 .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), name));
                         });
 
-                    const bestSecond = stats
-                        .filter((stat) => stat.rank === 2)
-                        .sort((a, b) => b.bestTwo - a.bestTwo)[0];
-                    const bestSecondName = bestSecond ? namesByColor[bestSecond.surfer.toUpperCase()] : undefined;
-                    if (bestSecond && bestSecondName) {
-                        const currentBestSecond = bestSecondByRound.get(round.roundNumber);
-                        if (!currentBestSecond || bestSecond.bestTwo > currentBestSecond.score) {
-                            bestSecondByRound.set(round.roundNumber, {
-                                name: bestSecondName,
-                                score: bestSecond.bestTwo,
-                            });
+                    stats.forEach((stat) => {
+                        if (stat.rank == null) return;
+                        const name = namesByColor[stat.surfer.toUpperCase()];
+                        if (!name) return;
+                        const key = `${round.roundNumber}:${stat.rank}`;
+                        const current = bestEliminatedByRoundAndPosition.get(key);
+                        if (!current || stat.bestTwo > current.score) {
+                            bestEliminatedByRoundAndPosition.set(key, { name, score: stat.bestTwo });
                         }
-                    }
+                    });
                 }
             }
 

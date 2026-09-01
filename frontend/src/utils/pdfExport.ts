@@ -822,7 +822,7 @@ export async function exportFullCompetitionPDF({
   ]);
 
   const qualifierMapByDivision = new Map<string, Map<string, { name: string; country?: string }>>();
-  const bestSecondByDivision = new Map<string, Map<number, { name: string; country?: string; score: number }>>();
+  const bestEliminatedByDivision = new Map<string, Map<string, { name: string; country?: string; score: number }>>();
   const implicitQualifierCursor = new Map<string, number>();
   const getDivisionQualifierMap = (divisionName: string) => {
     const key = divisionName.toUpperCase().trim();
@@ -832,19 +832,19 @@ export async function exportFullCompetitionPDF({
     qualifierMapByDivision.set(key, created);
     return created;
   };
-  const getDivisionBestSecondMap = (divisionName: string) => {
+  const getDivisionBestEliminatedMap = (divisionName: string) => {
     const key = divisionName.toUpperCase().trim();
-    const existing = bestSecondByDivision.get(key);
+    const existing = bestEliminatedByDivision.get(key);
     if (existing) return existing;
-    const created = new Map<number, { name: string; country?: string; score: number }>();
-    bestSecondByDivision.set(key, created);
+    const created = new Map<string, { name: string; country?: string; score: number }>();
+    bestEliminatedByDivision.set(key, created);
     return created;
   };
-  const parseBestSecondRound = (value?: string | null) => {
+  const parseBestEliminatedKey = (value?: string | null) => {
     if (!value) return null;
     const normalized = normalizePlaceholderKey(value);
-    const match = normalized.match(/MEILLEUR\s*2E\s*R\s*(\d+)/);
-    return match ? Number(match[1]) : null;
+    const match = normalized.match(/MEILLEUR\s*(\d+)E\s*R\s*(\d+)/);
+    return match ? `${match[2]}:${match[1]}` : null;
   };
 
   const isPlaceholderLike = (value?: string | null) => {
@@ -852,14 +852,14 @@ export async function exportFullCompetitionPDF({
     const normalized = normalizePlaceholderKey(value);
     return normalized.includes('QUALIFI') || normalized.includes('FINALISTE') ||
       normalized.includes('REPECH') || normalized.includes('VAINQUEUR') ||
-      normalized.includes('WINNER') || normalized.includes('MEILLEUR 2') ||
+      normalized.includes('WINNER') || normalized.includes('MEILLEUR ') ||
       /^R\s*\d+/.test(normalized) ||
       /^RP\s*\d+/.test(normalized) || normalized.startsWith('POSITION') || normalized === 'BYE';
   };
 
   const resolveQualifiedFromText = (divisionName: string, placeholderText: string) => {
     const divisionMap = getDivisionQualifierMap(divisionName);
-    const bestSecondMap = getDivisionBestSecondMap(divisionName);
+    const bestEliminatedMap = getDivisionBestEliminatedMap(divisionName);
     const normalized = normalizePlaceholderKey(placeholderText);
     let qualified = divisionMap.get(normalized);
 
@@ -889,9 +889,9 @@ export async function exportFullCompetitionPDF({
       }
     }
     if (!qualified) {
-      const bestSecondRound = parseBestSecondRound(placeholderText);
-      if (bestSecondRound != null) {
-        qualified = bestSecondMap.get(bestSecondRound);
+      const bestEliminatedKey = parseBestEliminatedKey(placeholderText);
+      if (bestEliminatedKey != null) {
+        qualified = bestEliminatedMap.get(bestEliminatedKey);
       }
     }
     return qualified;
@@ -906,7 +906,7 @@ export async function exportFullCompetitionPDF({
   ) => {
     if (!heatScores.length) return;
     const divisionMap = getDivisionQualifierMap(divisionName);
-    const bestSecondMap = getDivisionBestSecondMap(divisionName);
+    const bestEliminatedMap = getDivisionBestEliminatedMap(divisionName);
     const slotByColor = new Map<string, { name?: string; placeholder?: string; country?: string }>();
 
     const heatSurfers = slots.filter((slot) => slot.color).map((slot) => {
@@ -936,21 +936,16 @@ export async function exportFullCompetitionPDF({
       });
     });
 
-    const bestSecond = orderedStats.find((stat) => stat.rank === 2);
-    if (bestSecond) {
-      const slotInfo = slotByColor.get(bestSecond.lycraColor.toUpperCase());
-      if (slotInfo) {
-        const resolvedName = slotInfo.name || slotInfo.placeholder || bestSecond.lycraColor;
-        const currentBestSecond = bestSecondMap.get(roundNumber);
-        if (!currentBestSecond || bestSecond.total > currentBestSecond.score) {
-          bestSecondMap.set(roundNumber, {
-            name: resolvedName,
-            country: slotInfo.country,
-            score: bestSecond.total,
-          });
-        }
+    orderedStats.forEach((stat) => {
+      if (stat.rank == null) return;
+      const slotInfo = slotByColor.get(stat.lycraColor.toUpperCase());
+      if (!slotInfo) return;
+      const key = `${roundNumber}:${stat.rank}`;
+      const current = bestEliminatedMap.get(key);
+      if (!current || stat.total > current.score) {
+        bestEliminatedMap.set(key, { name: slotInfo.name || slotInfo.placeholder || stat.lycraColor, country: slotInfo.country, score: stat.total });
       }
-    }
+    });
   };
 
   // Propagate qualifiers across rounds

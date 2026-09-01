@@ -4,12 +4,15 @@ import { distributeSeedsSnake } from './seeding';
 type HeatPlan = { round: number; heats: Heat[] };
 export interface GeneratePreviewOptions {
   manOnManFromRound?: number;
+  /** Promote the best non-qualified surfer only when a man-on-man bracket is odd. */
+  promoteBestEliminated?: boolean;
+  /** @deprecated Kept so saved/legacy callers still obtain the same safe behaviour. */
   promoteBestSecond?: boolean;
 }
 
 export type ManOnManRoundOption =
   | { round: number; requiresBestSecond: false }
-  | { round: number; requiresBestSecond: true; wildcardSourceRound: number; warning: string };
+  | { round: number; requiresBestSecond: true; wildcardSourceRound: number; wildcardPosition: number; warning: string };
 
 // Palette de couleurs fixe pour garantir l'ordre standard quoi qu'il arrive
 const FIXED_COLOR_PALETTE = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'VERT', 'NOIR'];
@@ -185,7 +188,7 @@ const distributeHeatSizes = (totalSurfers: number, heatSize: number): number[] =
   return Array.from({ length: heatCount }, (_, idx) => baseSize + (idx < remainder ? 1 : 0));
 };
 
-const buildManOnManBracket = (participants: any[], promoteBestSecond = false): HeatPlan[] => {
+const buildManOnManBracket = (participants: any[], promoteBestEliminated = false): HeatPlan[] => {
   const total = participants.length;
   if (total <= 0) return [];
 
@@ -214,7 +217,7 @@ const buildManOnManBracket = (participants: any[], promoteBestSecond = false): H
       position: 1
     }));
 
-    if (promoteBestSecond && !bestSecondUsed && previousHeatCount % 2 === 1) {
+    if (promoteBestEliminated && !bestSecondUsed && previousHeatCount % 2 === 1) {
       refs.push({
         round: previousRound,
         heatNumber: 0,
@@ -328,7 +331,7 @@ export const generatePreviewHeats = (
         });
       });
 
-    return buildManOnManBracket(participantsInManOnManOrder, options?.promoteBestSecond);
+    return buildManOnManBracket(participantsInManOnManOrder, options?.promoteBestEliminated ?? options?.promoteBestSecond);
   }
 
   // Calculate Standard Round 1 Heat Sizes
@@ -410,15 +413,16 @@ export const generatePreviewHeats = (
 
   let { adv: mainRefs, rep: repechageRefs } = buildQualifierBuckets(1, round1Heats);
   let currentRound = 2;
-  let bestSecondUsed = false;
+  let bestEliminatedUsed = false;
+  let previousRoundEliminatedRefs = repechageRefs;
   const finalMainSlots =
     format === 'repechage' ? Math.max(2, Math.floor(seriesSize / 2)) : seriesSize;
   const finalRepSlots = format === 'repechage' ? Math.max(2, seriesSize - finalMainSlots) : 0;
 
-  const maybePromoteBestSecond = (refs: QualifierRef[], roundNumber: number, finalSlotThreshold: number) => {
+  const maybePromoteBestEliminated = (refs: QualifierRef[], roundNumber: number, finalSlotThreshold: number) => {
     if (
-      bestSecondUsed ||
-      !options?.promoteBestSecond ||
+      bestEliminatedUsed ||
+      !(options?.promoteBestEliminated ?? options?.promoteBestSecond) ||
       manOnManFromRound <= 0 ||
       roundNumber < manOnManFromRound
     ) {
@@ -428,12 +432,16 @@ export const generatePreviewHeats = (
       return refs;
     }
 
-    bestSecondUsed = true;
+    const bestEliminated = [...previousRoundEliminatedRefs]
+      .sort((a, b) => a.position - b.position || a.heatNumber - b.heatNumber)[0];
+    if (!bestEliminated) return refs;
+
+    bestEliminatedUsed = true;
     return refs.concat({
-      round: roundNumber - 1,
+      round: bestEliminated.round,
       heatNumber: 0,
-      position: 2,
-      customName: `Meilleur 2e R${roundNumber - 1}`
+      position: bestEliminated.position,
+      customName: `Meilleur ${bestEliminated.position}e R${bestEliminated.round}`
     });
   };
 
@@ -442,7 +450,7 @@ export const generatePreviewHeats = (
     const effectiveSize = (manOnManFromRound > 0 && currentRound >= manOnManFromRound) ? 2 : seriesSize;
     const effectiveFinalSlots = (manOnManFromRound > 0 && currentRound >= manOnManFromRound) ? 2 : finalMainSlots;
 
-    mainRefs = maybePromoteBestSecond(mainRefs, currentRound, effectiveFinalSlots);
+    mainRefs = maybePromoteBestEliminated(mainRefs, currentRound, effectiveFinalSlots);
 
     if (mainRefs.length <= effectiveFinalSlots) {
       return false;
@@ -455,6 +463,7 @@ export const generatePreviewHeats = (
     rounds.push({ round: currentRound, heats: mainHeats });
     const buckets = buildQualifierBuckets(currentRound, mainHeats);
     mainRefs = buckets.adv;
+    previousRoundEliminatedRefs = buckets.rep;
     if (format === 'repechage') {
       repechageRefs = repechageRefs.concat(buckets.rep);
     }
@@ -591,7 +600,7 @@ export const getManOnManRoundOptions = (
 
       const resolved = generatePreviewHeats(participants, format, seriesSize, {
         manOnManFromRound: round,
-        promoteBestSecond: true
+        promoteBestEliminated: true
       });
       const resolvedSoloRound = findFirstSoloHeatRound(resolved, round);
 
@@ -599,13 +608,20 @@ export const getManOnManRoundOptions = (
         return null;
       }
 
-      const wildcardSourceRound = firstSoloRound - 1;
+      const wildcard = resolved
+        .flatMap((plan) => plan.heats)
+        .flatMap((heat) => heat.surfers)
+        .map((surfer) => surfer.name.match(/^Meilleur\s+(\d+)e\s+R(\d+)$/i))
+        .find((match): match is RegExpMatchArray => Boolean(match));
+      const wildcardPosition = Number(wildcard?.[1] ?? 2);
+      const wildcardSourceRound = Number(wildcard?.[2] ?? firstSoloRound - 1);
 
       return {
         round,
         requiresBestSecond: true,
         wildcardSourceRound,
-        warning: `Le man-on-man au Round ${round} laisserait un heat à 1 surfeur au Round ${firstSoloRound}. Ajoutez le meilleur 2e du Round ${wildcardSourceRound} pour équilibrer le tableau.`
+        wildcardPosition,
+        warning: `Le man-on-man au Round ${round} laisserait un heat à 1 surfeur au Round ${firstSoloRound}. Le meilleur ${wildcardPosition}e du Round ${wildcardSourceRound} complète automatiquement le tableau.`
       };
     })
     .filter((option): option is ManOnManRoundOption => option !== null);
