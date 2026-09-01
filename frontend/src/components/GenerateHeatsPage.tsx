@@ -46,7 +46,7 @@ const isBracketPlaceholderName = (value?: string | null) => {
     normalized.startsWith('Vainqueur') ||
     normalized.startsWith('Repêchage') ||
     normalized.startsWith('Finaliste') ||
-    normalized.startsWith('Meilleur 2e') ||
+    /^Meilleur\s+\d+e\s+R\d+/i.test(normalized) ||
     /^R\d+\s*-\s*H\d+/i.test(normalized)
   );
 };
@@ -258,7 +258,7 @@ const GenerateHeatsPage = () => {
             ? requestedRound
             : 0;
           const selectedOption = allowedRounds.find((option) => option.round === selectedRound);
-          const enableBestSecond = Boolean(selectedOption?.requiresBestSecond);
+          const enableBestEliminated = Boolean(selectedOption?.requiresBestSecond);
 
           const rounds = generatePreviewHeats(
             list,
@@ -267,7 +267,7 @@ const GenerateHeatsPage = () => {
             selectedRound > 0
               ? {
                 manOnManFromRound: selectedRound,
-                promoteBestSecond: enableBestSecond
+                promoteBestEliminated: enableBestEliminated
               }
               : undefined
           ).map(round => ({
@@ -893,7 +893,7 @@ const GenerateHeatsPage = () => {
                             {manOnManOptions.map((option) => (
                               <option key={option.round} value={option.round}>
                                 {option.requiresBestSecond
-                                  ? `Round ${option.round} (meilleur 2e requis)`
+                                  ? `Round ${option.round} (repêchage requis)`
                                   : `Round ${option.round}`}
                               </option>
                             ))}
@@ -909,11 +909,11 @@ const GenerateHeatsPage = () => {
                             {selectedManOnManOption.warning}
                           </p>
                           <div className="mt-4 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-amber-50">
-                            Le meilleur 2e du Round {selectedManOnManOption.wildcardSourceRound} est ajouté automatiquement
+                            Le meilleur {selectedManOnManOption.wildcardPosition}e du Round {selectedManOnManOption.wildcardSourceRound} est ajouté automatiquement
                             pour éviter un heat à 1 surfeur.
                           </div>
                           <p className="mt-2 text-xs text-amber-200/80">
-                            Un placeholder `Meilleur 2e R{selectedManOnManOption.wildcardSourceRound}` sera ajouté
+                            Un placeholder `Meilleur {selectedManOnManOption.wildcardPosition}e R{selectedManOnManOption.wildcardSourceRound}` sera ajouté
                             dans la prévisualisation et dans le bracket généré.
                           </p>
                         </div>

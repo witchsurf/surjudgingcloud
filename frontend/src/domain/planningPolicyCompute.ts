@@ -21,7 +21,7 @@ export const computeOptionsForPlanningPolicy = (
     preferredHeatSize: 'auto',
     variant: 'V1',
     manOnManFromRound,
-    promoteBestSecond: manOnManFromRound != null,
+    promoteBestEliminated: manOnManFromRound != null,
   };
 };
 

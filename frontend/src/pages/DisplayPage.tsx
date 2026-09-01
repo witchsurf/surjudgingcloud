@@ -191,17 +191,17 @@ const buildQualifierKeyVariants = (roundNumber: number, heatNumber: number, posi
     `R${roundNumber} H${heatNumber} P${position}`,
 ]);
 
-const parseBestSecondRound = (text?: string | null) => {
+const parseBestEliminatedKey = (text?: string | null) => {
     if (!text) return null;
     const normalized = normalizePlaceholderKey(text);
-    const match = normalized.match(/MEILLEUR\s*2E\s*R\s*(\d+)/);
-    return match ? Number(match[1]) : null;
+    const match = normalized.match(/MEILLEUR\s*(\d+)E\s*R\s*(\d+)/);
+    return match ? `${match[2]}:${match[1]}` : null;
 };
 
 const resolveFromQualifierMap = (
     text: string,
     qualifierMap: Map<string, string>,
-    bestSecondByRound?: Map<number, string>
+    bestEliminatedByRoundAndPosition?: Map<string, string>
 ) => {
     const normalized = normalizePlaceholderKey(text);
     let resolved = qualifierMap.get(normalized);
@@ -215,9 +215,9 @@ const resolveFromQualifierMap = (
         }
     }
     if (!resolved) {
-        const bestSecondRound = parseBestSecondRound(text);
-        if (bestSecondRound != null) {
-            resolved = bestSecondByRound?.get(bestSecondRound);
+        const bestEliminatedKey = parseBestEliminatedKey(text);
+        if (bestEliminatedKey != null) {
+            resolved = bestEliminatedByRoundAndPosition?.get(bestEliminatedKey);
         }
     }
     return resolved;
@@ -250,7 +250,7 @@ const buildResolvedLineupsByHeat = ({
 
         const rounds = JSON.parse(JSON.stringify(divisionRounds)) as RoundSpec[];
         const qualifierMap = new Map<string, { name: string; country?: string }>();
-        const bestSecondByRound = new Map<number, { name: string; country?: string; score: number }>();
+        const bestEliminatedByRoundAndPosition = new Map<string, { name: string; country?: string; score: number }>();
         const resolveQualifierEntry = (text: string) => {
             const normalized = normalizePlaceholderKey(text);
             let resolved = qualifierMap.get(normalized);
@@ -264,9 +264,9 @@ const buildResolvedLineupsByHeat = ({
                 }
             }
             if (!resolved) {
-                const bestSecondRound = parseBestSecondRound(text);
-                if (bestSecondRound != null) {
-                    resolved = bestSecondByRound.get(bestSecondRound);
+                const bestEliminatedKey = parseBestEliminatedKey(text);
+                if (bestEliminatedKey != null) {
+                    resolved = bestEliminatedByRoundAndPosition.get(bestEliminatedKey);
                 }
             }
             return resolved;
@@ -477,20 +477,16 @@ const buildResolvedLineupsByHeat = ({
                                 .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), { name, country }));
                         });
 
-                    const bestSecond = stats
-                        .filter((stat) => stat.rank === 2)
-                        .sort((a, b) => b.bestTwo - a.bestTwo)[0];
-                    const bestSecondName = bestSecond ? namesByColor[bestSecond.surfer.toUpperCase()] : undefined;
-                    if (bestSecond && bestSecondName) {
-                        const currentBestSecond = bestSecondByRound.get(round.roundNumber);
-                        if (!currentBestSecond || bestSecond.bestTwo > currentBestSecond.score) {
-                            bestSecondByRound.set(round.roundNumber, {
-                                name: bestSecondName,
-                                country: countriesByColor[bestSecond.surfer.toUpperCase()],
-                                score: bestSecond.bestTwo,
-                            });
+                    stats.forEach((stat) => {
+                        if (stat.rank == null) return;
+                        const name = namesByColor[stat.surfer.toUpperCase()];
+                        if (!name) return;
+                        const key = `${round.roundNumber}:${stat.rank}`;
+                        const current = bestEliminatedByRoundAndPosition.get(key);
+                        if (!current || stat.bestTwo > current.score) {
+                            bestEliminatedByRoundAndPosition.set(key, { name, country: countriesByColor[stat.surfer.toUpperCase()], score: stat.bestTwo });
                         }
-                    }
+                    });
                 });
             });
     });
@@ -850,7 +846,7 @@ export default function DisplayPage() {
                     const historicalHeatIds = rounds.flatMap((round) => round.heats.map((heat) => heat.heatId)).filter(Boolean) as string[];
                     const panelContexts = await getCachedPanelContexts(historicalHeatIds);
                     const qualifierMap = new Map<string, string>();
-                    const bestSecondByRound = new Map<number, { name: string; score: number }>();
+                    const bestEliminatedByRoundAndPosition = new Map<string, { name: string; score: number }>();
 
                     rounds
                         .sort((a, b) => a.roundNumber - b.roundNumber)
@@ -860,7 +856,7 @@ export default function DisplayPage() {
                                     const candidate = slot.placeholder || slot.name;
                                     if (!candidate || !isLikelyPlaceholder(candidate)) return;
                                     const resolved = resolveFromQualifierMap(candidate, qualifierMap, new Map(
-                                        Array.from(bestSecondByRound.entries()).map(([key, value]) => [key, value.name])
+                                        Array.from(bestEliminatedByRoundAndPosition.entries()).map(([key, value]) => [key, value.name])
                                     ));
                                     if (resolved) {
                                         slot.name = resolved;
@@ -907,19 +903,16 @@ export default function DisplayPage() {
                                             .forEach((key) => qualifierMap.set(normalizePlaceholderKey(key), name));
                                     });
 
-                                const bestSecond = stats
-                                    .filter((stat) => stat.rank === 2)
-                                    .sort((a, b) => b.bestTwo - a.bestTwo)[0];
-                                const bestSecondName = bestSecond ? namesByColor[bestSecond.surfer.toUpperCase()] : undefined;
-                                if (bestSecond && bestSecondName) {
-                                    const currentBestSecond = bestSecondByRound.get(round.roundNumber);
-                                    if (!currentBestSecond || bestSecond.bestTwo > currentBestSecond.score) {
-                                        bestSecondByRound.set(round.roundNumber, {
-                                            name: bestSecondName,
-                                            score: bestSecond.bestTwo,
-                                        });
+                                stats.forEach((stat) => {
+                                    if (stat.rank == null) return;
+                                    const name = namesByColor[stat.surfer.toUpperCase()];
+                                    if (!name) return;
+                                    const key = `${round.roundNumber}:${stat.rank}`;
+                                    const current = bestEliminatedByRoundAndPosition.get(key);
+                                    if (!current || stat.bestTwo > current.score) {
+                                        bestEliminatedByRoundAndPosition.set(key, { name, score: stat.bestTwo });
                                     }
-                                }
+                                });
                             });
                         });
 
@@ -935,7 +928,7 @@ export default function DisplayPage() {
                             if (!candidate) return;
                             const resolved = isLikelyPlaceholder(candidate)
                                 ? resolveFromQualifierMap(candidate, qualifierMap, new Map(
-                                    Array.from(bestSecondByRound.entries()).map(([key, value]) => [key, value.name])
+                                    Array.from(bestEliminatedByRoundAndPosition.entries()).map(([key, value]) => [key, value.name])
                                 ))
                                 : candidate;
                             if (resolved && (!surferNames[color] || isLikelyPlaceholder(surferNames[color]))) {

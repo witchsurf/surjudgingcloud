@@ -45,6 +45,7 @@ export interface ComputeOptions {
   seedingMethod?: 'snake';
   hybridPlan?: HybridPlan;
   manOnManFromRound?: number;
+  promoteBestEliminated?: boolean;
   promoteBestSecond?: boolean;
 }
 
@@ -71,7 +72,7 @@ const isBracketPlaceholderName = (value?: string | null) => {
     normalized.startsWith('Vainqueur') ||
     normalized.startsWith('Repêchage') ||
     normalized.startsWith('Finaliste') ||
-    normalized.startsWith('Meilleur 2e') ||
+    /^Meilleur\s+\d+e\s+R\d+/i.test(normalized) ||
     /^R\d+\s*-\s*H\d+/i.test(normalized) ||
     normalized === 'BYE'
   );
@@ -174,7 +175,7 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
     legacyParticipants, 
     format === 'single-elim' ? 'elimination' : 'repechage', 
     seriesSize,
-    { manOnManFromRound: options.manOnManFromRound, promoteBestSecond: options.promoteBestSecond }
+    { manOnManFromRound: options.manOnManFromRound, promoteBestEliminated: options.promoteBestEliminated, promoteBestSecond: options.promoteBestSecond }
   );
 
   const progressionEdges: NonNullable<ComputeResult['progressionEdges']> = [];
