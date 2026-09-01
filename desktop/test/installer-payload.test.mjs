@@ -92,15 +92,17 @@ test('installs a top-level PostgreSQL entrypoint launcher for fresh volumes', ()
   assert.match(healthcheck, /__SURFJUDGING_SCHEMA_VERSION__/);
 });
 
-test('Field migration manifest cannot advance past the required planning V5 contract', () => {
+test('Field migration manifest includes planning V5 before idempotent event creation', () => {
   const manifest = JSON.parse(fs.readFileSync(path.resolve('../config/p38-from-zero-manifest.json'), 'utf8'));
   const provider = 'backend/supabase/migrations/20260826200000_require_explicit_progression_edges.sql';
   const marker = 'backend/supabase/migrations/20260826210000_align_runtime_schema_version_after_progression_guard.sql';
   const repair = 'backend/supabase/migrations/20260829083000_restore_field_planning_v5_contract.sql';
+  const idempotentEventCreation = 'backend/supabase/migrations/20260901210000_idempotent_event_creation.sql';
   const paths = manifest.migrations.map((migration) => migration.path);
   assert.ok(paths.indexOf(provider) >= 0, 'planning V5 provider is required');
   assert.ok(paths.indexOf(provider) < paths.indexOf(marker), 'planning V5 must precede its schema marker');
-  assert.equal(paths.at(-1), repair, 'repair migration must remain the Field target schema');
+  assert.ok(paths.indexOf(repair) < paths.indexOf(idempotentEventCreation), 'planning V5 repair must precede event idempotency');
+  assert.equal(paths.at(-1), idempotentEventCreation, 'idempotent event creation must remain the Field target schema');
   for (const required of [provider, repair]) {
     const entry = manifest.migrations.find((migration) => migration.path === required);
     const source = fs.readFileSync(path.resolve('..', required));
@@ -108,6 +110,12 @@ test('Field migration manifest cannot advance past the required planning V5 cont
     assert.equal(entry.sha256, crypto.createHash('sha256').update(source).digest('hex'));
     assert.match(source.toString('utf8'), /create or replace function public\.bulk_upsert_heats_safe_v5/);
   }
+  const idempotencyEntry = manifest.migrations.find((migration) => migration.path === idempotentEventCreation);
+  const idempotencySource = fs.readFileSync(path.resolve('..', idempotentEventCreation));
+  assert.equal(idempotencyEntry.required, true);
+  assert.equal(idempotencyEntry.sha256, crypto.createHash('sha256').update(idempotencySource).digest('hex'));
+  assert.match(idempotencySource.toString('utf8'), /event_creation_requests/);
+  assert.match(idempotencySource.toString('utf8'), /EVENT_NAME_ALREADY_EXISTS/);
 });
 
 test('existing Field databases use an ordered fail-closed migration path', () => {
