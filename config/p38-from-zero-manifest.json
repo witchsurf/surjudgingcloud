@@ -24,7 +24,8 @@
     {"order":19,"path":"backend/supabase/migrations/20260827160000_align_copied_podium_panel_config.sql","sha256":"aa1d97cde4a73c90dd7fa570bc860317c3c51cc3134412f30fff53cb3b480189","required":true},
     {"order":20,"path":"backend/supabase/migrations/20260827161500_guard_score_rpc_against_stale_replay.sql","sha256":"a6fc295e903bde87dcbd0a14039759cc90db0c4da3a8b876087d3aa4583acd62","required":true},
     {"order":21,"path":"backend/supabase/migrations/20260828013000_field_organization_identity.sql","sha256":"df52779bb29106ac3e6650dfd3d78cd5be576f3dfddd57d02cb289683d985d7b","required":true},
-    {"order":22,"path":"backend/supabase/migrations/20260829083000_restore_field_planning_v5_contract.sql","sha256":"0eaa3023fd4687093c20c777c23898b6ff751e539475188b9ee3e06467141851","required":true}
+    {"order":22,"path":"backend/supabase/migrations/20260829083000_restore_field_planning_v5_contract.sql","sha256":"0eaa3023fd4687093c20c777c23898b6ff751e539475188b9ee3e06467141851","required":true},
+    {"order":23,"path":"backend/supabase/migrations/20260901210000_idempotent_event_creation.sql","sha256":"f631ecf0d4627f50b960560e6c17a28f0ff0be9b4766cefc1e7c7370a0cb70ff","required":true}
   ],
   "secret_tooling": {"legacy":"docker/utils/generate-keys.sh","new_keys":"docker/utils/add-new-auth-keys.sh","source":"supabase/supabase official repository","legacy_generate_keys_sha256":"6299efc24ce94d771ca4abb8ac96b67624cc4ac9a4b13ee0c2a8f0071aa3d619","new_auth_keys_sha256":"34c4635ff895a1ac991a11a54a6723cca946f05d1f60524b2ba57d8e4b499ee3"},
   "auth_mode": "LEGACY_HS256",

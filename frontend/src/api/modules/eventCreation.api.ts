@@ -61,6 +61,7 @@ export async function createEventSecure(request: CreateEventRequest): Promise<Cr
     p_currency: request.currency,
     p_categories: [...request.categories],
     p_judges: [...request.judges],
+    ...(request.idempotencyKey ? { p_idempotency_key: request.idempotencyKey } : {}),
   };
   let data;
   let error;

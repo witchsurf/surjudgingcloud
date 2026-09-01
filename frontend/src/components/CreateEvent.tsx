@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useConfigStore } from '../stores/configStore';
@@ -32,6 +32,9 @@ const CreateEvent = () => {
   const { setActiveEventId } = useConfigStore();
   const [formData, setFormData] = useState<EventFormData>(INITIAL_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // State updates are asynchronous. Keep a synchronous guard as well so a
+  // double click/tap cannot send two create requests before the button rerenders.
+  const submitInFlight = useRef(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const deploymentMode = getDeploymentMode();
   const requiresAuth = deploymentMode === 'cloud';
@@ -113,6 +116,8 @@ const CreateEvent = () => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setSubmitError(null);
 
     // Read the browser-owned values at submit time. Some Safari/WebKit date
@@ -121,6 +126,7 @@ const CreateEvent = () => {
     const validationError = validateEventCreationSubmission(submission);
     if (validationError) {
       setSubmitError(validationError);
+      submitInFlight.current = false;
       return;
     }
 
@@ -134,6 +140,7 @@ const CreateEvent = () => {
     };
 
     setIsSubmitting(true);
+    const idempotencyKey = crypto.randomUUID();
     try {
       if (!isSupabaseConfigured() || !supabase) {
         setSubmitError(deploymentMode === 'field'
@@ -155,6 +162,7 @@ const CreateEvent = () => {
             currency: 'XOF',
             categories: [],
             judges: [],
+            idempotencyKey,
           });
           const canonicalId = parseCanonicalEventId(created.id);
           if (!canonicalId) throw new Error("La base n’a pas retourné d’ID d’événement canonique.");
@@ -209,6 +217,7 @@ const CreateEvent = () => {
         ? '/payment'
         : `/participants?eventId=${canonicalId}&eventName=${encodeURIComponent(submission.name)}`);
     } finally {
+      submitInFlight.current = false;
       setIsSubmitting(false);
     }
   };
