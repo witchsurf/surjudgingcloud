@@ -241,7 +241,10 @@ function makeRuntimePreparationService({
     const installer = selectInstaller({ platform, arch, hostVersion: version });
     const disk = await statfs(downloadsDir).catch(() => null);
     const availableDiskBytes = disk ? disk.bavail * disk.bsize : null;
-    const minimumDiskBytes = 20 * 1024 ** 3;
+    // Installing Docker needs download/install headroom, while a machine with
+    // Docker Desktop already ready only needs room for the bundled Field
+    // runtime and operational writes.
+    const minimumDiskBytes = (installed ? 6 : 20) * 1024 ** 3;
     const minimumMemory = platform === 'win32' ? 8 * 1024 ** 3 : 4 * 1024 ** 3;
     const diskOk = availableDiskBytes === null || availableDiskBytes >= minimumDiskBytes;
     let state = 'READY';
@@ -329,7 +332,7 @@ function makeRuntimePreparationService({
     const before = await inspect();
     if (before.dockerDaemon) return before;
     if (!before.memoryOk) throw new Error(`Mémoire insuffisante : ${Math.round(before.minimumMemory / 1024 ** 3)} Go minimum requis.`);
-    if (!before.diskOk) throw new Error('Espace disque insuffisant : 20 Go libres minimum requis.');
+    if (!before.diskOk) throw new Error(`Espace disque insuffisant : ${Math.round(before.minimumDiskBytes / 1024 ** 3)} Go libres minimum requis.`);
     if (before.state === 'WSL_REQUIRED') return prepareWindowsWsl({ onProgress });
     if (before.state === 'WSL_UPDATE_REQUIRED') return prepareWindowsWsl({ update:true, onProgress });
     if (before.dockerAppInstalled) return launchDocker({ onProgress });

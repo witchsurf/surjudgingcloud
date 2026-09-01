@@ -19,9 +19,10 @@ export function fieldHeadline(candidate, health = {}, preparation = null) {
   const healthy = essential.length >= 2 && essential.every((value) => value === 'HEALTHY');
   if (healthy) {
     if (preparation?.diskOk === false) {
+      const required = Math.round((preparation.minimumDiskBytes || 6 * 1024 ** 3) / 1024 ** 3);
       return {
         title: 'Field actif · espace disque à libérer',
-        detail: `Les interfaces répondent à l’adresse ${candidate.host}, mais 20 Go libres sont requis avant une compétition.`,
+        detail: `Les interfaces répondent à l’adresse ${candidate.host}, mais ${required} Go libres sont requis avant une compétition.`,
         tone: 'warning',
       };
     }
@@ -50,7 +51,8 @@ export function preparationText(preparation) {
   if (!preparation.diskOk) {
     const available = Number.isFinite(preparation.availableDiskBytes) ? Math.floor(preparation.availableDiskBytes / 1024 ** 3) : null;
     const shortage = available === null ? '' : ` ${available} Go sont disponibles actuellement.`;
-    return { summary: 'Libérez de l’espace pour sécuriser le Field', detail: `${machine} · 20 Go libres minimum requis.${shortage}`, action: 'Réessayer', tone: 'blocked', icon: '!' };
+    const required = Math.round((preparation.minimumDiskBytes || 6 * 1024 ** 3) / 1024 ** 3);
+    return { summary: 'Libérez de l’espace pour sécuriser le Field', detail: `${machine} · ${required} Go libres minimum requis.${shortage}`, action: 'Réessayer', tone: 'blocked', icon: '!' };
   }
   if (preparation.state === 'APP_TRANSLOCATED') return { summary: 'Installation de l’application requise', detail: `${machine} · déplacez SurfJudging Field dans le dossier Applications, puis rouvrez-le.`, action: 'À déplacer', tone: 'attention', icon: '!' };
   if (preparation.state === 'RESTART_REQUIRED') return { summary: 'Redémarrage Windows requis', detail: `${machine} · WSL 2 a été préparé. Redémarrez Windows, puis relancez SurfJudging Field.`, action: 'Redémarrer Windows', tone: 'attention', icon: '↻' };

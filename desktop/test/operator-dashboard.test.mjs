@@ -46,11 +46,11 @@ test('missing Field stays fail-closed and does not claim readiness', () => {
   assert.equal(fieldHeadline(null, {}).tone, 'bad');
 });
 
-test('disk preparation reports actual free space while retaining 20 GB gate', () => {
-  const copy = preparationText({ platform: 'darwin', arch: 'x64', hostVersion: '13.7.8', memoryOk: true, diskOk: false, availableDiskBytes: 10.8 * 1024 ** 3 });
+test('disk preparation reports the runtime-specific free-space gate', () => {
+  const copy = preparationText({ platform: 'darwin', arch: 'x64', hostVersion: '13.7.8', memoryOk: true, diskOk: false, minimumDiskBytes: 6 * 1024 ** 3, availableDiskBytes: 5.8 * 1024 ** 3 });
   assert.equal(copy.tone, 'blocked');
-  assert.match(copy.detail, /20 Go libres minimum requis/);
-  assert.match(copy.detail, /10 Go sont disponibles/);
+  assert.match(copy.detail, /6 Go libres minimum requis/);
+  assert.match(copy.detail, /5 Go sont disponibles/);
 });
 
 test('operator summaries remain human-readable and preserve safety states', () => {
