@@ -51,7 +51,8 @@ function renderUrls(urls = {}) {
   technicalUrls.replaceChildren();
 
   const availableRoutes = quickAccessRoutes.filter(({ key }) => urls[key]);
-  if (!availableRoutes.length) {
+  const operatorRoutes = availableRoutes.filter(({ key }) => key === 'admin');
+  if (!operatorRoutes.length) {
     const empty = document.createElement('div');
     empty.className = 'quick-link empty';
     empty.textContent = 'Les accès apparaîtront dès que le Field local sera disponible.';
@@ -60,7 +61,7 @@ function renderUrls(urls = {}) {
     return;
   }
 
-  availableRoutes.forEach(({ key, label, description, icon }) => {
+  operatorRoutes.forEach(({ key, label, description, icon }) => {
     const link = document.createElement('a');
     link.className = 'quick-link';
     link.href = urls[key];
@@ -77,6 +78,9 @@ function renderUrls(urls = {}) {
     bindLocalLink(link, urls[key]);
     quickLinks.append(link);
 
+  });
+
+  availableRoutes.forEach(({ key, label }) => {
     const technical = document.createElement('a');
     technical.href = urls[key];
     technical.textContent = `${label} · ${urls[key]}`;
