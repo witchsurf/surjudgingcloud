@@ -30,4 +30,11 @@ begin
 end;
 $$;
 
+insert into public.app_runtime_schema_version (id, schema_version, schema_label, updated_at)
+values (true, '20260903180000_sync_heat_status_with_realtime', 'Synchronize heat status with realtime timer state', now())
+on conflict (id) do update
+set schema_version = excluded.schema_version,
+    schema_label = excluded.schema_label,
+    updated_at = excluded.updated_at;
+
 commit;
