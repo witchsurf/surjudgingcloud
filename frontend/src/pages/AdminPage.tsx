@@ -385,7 +385,10 @@ export default function AdminPage() {
 
     // Sync heat participants into config when they load
     useEffect(() => {
-        if (Object.keys(heatParticipants).length > 0) {
+        // Once the operator has saved this exact heat, its canonical config is
+        // the source of truth. Do not let a late participant-hook response
+        // immediately revoke that successful SAVE and lock Start again.
+        if (!configSaved && Object.keys(heatParticipants).length > 0) {
             const SURFER_ORDER = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'NOIR', 'VERT'];
 
             // Extract colors and sort them by standard priority
@@ -422,7 +425,7 @@ export default function AdminPage() {
                 return next;
             });
         }
-    }, [canonicalHeatId, heatParticipants, setConfig, setConfigSaved]);
+    }, [canonicalHeatId, configSaved, heatParticipants, setConfig, setConfigSaved]);
 
     const handleConfigSaved = useCallback(async (saved: boolean, podiumIdInput?: string) => {
         const podiumId = normalizePodiumId(podiumIdInput);

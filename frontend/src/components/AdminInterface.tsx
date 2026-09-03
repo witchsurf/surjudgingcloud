@@ -2462,6 +2462,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
 
         if (!stillSelected) return;
 
+        // A completed SAVE freezes the exact canonical panel used to start
+        // the heat. A late duplicate lineup fetch must not mutate the parent
+        // config and revoke that SAVE immediately.
+        if (configSaved) return;
+
         // Heat entries are canonical sporting data.  They may arrive after an
         // Admin save (for example after qualifier hydration or a reconnect),
         // so do not leave an already-saved configuration with an empty lineup.
@@ -2486,7 +2491,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [hasCanonicalHeatContext, heatId, activeEventId, config.division, config.round, config.heatId, lineupRefreshToken, onConfigChange]);
+  }, [hasCanonicalHeatContext, heatId, activeEventId, config.division, config.round, config.heatId, configSaved, lineupRefreshToken, onConfigChange]);
 
   // Dropdowns visual states
   const isCategoryClosed = useCallback((div: string) => {
