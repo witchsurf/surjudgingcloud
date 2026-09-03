@@ -2451,12 +2451,16 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         });
 
         const currentConfig = configRef.current;
-        const sameHeat =
-          currentConfig.division === config.division &&
-          Number(currentConfig.round) === Number(config.round) &&
-          Number(currentConfig.heatId) === Number(config.heatId);
+        // Compare against the authoritative metadata for the async request,
+        // not the `config` captured when it started.  During navigation that
+        // closure can still describe the previous heat, which discarded the
+        // resolved finalists even though this heat is now selected.
+        const stillSelected =
+          String(currentConfig.division || '').trim().toLowerCase() === String(heatMeta?.division || '').trim().toLowerCase() &&
+          Number(currentConfig.round) === Number(heatMeta?.round) &&
+          Number(currentConfig.heatId) === Number(heatMeta?.heat_number);
 
-        if (!sameHeat) return;
+        if (!stillSelected) return;
 
         // Heat entries are canonical sporting data.  They may arrive after an
         // Admin save (for example after qualifier hydration or a reconnect),

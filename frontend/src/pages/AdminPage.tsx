@@ -269,9 +269,11 @@ export default function AdminPage() {
     }, [activeEventId, canonicalHeatId, configSaved, eventIdFromUrl, loadHeatConfig, setConfig, setConfigSaved]);
 
     // Load participant names for current heat
-    const { participants: heatParticipants } = useHeatParticipants(
-        hasCanonicalHeatContext ? canonicalHeatId : ''
-    );
+    // A newly selected planned heat is intentionally unsaved until its own
+    // canonical configuration has been loaded.  Participant hydration must
+    // still run in that interval; otherwise a downstream final can never
+    // obtain its resolved qualifiers and the save gate becomes circular.
+    const { participants: heatParticipants } = useHeatParticipants(canonicalHeatId);
 
     const [selectedPodiumId, setSelectedPodiumId] = useState<string>(getPersistedAdminPodium());
 
