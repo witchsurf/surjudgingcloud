@@ -389,13 +389,30 @@ export default function AdminPage() {
                 return a.localeCompare(b);
             });
 
-            setConfig(prev => ({
-                ...prev,
-                surferNames: heatParticipants,
-                surfers: surfersList
-            }));
+            setConfig(prev => {
+                const next = {
+                    ...prev,
+                    surferNames: heatParticipants,
+                    surfers: surfersList
+                };
+
+                // A planned downstream heat is often saved before its
+                // qualifiers are known. Once they are resolved from the
+                // canonical heat entries, this changes the scoring panel
+                // structurally; it must not remain marked as saved with an
+                // empty/obsolete lineup.
+                if (
+                    !shallowJerseyArrayEqual(prev.surfers, next.surfers) ||
+                    !shallowJerseyRecordEqual(prev.surferNames, next.surferNames)
+                ) {
+                    operatorDirtyHeatRef.current = canonicalHeatId;
+                    setConfigSaved(false);
+                }
+
+                return next;
+            });
         }
-    }, [heatParticipants, setConfig]);
+    }, [canonicalHeatId, heatParticipants, setConfig, setConfigSaved]);
 
     const handleConfigSaved = useCallback(async (saved: boolean, podiumIdInput?: string) => {
         const podiumId = normalizePodiumId(podiumIdInput);
