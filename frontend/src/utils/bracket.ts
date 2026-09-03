@@ -100,6 +100,51 @@ export function computeHeats(participants: ParticipantSeed[], options: ComputeOp
   }));
 
   if (options.manOnManFromRound === 1) {
+    // Six entrants is the common surf format: three opening duels, then the
+    // three winners plus the best second fill two semi-finals. A conventional
+    // power-of-two bracket would grant two byes instead, which is not the
+    // requested sporting rule.
+    if (participants.length === 6) {
+      const ranked = [...participants].sort((a, b) => a.seed - b.seed || a.name.localeCompare(b.name));
+      const firstRound: RoundSpec = {
+        name: 'Round 1', roundNumber: 1,
+        heats: [[0, 5], [1, 4], [2, 3]].map((pair, index) => ({
+          heatNumber: index + 1,
+          roundRef: `R1-H${index + 1}`,
+          slots: pair.map((rankIndex, slotIndex) => ({
+            ...ranked[rankIndex], participantId: ranked[rankIndex].id,
+            color: (slotIndex === 0 ? 'ROUGE' : 'BLANC') as HeatColor,
+          })),
+        })),
+      };
+      const semiFinals: RoundSpec = {
+        name: 'Round 2', roundNumber: 2,
+        heats: [
+          { heatNumber: 1, roundRef: 'R2-H1', slots: [
+            { placeholder: 'Vainqueur R1-H1 (P1)', color: 'ROUGE' },
+            { placeholder: 'Vainqueur R1-H2 (P1)', color: 'BLANC' },
+          ] },
+          { heatNumber: 2, roundRef: 'R2-H2', slots: [
+            { placeholder: 'Vainqueur R1-H3 (P1)', color: 'ROUGE' },
+            { placeholder: 'Meilleur 2e R1', color: 'BLANC' },
+          ] },
+        ],
+      };
+      const finale: RoundSpec = { name: 'Finale', roundNumber: 3, heats: [{ heatNumber: 1, roundRef: 'R3-H1', slots: [
+        { placeholder: 'Vainqueur R2-H1 (P1)', color: 'ROUGE' },
+        { placeholder: 'Vainqueur R2-H2 (P1)', color: 'BLANC' },
+      ] }] };
+      return {
+        rounds: [firstRound, semiFinals, finale],
+        progressionEdges: [
+          [1, 1, 1, 2, 1, 1], [1, 2, 1, 2, 1, 2], [1, 3, 1, 2, 2, 1],
+          [2, 1, 1, 3, 1, 1], [2, 2, 1, 3, 1, 2],
+        ].map(([sourceRound, sourceHeat, sourcePosition, targetRound, targetHeat, targetPosition]) => ({
+          sourceRound, sourceHeat, sourcePosition, targetRound, targetHeat, targetPosition,
+          type: 'COMPETITION_RESULT' as const,
+        })),
+      };
+    }
     const graph = buildManOnManBracket(participants.length);
     const rankedParticipants = [...participants].sort((left, right) => (
       left.seed - right.seed || left.name.localeCompare(right.name)

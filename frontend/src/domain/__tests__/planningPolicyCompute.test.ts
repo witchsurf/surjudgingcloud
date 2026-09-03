@@ -55,6 +55,17 @@ describe('category planning policy computation', () => {
       .sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 
+  it('uses three opening duels and a best second for six man-on-man entrants', () => {
+    const six = participants.slice(0, 6);
+    const preview = computeHeats(six, computeOptionsForPlanningPolicy({
+      ...policy, base_format: 'man_on_man' as const, transition_round: null, transition_format: null,
+    }, 'single-elim'));
+    expect(preview.rounds.map((round) => round.heats.length)).toEqual([3, 2, 1]);
+    expect(preview.rounds[0].heats.every((heat) => heat.slots.length === 2)).toBe(true);
+    expect(preview.rounds[1].heats.flatMap((heat) => heat.slots)
+      .some((slot) => slot.placeholder === 'Meilleur 2e R1')).toBe(true);
+  });
+
   it('maps repechage without activating man-on-man', () => {
     expect(computeOptionsForPlanningPolicy({
       ...policy,
