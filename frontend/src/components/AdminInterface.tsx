@@ -224,7 +224,7 @@ interface AdminInterfaceProps {
   onTimerChange: (timer: HeatTimerType) => void;
   onReloadData: () => void;
   onResetAllData: () => void;
-  onCloseHeat: (options?: { force?: boolean; reason?: string }) => void;
+  onCloseHeat: (options?: { force?: boolean; reason?: string }) => void | Promise<void>;
   judgeWorkCount: Record<string, number>;
   scores: Score[];
   overrideLogs: ScoreOverrideLog[];
@@ -3792,7 +3792,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       alert(message);
     }
 
-    onCloseHeat(forceClose ? { force: true, reason: forceReason } : undefined);
+    // Closing a heat persists status, rankings, and qualifier propagation.  The
+    // parent handler is asynchronous on the /admin route, so do not let this
+    // UI flow complete before that transaction has finished.
+    await onCloseHeat(forceClose ? { force: true, reason: forceReason } : undefined);
   };
 
   const surferScoredWaves = React.useMemo(() => {
