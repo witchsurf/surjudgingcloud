@@ -366,7 +366,15 @@ export default function AdminPage() {
             (config.secretKey || '') === (newConfig.secretKey || '');
 
         if (configSaved && !structurallySameConfig) {
-            operatorDirtyHeatRef.current = canonicalHeatId;
+            const selectedHeatChanged =
+                config.division !== newConfig.division ||
+                config.round !== newConfig.round ||
+                config.heatId !== newConfig.heatId;
+
+            // Selecting another planned heat is navigation, not an operator
+            // override.  Marking it dirty here prevented its canonical
+            // configuration (and resolved qualifiers) from ever hydrating.
+            operatorDirtyHeatRef.current = selectedHeatChanged ? '' : canonicalHeatId;
             setConfigSaved(false);
         }
 
