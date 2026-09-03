@@ -7,6 +7,7 @@ import { eventRepository } from '../repositories/EventRepository';
 import { parseCanonicalEventId } from '../domain/eventWorkflow';
 import { getDeploymentMode } from '../domain/deploymentMode';
 import { loadFieldOrganizationProfile } from '../domain/fieldOrganization';
+import { generateUuidV4 } from '../lib/uuid';
 import {
   resolveEventCreationSubmission,
   validateEventCreationSubmission,
@@ -140,7 +141,9 @@ const CreateEvent = () => {
     };
 
     setIsSubmitting(true);
-    const idempotencyKey = crypto.randomUUID();
+    // Chrome exposes `crypto` on an HTTP LAN page but can withhold
+    // `randomUUID`. The shared helper retains a cryptographic v4 fallback.
+    const idempotencyKey = generateUuidV4();
     try {
       if (!isSupabaseConfigured() || !supabase) {
         setSubmitError(deploymentMode === 'field'

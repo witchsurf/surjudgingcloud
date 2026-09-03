@@ -92,18 +92,20 @@ test('installs a top-level PostgreSQL entrypoint launcher for fresh volumes', ()
   assert.match(healthcheck, /__SURFJUDGING_SCHEMA_VERSION__/);
 });
 
-test('Field migration manifest includes planning V5 before idempotent event creation', () => {
+test('Field migration manifest includes planning V5 and the best-eliminated correction', () => {
   const manifest = JSON.parse(fs.readFileSync(path.resolve('../config/p38-from-zero-manifest.json'), 'utf8'));
   const provider = 'backend/supabase/migrations/20260826200000_require_explicit_progression_edges.sql';
   const marker = 'backend/supabase/migrations/20260826210000_align_runtime_schema_version_after_progression_guard.sql';
   const repair = 'backend/supabase/migrations/20260829083000_restore_field_planning_v5_contract.sql';
   const idempotentEventCreation = 'backend/supabase/migrations/20260901210000_idempotent_event_creation.sql';
+  const bestEliminated = 'backend/supabase/migrations/20260902090000_allow_best_eliminated_placeholder_mappings.sql';
   const paths = manifest.migrations.map((migration) => migration.path);
   assert.ok(paths.indexOf(provider) >= 0, 'planning V5 provider is required');
   assert.ok(paths.indexOf(provider) < paths.indexOf(marker), 'planning V5 must precede its schema marker');
   assert.ok(paths.indexOf(repair) < paths.indexOf(idempotentEventCreation), 'planning V5 repair must precede event idempotency');
-  assert.equal(paths.at(-1), idempotentEventCreation, 'idempotent event creation must remain the Field target schema');
-  for (const required of [provider, repair]) {
+  assert.ok(paths.indexOf(idempotentEventCreation) < paths.indexOf(bestEliminated), 'best-eliminated correction must follow event idempotency');
+  assert.equal(paths.at(-1), bestEliminated, 'best-eliminated correction must remain the Field target schema');
+  for (const required of [provider, repair, bestEliminated]) {
     const entry = manifest.migrations.find((migration) => migration.path === required);
     const source = fs.readFileSync(path.resolve('..', required));
     assert.equal(entry.required, true);

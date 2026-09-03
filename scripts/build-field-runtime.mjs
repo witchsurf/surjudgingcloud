@@ -168,7 +168,12 @@ export async function buildFieldRuntime(runtimeName, options = {}) {
   }
 
   const runtimeDir = path.resolve(rootDir, 'artifacts/runtimes', runtimeName);
-  const runtimeEnvPath = path.resolve(runtimeDir, '.env');
+  // Packaging an update for an already-installed Field runtime must use that
+  // runtime's own configuration.  The path is read-only: no secret is copied
+  // into the repository or the installer payload.
+  const runtimeEnvPath = process.env.SURF_RUNTIME_ENV_PATH
+    ? path.resolve(process.env.SURF_RUNTIME_ENV_PATH)
+    : path.resolve(runtimeDir, '.env');
 
   console.log(`==> [FIELD BUILD] Selected runtime: ${runtimeName}`);
   console.log(`==> [FIELD BUILD] Reading source of truth: ${runtimeEnvPath}`);

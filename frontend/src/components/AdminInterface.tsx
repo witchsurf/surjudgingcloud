@@ -5258,7 +5258,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   {(() => {
                     const assignedIdentityId = resolveAssignedJudgeIdentity(judgeId);
                     const assignedOfficialJudge = availableOfficialJudges.find((judge) => judge.id === assignedIdentityId);
-                    const isOfficialAssigned = Boolean(assignedIdentityId);
+                    // A legacy station identifier (for example "J1") is not
+                    // an official judge.  It must not lock the name field:
+                    // otherwise a freshly generated Field event cannot name
+                    // its panel and the heat remains impossible to start.
+                    const isOfficialAssigned = Boolean(assignedOfficialJudge);
                     const manualJudgeName = (config.judgeNames[judgeId] || '').trim();
                     const canCreateOfficial = !isOfficialAssigned && manualJudgeName.length > 0;
                     return (
