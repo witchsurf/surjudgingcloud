@@ -61,18 +61,16 @@ const ParticipantsPage = () => {
           .eq('event_id', previewEventId)
           .order('seed', { ascending: true });
 
-        if (!error && data && data.length > 0 && !cancelled) {
-          setParticipants(data);
-          // Sync local storage for offline support
-          localStorage.setItem('participants', JSON.stringify(data));
-        } else if ((!data || data.length === 0) && !cancelled) {
-          // Fallback to local storage
-          const saved = localStorage.getItem('participants');
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) {
-              setParticipants(parsed);
-            }
+        if (!error && !cancelled) {
+          // An event selected from the database owns its participant list.  In
+          // particular, an empty list is meaningful during event creation and
+          // must not display a cached list from another event.
+          setParticipants(data ?? []);
+          // Sync local storage for offline support only when the authoritative
+          // response contains participants.  This preserves an offline cache
+          // without allowing it to leak into a different, empty event.
+          if (data && data.length > 0) {
+            localStorage.setItem('participants', JSON.stringify(data));
           }
         }
       } catch (err) {

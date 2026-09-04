@@ -17,6 +17,24 @@ const SUPABASE_MODE_STORAGE_KEY = 'supabase_mode';
 const SUPABASE_URL_OVERRIDE_KEY = 'supabase_url_override';
 const SUPABASE_ANON_OVERRIDE_KEY = 'supabase_anon_override';
 const SUPABASE_CLOUD_LOCK_KEY = 'supabase_cloud_lock';
+// A local Field installation must never leave an operator on a permanent
+// loading state when the LAN service disappears mid-request.
+const SUPABASE_REQUEST_TIMEOUT_MS = 15_000;
+
+const fetchWithTimeout: typeof fetch = (input, init = {}) => {
+  const controller = new AbortController();
+  const externalSignal = init.signal;
+  const abortFromCaller = () => controller.abort(externalSignal?.reason);
+  externalSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = globalThis.setTimeout(() => {
+    controller.abort(new DOMException('La connexion au runtime local a expiré.', 'TimeoutError'));
+  }, SUPABASE_REQUEST_TIMEOUT_MS);
+
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => {
+    globalThis.clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromCaller);
+  });
+};
 
 const resolveEnv = (key: string): string | undefined => {
   return (import.meta as { env?: Record<string, string> }).env?.[key];
@@ -158,6 +176,9 @@ export const rebuildSupabaseClient = (url?: string, anonKey?: string) => {
     logger.info('Supabase', `Rebuilding Supabase Client. Endpoint: ${activeUrl}, Mode: ${config.mode}`);
     
     currentClient = createClient<SupabaseDatabase>(activeUrl, activeAnonKey, {
+      global: {
+        fetch: fetchWithTimeout,
+      },
       auth: {
         storageKey: config.mode === 'local'
           ? 'surfjudging-local-auth-token'

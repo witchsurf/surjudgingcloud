@@ -223,7 +223,9 @@ export const useConfigStore = create<ConfigStore>()(
                     }
 
                     const activeHeat = await activeHeatPointerRepository.get({
-                        eventId: currentEventId ?? null,
+                        // Kiosk URLs without eventId must not be trapped by an
+                        // event retained in this browser from a previous event.
+                        eventId: eventIdCandidate ?? null,
                         podiumId,
                     });
 

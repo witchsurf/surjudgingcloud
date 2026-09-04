@@ -224,7 +224,7 @@ interface AdminInterfaceProps {
   onTimerChange: (timer: HeatTimerType) => void;
   onReloadData: () => void;
   onResetAllData: () => void;
-  onCloseHeat: (options?: { force?: boolean; reason?: string }) => void;
+  onCloseHeat: (options?: { force?: boolean; reason?: string }) => void | Promise<void>;
   judgeWorkCount: Record<string, number>;
   scores: Score[];
   overrideLogs: ScoreOverrideLog[];
@@ -2451,12 +2451,21 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         });
 
         const currentConfig = configRef.current;
-        const sameHeat =
-          currentConfig.division === config.division &&
-          Number(currentConfig.round) === Number(config.round) &&
-          Number(currentConfig.heatId) === Number(config.heatId);
+        // Compare against the authoritative metadata for the async request,
+        // not the `config` captured when it started.  During navigation that
+        // closure can still describe the previous heat, which discarded the
+        // resolved finalists even though this heat is now selected.
+        const stillSelected =
+          String(currentConfig.division || '').trim().toLowerCase() === String(heatMeta?.division || '').trim().toLowerCase() &&
+          Number(currentConfig.round) === Number(heatMeta?.round) &&
+          Number(currentConfig.heatId) === Number(heatMeta?.heat_number);
 
-        if (!sameHeat) return;
+        if (!stillSelected) return;
+
+        // A completed SAVE freezes the exact canonical panel used to start
+        // the heat. A late duplicate lineup fetch must not mutate the parent
+        // config and revoke that SAVE immediately.
+        if (configSaved) return;
 
         // Heat entries are canonical sporting data.  They may arrive after an
         // Admin save (for example after qualifier hydration or a reconnect),
@@ -2482,7 +2491,7 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [hasCanonicalHeatContext, heatId, activeEventId, config.division, config.round, config.heatId, lineupRefreshToken, onConfigChange]);
+  }, [hasCanonicalHeatContext, heatId, activeEventId, config.division, config.round, config.heatId, configSaved, lineupRefreshToken, onConfigChange]);
 
   // Dropdowns visual states
   const isCategoryClosed = useCallback((div: string) => {
@@ -3792,7 +3801,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
       alert(message);
     }
 
-    onCloseHeat(forceClose ? { force: true, reason: forceReason } : undefined);
+    // Closing a heat persists status, rankings, and qualifier propagation.  The
+    // parent handler is asynchronous on the /admin route, so do not let this
+    // UI flow complete before that transaction has finished.
+    await onCloseHeat(forceClose ? { force: true, reason: forceReason } : undefined);
   };
 
   const surferScoredWaves = React.useMemo(() => {
@@ -5258,7 +5270,11 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
                   {(() => {
                     const assignedIdentityId = resolveAssignedJudgeIdentity(judgeId);
                     const assignedOfficialJudge = availableOfficialJudges.find((judge) => judge.id === assignedIdentityId);
-                    const isOfficialAssigned = Boolean(assignedIdentityId);
+                    // A legacy station identifier (for example "J1") is not
+                    // an official judge.  It must not lock the name field:
+                    // otherwise a freshly generated Field event cannot name
+                    // its panel and the heat remains impossible to start.
+                    const isOfficialAssigned = Boolean(assignedOfficialJudge);
                     const manualJudgeName = (config.judgeNames[judgeId] || '').trim();
                     const canCreateOfficial = !isOfficialAssigned && manualJudgeName.length > 0;
                     return (

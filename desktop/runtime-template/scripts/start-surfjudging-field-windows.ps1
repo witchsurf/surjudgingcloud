@@ -6,9 +6,16 @@ $composeDir = Join-Path $stateDir 'compose'
 Write-Output "FIELD_STAGE staging-config $composeDir"
 New-Item -ItemType Directory -Force -Path $composeDir | Out-Null
 $persistentEnv = Join-Path $composeDir '.env'
-if (-not (Test-Path $persistentEnv)) { Copy-Item (Join-Path $root 'compose/.env') $persistentEnv }
-Copy-Item (Join-Path $root 'compose/compose.yaml') (Join-Path $composeDir 'compose.yaml') -Force
-Copy-Item (Join-Path $root 'compose/kong.yml') (Join-Path $composeDir 'kong.yml') -Force
+function Publish-FileAtomically([string]$source, [string]$destination) {
+  $next = "$destination.next"
+  Copy-Item $source $next -Force
+  Move-Item $next $destination -Force
+}
+if (-not (Test-Path $persistentEnv)) {
+  Publish-FileAtomically (Join-Path $root 'compose/.env') $persistentEnv
+}
+Publish-FileAtomically (Join-Path $root 'compose/compose.yaml') (Join-Path $composeDir 'compose.yaml')
+Publish-FileAtomically (Join-Path $root 'compose/kong.yml') (Join-Path $composeDir 'kong.yml')
 
 $plan = Get-Content (Join-Path $root 'images/load-plan.tsv')
 $current = 0

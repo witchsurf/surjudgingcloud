@@ -51,6 +51,8 @@ export interface CreateEventRequest {
   currency: string;
   categories: readonly unknown[];
   judges: readonly unknown[];
+  /** Stable UUID for one operator submission; makes transport retries safe. */
+  idempotencyKey?: string;
 }
 
 export interface CreatedEventRecord extends CreateEventRequest {

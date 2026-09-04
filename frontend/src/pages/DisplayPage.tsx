@@ -712,14 +712,16 @@ export default function DisplayPage() {
         let cancelled = false;
 
         const bootstrapDisplay = async () => {
-            await initializeFromUrl();
-            if (cancelled) return;
-
             const params = new URLSearchParams(window.location.search);
             const hasEventId = Number.isFinite(Number(params.get('eventId')));
-            if (!hasEventId && !useConfigStore.getState().activeEventId) {
+            // A direct display URL is a kiosk: browser-local event state can be
+            // stale, so the active podium pointer remains authoritative.
+            if (!hasEventId) {
                 await loadKioskConfig();
+                return;
             }
+            await initializeFromUrl();
+            if (cancelled) return;
         };
 
         bootstrapDisplay().catch((error) => {

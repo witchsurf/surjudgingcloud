@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildManOnManBracket } from '../manOnManBracket';
+import { getManOnManRoundOptions } from '../heatGeneration';
 
 describe('buildManOnManBracket', () => {
   it.each([2, 3, 4, 5, 6, 7, 8, 13])('builds a deterministic two-slot bracket for %i qualifiers', (count) => {
@@ -28,5 +29,17 @@ describe('buildManOnManBracket', () => {
     const bracket = buildManOnManBracket(6);
     expect(bracket.matches.some((m) => m.slots.length !== 2)).toBe(false);
     expect(bracket.edges.filter((e) => e.type === 'AUTO_ADVANCE_BYE').every((e) => e.sourceHeat === 0 && e.sourcePosition === 0)).toBe(true);
+  });
+
+  it('offers round-1 man-on-man without an untraceable best-second wildcard', () => {
+    const participants = Array.from({ length: 6 }, (_, index) => ({
+      seed: index + 1,
+      name: `Ondine ${index + 1}`,
+    }));
+
+    expect(getManOnManRoundOptions(participants, 'elimination', 4)).toContainEqual({
+      round: 1,
+      requiresBestSecond: false,
+    });
   });
 });

@@ -56,6 +56,19 @@ describe('secure dual-mode event creation adapter', () => {
     expect(rpc.mock.calls[0][1]).not.toHaveProperty('paid');
   });
 
+  it('forwards a submission idempotency key when one is supplied', async () => {
+    rpc.mockResolvedValue({
+      data: [{ ...request, id: '42', start_date: request.startDate, end_date: request.endDate,
+        method: null, status: 'pending', paid: false, paid_at: null, payment_ref: null,
+        user_id: null, created_at: '2026-08-09T12:00:00Z' }],
+      error: null,
+    });
+    await createEventSecure({ ...request, idempotencyKey: 'b8f20db0-4f7f-44e4-a32b-9793a966f5d5' });
+    expect(rpc).toHaveBeenCalledWith('create_event_secure', expect.objectContaining({
+      p_idempotency_key: 'b8f20db0-4f7f-44e4-a32b-9793a966f5d5',
+    }));
+  });
+
   it('propagates an RPC refusal without falling back to a direct insert', async () => {
     rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'CLOUD_AUTH_REQUIRED' } });
     await expect(createEventSecure(request)).rejects.toThrow('CLOUD_AUTH_REQUIRED');

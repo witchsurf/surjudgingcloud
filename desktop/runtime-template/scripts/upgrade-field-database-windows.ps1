@@ -32,11 +32,21 @@ $applied = 0
 $migrations = Get-ChildItem (Join-Path $root 'database/migrations') -Filter '*.sql' | Sort-Object Name
 foreach ($migration in $migrations) {
   $schema = $migration.BaseName
+  if ($schema -notmatch '^[0-9]{14}_[A-Za-z0-9_]+$') { throw "Invalid Field migration filename: $($migration.Name)" }
   if ($schema -eq $current) { $foundCurrent = $true; continue }
   if (-not $foundCurrent) { continue }
   Write-Output "FIELD_STAGE database-migration $schema"
-  Get-Content $migration.FullName -Raw | & $docker exec -i $container psql -v ON_ERROR_STOP=1 -U postgres -d postgres
-  if ($LASTEXITCODE -ne 0) { throw "Field migration failed: $schema" }
+  $containerMigration = "/tmp/surfjudging-field-$schema.sql"
+  & $docker cp $migration.FullName "${container}:$containerMigration"
+  if ($LASTEXITCODE -ne 0) { throw "Unable to stage Field migration: $schema" }
+  $migrationExit = 1
+  try {
+    & $docker exec $container psql -v ON_ERROR_STOP=1 -U postgres -d postgres -f $containerMigration
+    $migrationExit = $LASTEXITCODE
+  } finally {
+    & $docker exec $container rm -f $containerMigration *> $null
+  }
+  if ($migrationExit -ne 0) { throw "Field migration failed: $schema" }
   $observed = (& $docker exec $container psql -U postgres -d postgres -Atc 'select schema_version from public.app_runtime_schema_version where id = true').Trim()
   if ($observed -ne $schema) { throw "Migration $schema did not publish its schema marker (observed: $observed)." }
   $applied += 1

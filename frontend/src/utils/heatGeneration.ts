@@ -567,12 +567,21 @@ export const getManOnManRoundOptions = (
   const classicSignature = serializePlan(classicRounds);
   const maxCandidateRound = classicRounds.length;
   const candidateRounds = [
-    ...(participants.length >= 4 && participants.length % 2 === 0 ? [1] : []),
+    ...(participants.length >= 2 ? [1] : []),
     ...Array.from({ length: Math.max(0, maxCandidateRound - 1) }, (_, index) => index + 2)
   ];
 
   return candidateRounds
     .map((round): ManOnManRoundOption | null => {
+      // Round 1 uses the canonical power-of-two bracket. Sporting BYEs are
+      // explicit edges and never require an untraceable "best second" slot.
+      if (round === 1) {
+        return {
+          round,
+          requiresBestSecond: false
+        };
+      }
+
       const generated = generatePreviewHeats(participants, format, seriesSize, {
         manOnManFromRound: round
       });

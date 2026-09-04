@@ -269,9 +269,11 @@ export default function AdminPage() {
     }, [activeEventId, canonicalHeatId, configSaved, eventIdFromUrl, loadHeatConfig, setConfig, setConfigSaved]);
 
     // Load participant names for current heat
-    const { participants: heatParticipants } = useHeatParticipants(
-        hasCanonicalHeatContext ? canonicalHeatId : ''
-    );
+    // A newly selected planned heat is intentionally unsaved until its own
+    // canonical configuration has been loaded.  Participant hydration must
+    // still run in that interval; otherwise a downstream final can never
+    // obtain its resolved qualifiers and the save gate becomes circular.
+    const { participants: heatParticipants } = useHeatParticipants(canonicalHeatId);
 
     const [selectedPodiumId, setSelectedPodiumId] = useState<string>(getPersistedAdminPodium());
 
@@ -366,7 +368,15 @@ export default function AdminPage() {
             (config.secretKey || '') === (newConfig.secretKey || '');
 
         if (configSaved && !structurallySameConfig) {
-            operatorDirtyHeatRef.current = canonicalHeatId;
+            const selectedHeatChanged =
+                config.division !== newConfig.division ||
+                config.round !== newConfig.round ||
+                config.heatId !== newConfig.heatId;
+
+            // Selecting another planned heat is navigation, not an operator
+            // override.  Marking it dirty here prevented its canonical
+            // configuration (and resolved qualifiers) from ever hydrating.
+            operatorDirtyHeatRef.current = selectedHeatChanged ? '' : canonicalHeatId;
             setConfigSaved(false);
         }
 
@@ -375,7 +385,10 @@ export default function AdminPage() {
 
     // Sync heat participants into config when they load
     useEffect(() => {
-        if (Object.keys(heatParticipants).length > 0) {
+        // Once the operator has saved this exact heat, its canonical config is
+        // the source of truth. Do not let a late participant-hook response
+        // immediately revoke that successful SAVE and lock Start again.
+        if (!configSaved && Object.keys(heatParticipants).length > 0) {
             const SURFER_ORDER = ['ROUGE', 'BLANC', 'JAUNE', 'BLEU', 'NOIR', 'VERT'];
 
             // Extract colors and sort them by standard priority
@@ -389,13 +402,30 @@ export default function AdminPage() {
                 return a.localeCompare(b);
             });
 
-            setConfig(prev => ({
-                ...prev,
-                surferNames: heatParticipants,
-                surfers: surfersList
-            }));
+            setConfig(prev => {
+                const next = {
+                    ...prev,
+                    surferNames: heatParticipants,
+                    surfers: surfersList
+                };
+
+                // A planned downstream heat is often saved before its
+                // qualifiers are known. Once they are resolved from the
+                // canonical heat entries, this changes the scoring panel
+                // structurally; it must not remain marked as saved with an
+                // empty/obsolete lineup.
+                if (
+                    !shallowJerseyArrayEqual(prev.surfers, next.surfers) ||
+                    !shallowJerseyRecordEqual(prev.surferNames, next.surferNames)
+                ) {
+                    operatorDirtyHeatRef.current = canonicalHeatId;
+                    setConfigSaved(false);
+                }
+
+                return next;
+            });
         }
-    }, [heatParticipants, setConfig]);
+    }, [canonicalHeatId, configSaved, heatParticipants, setConfig, setConfigSaved]);
 
     const handleConfigSaved = useCallback(async (saved: boolean, podiumIdInput?: string) => {
         const podiumId = normalizePodiumId(podiumIdInput);
