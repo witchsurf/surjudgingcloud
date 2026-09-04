@@ -229,7 +229,7 @@ const MyEventsContent = memo(function MyEventsContent({ initialUser, isOfflineMo
       try {
         console.log('🔄 Attempting to load events from Supabase DB...');
         const eventSelection = deploymentMode === 'field'
-          ? 'id, name, organizer, status, start_date, end_date'
+          ? 'id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)'
           : 'id, user_id, owner_id, name, organizer, status, start_date, end_date, event_last_config(event_id, event_name, division, round, heat_number, updated_at)';
         let query = supabase
           .from('events')
