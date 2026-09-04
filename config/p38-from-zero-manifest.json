@@ -27,7 +27,8 @@
     {"order":22,"path":"backend/supabase/migrations/20260829083000_restore_field_planning_v5_contract.sql","sha256":"0eaa3023fd4687093c20c777c23898b6ff751e539475188b9ee3e06467141851","required":true},
     {"order":23,"path":"backend/supabase/migrations/20260901210000_idempotent_event_creation.sql","sha256":"f631ecf0d4627f50b960560e6c17a28f0ff0be9b4766cefc1e7c7370a0cb70ff","required":true},
     {"order":24,"path":"backend/supabase/migrations/20260902090000_allow_best_eliminated_placeholder_mappings.sql","sha256":"eef378c6a27437fd64236bec0c261d4c42fc0f137db5ddee82595b102ea7543a","required":true},
-    {"order":25,"path":"backend/supabase/migrations/20260903180000_sync_heat_status_with_realtime.sql","sha256":"01999dbaba68dda3d06f5be1b1c61f0e3907a3fbf01578fc94a0b63799a765f5","required":true}
+    {"order":25,"path":"backend/supabase/migrations/20260903180000_sync_heat_status_with_realtime.sql","sha256":"01999dbaba68dda3d06f5be1b1c61f0e3907a3fbf01578fc94a0b63799a765f5","required":true},
+    {"order":26,"path":"backend/supabase/migrations/20260904001000_propagate_best_eliminated_for_p38_graph.sql","sha256":"089b26ccbb3fc88e2ddc71fbe3db1b93fd39b120b128da639e2de41eb3a7dc29","required":true}
   ],
   "secret_tooling": {"legacy":"docker/utils/generate-keys.sh","new_keys":"docker/utils/add-new-auth-keys.sh","source":"supabase/supabase official repository","legacy_generate_keys_sha256":"6299efc24ce94d771ca4abb8ac96b67624cc4ac9a4b13ee0c2a8f0071aa3d619","new_auth_keys_sha256":"34c4635ff895a1ac991a11a54a6723cca946f05d1f60524b2ba57d8e4b499ee3"},
   "auth_mode": "LEGACY_HS256",
