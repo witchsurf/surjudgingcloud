@@ -12,7 +12,7 @@ const api = window.surfJudgingDesktop;
 const state = {
   candidates: [], selected: null, health: null, prerequisites: null,
   preparation: null, preparing: false, organization: null,
-  pendingLogoDataUrl: null, priorityDisplay: null,
+  pendingLogoDataUrl: null, priorityDisplay: null, license: null,
 };
 const $ = (id) => document.getElementById(id);
 const defaultLogo = './assets/surfjudging-field-logo-v2.png';
@@ -107,6 +107,10 @@ function render() {
     ['Commande Docker', state.prerequisites?.dockerCli ? 'DISPONIBLE' : 'INTROUVABLE'],
     ['Moteur local', state.prerequisites?.dockerDaemon ? 'PRÊT' : 'ARRÊTÉ'],
   ]);
+  setDl('license', [
+    ['État', state.license?.state || '—'],
+    ['Politique', state.license?.enforcement === 'required' ? 'Activation obligatoire' : 'Activation préparée, non imposée'],
+  ]);
   renderUrls(candidate?.urls || {});
   $('start').disabled = Boolean(candidate) || state.preparing || !state.preparation?.diskOk;
   $('stop').disabled = !candidate;
@@ -175,11 +179,12 @@ async function refresh() {
   setStatus('Recherche du Field local…', 'Vérification des services essentiels en cours.');
   state.candidates = await safely(api.discoverFieldCandidates(), []);
   state.selected = state.candidates.length === 1 ? state.candidates[0] : null;
-  [state.health, state.prerequisites, state.preparation, state.priorityDisplay] = await Promise.all([
+  [state.health, state.prerequisites, state.preparation, state.priorityDisplay, state.license] = await Promise.all([
     safely(api.getFieldHealth(state.selected?.host), {}),
     safely(api.getRuntimePrerequisiteStatus(), {}),
     safely(api.inspectMachinePreparation(), null),
     safely(api.getPriorityDisplayStatus(), null),
+    safely(api.getOfflineLicenseStatus(), null),
   ]);
   render();
   renderPreparation();
@@ -239,11 +244,29 @@ async function diagnostics() {
   const snapshot = {
     desktopVersion: await api.getDesktopVersion(), selected: state.selected,
     candidates: state.candidates, health: state.health, prerequisites: state.prerequisites,
-    preparation: state.preparation, fieldState: await api.getFieldState(),
+    preparation: state.preparation, license: state.license, fieldState: await api.getFieldState(),
     fieldLogs: await api.getFieldLogs(), generatedAt: new Date().toISOString(),
   };
   await api.copyDiagnostics(snapshot);
   setStatus('Diagnostic copié', 'Les informations de support, sans secret, sont dans le presse-papiers.', 'ok');
+}
+
+async function copyActivationRequest() {
+  const request = state.license?.activationRequest;
+  if (!request) { setStatus('Demande indisponible', 'Le stockage sécurisé de cette machine doit être disponible pour générer son identité.', 'warning'); return; }
+  await api.copyDiagnostics(request);
+  setStatus('Demande d’activation copiée', 'Transmettez-la à SurfJudging pour recevoir la licence de cette installation précise.', 'ok');
+}
+
+async function installOfflineLicense(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    state.license = await api.installOfflineLicense(await file.text());
+    await refresh();
+    setStatus('Licence installée', 'Cette installation Field est activée hors ligne.', 'ok');
+  } catch (error) { setStatus('Licence refusée', errorMessage(error), 'bad'); }
 }
 
 function applyOrganization(profile) {
@@ -392,6 +415,8 @@ $('start').onclick = start;
 $('stop').onclick = stop;
 $('prepare').onclick = prepareMachine;
 $('copy').onclick = diagnostics;
+$('copy-activation-request').onclick = copyActivationRequest;
+$('license-file').onchange = installOfflineLicense;
 $('organization-settings').onclick = openOrganizationSetup;
 $('organization-logo-choose').onclick = chooseOrganizationLogo;
 $('organization-form').onsubmit = saveOrganization;

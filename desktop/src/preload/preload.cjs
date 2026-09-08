@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('surfJudgingDesktop', Object.freeze({
   getDesktopVersion: () => ipcRenderer.invoke('desktop:version'),
+  getOfflineLicenseStatus: () => ipcRenderer.invoke('license:status'),
+  installOfflineLicense: (certificate) => ipcRenderer.invoke('license:install', certificate),
   discoverNetworkInterfaces: () => ipcRenderer.invoke('field:interfaces'),
   discoverFieldCandidates: () => ipcRenderer.invoke('field:candidates'),
   probeFieldManifest: (host) => ipcRenderer.invoke('field:manifest', host),

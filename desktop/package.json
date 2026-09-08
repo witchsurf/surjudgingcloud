@@ -13,6 +13,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.mjs",
+    "license:issue": "node scripts/issue-offline-license.mjs",
     "verify:package-input": "node scripts/verify-package-inputs.mjs",
     "package:dir": "npm run verify:package-input && electron-builder --dir",
     "package:mac": "npm run verify:package-input && electron-builder --mac dmg --x64 --arm64",
