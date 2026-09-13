@@ -93,15 +93,41 @@ export default function PriorityDisplayPage() {
         background: '#000000',
       }}
     >
-      {signal.cssColors.map((cssColor, index) => (
-        <div
-          key={`${signal.colors[index]}-${index}`}
-          aria-hidden="true"
-          data-priority-rank={index + 1}
-          data-priority-band-color={signal.colors[index]}
-          style={{ flex: '1 1 0', height: '100%', background: cssColor }}
-        />
-      ))}
+      {signal.cssColors.map((cssColor, index) => {
+        const rank = index + 1;
+        const color = signal.colors[index];
+        const isLight = color === 'BLANC' || color === 'JAUNE';
+        const textColor = isLight ? '#000000' : '#ffffff';
+        const textShadow = isLight
+          ? '0 2px 8px rgba(255, 255, 255, 0.4)'
+          : '0 4px 16px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.9)';
+
+        return (
+          <div
+            key={`${color}-${index}`}
+            aria-hidden="true"
+            data-priority-rank={rank}
+            data-priority-band-color={color}
+            style={{
+              flex: '1 1 0',
+              height: '100%',
+              background: cssColor,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: textColor,
+              fontSize: 'min(24vw, 42vh)',
+              fontWeight: 900,
+              fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+              lineHeight: 1,
+              userSelect: 'none',
+              textShadow,
+            }}
+          >
+            {rank}
+          </div>
+        );
+      })}
       {debug && (
         <aside style={{
           position: 'absolute',
