@@ -7,7 +7,6 @@ import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import { useScoreManager } from '../hooks/useScoreManager';
 import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
-import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useHeatManager } from '../hooks/useHeatManager';
 import { useAuthoritativeHeatId } from '../hooks/useAuthoritativeHeatId';
@@ -18,7 +17,7 @@ import { parseActiveHeatId } from '../utils/activeHeatId';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer, subscribeToEventConfig } from '../lib/sharedRealtimeSubscriptions';
 import type { AppConfig } from '../types';
 import { resolveEventDisplayName } from '../utils/eventName';
-import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
+import { applyHeatScopedConfig } from '../utils/heatScopedConfigMerge';
 import { PendingJudgeAssignmentPoller } from '../components/PendingJudgeAssignmentPoller';
 import { getPodiumIdFromSearch } from '../utils/podium';
 
@@ -76,29 +75,7 @@ export default function JudgePage() {
         }
     }, [currentJudge, judgeSessionEventId, logout, podiumId]);
 
-    const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
-        const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
-        const nextRound = updates.round ?? prev.round;
-        const nextHeatId = updates.heatId ?? prev.heatId;
-        const previousDivision = (prev.division || '').trim().toUpperCase();
-        const heatChanged =
-            previousDivision !== nextDivision ||
-            prev.round !== nextRound ||
-            prev.heatId !== nextHeatId;
-
-        const merged = mergeRealtimeConfigPreservingLineup(prev, updates);
-
-        if (!heatChanged) {
-            return merged;
-        }
-
-        return {
-            ...merged,
-            priorityState: buildEqualPriorityState(),
-            surferNames: {},
-            surferCountries: {},
-        };
-    };
+    // applyHeatScopedConfig is imported from utils/heatScopedConfigMerge.ts
 
     const handleHeatClose = async () => {
         if (!currentHeatId) return;

@@ -10,7 +10,7 @@ import type { HeatRow } from '../api/modules/heats.api';
 import type { HeatResultSnapshot } from '../domain/scoring/contracts';
 import { requireCanonicalHeatSnapshots, type CanonicalHeatSnapshotRequest } from '../domain/scoring/canonicalHeatSnapshots';
 import { panelRepository } from '../repositories/PanelRepository';
-import { resolvePdfOrganizationIdentity } from '../domain/fieldOrganization';
+import { resolvePdfOrganizationIdentity } from '../services/fieldOrganizationService';
 
 interface HeatResultHistoryEntry {
   heatKey: string;

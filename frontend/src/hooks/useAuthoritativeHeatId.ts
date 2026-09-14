@@ -18,10 +18,16 @@ export interface UseAuthoritativeHeatIdResult {
   error: string | null;
 }
 
+/** Timeout after which the resolution is considered failed. */
+const RESOLVE_TIMEOUT_MS = 6000;
+
 /**
  * Resolves the authoritative opaque `public.heats.id` from PostgreSQL / active_heat_pointer.
  * During asynchronous lookup, `heatId` is strictly empty string ('').
  * NEVER generates a synthetic fallback heat ID.
+ *
+ * Resolution is aborted after RESOLVE_TIMEOUT_MS to avoid an infinite loading
+ * screen when Supabase is unreachable on the LAN.
  */
 export function useAuthoritativeHeatId(params: UseAuthoritativeHeatIdParams): UseAuthoritativeHeatIdResult {
   const { eventId, division, round, heatNumber, podiumId } = params;
@@ -49,6 +55,14 @@ export function useAuthoritativeHeatId(params: UseAuthoritativeHeatIdParams): Us
     setLoading(true);
     setError(null);
     setHeatId(''); // Strictly reset to empty during asynchronous lookup to avoid race conditions
+
+    // Abort controller with timeout — prevents infinite loading on LAN Supabase unreachable
+    const abortController = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      if (!isCancelled) {
+        abortController.abort();
+      }
+    }, RESOLVE_TIMEOUT_MS);
 
     const resolveHeatId = async () => {
       try {
@@ -91,7 +105,14 @@ export function useAuthoritativeHeatId(params: UseAuthoritativeHeatIdParams): Us
         if (isCancelled || requestIdRef.current !== currentRequestId) return;
         setHeatId('');
         setLoading(false);
-        setError(err instanceof Error ? err.message : 'Erreur de résolution du heat');
+        // Give a specific message when the timeout fired
+        if (abortController.signal.aborted) {
+          setError('Connexion Supabase trop lente — réessayez dans quelques secondes');
+        } else {
+          setError(err instanceof Error ? err.message : 'Erreur de résolution du heat');
+        }
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     };
 
@@ -99,6 +120,8 @@ export function useAuthoritativeHeatId(params: UseAuthoritativeHeatIdParams): Us
 
     return () => {
       isCancelled = true;
+      window.clearTimeout(timeoutId);
+      abortController.abort();
     };
   }, [eventId, division, round, heatNumber, podiumId]);
 

@@ -6,7 +6,7 @@ import EventStatus from './EventStatus';
 import { eventRepository } from '../repositories/EventRepository';
 import { parseCanonicalEventId } from '../domain/eventWorkflow';
 import { getDeploymentMode } from '../domain/deploymentMode';
-import { loadFieldOrganizationProfile } from '../domain/fieldOrganization';
+import { loadFieldOrganizationProfile } from '../services/fieldOrganizationService';
 import { generateUuidV4 } from '../lib/uuid';
 import {
   resolveEventCreationSubmission,

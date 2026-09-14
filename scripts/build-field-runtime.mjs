@@ -229,6 +229,12 @@ export async function buildFieldRuntime(runtimeName, options = {}) {
     SUPABASE_SERVICE_ROLE_KEY_CLOUD: '',
   };
 
+  // Step 2b: Generate runtime-config.js (public/ injection point, not committed to Git)
+  const runtimeConfigContent = `// AUTO-GENERATED — do not edit manually. Regenerate with: node scripts/generate-runtime-config.mjs\n// This file is excluded from Git (.gitignore).\nwindow.__SURFJUDGING_RUNTIME_CONFIG__ = Object.freeze({\n  anonKey: ${JSON.stringify(anonKey)}\n});\n`;
+  const runtimeConfigPath = path.resolve(frontendDir, 'public/runtime-config.js');
+  fs.writeFileSync(runtimeConfigPath, runtimeConfigContent, 'utf8');
+  console.log(`==> [BUILD] Generated runtime-config.js (anonKey fingerprint: ${computeSha256(anonKey).slice(0, 12)}...)`);
+
   // Step 3: Run Vite build
   console.log(`==> [BUILD] Invoking Vite build for Field mode...`);
   const viteBin = path.resolve(frontendDir, 'node_modules/vite/bin/vite.js');

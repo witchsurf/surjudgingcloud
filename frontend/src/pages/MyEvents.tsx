@@ -16,7 +16,7 @@ import { OfflineSettingsModal } from '../components/OfflineSettingsModal';
 import { competitionAdminRoute, ownedEventFilter } from '../domain/eventWorkflow';
 import { allowsCloudSync, getDeploymentMode, isFieldRuntime } from '../domain/deploymentMode';
 import { getSafeLocalStorage } from '../utils/secureStorage';
-import { getCachedFieldOrganizationProfile, loadFieldOrganizationProfile, type FieldOrganizationProfile } from '../domain/fieldOrganization';
+import { getCachedFieldOrganizationProfile, loadFieldOrganizationProfile, type FieldOrganizationProfile } from '../services/fieldOrganizationService';
 
 
 

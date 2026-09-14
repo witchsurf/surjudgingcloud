@@ -53,11 +53,18 @@ const configLastLoadAt = new Map<string, number>();
 let latestRequestedConfigLoadKey = '';
 const CONFIG_LOAD_DEDUPE_MS = 12000;
 
+const sortedStringify = (obj: unknown): string =>
+    JSON.stringify(obj, (_, v) =>
+        v && typeof v === 'object' && !Array.isArray(v)
+            ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort())
+            : v
+    );
+
 const areConfigsEquivalent = (left: AppConfig, right: AppConfig): boolean => {
     if (Object.is(left, right)) return true;
 
     try {
-        return JSON.stringify(left) === JSON.stringify(right);
+        return sortedStringify(left) === sortedStringify(right);
     } catch {
         return false;
     }
@@ -593,7 +600,11 @@ export const useConfigStore = create<ConfigStore>()(
 
             // Save config to database for realtime sync
             saveConfigToDb: async (eventId: number, config: AppConfig) => {
-                logger.info('ConfigStore', 'Saving config to database', { eventId });
+                // Read the podiumId from the URL so Podium B saves don't overwrite Podium A's pointer.
+                const savePodiumId = normalizePodiumId(
+                    typeof window !== 'undefined' ? getPodiumIdFromSearch(window.location.search) : 'A'
+                );
+                logger.info('ConfigStore', 'Saving config to database', { eventId, podiumId: savePodiumId });
 
                 try {
                     const judges = (config.judges || []).map(id => ({
@@ -637,10 +648,10 @@ export const useConfigStore = create<ConfigStore>()(
                             await activeHeatPointerRepository.upsert({
                                 eventId: eventId,
                                 eventName: config.competition,
-                                podiumId: 'A',
+                                podiumId: savePodiumId,
                                 activeHeatId: heatId,
                             });
-                            logger.info('ConfigStore', 'active_heat_pointer updated', { heatId });
+                            logger.info('ConfigStore', 'active_heat_pointer updated', { heatId, podiumId: savePodiumId });
                         } catch (pointerError) {
                             logger.warn('ConfigStore', 'active_heat_pointer update failed', pointerError);
                         }

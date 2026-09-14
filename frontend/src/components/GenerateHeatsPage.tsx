@@ -16,7 +16,7 @@ import { useConfigStore } from '../stores/configStore';
 import { supabase } from '../lib/supabase';
 import { assertPlanningAllowed, canPersistHeats, planningSuccessRoute, resolveEventWorkflowState, type EventWorkflowState } from '../domain/eventWorkflow';
 import { getDeploymentMode } from '../domain/deploymentMode';
-import { resolvePdfOrganizationIdentity } from '../domain/fieldOrganization';
+import { resolvePdfOrganizationIdentity } from '../services/fieldOrganizationService';
 import {
   assertPlanningPolicyPreview,
   computeOptionsForPlanningPolicy,

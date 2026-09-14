@@ -4,15 +4,14 @@ import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import { getHeatIdentifiers } from '../utils/heat';
-import { buildEqualPriorityState } from '../utils/priority';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useAuthoritativeHeatId } from '../hooks/useAuthoritativeHeatId';
+import { applyHeatScopedConfig } from '../utils/heatScopedConfigMerge';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { parseActiveHeatId } from '../utils/activeHeatId';
 import { normalizeEventRealtimeKey, subscribeToActiveHeatPointer } from '../lib/sharedRealtimeSubscriptions';
 import { resolveEventDisplayName } from '../utils/eventName';
-import { mergeRealtimeConfigPreservingLineup } from '../utils/realtimeConfigMerge';
 import { getPodiumIdFromSearch } from '../utils/podium';
 import type { AppConfig } from '../types';
 import { upsertHeatRealtimeConfig } from '../api/modules/heats.api';
@@ -34,7 +33,7 @@ export default function PriorityJudgePage() {
         : activeEventId ?? undefined;
     const isPriorityJudgeSession = currentJudge?.id === 'priority-judge';
 
-    const { heatId: authoritativePriorityHeatId } = useAuthoritativeHeatId({
+    const { heatId: authoritativePriorityHeatId, error: heatIdError } = useAuthoritativeHeatId({
         eventId: prioritySessionEventId,
         division: config.division,
         round: config.round,
@@ -50,29 +49,8 @@ export default function PriorityJudgePage() {
             logout();
         }
     }, [currentJudge, logout, podiumId, prioritySessionEventId]);
-    const applyHeatScopedConfig = (prev: AppConfig, updates: Partial<AppConfig>): AppConfig => {
-        const nextDivision = (updates.division ?? prev.division ?? '').trim().toUpperCase();
-        const nextRound = updates.round ?? prev.round;
-        const nextHeatId = updates.heatId ?? prev.heatId;
-        const previousDivision = (prev.division || '').trim().toUpperCase();
-        const heatChanged =
-            previousDivision !== nextDivision ||
-            prev.round !== nextRound ||
-            prev.heatId !== nextHeatId;
+    // applyHeatScopedConfig is imported from utils/heatScopedConfigMerge.ts
 
-        const merged = mergeRealtimeConfigPreservingLineup(prev, updates);
-
-        if (!heatChanged) {
-            return merged;
-        }
-
-        return {
-            ...merged,
-            priorityState: buildEqualPriorityState(),
-            surferNames: {},
-            surferCountries: {},
-        };
-    };
 
     const handlePriorityConfigChange = async (nextConfig: AppConfig) => {
         setConfig(nextConfig);
@@ -184,8 +162,44 @@ export default function PriorityJudgePage() {
 
     if (configLoading) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 flex items-center justify-center">
-                <div className="text-white text-xl">Chargement de la configuration...</div>
+            <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 flex flex-col items-center justify-center gap-6">
+                <div style={{
+                    width: 56,
+                    height: 56,
+                    border: '5px solid rgba(255,255,255,0.15)',
+                    borderTop: '5px solid #6366f1',
+                    borderRadius: '50%',
+                    animation: 'spin 0.9s linear infinite',
+                }} />
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                <p className="text-white/70 text-lg font-medium">Chargement de la configuration…</p>
+                {heatIdError && (
+                    <div style={{
+                        maxWidth: 380,
+                        background: 'rgba(239,68,68,0.15)',
+                        border: '1px solid rgba(239,68,68,0.4)',
+                        borderRadius: 12,
+                        padding: '14px 20px',
+                        textAlign: 'center',
+                    }}>
+                        <p style={{ color: '#fca5a5', fontWeight: 600, marginBottom: 8 }}>Erreur de connexion</p>
+                        <p style={{ color: '#fca5a5', fontSize: 14, marginBottom: 14 }}>{heatIdError}</p>
+                        <button
+                            onClick={() => window.location.reload()}
+                            style={{
+                                background: '#6366f1',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: 8,
+                                padding: '8px 20px',
+                                cursor: 'pointer',
+                                fontWeight: 600,
+                            }}
+                        >
+                            Réessayer
+                        </button>
+                    </div>
+                )}
             </div>
         );
     }

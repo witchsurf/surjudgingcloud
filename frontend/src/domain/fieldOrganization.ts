@@ -1,5 +1,14 @@
+/**
+ * fieldOrganization — domain layer
+ *
+ * Holds the business logic for loading and caching the field organisation
+ * profile (name + logo) without importing infrastructure directly.
+ *
+ * Data fetching is injected by callers (see services/fieldOrganizationService.ts)
+ * so this module stays within the domain layer dependency rules.
+ */
+
 import { getDeploymentMode } from './deploymentMode';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 export interface FieldOrganizationProfile {
   organizationName: string;
@@ -7,14 +16,18 @@ export interface FieldOrganizationProfile {
   updatedAt: string;
 }
 
-const STORAGE_KEY = 'surfjudging_field_organization_profile';
-let cachedProfile: FieldOrganizationProfile | null | undefined;
-
-const normalizeRow = (row: {
+export type FieldOrganizationRow = {
   organization_name?: unknown;
   logo_data_url?: unknown;
   updated_at?: unknown;
-} | null): FieldOrganizationProfile | null => {
+} | null;
+
+export type FieldOrganizationFetcher = () => Promise<FieldOrganizationRow>;
+
+const STORAGE_KEY = 'surfjudging_field_organization_profile';
+let cachedProfile: FieldOrganizationProfile | null | undefined;
+
+export const normalizeRow = (row: FieldOrganizationRow): FieldOrganizationProfile | null => {
   const organizationName = typeof row?.organization_name === 'string' ? row.organization_name.trim() : '';
   const logoDataUrl = typeof row?.logo_data_url === 'string' ? row.logo_data_url : '';
   if (organizationName.length < 2 || !logoDataUrl.startsWith('data:image/png;base64,')) return null;
@@ -51,30 +64,37 @@ export const getCachedFieldOrganizationProfile = (): FieldOrganizationProfile | 
   return cachedProfile;
 };
 
-export async function loadFieldOrganizationProfile({ force = false } = {}): Promise<FieldOrganizationProfile | null> {
+/**
+ * Loads the field organisation profile.
+ * The `fetcher` callback is injected by the caller so this domain module
+ * does not import Supabase directly (preserves layer isolation).
+ */
+export async function loadFieldOrganizationProfile(
+  fetcher: FieldOrganizationFetcher,
+  { force = false } = {}
+): Promise<FieldOrganizationProfile | null> {
   if (getDeploymentMode() !== 'field') return null;
   if (!force && cachedProfile !== undefined) return cachedProfile;
   const fallback = getCachedFieldOrganizationProfile();
-  if (!isSupabaseConfigured() || !supabase) return fallback;
-  const { data, error } = await supabase
-    .from('field_organization_profile')
-    .select('organization_name,logo_data_url,updated_at')
-    .eq('id', true)
-    .maybeSingle();
-  if (error) {
-    console.warn('Identité de l’organisation Field indisponible, cache local conservé:', error.message);
+  try {
+    const data = await fetcher();
+    const profile = normalizeRow(data);
+    if (profile) cacheProfile(profile);
+    return profile ?? fallback;
+  } catch (err) {
+    console.warn('Identité de l\u2019organisation Field indisponible, cache local conservé:', err);
     return fallback;
   }
-  const profile = normalizeRow(data);
-  if (profile) cacheProfile(profile);
-  return profile ?? fallback;
 }
 
-export async function resolvePdfOrganizationIdentity(input: {
-  organizer?: string | null;
-  organizerLogoDataUrl?: string | null;
-} = {}) {
-  const fieldProfile = await loadFieldOrganizationProfile({ force:true });
+export async function resolvePdfOrganizationIdentity(
+  fetcher: FieldOrganizationFetcher,
+  input: {
+    organizer?: string | null;
+    organizerLogoDataUrl?: string | null;
+  } = {}
+) {
+  const fieldProfile = await loadFieldOrganizationProfile(fetcher, { force: true });
   return {
     organizer: fieldProfile?.organizationName || input.organizer || undefined,
     organizerLogoDataUrl: fieldProfile?.logoDataUrl || input.organizerLogoDataUrl || undefined,

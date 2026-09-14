@@ -63,3 +63,7 @@ frontend/test-results/
 # Desktop installer build outputs and assembled offline payloads
 /desktop/dist-installers/
 /desktop/field-runtime/
+
+# Runtime config — generated at build time, contains secrets (anon key)
+# Regenerate with: node scripts/generate-runtime-config.mjs
+/frontend/public/runtime-config.js

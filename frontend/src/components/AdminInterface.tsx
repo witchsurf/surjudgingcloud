@@ -2455,17 +2455,12 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         // not the `config` captured when it started.  During navigation that
         // closure can still describe the previous heat, which discarded the
         // resolved finalists even though this heat is now selected.
-        const stillSelected =
+        const sameHeat =
           String(currentConfig.division || '').trim().toLowerCase() === String(heatMeta?.division || '').trim().toLowerCase() &&
           Number(currentConfig.round) === Number(heatMeta?.round) &&
           Number(currentConfig.heatId) === Number(heatMeta?.heat_number);
 
-        if (!stillSelected) return;
-
-        // A completed SAVE freezes the exact canonical panel used to start
-        // the heat. A late duplicate lineup fetch must not mutate the parent
-        // config and revoke that SAVE immediately.
-        if (configSaved) return;
+        if (!sameHeat) return;
 
         // Heat entries are canonical sporting data.  They may arrive after an
         // Admin save (for example after qualifier hydration or a reconnect),
