@@ -286,7 +286,8 @@ export async function buildFieldRuntime(runtimeName, options = {}) {
 // Direct execution from CLI
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const runtimeArg = process.argv[2] || process.env.SURF_RUNTIME_NAME;
-  buildFieldRuntime(runtimeArg)
+  const skipPreflight = process.argv.includes('--skip-preflight') || process.env.SKIP_PREFLIGHT === '1' || process.env.SKIP_PREFLIGHT === 'true';
+  buildFieldRuntime(runtimeArg, { skipPreflight })
     .then(() => {
       console.log('\n🎉 [FIELD BUILD COMPLETE] Field bundle ready in dist-field/');
     })
