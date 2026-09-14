@@ -275,7 +275,8 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   onRealtimeTimerReset,
   availableDivisions = [],
   loadState = 'loaded',
-  loadError = null,
+  // loadError kept in props for future error UI (currently not rendered)
+  loadError: _loadError = null,
   loadedFromDb = false,
   activeEventId,
   onReconnectToDb,
@@ -994,7 +995,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
           .select('*')
           .eq('heat_id', heatId)
           .order('created_at', { ascending: true }),
-        supabase.rpc('get_heat_score_overrides', { p_heat_id: heatId }),
+        // get_heat_score_overrides exists in DB (migration 20260823180000) but is not yet
+        // in the generated Supabase types — cast through unknown until types are regenerated.
+        (supabase as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> })
+          .rpc('get_heat_score_overrides', { p_heat_id: heatId }),
         supabase
           .from('competition_audit_log')
           .select('*')
@@ -1512,7 +1516,10 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
         let nextOverrides: ScoreOverrideLog[] = [];
         if (heatIds.length > 0) {
           const overrideResults = await Promise.all(
-            heatIds.map(hId => supabase.rpc('get_heat_score_overrides', { p_heat_id: hId }))
+            // get_heat_score_overrides exists in DB (migration 20260823180000) but is not yet
+            // in the generated Supabase types — cast through unknown until types are regenerated.
+            heatIds.map(hId => (supabase as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> })
+              .rpc('get_heat_score_overrides', { p_heat_id: hId }))
           );
           nextOverrides = overrideResults.flatMap(r => (r.data || []) as ScoreOverrideLog[]);
         }
