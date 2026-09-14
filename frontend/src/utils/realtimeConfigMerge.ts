@@ -45,6 +45,10 @@ export const mergeRealtimeConfigPreservingLineup = (
     },
   } as AppConfig;
 
+  if (!heatScopeChanged && next.priorityState === undefined && prev.priorityState) {
+    merged.priorityState = prev.priorityState;
+  }
+
   if (heatScopeChanged) {
     // A pointer/config event can announce the next heat before its hydrated
     // lineup arrives. Never render competitors from the previous heat under

@@ -111,20 +111,27 @@ export default function PriorityDisplayPage() {
             style={{
               flex: '1 1 0',
               height: '100%',
-              background: cssColor,
+              backgroundColor: cssColor,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: textColor,
-              fontSize: 'min(24vw, 42vh)',
-              fontWeight: 900,
-              fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-              lineHeight: 1,
-              userSelect: 'none',
-              textShadow,
+              position: 'relative',
             }}
           >
-            {rank}
+            <span
+              style={{
+                color: textColor,
+                fontSize: 'clamp(72px, 22vw, 45vh)',
+                fontWeight: 900,
+                fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                lineHeight: 1,
+                userSelect: 'none',
+                textShadow,
+                zIndex: 10,
+              }}
+            >
+              {rank}
+            </span>
           </div>
         );
       })}

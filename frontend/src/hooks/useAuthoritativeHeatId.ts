@@ -38,7 +38,7 @@ export function useAuthoritativeHeatId(params: UseAuthoritativeHeatIdParams): Us
     const validRound = Number.isFinite(round) && (round ?? 0) > 0 ? Number(round) : null;
     const validHeatNumber = Number.isFinite(heatNumber) && (heatNumber ?? 0) > 0 ? Number(heatNumber) : null;
 
-    if (!validEventId || !isSupabaseConfigured()) {
+    if (!isSupabaseConfigured() || (!validEventId && !normalizedPodium)) {
       setHeatId('');
       setLoading(false);
       setError(null);
@@ -53,7 +53,7 @@ export function useAuthoritativeHeatId(params: UseAuthoritativeHeatIdParams): Us
     const resolveHeatId = async () => {
       try {
         // 1. Primary: resolve directly by schedule if division, round and heatNumber are defined
-        if (validDivision && validRound !== null && validHeatNumber !== null) {
+        if (validEventId && validDivision && validRound !== null && validHeatNumber !== null) {
           const scheduledHeat = await fetchHeatBySchedule(
             validEventId,
             validDivision,
@@ -72,7 +72,7 @@ export function useAuthoritativeHeatId(params: UseAuthoritativeHeatIdParams): Us
 
         // 2. Fallback: resolve from active_heat_pointer for (eventId, podiumId)
         if (normalizedPodium) {
-          const pointer = await fetchActiveHeatPointer(validEventId, undefined, normalizedPodium);
+          const pointer = await fetchActiveHeatPointer(validEventId ?? undefined, undefined, normalizedPodium);
           if (isCancelled || requestIdRef.current !== currentRequestId) return;
 
           if (pointer?.active_heat_id) {
