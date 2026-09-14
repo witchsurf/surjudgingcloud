@@ -4,6 +4,7 @@ import type { CompetitorHeatResult, HeatResultSnapshot } from '../domain/scoring
 import type { AppConfig, HeatTimer, SurferStats } from '../types';
 import { computeNeededScores } from '../utils/scoring';
 import { isFinalHeat } from '../utils/heat';
+import { getPriorityLabels, normalizePriorityState } from '../utils/priority';
 
 interface ObsOverlayProps {
   config: AppConfig;
@@ -30,22 +31,23 @@ const COLOR_LABELS: Record<string, string> = {
 };
 
 const formatTimer = (seconds: number): string => {
-  const safeSeconds = Math.max(0, seconds);
+  const safeSeconds = Math.max(0, Math.floor(seconds));
   const minutes = Math.floor(safeSeconds / 60);
   const remainingSeconds = safeSeconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
 const getRemainingSeconds = (timer: HeatTimer): number => {
+  const totalDurationSecs = Math.max(0, Math.floor(timer.duration * 60));
   if (timer.isRunning && timer.startTime) {
     const startTime =
       timer.startTime instanceof Date ? timer.startTime : new Date(timer.startTime);
 
     const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
-    return Math.max(0, timer.duration * 60 - elapsed);
+    return Math.max(0, totalDurationSecs - elapsed);
   }
 
-  return timer.duration * 60;
+  return totalDurationSecs;
 };
 
 const getTextColorForJersey = (surfer: string): string => {
@@ -136,6 +138,19 @@ export default function ObsOverlay({
   const surferNames = config.surferNames ?? {};
   const surferCountries = config.surferCountries ?? {};
 
+  const priorityState = useMemo(
+    () => normalizePriorityState(config.priorityState, config.surfers || []),
+    [config.priorityState, config.surfers]
+  );
+  const priorityLabels = useMemo(
+    () => getPriorityLabels(priorityState, config.surfers || []),
+    [priorityState, config.surfers]
+  );
+  const isPriorityActive =
+    priorityState.mode === 'equal' ||
+    priorityState.mode === 'opening' ||
+    priorityState.mode === 'ordered';
+
   return (
     <main className="obs-overlay min-h-screen bg-transparent p-6 font-sans text-white">
       <section className="w-[640px] max-w-[52vw] overflow-hidden rounded-sm bg-slate-950/88 shadow-2xl ring-1 ring-white/15 backdrop-blur-[2px]">
@@ -174,7 +189,7 @@ export default function ObsOverlay({
         </header>
 
         <div className="grid grid-cols-[44px_1fr_82px_122px_94px] bg-slate-800/95 text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">
-          <div className="py-2 text-center">P</div>
+          <div className="py-2 text-center">POS</div>
           <div className="py-2">Surfer</div>
           <div className="py-2 text-center">Total</div>
           <div className="py-2 text-center">Best 2</div>
@@ -188,6 +203,7 @@ export default function ObsOverlay({
             const textColor = getTextColorForJersey(jersey);
             const displayName = surferNames[jersey] || surferNames[row.lycraColor] || row.lycraColor;
             const country = surferCountries[jersey] || surferCountries[row.lycraColor];
+            const priorityBadge = priorityLabels[jersey];
 
             return (
               <div
@@ -202,10 +218,18 @@ export default function ObsOverlay({
 
                 <div className="flex min-w-0 items-center gap-3 py-2 pr-2">
                   <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center text-sm font-black shadow-inner ring-1 ring-white/40"
+                    className="relative flex h-8 w-8 shrink-0 items-center justify-center text-sm font-black shadow-inner ring-1 ring-white/40"
                     style={{ backgroundColor: jerseyColor, color: textColor }}
                   >
                     {COLOR_LABELS[jersey] ?? jersey.slice(0, 1)}
+                    {isPriorityActive && priorityBadge && (
+                      <span
+                        className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-black leading-none text-slate-950 shadow"
+                        title={`Priorité ${priorityBadge}`}
+                      >
+                        {priorityBadge}
+                      </span>
+                    )}
                   </span>
 
                   <div className="min-w-0">

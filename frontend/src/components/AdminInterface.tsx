@@ -604,13 +604,14 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, []);
 
   const getRemainingTimerSeconds = useCallback((currentTimer: HeatTimerType, nowMs: number = Date.now()) => {
+    const totalDurationSecs = Math.max(0, Math.floor(currentTimer.duration * 60));
     if (!currentTimer.startTime) {
-      return Math.max(0, Math.floor(currentTimer.duration * 60));
+      return totalDurationSecs;
     }
 
     const startMs = new Date(currentTimer.startTime).getTime();
     const elapsed = Math.floor((nowMs - startMs) / 1000);
-    return Math.max(0, Math.floor(currentTimer.duration * 60) - elapsed);
+    return Math.max(0, totalDurationSecs - elapsed);
   }, []);
 
   useEffect(() => {
@@ -708,8 +709,9 @@ const AdminInterface: React.FC<AdminInterfaceProps> = ({
   }, [activeEventId, selectedPodiumId, podiumAssignStatus]);
 
   const formatMinSec = (secs: number) => {
-    const mins = Math.floor(secs / 60);
-    const s = secs % 60;
+    const totalSecs = Math.max(0, Math.floor(secs));
+    const mins = Math.floor(totalSecs / 60);
+    const s = totalSecs % 60;
     return `${mins.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 

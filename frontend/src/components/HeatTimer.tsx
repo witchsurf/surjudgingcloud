@@ -56,9 +56,10 @@ function HeatTimer({
           ? new Date(syncedTimer.startTime)
           : syncedTimer.startTime;
         const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
+        const totalSecs = Math.max(0, Math.floor(syncedTimer.duration * 60));
         const remaining = Math.min(
-          syncedTimer.duration * 60,
-          Math.max(0, syncedTimer.duration * 60 - elapsed)
+          totalSecs,
+          Math.max(0, totalSecs - elapsed)
         );
         setTimeLeft(remaining);
         console.log('⏰ Timer mis à jour via événement:', { remaining, elapsed });
@@ -66,7 +67,7 @@ function HeatTimer({
         // Reset des alarmes si le timer est réinitialisé
         fiveMinuteAlarmPlayedRef.current = false;
         lastCountdownSecondRef.current = -1;
-        setTimeLeft(syncedTimer.duration * 60);
+        setTimeLeft(Math.max(0, Math.floor(syncedTimer.duration * 60)));
         console.log('⏰ Timer reset via événement:', { duration: syncedTimer.duration });
       }
     };
@@ -92,9 +93,10 @@ function HeatTimer({
         let remaining: number;
         if (timer.startTime) {
           const elapsed = Math.floor((Date.now() - new Date(timer.startTime).getTime()) / 1000);
+          const totalSecs = Math.max(0, Math.floor(timer.duration * 60));
           remaining = Math.min(
-            timer.duration * 60,
-            Math.max(0, timer.duration * 60 - elapsed)
+            totalSecs,
+            Math.max(0, totalSecs - elapsed)
           );
         } else {
           // Fallback: décrémente localement si pas de startTime
@@ -136,9 +138,10 @@ function HeatTimer({
   }, [timer.isRunning, timer.startTime, timer.duration]);
 
   useEffect(() => {
+    const totalSecs = Math.max(0, Math.floor(timer.duration * 60));
     if (!timer.isRunning && !timer.startTime) {
       // Only reset to full duration if purposefully reset (no startTime)
-      setTimeLeft(timer.duration * 60);
+      setTimeLeft(totalSecs);
       fiveMinuteAlarmPlayedRef.current = false;
       lastCountdownSecondRef.current = -1;
       finalBeepPlayedRef.current = false;
@@ -146,13 +149,13 @@ function HeatTimer({
     } else if (!timer.isRunning && timer.startTime) {
       // If paused/stopped but startTime exists, double check if we should be at 0
       const elapsed = Math.floor((Date.now() - new Date(timer.startTime).getTime()) / 1000);
-      const remaining = Math.max(0, timer.duration * 60 - elapsed);
+      const remaining = Math.max(0, totalSecs - elapsed);
       if (remaining < 1) setTimeLeft(0);
     }
   }, [timer.duration, timer.isRunning, timer.startTime]);
 
   const formatTime = (seconds: number): string => {
-    const roundedSeconds = Math.floor(seconds);
+    const roundedSeconds = Math.max(0, Math.floor(seconds));
     const mins = Math.floor(roundedSeconds / 60);
     const secs = roundedSeconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
