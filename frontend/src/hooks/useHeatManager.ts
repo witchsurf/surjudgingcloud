@@ -7,6 +7,7 @@ import {
         fetchOrderedHeatSequence,
         fetchHeatEntriesWithParticipants,
         fetchHeatSlotMappings,
+        type HeatSequenceRow,
 } from '../api/modules/heats.api';
 import { fetchInterferenceCalls } from '../api/modules/scoring.api';
 import { canUseSupabaseConnection, isSupabaseConfigured, supabase } from '../lib/supabase';
@@ -88,8 +89,8 @@ export function useHeatManager() {
                 : 'A'
         );
         const closedAt = new Date().toISOString();
-        let sequence: any[] = [];
-        let currentSequenceHeat: any = null;
+        let sequence: HeatSequenceRow[] = [];
+        let currentSequenceHeat: HeatSequenceRow | null = null;
         let currentDbHeatId = currentHeatId;
         let resolvedEventId = activeEventId ?? null;
         let atomicCloseSucceeded = false;
@@ -118,7 +119,7 @@ export function useHeatManager() {
         if (resolvedEventId && isSupabaseConfigured()) {
             try {
                 sequence = await fetchOrderedHeatSequence(resolvedEventId, config.division);
-                currentSequenceHeat = sequence.find((item: any) =>
+                currentSequenceHeat = sequence.find((item: HeatSequenceRow) =>
                     Number(item.round) === Number(config.round)
                     && Number(item.heat_number) === Number(config.heatId)
                 ) ?? null;

@@ -35,6 +35,18 @@ export const DEFAULT_TIMER_STATE: HeatTimer = {
 export const HEAT_RESULTS_CACHE_KEY = 'surfJudgingHeatResults';
 export const HEAT_COLOR_CACHE_KEY = 'surfJudgingHeatColorMap';
 
+/**
+ * SIGNAL_STALE_MS — Délai de sécurité pour l'affichage priorité LED (PriorityDisplayPage).
+ *
+ * Si aucune donnée fraîche n'est reçue dans ce délai (poll + realtime),
+ * l'écran passe automatiquement en NOIR DE SÉCURITÉ afin d'éviter
+ * d'afficher une priorité périmée aux juges pendant un incident réseau LAN.
+ *
+ * ⚠️  Valeur métier critique — ne pas réduire en dessous du POLL_INTERVAL_MS x 2.
+ *     Toute modification doit être validée en conditions terrain (LAN chargé).
+ */
+export const SIGNAL_STALE_MS = 3500;
+
 export const INITIAL_CONFIG: AppConfig = {
   competition: '',
   division: '',

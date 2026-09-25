@@ -2,8 +2,10 @@
 
 Ce dépôt a deux cibles principales :
 
-- Cloud public `surfjudging.cloud`.
-- HP Event Box local pour le terrain.
+- **Cloud public** `surfjudging.cloud`
+- **App terrain Electron** `.dmg` (Mac) et `.exe` (Windows)
+
+---
 
 ## Cloud Public
 
@@ -40,83 +42,54 @@ Coupe-circuit global (debug/urgence) :
 VITE_HEAT_SIGNAL_MODE=polling
 ```
 
-## HP Event Box
+---
 
-Le HP ne doit pas être redéployé pour chaque événement si le code est déjà bon.
+## App Terrain Electron (.dmg / .exe)
 
-Le runbook opérateur de référence est
-[`docs/hp-operations-runbook.md`](docs/hp-operations-runbook.md). Cette page
-garde uniquement les commandes de déploiement et de release.
+Depuis la v0.6.23, le déploiement terrain est **exclusivement Electron packagé**.
+Le HP Docker externe est archivé dans `legacy/`.
 
-Préparation normale :
+### Architecture
 
-```bash
-./scripts/hp-sync-cloud-to-local.sh --home
+```
+[Mac/PC opérateur]  ──  SurfJudging Field.dmg / .exe
+                         └─ Supabase runtime embarqué (bundled)
+                         └─ Frontend React (field build)
+                         └─ LAN WiFi → tablettes juges + écran display
 ```
 
-Déployer seulement le frontend HP :
+### Construire le frontend field
 
 ```bash
-SURF_HP_PROFILE=home ./scripts/hp-deploy-frontend.sh
+npm --prefix frontend run build field <runtime-name>
 ```
 
-Refresh complet stack + migrations HP :
+Le build utilise `VITE_DEPLOYMENT_MODE=field`. La sortie est dans `frontend/dist-field/`.
+
+### Packager le .dmg / .exe
 
 ```bash
-SURF_HP_PROFILE=home ./scripts/hp-refresh-stack.sh
+# Mac (Intel + Apple Silicon)
+npm --prefix desktop run package:mac
+
+# Windows
+npm --prefix desktop run package:win
 ```
 
-Audit :
+Les installateurs sont dans `desktop/dist-installers/`.
 
-```bash
-SURF_HP_PROFILE=home ./scripts/hp-healthcheck.sh
-```
+La commande `verify:package-input` s'exécute automatiquement avant le packaging et bloque si l'identité est incohérente.
 
-## Event Box Mac locale
+### Provisioning runtime
 
-L'exploitation terrain Mac est décrite dans le runbook :
-[`docs/hp-operations-runbook.md`](docs/hp-operations-runbook.md).
+Voir `docs/field-deployment-mode-provisioning.md`.
 
-Commande opérateur :
+### Configuration field
 
-```bash
-./scripts/start-surfjudging-field-mac.sh
-```
+Voir `docs/admin-field-save-workflow.md`.
 
-Variante sans `caffeinate` :
-
-```bash
-./scripts/start-surfjudging-field-mac.sh --no-caffeinate
-```
-
-### Construire et déployer une nouvelle release
-
-Le Mac Field utilise le build dédié, pas un `npm run build` générique :
-
-```bash
-SURFJUDGING_RELEASE_ID=<RELEASE_ID> npm --prefix frontend run build:field
-```
-
-Le contenu de `frontend/dist-field/` est déployé dans le répertoire servi par le runtime Mac :
-
-```bash
-mkdir -p releases/mac-runtime/backups/<BACKUP_ID>
-rsync -a releases/mac-runtime/current/dist/ releases/mac-runtime/backups/<BACKUP_ID>/
-rsync -a --delete frontend/dist-field/ releases/mac-runtime/current/dist/
-docker restart surfjudging
-```
-
-Conserver une copie du bundle précédent. Après redémarrage, vérifier depuis
-l'URL LAN `deployment-manifest.json`, `RELEASE_ID` et le hash du script chargé.
-Ce déploiement frontend ne lance ni migration ni nettoyage de la base terrain.
-
-La configuration d'un heat depuis Admin suit
-[`docs/admin-field-save-workflow.md`](docs/admin-field-save-workflow.md).
+---
 
 ## Edge Functions
 
 Voir `DEPLOY_EDGE_FUNCTIONS.md`.
-
-## Runbook Opérationnel
-
-Voir `docs/hp-operations-runbook.md`.

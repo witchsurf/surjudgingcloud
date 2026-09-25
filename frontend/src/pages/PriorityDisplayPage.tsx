@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getPodiumIdFromSearch } from '../utils/podium';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { SIGNAL_STALE_MS } from '../utils/constants';
 import {
   resolvePriorityDisplaySignal,
   type ActivePrioritySnapshot,
 } from '../domain/priorityDisplay';
 
 const POLL_INTERVAL_MS = 1000;
-const SIGNAL_STALE_MS = 3500;
+/** Poll ralenti quand la dernière requête a échoué (LAN chargé) */
+const POLL_INTERVAL_ERROR_MS = 2000;
+// SIGNAL_STALE_MS est importé depuis utils/constants.ts (valeur métier centralisée)
 
 const readEventId = (search: string): number | null => {
   const raw = new URLSearchParams(search).get('eventId');
@@ -46,13 +49,16 @@ export default function PriorityDisplayPage() {
 
   useEffect(() => {
     void refresh();
-    const poll = window.setInterval(() => { void refresh(); }, POLL_INTERVAL_MS);
+    const poll = window.setInterval(
+      () => { void refresh(); },
+      lastError ? POLL_INTERVAL_ERROR_MS : POLL_INTERVAL_MS,
+    );
     const heartbeat = window.setInterval(() => setClock(Date.now()), 500);
     return () => {
       window.clearInterval(poll);
       window.clearInterval(heartbeat);
     };
-  }, [refresh]);
+  }, [refresh, lastError]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;

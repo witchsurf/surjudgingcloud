@@ -108,6 +108,29 @@ function JudgeInterface({
   const scoreRefreshInFlightRef = useRef(false);
   const lastSharedRefreshAtRef = useRef(0);
   const lastJudgeScoreSignatureRef = useRef('');
+  // Timestamp when isConnected first became false (null = currently connected)
+  const [disconnectedSince, setDisconnectedSince] = useState<number | null>(null);
+
+  // Track how long we have been disconnected
+  useEffect(() => {
+    if (!isConnected) {
+      setDisconnectedSince((prev) => prev ?? Date.now());
+    } else {
+      setDisconnectedSince(null);
+    }
+  }, [isConnected]);
+
+  // Ticker to re-render the banner once the 5-s threshold is crossed
+  const [lanDownTick, setLanDownTick] = useState(0);
+  useEffect(() => {
+    if (disconnectedSince === null) return;
+    const id = window.setTimeout(() => setLanDownTick((n) => n + 1), 5100);
+    return () => window.clearTimeout(id);
+  }, [disconnectedSince]);
+  void lanDownTick; // consumed to trigger re-render
+
+  const showLanDownBanner =
+    disconnectedSince !== null && Date.now() - disconnectedSince > 5000;
 
   // Unsynced safety check
   const pendingSyncCount = useMemo(() => submittedScores.filter(s => s.synced === false).length, [submittedScores]);
@@ -1137,6 +1160,44 @@ function JudgeInterface({
 
   return (
     <div className={priorityShellClass}>
+      {/* LAN-DOWN BANNER — visible after 5 s of disconnection */}
+      {showLanDownBanner && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 9999,
+            background: 'linear-gradient(90deg,#b91c1c,#dc2626,#b91c1c)',
+            backgroundSize: '200% 100%',
+            animation: 'lanDownPulse 1.4s ease-in-out infinite',
+            color: '#fff',
+            fontWeight: 800,
+            fontSize: 'clamp(13px,3vw,17px)',
+            letterSpacing: '0.04em',
+            textAlign: 'center',
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            boxShadow: '0 4px 24px rgba(185,28,28,0.7)',
+          }}
+        >
+          <style>{`
+            @keyframes lanDownPulse {
+              0%,100% { background-position: 0% 50%; opacity: 1; }
+              50% { background-position: 100% 50%; opacity: 0.82; }
+            }
+          `}</style>
+          <span style={{ fontSize: '1.2em' }}>⚠️</span>
+          RÉSEAU LAN INTERROMPU — synchronisation suspendue
+          <span style={{ fontSize: '1.2em' }}>⚠️</span>
+        </div>
+      )}
       {/* HEADER + TIMER */}
       <div className={isFullscreen ? 'sticky top-[max(0.5rem,env(safe-area-inset-top))] z-40' : ''}>
         <div className={`neon-card border border-white/5 rounded-xl shadow-2xl ${priorityCardPadding}`}>

@@ -14,6 +14,7 @@ import { resolveEventDisplayName } from '../utils/eventName';
 import { getPodiumIdFromSearch } from '../utils/podium';
 import type { AppConfig } from '../types';
 import { upsertHeatRealtimeConfig } from '../api/modules/heats.api';
+import { useSearchParams } from 'react-router-dom';
 
 export default function PriorityJudgePage() {
     const { currentJudge, login, logout } = useAuthStore();
@@ -23,9 +24,9 @@ export default function PriorityJudgePage() {
     const [configLoading, setConfigLoading] = useState(true);
     const prevHeatIdRef = useRef<string | null>(null);
 
-    const searchParams = new URLSearchParams(window.location.search);
+    const [searchParams] = useSearchParams();
     const eventIdFromUrl = searchParams.get('eventId');
-    const podiumId = getPodiumIdFromSearch(window.location.search);
+    const podiumId = getPodiumIdFromSearch('?' + searchParams.toString());
     const numericEventIdFromUrl = eventIdFromUrl ? Number(eventIdFromUrl) : NaN;
     const prioritySessionEventId = Number.isFinite(numericEventIdFromUrl)
         ? numericEventIdFromUrl

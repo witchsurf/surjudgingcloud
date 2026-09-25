@@ -6,11 +6,12 @@ import { useAuthStore } from '../stores/authStore';
 import { useConfigStore } from '../stores/configStore';
 import { useJudgingStore } from '../stores/judgingStore';
 import { useScoreManager } from '../hooks/useScoreManager';
-import { getHeatIdentifiers, getHeatSeriesLabel } from '../utils/heat';
+import { getHeatSeriesLabel } from '../utils/heat';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useHeatManager } from '../hooks/useHeatManager';
 import { useAuthoritativeHeatId } from '../hooks/useAuthoritativeHeatId';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { isLocalSupabaseMode, isSupabaseConfigured } from '../lib/supabase';
 import { fetchOrderedHeatSequence, upsertHeatRealtimeConfig } from '../api/modules/heats.api';
 import { parseActiveHeatId } from '../utils/activeHeatId';
@@ -38,12 +39,12 @@ export default function JudgePage() {
     latestConfigRef.current = config;
     latestConfigSavedRef.current = configSaved;
 
-    const searchParams = new URLSearchParams(window.location.search);
+    const [searchParams] = useSearchParams();
     const judgeIdFromUrl = searchParams.get('judge_id');
     const rawPosition = searchParams.get('position');
     const positionFromUrl = rawPosition ? rawPosition.trim() : null; // Kiosk mode
     const eventIdFromUrl = searchParams.get('eventId');
-    const podiumId = getPodiumIdFromSearch(window.location.search);
+    const podiumId = getPodiumIdFromSearch('?' + searchParams.toString());
     const numericEventIdFromUrl = eventIdFromUrl ? Number(eventIdFromUrl) : NaN;
     const judgeSessionEventId = Number.isFinite(numericEventIdFromUrl)
         ? numericEventIdFromUrl
