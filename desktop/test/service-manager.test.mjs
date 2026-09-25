@@ -6,7 +6,10 @@ const require = createRequire(import.meta.url);
 const { launcherFor, runtimeIdentityMatches, makeManager } = require('../src/main/field-service-manager.cjs');
 const candidate = { host:'10.0.0.10', manifest:{deploymentMode:'field',releaseId:'r',codeRevision:'c',expectedSchemaVersion:'s'} };
 const healthy = { frontend:'HEALTHY', api:'HEALTHY' };
-const base = (overrides={}) => makeManager({ rootDir:'/repo', discover:async()=>[], health:async()=>healthy, prerequisites:async()=>({dockerCli:true,colima:true,dockerDaemon:true}), fetchRunningHeats:async()=>[], spawnProcess:()=>({stdout:{on(){}},stderr:{on(){}}}), run:async()=>({}), ...overrides });
+// The service manager is intentionally supported only on macOS and Windows.
+// Keep the default fixture deterministic on every CI runner and cover the
+// unsupported-host contract with an explicit test below.
+const base = (overrides={}) => makeManager({ rootDir:'/repo', platform:'darwin', discover:async()=>[], health:async()=>healthy, prerequisites:async()=>({dockerCli:true,colima:true,dockerDaemon:true}), fetchRunningHeats:async()=>[], spawnProcess:()=>({stdout:{on(){}},stderr:{on(){}}}), run:async()=>({}), ...overrides });
 
 test('already-running does not spawn launcher', async()=>{let spawned=0; const m=base({discover:async()=>[candidate],spawnProcess:()=>{spawned++;}}); const r=await m.startField(); assert.equal(r.result,'ALREADY_RUNNING'); assert.equal(spawned,0); assert.equal(m.getState(),'READY');});
 test('runtime identity compares both frontend release and schema', () => {
@@ -27,4 +30,9 @@ test('uses a hidden PowerShell launcher on Windows', () => {
   const launcher = launcherFor('win32', 'C:/Program Files/SurfJudging Field/resources/field-runtime');
   assert.equal(launcher.command, 'powershell.exe');
   assert.match(launcher.args.at(-1), /start-surfjudging-field-windows\.ps1$/);
+});
+test('rejects unsupported Field host platforms explicitly', async()=>{
+  const m = base({ platform:'linux' });
+  await assert.rejects(m.startField(), /Unsupported Field host platform: linux/);
+  assert.equal(m.getState(), 'ERROR');
 });
